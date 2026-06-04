@@ -13,7 +13,6 @@ import pytest
 
 from modules.facturacion.matias_client import (
     CUFE_MIN_LEN,
-    EmisionResultado,
     MatiasClient,
     MatiasCredenciales,
     _extraer_token,
@@ -47,7 +46,8 @@ def test_extraer_token_variantes():
 
 def test_parsear_emision_exito():
     res = _parsear_emision({"success": True, "XmlDocumentKey": _CUFE_OK})
-    assert res == EmisionResultado(ok=True, cufe=_CUFE_OK)
+    assert res.ok is True and res.cufe == _CUFE_OK
+    assert res.categoria == "aceptada"
 
 
 def test_parsear_emision_fad06():
@@ -55,6 +55,7 @@ def test_parsear_emision_fad06():
     assert corto.ok is False and "CUFE inválido" in corto.error_msg
     sin = _parsear_emision({"success": True})                              # sin CUFE
     assert sin.ok is False and "CUFE inválido" in sin.error_msg
+    assert corto.categoria == "error" and sin.categoria == "error"
 
 
 def test_parsear_emision_rechazo():
@@ -63,6 +64,7 @@ def test_parsear_emision_rechazo():
     )
     assert res.ok is False
     assert "Rechazado" in res.error_msg and "customer.dni: requerido" in res.error_msg
+    assert res.categoria == "rechazada"
 
 
 def test_parsear_ciudades_variantes():

@@ -43,11 +43,17 @@ class MatiasCredenciales:
 
 @dataclass(frozen=True, slots=True)
 class EmisionResultado:
-    """Resultado de emitir un documento: `cufe` en éxito, `error_msg` legible en fallo."""
+    """Resultado de emitir un documento: `cufe` en éxito, `error_msg` legible en fallo.
+
+    `categoria` clasifica el desenlace para la política de reintento (E4): "aceptada" | "rechazada"
+    | "error". El default "error" es un placeholder; `_parsear_emision` la fija siempre en GREEN
+    (E4b actualizará el servicio para consumirla).
+    """
 
     ok: bool
     cufe: str | None = None
     error_msg: str | None = None
+    categoria: str = "error"
 
 
 # --- parsers PUROS (sin red) -------------------------------------------------
@@ -79,15 +85,15 @@ def _parsear_emision(data: dict) -> EmisionResultado:
     cufe = (data.get("XmlDocumentKey") or data.get("document_key") or "").strip()
     if bool(data.get("success")):
         if not cufe or len(cufe) < CUFE_MIN_LEN:
-            return EmisionResultado(False, error_msg="CUFE inválido devuelto por MATIAS API")
-        return EmisionResultado(True, cufe=cufe)
+            return EmisionResultado(False, error_msg="CUFE inválido devuelto por MATIAS API", categoria="error")
+        return EmisionResultado(True, cufe=cufe, categoria="aceptada")
     msg = data.get("message") or ""
     errors = data.get("errors")
     if isinstance(errors, dict) and errors:
         error_msg = f"{msg} | " + " | ".join(f"{k}: {v}" for k, v in errors.items())
     else:
         error_msg = msg or str(data)
-    return EmisionResultado(False, error_msg=error_msg)
+    return EmisionResultado(False, error_msg=error_msg, categoria="rechazada")
 
 
 def _parsear_ciudades(data: dict) -> dict[int, str]:

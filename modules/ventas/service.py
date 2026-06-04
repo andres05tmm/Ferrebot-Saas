@@ -5,17 +5,17 @@ totales con IVA INCLUIDO en el precio (estándar retail Colombia): el precio del
 la fuente de verdad (ferrebot-logica-portar.md §1). El consecutivo sale de una SEQUENCE.
 """
 from dataclasses import dataclass, field
-from decimal import ROUND_HALF_UP, Decimal
+from decimal import Decimal
 from typing import Protocol
 
+from core.money import cuantizar as _money
+from modules.inventario.precios import (
+    EsquemaPrecio,
+    FraccionPrecio,
+    obtener_precio_para_cantidad,
+)
 from modules.ventas.errors import LineaInvalida, ProductoNoEncontrado, StockInsuficiente
 from modules.ventas.schemas import VentaCrear, VentaLeer
-
-_CENT = Decimal("0.01")
-
-
-def _money(value: Decimal) -> Decimal:
-    return value.quantize(_CENT, rounding=ROUND_HALF_UP)
 
 
 @dataclass(frozen=True, slots=True)
@@ -25,6 +25,20 @@ class ProductoPrecio:
     precio_venta: Decimal
     iva: int
     activo: bool
+    precio_umbral: Decimal | None = None
+    precio_bajo_umbral: Decimal | None = None
+    precio_sobre_umbral: Decimal | None = None
+    fracciones: tuple[FraccionPrecio, ...] = field(default_factory=tuple)
+
+    def esquema(self) -> EsquemaPrecio:
+        """Arma el esquema que consume el motor de precios (modules.inventario)."""
+        return EsquemaPrecio(
+            precio_venta=self.precio_venta,
+            precio_umbral=self.precio_umbral,
+            precio_bajo_umbral=self.precio_bajo_umbral,
+            precio_sobre_umbral=self.precio_sobre_umbral,
+            fracciones=self.fracciones,
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -127,13 +141,17 @@ class VentaService:
         prod = await self._repo.obtener_producto(ln.producto_id)
         if prod is None or not prod.activo:
             raise ProductoNoEncontrado(ln.producto_id)
-        # El catálogo es la fuente de verdad; se permite override explícito (precio declarado).
-        precio = ln.precio_unitario if ln.precio_unitario is not None else prod.precio_venta
         disponible = await self._repo.lock_inventario(ln.producto_id)
         disponible = disponible if disponible is not None else Decimal("0")
         if disponible < ln.cantidad:
             raise StockInsuficiente(ln.producto_id, disponible, ln.cantidad)
-        total = _money(precio * ln.cantidad)
+        # Precio declarado (override explícito) gana; si no, el motor de precios es la fuente
+        # de verdad: escalonado por umbral → fracción → simple (ferrebot-logica-portar.md §3).
+        if ln.precio_unitario is not None:
+            precio = ln.precio_unitario
+            total = _money(precio * ln.cantidad)
+        else:
+            total, precio = obtener_precio_para_cantidad(prod.esquema(), ln.cantidad)
         return LineaResuelta(
             producto_id=prod.id, descripcion=ln.descripcion or prod.nombre, cantidad=ln.cantidad,
             precio_unitario=precio, iva=prod.iva, total_linea=total, descontar_stock=True,

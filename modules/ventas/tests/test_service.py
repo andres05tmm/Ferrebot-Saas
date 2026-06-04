@@ -40,8 +40,10 @@ class FakeRepo:
         )
 
 
-def _producto(pid=1, precio="11900", iva=19, activo=True):
-    return ProductoPrecio(id=pid, nombre="Martillo", precio_venta=Decimal(precio), iva=iva, activo=activo)
+def _producto(pid=1, precio="11900", iva=19, activo=True, **extra):
+    return ProductoPrecio(
+        id=pid, nombre="Martillo", precio_venta=Decimal(precio), iva=iva, activo=activo, **extra
+    )
 
 
 async def test_totales_iva_incluido():
@@ -91,6 +93,38 @@ async def test_producto_inactivo_no_se_vende():
     datos = VentaCrear(metodo_pago="efectivo", lineas=[VentaDetalleCrear(producto_id=1, cantidad=Decimal("1"))])
     with pytest.raises(ProductoNoEncontrado):
         await (VentaService(repo)).registrar_venta(datos, vendedor_id=7)
+
+
+async def test_linea_catalogo_usa_motor_escalonado():
+    # Producto con precio escalonado: 12 >= umbral 10 → precio_sobre_umbral 4500.
+    prod = _producto(
+        precio="5000",
+        precio_umbral=Decimal("10"),
+        precio_bajo_umbral=Decimal("5000"),
+        precio_sobre_umbral=Decimal("4500"),
+    )
+    repo = FakeRepo(productos={1: prod}, stock={1: Decimal("100")})
+    datos = VentaCrear(metodo_pago="efectivo", lineas=[VentaDetalleCrear(producto_id=1, cantidad=Decimal("12"))])
+    res = await (VentaService(repo)).registrar_venta(datos, vendedor_id=7)
+    assert res.venta.total == Decimal("54000.00")        # 4500 * 12
+    assert repo.creado.lineas[0].precio_unitario == Decimal("4500")
+
+
+async def test_precio_declarado_override_gana_al_motor():
+    prod = _producto(
+        precio="5000",
+        precio_umbral=Decimal("10"),
+        precio_bajo_umbral=Decimal("5000"),
+        precio_sobre_umbral=Decimal("4500"),
+    )
+    repo = FakeRepo(productos={1: prod}, stock={1: Decimal("100")})
+    datos = VentaCrear(
+        metodo_pago="efectivo",
+        lineas=[VentaDetalleCrear(producto_id=1, cantidad=Decimal("12"), precio_unitario=Decimal("4000"))],
+    )
+    res = await (VentaService(repo)).registrar_venta(datos, vendedor_id=7)
+    assert res.venta.total == Decimal("48000.00")        # 4000 declarado * 12, ignora el motor
+    assert repo.creado.lineas[0].precio_unitario == Decimal("4000")
 
 
 async def test_venta_varia_usa_precio_del_request():

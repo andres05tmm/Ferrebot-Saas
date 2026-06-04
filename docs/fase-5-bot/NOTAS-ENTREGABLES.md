@@ -111,6 +111,39 @@
   como `("audio.ogg", audio, "audio/ogg")` porque la voz de Telegram es OGG/Opus y OpenAI infiere el
   formato por la extensión. Si entra otra fuente de audio (no Telegram), revisar la extensión/MIME.
 
+## CR-3 — binding de recursos por empresa + composition root (HECHO)
+- **CR-3a — `RecursosBot` (binding por empresa):** `apps.bot.recursos.RecursosBot` cachea por
+  `empresa_id` (espejo de `core.db.engine_cache.EngineCache`: lock global mantenido a través de la
+  carga) un `RecursosEmpresa(notificador, transcriptor, archivos)` ya atado al bot-token / api-key de
+  esa empresa. El webhook pide `deps.recursos.para(tenant.id)` tras validar el secret y usa
+  `bundle.notificador`; el `TurnoHandler` resuelve el bundle con `recursos.para(ctx.tenant_id)` en la
+  rama de voz. `crear_turno_handler` ya no recibe `transcriptor`/`archivos` sueltos (param `recursos`).
+- **CR-3b — composition root (`apps.bot.wiring.construir_deps` + `apps.bot.main`):** ensambla
+  `BotDeps` desde los puertos reales con **sesión de control PER-CALL** (cada wrapper —`ResolverControl`,
+  `SecretosControl`, `CapacidadesControl`, `ConfigControl`, `KeyControl`— abre una `AsyncSession` de
+  control FRESCA por llamada y delega en las clases existentes). `core.db.session.control_session`
+  (nuevo, espejo de `tenant_session`). `app = crear_app()` a nivel de módulo; `main()` con
+  `uvicorn.run("apps.bot.main:app", host=$HOST, port=$PORT)` (PORT lo inyecta Railway). La
+  construcción NO hace I/O: todo difiere a las llamadas (seams inyectables para el smoke sin red).
+- **Cobertura cerrada (lo que E1 dejó pendiente):** `tests/test_bot_repos_control.py` hace el
+  round-trip cripto de `ControlSecretosBot` (webhook secret + bot token) y `ControlCapacidades`
+  (plan ± `empresa_features`) contra un control DB efímero; `tests/test_bot_wiring.py` valida el
+  cableado de todos los puertos, el camino "no autorizado" extremo a extremo SIN red, y que el
+  `_cargar` real del `RecursosBot` descifra `telegram_token` + `openai_api_key`.
+- **Token accounting (lo que E2/E4 dejó pendiente) — cableado:** `procesar` se arma con
+  `crear_turno_handler(..., recursos=…, confirm=RedisConfirmStore, turno=WORKER)`; el wrapper
+  `ProveedorMedido` acumula `response.usage` en `SqlCostosRepository` por la sesión del tenant.
+
+## Deuda viva tras el cierre de Fase 5 (explícita — NO perder)
+- **`audio_logs` de voz NO se registra (`audios=None`):** `SqlAudioLogsRepository` existe (E5) pero el
+  composition root pasa `audios=None` a `crear_turno_handler` → la bitácora de transcripciones de voz
+  queda en CERO (la voz funciona; solo se omite el log de auditoría). Cierre: cablear la factory
+  `audios = lambda s: SqlAudioLogsRepository(s)` en `construir_deps` cuando se quiera la auditoría.
+- **Writer de `memoria_entidades` (último cliente/producto) sin implementar:** el turno solo CONSUME
+  `leer_entidades` (lectura); nadie escribe `recordar_entidad` al cerrar el turno. Bloqueado por el
+  mini-spec de E4 (ver FOLLOW-UP de E4): la fuente correcta es `Resultado.data`, que `RespuestaAgente`
+  no transporta hoy. Hasta entonces el bloque "Contexto reciente" del system prompt nace vacío.
+
 ## Observabilidad (transversal, cierra deuda del despachador)
 - `request_id` (update_id) + `tenant_id` en los contextvars de `core.logging` al inicio de cada
   update; eventos estructurados de turno (ruta, intent, latencia, fallback, tool, riel, error);

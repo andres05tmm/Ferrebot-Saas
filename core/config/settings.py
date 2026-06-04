@@ -31,6 +31,11 @@ class Settings(BaseSettings):
     anthropic_api_key: str = ""
     openai_api_key: str = ""
 
+    # LLM: proveedor/modelos por defecto de plataforma (override por empresa en config_empresa).
+    llm_provider: str = "openai"
+    llm_model_worker: str = "gpt-4o-mini"
+    llm_model_orquestador: str = "gpt-4o"
+
 
 @lru_cache
 def get_settings() -> Settings:

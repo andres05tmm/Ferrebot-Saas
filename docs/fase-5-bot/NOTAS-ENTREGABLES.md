@@ -64,6 +64,20 @@
 - **`memoria_turno` y `price_cache` NO existen como tablas** en schema.md → `price_cache` va a
   **Redis** (caché, fuera del prompt); `memoria_turno` se modela como scratch del turno
   (Redis/efímero), no tabla de negocio. Confirmar al planear el entregable.
+- **Token accounting por wrapper, NO por `RespuestaAgente.usage`** (decisión del checkpoint E4):
+  `ai.agent` tiene 6 puntos de salida + camino de 2 generaciones; contar ahí sub-cuenta la ruta de
+  tool y obliga a sumar a mano. Se cuenta en `core.llm.medicion.ProveedorMedido`, que envuelve el
+  `LLMProvider` y acumula `response.usage` (best-effort) en un `CostosStore`
+  (`modules.memoria.SqlCostosRepository` → `api_costo_diario`, fecha Colombia, PK=fecha, upsert
+  acumulativo, modelo = último escritor). El `TurnoHandler` solo cablea el wrapper.
+- **FOLLOW-UP — writer de `memoria_entidades` (DIFERIDO, no es de E4):** recordar último
+  cliente/producto al final del turno necesita la fuente correcta = `Resultado.data`, que el handler
+  no ve hoy (`RespuestaAgente` no transporta `data`). Pendientes del mini-spec: (a) exponer/llevar
+  `Resultado.data` hasta el orquestador (¿campo nuevo en `RespuestaAgente`? ¿otra superficie?);
+  (b) estandarizar el mapeo tool→entidad (qué tool produce `ultimo_cliente`/`ultimo_producto` y de
+  qué llaves de `data` salen `id`/`nombre`). En E4 el system prompt solo CONSUME `leer_entidades`
+  (lectura, degrada a sin "Contexto reciente" si vacío); `recordar_entidad`/`leer_entidades` ya están
+  probados a nivel de servicio (round-trip + upsert + aislamiento por chat).
 
 ## Entregable 5 — voz
 - `Transcriptor` como puerto aparte (no dentro de `LLMProvider`). Reusar R3/Redis para confirmación

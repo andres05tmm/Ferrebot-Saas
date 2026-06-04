@@ -1,0 +1,4 @@
+ typname | enumlabel 
+---------+-----------
+(0 filas)
+

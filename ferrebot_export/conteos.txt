@@ -1,0 +1,34 @@
+           tabla            | filas_aprox 
+----------------------------+-------------
+ productos_fracciones       |         722
+ productos                  |         632
+ ventas_detalle             |         481
+ ventas                     |         228
+ bancolombia_transferencias |         122
+ facturas_electronicas      |         111
+ conversaciones_bot         |          71
+ clientes                   |          59
+ audio_logs                 |          51
+ historico_ventas           |          33
+ compras_fiscal             |          26
+ api_costo_diario           |          24
+ memoria_entidades          |          24
+ config                     |           7
+ usuarios                   |           6
+ gastos                     |           4
+ caja                       |           2
+ facturas_proveedores       |           1
+ alembic_version            |           1
+ aliases                    |           1
+ facturas_abonos            |           1
+ documentos_soporte         |           1
+ cuentas_cobro              |           1
+ ventas_pendientes_voz      |           0
+ inventario                 |           0
+ iva_saldos_bimestrales     |           0
+ ferrebot_config            |           0
+ fiados_movimientos         |           0
+ fiados                     |           0
+ compras                    |           0
+(30 filas)
+

@@ -1,0 +1,26 @@
+           sequencename            | last_value 
+-----------------------------------+------------
+ facturas_electronicas_id_seq      |        192
+ compras_fiscal_id_seq             |         44
+ fiados_new_id_seq                 |           
+ productos_id_seq                  |    1007741
+ productos_fracciones_id_seq       |    1158955
+ inventario_id_seq                 |           
+ clientes_id_seq                   |         59
+ ventas_id_seq                     |        430
+ ventas_detalle_id_seq             |        974
+ gastos_id_seq                     |          4
+ caja_id_seq                       |          7
+ facturas_abonos_id_seq            |          1
+ compras_id_seq                    |           
+ usuarios_id_seq                   |          7
+ audio_logs_id_seq                 |         51
+ api_costo_diario_id_seq           |        422
+ conversaciones_bot_id_seq         |         71
+ memoria_entidades_id_seq          |         24
+ bancolombia_transferencias_id_seq |        132
+ cuentas_cobro_id_seq              |         12
+ documentos_soporte_id_seq         |         11
+ fiados_movimientos_id_seq         |           
+(22 filas)
+

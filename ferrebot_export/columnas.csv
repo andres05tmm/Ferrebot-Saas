@@ -1,0 +1,303 @@
+alembic_version,1,version_num,character varying,NO,
+aliases,1,termino,character varying,NO,
+aliases,2,reemplazo,character varying,NO,
+aliases,3,created_at,timestamp without time zone,YES,now()
+aliases,4,updated_at,timestamp without time zone,YES,now()
+api_costo_diario,1,id,integer,NO,nextval('api_costo_diario_id_seq'::regclass)
+api_costo_diario,2,fecha,date,NO,
+api_costo_diario,3,vendedor_id,bigint,NO,
+api_costo_diario,4,modelo,text,NO,
+api_costo_diario,5,llamadas,integer,NO,0
+api_costo_diario,6,input_tokens,bigint,NO,0
+api_costo_diario,7,cache_read_tokens,bigint,NO,0
+api_costo_diario,8,cache_created_tokens,bigint,NO,0
+api_costo_diario,9,output_tokens,bigint,NO,0
+api_costo_diario,10,costo_usd,numeric,NO,0
+api_costo_diario,11,creado,timestamp with time zone,NO,now()
+api_costo_diario,12,actualizado,timestamp with time zone,NO,now()
+audio_logs,1,id,integer,NO,nextval('audio_logs_id_seq'::regclass)
+audio_logs,2,chat_id,bigint,NO,
+audio_logs,3,vendedor,text,NO,
+audio_logs,4,texto_original,text,NO,
+audio_logs,5,texto_corregido,text,NO,
+audio_logs,6,duracion_seg,double precision,YES,
+audio_logs,7,fecha,timestamp with time zone,YES,now()
+audio_logs,8,canal,text,YES,
+audio_logs,9,turn_id,text,YES,
+audio_logs,10,session_id,text,YES,
+audio_logs,11,no_speech_prob,double precision,YES,
+audio_logs,12,descartado_silencio,boolean,YES,
+audio_logs,13,modelo,text,YES,
+audio_logs,14,riel,text,YES,
+audio_logs,15,latencia_stt_ms,integer,YES,
+audio_logs,16,latencia_claude_ms,integer,YES,
+audio_logs,17,pendiente,boolean,YES,
+audio_logs,18,resultado,text,YES,
+bancolombia_transferencias,1,id,integer,NO,nextval('bancolombia_transferencias_id_seq'::regclass)
+bancolombia_transferencias,2,gmail_message_id,text,NO,
+bancolombia_transferencias,3,fecha,date,NO,
+bancolombia_transferencias,4,hora,text,NO,''::text
+bancolombia_transferencias,5,monto,bigint,NO,0
+bancolombia_transferencias,6,remitente,text,NO,''::text
+bancolombia_transferencias,7,descripcion,text,NO,''::text
+bancolombia_transferencias,8,tipo_transaccion,text,NO,''::text
+bancolombia_transferencias,9,referencia,text,NO,''::text
+bancolombia_transferencias,10,notificado,boolean,NO,true
+bancolombia_transferencias,11,created_at,timestamp with time zone,NO,now()
+caja,1,id,integer,NO,nextval('caja_id_seq'::regclass)
+caja,2,fecha,date,NO,
+caja,3,abierta,boolean,YES,false
+caja,4,monto_apertura,integer,YES,0
+caja,5,efectivo,integer,YES,0
+caja,6,transferencias,integer,YES,0
+caja,7,datafono,integer,YES,0
+caja,8,cerrada_at,timestamp without time zone,YES,
+caja,9,created_at,timestamp without time zone,YES,now()
+clientes,1,id,integer,NO,nextval('clientes_id_seq'::regclass)
+clientes,2,nombre,character varying,NO,
+clientes,3,tipo_id,character varying,YES,
+clientes,4,identificacion,character varying,YES,
+clientes,5,tipo_persona,character varying,YES,
+clientes,6,correo,character varying,YES,
+clientes,7,telefono,character varying,YES,
+clientes,8,created_at,timestamp without time zone,YES,now()
+clientes,9,direccion,character varying,YES,
+clientes,10,regimen_fiscal,integer,YES,2
+clientes,11,municipio_dian,integer,YES,149
+clientes,12,pais_id,integer,YES,45
+clientes,13,ciudad_nombre,character varying,YES,'Cartagena'::character varying
+compras,1,id,integer,NO,nextval('compras_id_seq'::regclass)
+compras,2,fecha,date,NO,
+compras,3,hora,time without time zone,YES,
+compras,4,proveedor,character varying,YES,
+compras,5,producto_id,integer,YES,
+compras,6,producto_nombre,character varying,NO,
+compras,7,cantidad,numeric,NO,
+compras,8,costo_unitario,integer,YES,
+compras,9,costo_total,integer,YES,
+compras,10,created_at,timestamp without time zone,YES,now()
+compras,11,usuario_id,integer,YES,
+compras,12,incluye_iva,boolean,YES,false
+compras,13,tarifa_iva,integer,YES,0
+compras,14,compra_fiscal_id,integer,YES,
+compras,15,factura_proveedor_id,character varying,YES,
+compras,16,estado_fiscal,character varying,YES,'sin_factura'::character varying
+compras_fiscal,1,id,integer,NO,nextval('compras_fiscal_id_seq'::regclass)
+compras_fiscal,2,fecha,date,NO,
+compras_fiscal,3,hora,time without time zone,YES,
+compras_fiscal,4,proveedor,character varying,YES,
+compras_fiscal,5,producto_id,integer,YES,
+compras_fiscal,6,producto_nombre,character varying,NO,
+compras_fiscal,7,cantidad,numeric,NO,
+compras_fiscal,8,costo_unitario,integer,YES,
+compras_fiscal,9,costo_total,integer,YES,
+compras_fiscal,10,incluye_iva,boolean,YES,false
+compras_fiscal,11,tarifa_iva,integer,YES,0
+compras_fiscal,12,numero_factura,character varying,YES,
+compras_fiscal,13,notas_fiscales,text,YES,
+compras_fiscal,14,compra_origen_id,integer,YES,
+compras_fiscal,15,usuario_id,integer,YES,
+compras_fiscal,16,created_at,timestamp without time zone,YES,now()
+compras_fiscal,17,updated_at,timestamp without time zone,YES,now()
+compras_fiscal,18,gmail_message_id,character varying,YES,
+compras_fiscal,19,cufe_proveedor,character varying,YES,
+compras_fiscal,20,evento_030_at,timestamp without time zone,YES,
+compras_fiscal,21,evento_031_at,timestamp without time zone,YES,
+compras_fiscal,22,evento_032_at,timestamp without time zone,YES,
+compras_fiscal,23,evento_033_at,timestamp without time zone,YES,
+compras_fiscal,24,evento_estado,character varying,YES,'pendiente'::character varying
+compras_fiscal,25,evento_error,text,YES,
+compras_fiscal,26,estado_vinculacion,character varying,YES,'sin_vincular'::character varying
+config,1,clave,character varying,NO,
+config,2,valor,text,YES,
+config,3,updated_at,timestamp without time zone,YES,now()
+conversaciones_bot,1,id,bigint,NO,nextval('conversaciones_bot_id_seq'::regclass)
+conversaciones_bot,2,chat_id,bigint,NO,
+conversaciones_bot,3,vendedor_id,bigint,YES,
+conversaciones_bot,4,role,text,NO,
+conversaciones_bot,5,content,text,NO,
+conversaciones_bot,6,modelo,text,YES,
+conversaciones_bot,7,tokens_input,integer,YES,
+conversaciones_bot,8,tokens_output,integer,YES,
+conversaciones_bot,9,creado,timestamp with time zone,NO,now()
+cuentas_cobro,1,id,integer,NO,nextval('cuentas_cobro_id_seq'::regclass)
+cuentas_cobro,2,consecutivo,integer,NO,
+cuentas_cobro,3,numero_display,character varying,NO,
+cuentas_cobro,4,fecha,date,NO,
+cuentas_cobro,5,periodo,character varying,NO,
+cuentas_cobro,6,concepto,text,NO,
+cuentas_cobro,7,valor,numeric,NO,
+cuentas_cobro,8,pdf_bytes,bytea,YES,
+cuentas_cobro,9,enviado_telegram,boolean,YES,false
+cuentas_cobro,10,creado_at,timestamp with time zone,YES,now()
+documentos_soporte,1,id,integer,NO,nextval('documentos_soporte_id_seq'::regclass)
+documentos_soporte,2,consecutivo,character varying,YES,
+documentos_soporte,3,fecha,date,YES,
+documentos_soporte,4,valor,numeric,YES,
+documentos_soporte,5,cude,character varying,YES,
+documentos_soporte,6,estado_dian,character varying,YES,
+documentos_soporte,7,cuenta_cobro_id,integer,YES,
+documentos_soporte,8,created_at,timestamp with time zone,YES,now()
+facturas_abonos,1,id,integer,NO,nextval('facturas_abonos_id_seq'::regclass)
+facturas_abonos,2,factura_id,character varying,YES,
+facturas_abonos,3,monto,integer,NO,
+facturas_abonos,4,fecha,date,NO,
+facturas_abonos,5,foto_url,text,YES,''::text
+facturas_abonos,6,foto_nombre,character varying,YES,''::character varying
+facturas_abonos,7,created_at,timestamp without time zone,YES,now()
+facturas_electronicas,1,id,integer,NO,nextval('facturas_electronicas_id_seq'::regclass)
+facturas_electronicas,2,venta_id,integer,YES,
+facturas_electronicas,3,numero,character varying,NO,
+facturas_electronicas,4,cufe,character varying,YES,
+facturas_electronicas,5,fecha_emision,timestamp without time zone,YES,now()
+facturas_electronicas,6,estado,character varying,YES,'emitida'::character varying
+facturas_electronicas,7,cliente_nombre,character varying,YES,
+facturas_electronicas,8,total,integer,YES,
+facturas_electronicas,9,error_msg,text,YES,
+facturas_electronicas,10,created_at,timestamp without time zone,YES,now()
+facturas_electronicas,11,tipo,character varying,NO,'factura'::character varying
+facturas_electronicas,12,razon_id,smallint,YES,
+facturas_electronicas,13,factura_cufe_ref,character varying,YES,
+facturas_proveedores,1,id,character varying,NO,
+facturas_proveedores,2,proveedor,character varying,NO,
+facturas_proveedores,3,descripcion,character varying,YES,
+facturas_proveedores,4,total,integer,NO,
+facturas_proveedores,5,pagado,integer,YES,0
+facturas_proveedores,6,pendiente,integer,NO,
+facturas_proveedores,7,estado,character varying,YES,'pendiente'::character varying
+facturas_proveedores,8,fecha,date,NO,
+facturas_proveedores,9,foto_url,text,YES,''::text
+facturas_proveedores,10,foto_nombre,character varying,YES,''::character varying
+facturas_proveedores,11,created_at,timestamp without time zone,YES,now()
+facturas_proveedores,12,usuario_id,integer,YES,
+ferrebot_config,1,clave,character varying,NO,
+ferrebot_config,2,valor,text,YES,
+ferrebot_config,3,updated_at,timestamp without time zone,YES,now()
+fiados,1,id,integer,NO,nextval('fiados_new_id_seq'::regclass)
+fiados,2,cliente_id,integer,YES,
+fiados,3,cliente_nombre,character varying,NO,
+fiados,4,saldo_actual,integer,YES,0
+fiados,5,ultima_actualizacion,timestamp without time zone,YES,now()
+fiados,6,notas,text,YES,
+fiados,7,created_at,timestamp without time zone,YES,now()
+fiados_movimientos,1,id,bigint,NO,nextval('fiados_movimientos_id_seq'::regclass)
+fiados_movimientos,2,fiado_id,integer,NO,
+fiados_movimientos,3,fecha,date,NO,CURRENT_DATE
+fiados_movimientos,4,hora,time without time zone,NO,(now())::time without time zone
+fiados_movimientos,5,concepto,text,NO,''::text
+fiados_movimientos,6,cargo,numeric,NO,0
+fiados_movimientos,7,abono,numeric,NO,0
+fiados_movimientos,8,saldo_resultante,numeric,NO,
+fiados_movimientos,9,creado_at,timestamp with time zone,NO,now()
+gastos,1,id,integer,NO,nextval('gastos_id_seq'::regclass)
+gastos,2,fecha,date,NO,
+gastos,3,hora,time without time zone,YES,
+gastos,4,concepto,character varying,NO,
+gastos,5,monto,integer,NO,
+gastos,6,categoria,character varying,YES,
+gastos,7,origen,character varying,YES,'bot'::character varying
+gastos,8,fac_id,character varying,YES,
+gastos,9,created_at,timestamp without time zone,YES,now()
+gastos,10,usuario_id,integer,YES,
+historico_ventas,1,fecha,date,NO,
+historico_ventas,2,ventas,integer,YES,0
+historico_ventas,3,efectivo,integer,YES,0
+historico_ventas,4,transferencia,integer,YES,0
+historico_ventas,5,datafono,integer,YES,0
+historico_ventas,6,n_transacciones,integer,YES,0
+historico_ventas,7,gastos,integer,YES,0
+historico_ventas,8,abonos_proveedores,integer,YES,0
+historico_ventas,9,updated_at,timestamp without time zone,YES,now()
+historico_ventas,10,origen,character varying,NO,'calculado'::character varying
+historico_ventas,11,incluir_en_balances,boolean,NO,true
+historico_ventas,12,notas,text,YES,
+inventario,1,id,integer,NO,nextval('inventario_id_seq'::regclass)
+inventario,2,producto_id,integer,YES,
+inventario,3,cantidad,numeric,YES,0
+inventario,4,minimo,numeric,YES,0
+inventario,5,unidad,character varying,YES,'Unidad'::character varying
+inventario,6,updated_at,timestamp without time zone,YES,now()
+inventario,7,nombre_original,character varying,YES,
+inventario,8,costo_promedio,numeric,YES,
+inventario,9,ultimo_costo,numeric,YES,
+inventario,10,ultimo_proveedor,character varying,YES,
+inventario,11,ultima_compra,timestamp without time zone,YES,
+inventario,12,ultima_venta,timestamp without time zone,YES,
+inventario,13,ultimo_ajuste,timestamp without time zone,YES,
+inventario,14,fecha_conteo,timestamp without time zone,YES,
+iva_saldos_bimestrales,1,año,integer,NO,
+iva_saldos_bimestrales,2,bimestre,integer,NO,
+iva_saldos_bimestrales,3,iva_ventas,bigint,YES,0
+iva_saldos_bimestrales,4,iva_compras,bigint,YES,0
+iva_saldos_bimestrales,5,saldo_anterior,bigint,YES,0
+iva_saldos_bimestrales,6,iva_neto,bigint,YES,0
+iva_saldos_bimestrales,7,estado,character varying,YES,'borrador'::character varying
+iva_saldos_bimestrales,8,fecha_declaracion,date,YES,
+iva_saldos_bimestrales,9,observaciones,text,YES,
+iva_saldos_bimestrales,10,cerrado_at,timestamp without time zone,YES,
+memoria_entidades,1,id,integer,NO,nextval('memoria_entidades_id_seq'::regclass)
+memoria_entidades,2,tipo,text,NO,
+memoria_entidades,3,entidad_key,text,NO,
+memoria_entidades,4,nota,text,NO,
+memoria_entidades,5,confidence,real,NO,1.0
+memoria_entidades,6,fecha_generada,date,NO,
+memoria_entidades,7,vigente,boolean,NO,true
+memoria_entidades,8,creado_en,timestamp with time zone,NO,now()
+productos,1,id,integer,NO,nextval('productos_id_seq'::regclass)
+productos,2,clave,character varying,NO,
+productos,3,nombre,character varying,NO,
+productos,4,nombre_lower,character varying,NO,
+productos,5,codigo,character varying,YES,
+productos,6,categoria,character varying,YES,
+productos,7,precio_unidad,integer,NO,0
+productos,8,unidad_medida,character varying,YES,'Unidad'::character varying
+productos,9,activo,boolean,YES,true
+productos,10,created_at,timestamp without time zone,YES,now()
+productos,11,updated_at,timestamp without time zone,YES,now()
+productos,12,tiene_iva,boolean,YES,false
+productos,13,porcentaje_iva,integer,YES,0
+productos,14,aliases,ARRAY,YES,'{}'::text[]
+productos,15,precio_umbral,integer,YES,
+productos,16,precio_bajo_umbral,integer,YES,
+productos,17,precio_sobre_umbral,integer,YES,
+productos_fracciones,1,id,integer,NO,nextval('productos_fracciones_id_seq'::regclass)
+productos_fracciones,2,producto_id,integer,YES,
+productos_fracciones,3,fraccion,character varying,NO,
+productos_fracciones,4,precio_total,integer,NO,
+productos_fracciones,5,precio_unitario,integer,NO,
+usuarios,1,id,integer,NO,nextval('usuarios_id_seq'::regclass)
+usuarios,2,telegram_id,bigint,NO,
+usuarios,3,nombre,character varying,NO,
+usuarios,4,rol,character varying,NO,'vendedor'::character varying
+usuarios,5,activo,boolean,NO,true
+usuarios,6,created_at,timestamp with time zone,NO,now()
+ventas,1,id,integer,NO,nextval('ventas_id_seq'::regclass)
+ventas,2,consecutivo,integer,NO,
+ventas,3,fecha,date,NO,
+ventas,4,hora,time without time zone,YES,
+ventas,5,cliente_id,integer,YES,
+ventas,6,cliente_nombre,character varying,YES,'Consumidor Final'::character varying
+ventas,7,vendedor,character varying,YES,
+ventas,8,metodo_pago,character varying,YES,
+ventas,9,total,integer,NO,0
+ventas,10,created_at,timestamp without time zone,YES,now()
+ventas,11,usuario_id,integer,YES,
+ventas,12,factura_numero,character varying,YES,
+ventas,13,factura_cufe,character varying,YES,
+ventas,14,factura_estado,character varying,YES,'sin_factura'::character varying
+ventas,15,facturada_at,timestamp without time zone,YES,
+ventas_detalle,1,id,integer,NO,nextval('ventas_detalle_id_seq'::regclass)
+ventas_detalle,2,venta_id,integer,YES,
+ventas_detalle,3,producto_id,integer,YES,
+ventas_detalle,4,producto_nombre,character varying,NO,
+ventas_detalle,5,cantidad,numeric,NO,
+ventas_detalle,6,unidad_medida,character varying,YES,'Unidad'::character varying
+ventas_detalle,7,precio_unitario,integer,YES,
+ventas_detalle,8,total,integer,NO,
+ventas_detalle,9,alias_usado,character varying,YES,
+ventas_detalle,10,sin_detalle,boolean,YES,false
+ventas_pendientes_voz,1,session_id,text,NO,
+ventas_pendientes_voz,2,chat_id,bigint,NO,
+ventas_pendientes_voz,3,vendedor,text,YES,
+ventas_pendientes_voz,4,ventas,jsonb,NO,
+ventas_pendientes_voz,5,created_at,timestamp with time zone,YES,now()

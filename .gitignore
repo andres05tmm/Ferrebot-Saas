@@ -1,0 +1,15 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+# Entorno / secretos
+.env
+.env.*
+!.env.example
+# Node / frontend
+node_modules/
+dashboard/dist/
+# Varios
+.DS_Store
+*.log

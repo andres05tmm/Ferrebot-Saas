@@ -36,11 +36,13 @@ existe y está probado a nivel de servicio, pero el turno aún no lo invoca. Ver
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
+from dataclasses import replace
 from datetime import date
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ai.agent import RespuestaAgente, ejecutar_turno
+from ai.agent import RespuestaAgente, ejecutar_turno, texto_de_respuesta
+from ai.confirmacion import ConfirmStore, es_afirmacion, es_negacion
 from ai.dispatcher import Dispatcher, Recursos
 from ai.envelope import Contexto
 from apps.bot.ports import ArchivosTelegram, Notificador, TurnoHandler, UpdateBot
@@ -68,6 +70,8 @@ MENSAJE_VOZ_DESHABILITADA = "El registro por voz no está habilitado para tu emp
 MENSAJE_NO_ENTENDI = "No te entendí, ¿puedes repetirlo?"
 # Capacidad requerida para procesar notas de voz (feature-flags.md; además de bot_telegram).
 CAP_VENTAS_VOZ = "ventas_voz"
+# Respuesta cuando el usuario niega una mutación pendiente de confirmación.
+MENSAJE_CANCELADO = "Listo, cancelado."
 
 # Factories atadas a la sesión del tenant que el handler recibe en cada turno.
 MemoriaFactory = Callable[[AsyncSession], MemoriaService]
@@ -148,6 +152,48 @@ async def _resolver_texto_voz(
     return transcripcion.texto
 
 
+async def _manejar_confirmacion(
+    update: UpdateBot,
+    ctx: Contexto,
+    session: AsyncSession,
+    notificador: Notificador,
+    texto: str | None,
+    *,
+    confirm: ConfirmStore,
+    dispatcher: Dispatcher,
+    crear_recursos: RecursosFactory,
+    memoria: MemoriaFactory,
+) -> bool:
+    """Resuelve un pendiente de confirmación. True = turno resuelto (el handler hace return).
+
+    Afirmación → re-despacha el `tool_call` guardado (confirmado=True, MISMA key), sin modelo.
+    Negación → cancela. Otro → descarta el pendiente y deja seguir el turno normal (False).
+    """
+    pendiente = await confirm.obtener(ctx.tenant_id, update.chat_id)
+    if pendiente is None:
+        return False
+    await confirm.borrar(ctx.tenant_id, update.chat_id)   # el pendiente se consume en cualquier caso
+    if es_afirmacion(texto or ""):
+        ctx2 = replace(ctx, confirmado=True, idempotency_key=pendiente.idempotency_key)
+        try:
+            resultado = await dispatcher.ejecutar(pendiente.tool_call, ctx2, crear_recursos(session))
+        except Exception:
+            log.warning("confirmacion_redespacho_fallo", chat_id=update.chat_id, exc_info=True)
+            await notificador.responder(update.chat_id, MENSAJE_RESPALDO)
+            return True
+        respuesta = texto_de_respuesta(resultado)
+        await notificador.responder(update.chat_id, respuesta)
+        try:
+            await memoria(session).guardar_turno(update.chat_id, usuario=texto or "", asistente=respuesta)
+        except Exception:
+            log.warning("turno_persistencia_fallo", chat_id=update.chat_id, exc_info=True)
+        return True
+    if es_negacion(texto or ""):
+        await notificador.responder(update.chat_id, MENSAJE_CANCELADO)
+        return True
+    return False                                          # comando nuevo → turno normal
+
+
 def crear_turno_handler(
     *,
     dispatcher: Dispatcher,
@@ -159,6 +205,7 @@ def crear_turno_handler(
     transcriptor: Transcriptor | None = None,
     archivos: ArchivosTelegram | None = None,
     audios: AudioFactory | None = None,
+    confirm: ConfirmStore | None = None,
 ) -> TurnoHandler:
     """Captura el dispatcher + stores (+ voz, opcional) y devuelve el `TurnoHandler` del webhook.
 
@@ -181,6 +228,14 @@ def crear_turno_handler(
         else:
             texto = update.texto
 
+        # Confirmación entre turnos (re-despacho determinista): resolver el pendiente ANTES del turno.
+        if confirm is not None:
+            if await _manejar_confirmacion(
+                update, ctx, session, notificador, texto,
+                confirm=confirm, dispatcher=dispatcher, crear_recursos=crear_recursos, memoria=memoria,
+            ):
+                return
+
         memoria_svc = memoria(session)
         historial = await memoria_svc.cargar_historial(update.chat_id)        # best-effort
         entidades = await memoria_svc.leer_entidades(update.chat_id)          # best-effort
@@ -201,6 +256,16 @@ def crear_turno_handler(
             log.warning("turno_fallo_proveedor", chat_id=update.chat_id, exc_info=True)
             await notificador.responder(update.chat_id, MENSAJE_RESPALDO)
             return
+
+        # CR-2: si el turno pidió confirmación, guardar el pendiente (best-effort) antes de responder.
+        if confirm is not None and respuesta.confirmacion_pendiente is not None:
+            try:
+                await confirm.guardar(
+                    ctx.tenant_id, update.chat_id,
+                    tool_call=respuesta.confirmacion_pendiente, idempotency_key=ctx.idempotency_key,
+                )
+            except Exception:
+                log.warning("confirmacion_guardar_fallo", chat_id=update.chat_id, exc_info=True)
 
         await notificador.responder(update.chat_id, respuesta.texto)
         # Persistencia best-effort: jamás degrada la respuesta ya enviada (try propio, sin respaldo).

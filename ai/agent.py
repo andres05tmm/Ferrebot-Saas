@@ -60,6 +60,8 @@ class RespuestaAgente:
     idempotente: str | None = None  # "aplicada" | "duplicada" | None
     generaciones: int = 0           # cuántas veces se llamó al modelo
     tool: str | None = None         # herramienta ejecutada (o None)
+    # ToolCall a confirmar (solo en la rama `Confirmar`); el handler lo guarda para el re-despacho.
+    confirmacion_pendiente: ToolCall | None = None
 
 
 class Ejecutor(Protocol):
@@ -96,19 +98,25 @@ async def ejecutar_turno(
 
     if isinstance(resultado, Preguntar):
         # Corte de riel → directo al usuario, sin re-promptear (el mensaje ya es autosuficiente).
-        return _final(RespuestaAgente(texto=resultado.mensaje, ruta="riel", generaciones=1, tool=call.name))
+        return _final(RespuestaAgente(
+            texto=texto_de_respuesta(resultado), ruta="riel", generaciones=1, tool=call.name))
     if isinstance(resultado, Confirmar):
-        return _final(RespuestaAgente(texto=resultado.resumen, ruta="riel", generaciones=1, tool=call.name))
+        # Riel de confirmación → se guarda el tool_call para re-despacharlo cuando el usuario diga "sí".
+        return _final(RespuestaAgente(
+            texto=texto_de_respuesta(resultado), ruta="riel", generaciones=1, tool=call.name,
+            confirmacion_pendiente=call,
+        ))
     if isinstance(resultado, Resultado):
         # Éxito → resumen del envelope; cero llamada extra al modelo.
         return _final(RespuestaAgente(
-            texto=resultado.resumen, ruta="tool", evento=resultado.evento,
+            texto=texto_de_respuesta(resultado), ruta="tool", evento=resultado.evento,
             idempotente=resultado.idempotente, generaciones=1, tool=call.name,
         ))
 
     # ErrorTool no recuperable → mensaje directo, sin 2ª generación.
     if not resultado.recuperable:
-        return _final(RespuestaAgente(texto=_mensaje_error(resultado), ruta="error", generaciones=1, tool=call.name))
+        return _final(RespuestaAgente(
+            texto=texto_de_respuesta(resultado), ruta="error", generaciones=1, tool=call.name))
 
     # ErrorTool recuperable → 2ª generación con la tripleta tool_use→tool_result bien formada.
     mensajes = [
@@ -121,6 +129,20 @@ async def ejecutar_turno(
     )
     # Tope: tras la 2ª generación NO se ejecuta otra herramienta; se devuelve su texto.
     return _final(RespuestaAgente(texto=resp2.text or SIN_RESPUESTA, ruta="texto", generaciones=2, tool=call.name))
+
+
+def texto_de_respuesta(resultado: RespuestaEjecutor) -> str:
+    """Texto para el usuario de un resultado del despachador (mismo mapeo que usa el loop).
+
+    Reusado por el re-despacho de confirmación (CR-2) para no duplicar el mapeo riel/error.
+    """
+    if isinstance(resultado, Preguntar):
+        return resultado.mensaje
+    if isinstance(resultado, Confirmar):
+        return resultado.resumen
+    if isinstance(resultado, Resultado):
+        return resultado.resumen
+    return _mensaje_error(resultado)
 
 
 def _envelope_json(error: ErrorTool) -> str:

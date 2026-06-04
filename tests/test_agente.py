@@ -148,6 +148,39 @@ async def test_confirmar_va_directo_sin_repromptear():
     assert len(fake.llamadas) == 1
 
 
+# --- CR-2: confirmacion_pendiente lleva el ToolCall SOLO en la rama Confirmar ---
+
+async def test_confirmar_puebla_confirmacion_pendiente():
+    call = _call("registrar_gasto")
+    fake = FakeLLM([_resp(tool_calls=[call])])
+    confirmar = Confirmar("Registrar gasto de $15.000 en transporte. ¿Confirmo?")
+    ejecutor = FakeEjecutor([_spec("registrar_gasto")], resultado=confirmar)
+
+    res = await _turno(fake, ejecutor)
+
+    assert res.confirmacion_pendiente == call      # el handler lo guarda para el re-despacho
+
+
+async def test_resultado_no_puebla_confirmacion_pendiente():
+    fake = FakeLLM([_resp(tool_calls=[_call()])])
+    resultado = Resultado(data={}, resumen="Venta registrada.", evento="venta_registrada")
+    ejecutor = FakeEjecutor([_spec()], resultado=resultado)
+
+    res = await _turno(fake, ejecutor)
+
+    assert res.confirmacion_pendiente is None
+
+
+async def test_preguntar_no_puebla_confirmacion_pendiente():
+    fake = FakeLLM([_resp(tool_calls=[_call()])])
+    pregunta = Preguntar("producto_no_encontrado", "¿Cuál producto?")
+    ejecutor = FakeEjecutor([_spec()], resultado=pregunta)
+
+    res = await _turno(fake, ejecutor)
+
+    assert res.confirmacion_pendiente is None
+
+
 async def test_error_recuperable_repromptea_con_tool_result():
     fake = FakeLLM([
         _resp(tool_calls=[_call(id="c1")]),

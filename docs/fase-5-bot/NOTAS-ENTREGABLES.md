@@ -98,6 +98,19 @@
   optimizaciones. En E5 el `prompt` de Whisper va plano (`None`). `limpiar_texto_voz` NO se porta
   (solo aplica con TTS).
 
+## CR-1 — adaptadores externos httpx (Telegram / Whisper)
+- `apps.bot.telegram` (`TelegramNotificador`, `TelegramArchivos`) y `core.voz.transcriptor`
+  (`WhisperTranscriptor`) aíslan el HTTP tras un cliente inyectable (patrón de
+  `core/llm/providers/openai.py`): impl real perezosa en `_cliente_telegram`/`_cliente_whisper`
+  (httpx importado dentro, nunca al cargar el módulo). El enlace token↔empresa es CR-3.
+- **FOLLOW-UP — chunking de mensajes > 4096:** `TelegramNotificador.responder` hace UN solo
+  `sendMessage`; la Bot API corta en 4096 chars. Partir mensajes largos en varios envíos → pendiente.
+- **FOLLOW-UP — idioma de Whisper hardcoded `"es"`:** `WhisperTranscriptor._payload` fija
+  `language="es"`; hacerlo per-empresa (config) cuando entren tenants de otra región → pendiente.
+- **Asunción — filename `audio.ogg` en el multipart de Whisper:** `_cliente_whisper` manda el audio
+  como `("audio.ogg", audio, "audio/ogg")` porque la voz de Telegram es OGG/Opus y OpenAI infiere el
+  formato por la extensión. Si entra otra fuente de audio (no Telegram), revisar la extensión/MIME.
+
 ## Observabilidad (transversal, cierra deuda del despachador)
 - `request_id` (update_id) + `tenant_id` en los contextvars de `core.logging` al inicio de cada
   update; eventos estructurados de turno (ruta, intent, latencia, fallback, tool, riel, error);

@@ -17,6 +17,7 @@ dependencies = [
     "passlib[bcrypt]>=1.7",            # hash de contraseñas
     "cryptography>=44.0",             # AEAD para secretos por empresa
     "sse-starlette>=2.1",            # SSE acotado por empresa
+    "rapidfuzz>=3.10",              # fuzzy match conservador (búsqueda de catálogo)
 ]
 
 [project.optional-dependencies]

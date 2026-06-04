@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.config.timezone import now_co
 from core.events import publish
 from modules.inventario.models import Inventario, MovimientoInventario, Producto
+from modules.inventario.precios import FraccionPrecio
 from modules.ventas.models import Venta, VentaDetalle
 from modules.ventas.schemas import VentaLeer
 from modules.ventas.service import ProductoPrecio, VentaHeader
@@ -34,9 +35,17 @@ class SqlVentasRepository:
         ).scalar_one_or_none()
         if prod is None:
             return None
+        fracciones = tuple(
+            FraccionPrecio(decimal=fr.decimal, precio_total=fr.precio_total)
+            for fr in prod.fracciones
+        )
         return ProductoPrecio(
             id=prod.id, nombre=prod.nombre, precio_venta=prod.precio_venta,
             iva=prod.iva, activo=prod.activo,
+            precio_umbral=prod.precio_umbral,
+            precio_bajo_umbral=prod.precio_bajo_umbral,
+            precio_sobre_umbral=prod.precio_sobre_umbral,
+            fracciones=fracciones,
         )
 
     async def lock_inventario(self, producto_id: int) -> Decimal | None:

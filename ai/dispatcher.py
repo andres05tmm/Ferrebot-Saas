@@ -14,7 +14,7 @@ transporte de Telegram NO van aquí: son fase del bot. Una sola ronda de tool-ca
 los rieles `Preguntar`/`Confirmar` cortan y vuelven al usuario; la confirmación llega como un turno
 nuevo reusando la misma `idempotency_key` (no duplica).
 """
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from pydantic import ValidationError
 
@@ -42,11 +42,18 @@ Respuesta = Resultado | ErrorTool | Preguntar | Confirmar
 
 @dataclass(frozen=True, slots=True)
 class Recursos:
-    """Lo que el despachador necesita del tenant para una ejecución (atado a su sesión)."""
+    """Lo que el despachador necesita del tenant para una ejecución (atado a su sesión).
+
+    `resueltos` es un mapa producto_id → producto **por-turno y fresco** (default_factory crea uno
+    nuevo por instancia): el bypass deposita ahí el producto que ya resolvió para que R1 no relea
+    Postgres (decisión #5b). NO debe compartirse ni sobrevivir entre turnos —un producto stale haría
+    que R1 decida mal—; el composition root construye un `Recursos` nuevo en cada turno.
+    """
 
     deps: Deps                  # servicios de dominio (venta/caja/fiados/clientes)
     catalogo: CatalogoPrecios   # resolución de precios para los rieles
     umbrales: UmbralesStore     # umbrales por empresa (config_empresa)
+    resueltos: dict[int, ProductoCatalogo] = field(default_factory=dict)  # pre-cargados por-turno
 
 
 class Dispatcher:
@@ -121,13 +128,17 @@ class Dispatcher:
         self, args: RegistrarVentaArgs, ctx: Contexto, recursos: Recursos
     ) -> Preguntar | None:
         """R1 (producto desconocido/ambiguo) y R2 (precio dudoso) sobre los ítems con catálogo."""
-        resueltos: dict[int, ProductoCatalogo | None] = {}
+        cache: dict[int, ProductoCatalogo | None] = {}
         items_r1: list[ItemResuelto] = []
         for it in args.items:
             if it.producto_id is None:           # venta varia: ítem libre, no toca catálogo
                 continue
-            prod = await recursos.catalogo.obtener(it.producto_id)
-            resueltos[it.producto_id] = prod
+            # Decisión #5b: si el bypass ya resolvió el producto (recursos.resueltos), no se relee
+            # Postgres en el camino caliente; el modelo (sin pre-carga) sí cae al catálogo.
+            prod = recursos.resueltos.get(it.producto_id)
+            if prod is None:
+                prod = await recursos.catalogo.obtener(it.producto_id)
+            cache[it.producto_id] = prod
             referencia = prod.nombre if prod is not None else f"producto {it.producto_id}"
             # Venta por producto_id: 0 candidatos (no resuelto/inactivo) o 1 (el nombre del producto).
             candidatos = (prod.nombre,) if (prod is not None and prod.activo) else ()
@@ -141,7 +152,7 @@ class Dispatcher:
         for it in args.items:
             if it.producto_id is None or it.precio_unitario is None:
                 continue
-            prod = resueltos[it.producto_id]
+            prod = cache[it.producto_id]
             if prod is None:                      # ya cubierto por R1; defensa
                 continue
             total_catalogo, _ = obtener_precio_para_cantidad(prod.esquema, it.cantidad)

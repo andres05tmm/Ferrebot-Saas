@@ -1,28 +1,33 @@
 """Bypass: camino rápido sin IA para ventas simples (port de `bypass.py`, ferrebot-logica-portar.md §2).
 
-FerreBot resuelve ~60% de los mensajes sin modelo (800ms → <5ms). El bypass NO reimplementa
-reglas de negocio: parsea el texto a un *intent* (producto + cantidad) y llama al MISMO
-`VentaService` que usaría el tool-calling (ai-tools.md §6.3). La cantidad se descompone en
-componentes — entero (precio simple) y fracción (precio de fracción) — y cada componente es una
-línea de venta; así una mixta `1-1/2` da `precio_unidad×1 + fraccion[½]` exacto sin recalcular
-precios aquí.
+Convergencia (entregable 5.3): cuando el bypass hace match, **no llama a `VentaService`**; emite un
+`ToolCall` normalizado y lo entrega a `dispatcher.ejecutar` — el MISMO punto de ejecución del modelo
+(rieles + RBAC + idempotencia). No hay rama de lógica duplicada (ai-tools.md §6.3).
 
-Cae al modelo (devuelve None / `CaeAlModelo`) cuando la instrucción es ambigua o sensible:
-crédito/cliente, consulta, modificación, multi-producto, producto no exacto, precio escalonado
-(mayorista) o fracción inexistente en el catálogo del producto.
+La *match-logic* se queda aquí: `analizar` (texto → producto + componentes de cantidad) +
+`producto_exacto` (catálogo) + los gates `tiene_escalonado` / `_fraccion_que_coincide`. Si algo no
+resuelve, `intentar` devuelve `None` = CaeAlModelo (el turno va al modelo por el loop del agente).
+La cantidad se descompone en componentes (entero=precio simple, fracción=precio de fracción) y cada
+componente es un ítem del `ToolCall`; así una mixta `1-1/2` da `precio_unidad×1 + fraccion[½]` exacto
+sin recalcular precios aquí (el servicio calcula).
 
-Umbral de monto / confirmación hablada: NO se decide aquí; vive en `config_empresa` por empresa
-(ADR 0005) y lo aplicará el despachador cuando exista ese módulo.
+Doble lectura (decisión #5, opción b): el bypass ya resolvió el producto con `producto_exacto`, así
+que lo deposita en `recursos.resueltos[producto_id]` para que R1 NO lo relea de Postgres en el camino
+caliente (~60 % del tráfico).
 """
+from __future__ import annotations
+
 import re
 import unicodedata
 from dataclasses import dataclass
 from decimal import Decimal, DivisionByZero, InvalidOperation
 from typing import Protocol
 
+from ai.dispatcher import Dispatcher, Recursos, Respuesta
+from ai.envelope import Contexto
+from ai.ports import ProductoCatalogo
+from core.llm.base import ToolCall
 from modules.inventario.precios import EsquemaPrecio, _fraccion_que_coincide
-from modules.ventas.schemas import VentaCrear, VentaDetalleCrear
-from modules.ventas.service import ResultadoVenta, VentaService
 
 # --- Mapa de fracciones escritas (bypass.py:73-105) --------------------------
 _FRAC_ESCRITAS: dict[str, Decimal] = {
@@ -150,7 +155,7 @@ def analizar(texto: str) -> Analisis:
     )
 
 
-# --- Orquestador: intent → VentaService (sin duplicar precios) ---------------
+# --- Orquestador: intent → ToolCall normalizado → dispatcher.ejecutar --------
 @dataclass(frozen=True, slots=True)
 class ProductoBypass:
     id: int
@@ -165,33 +170,50 @@ class CatalogoBypass(Protocol):
 
 
 class Bypass:
-    """Cablea el intent del parser al `VentaService` real. Devuelve None = el turno va al modelo."""
+    """Convergencia: el match emite un `ToolCall` a `dispatcher.ejecutar`; nunca llama al servicio.
 
-    def __init__(self, catalogo: CatalogoBypass, ventas: VentaService, *, origen: str = "bot") -> None:
+    `intentar` devuelve la `Respuesta` del despachador (Resultado/ErrorTool/Preguntar/Confirmar) o
+    `None` = CaeAlModelo (no-match → el turno va al modelo por el loop del agente).
+    """
+
+    def __init__(self, catalogo: CatalogoBypass, dispatcher: Dispatcher) -> None:
         self._catalogo = catalogo
-        self._ventas = ventas
-        self._origen = origen
+        self._dispatcher = dispatcher
 
-    async def intentar(
-        self, texto: str, vendedor_id: int, *, idempotency_key: str | None = None
-    ) -> ResultadoVenta | None:
+    async def intentar(self, texto: str, ctx: Contexto, recursos: Recursos) -> Respuesta | None:
+        """Match → ToolCall normalizado → dispatcher.ejecutar. None = CaeAlModelo (no-match).
+
+        Al hacer match deposita el producto resuelto en `recursos.resueltos` (decisión #5b) para que
+        R1 no relea Postgres, y construye `ToolCall(registrar_venta, items=[{producto_id, cantidad}])`
+        sin `precio_unitario` (el catálogo es la fuente de verdad → R2 no corre). El `origen` y la
+        `idempotency_key` los toma el handler de `ctx` (la API es la misma para bypass y modelo).
+        """
         analisis = analizar(texto)
         if isinstance(analisis, CaeAlModelo):
-            return None
+            return None                          # no-match → el turno cae al modelo
+
         prod = await self._catalogo.producto_exacto(analisis.producto)
         if prod is None:
-            return None                       # no exacto → al modelo (sin adivinar)
+            return None                          # no exacto → al modelo (sin adivinar)
         if prod.esquema.tiene_escalonado:
-            return None                       # mayorista por umbral → al modelo
+            return None                          # mayorista por umbral → al modelo
         for cantidad in analisis.componentes:
             if cantidad % 1 != 0 and _fraccion_que_coincide(prod.esquema, cantidad) is None:
-                return None                   # fracción inexistente en el catálogo → al modelo
-        lineas = [
-            VentaDetalleCrear(producto_id=prod.id, cantidad=cantidad)
-            for cantidad in analisis.componentes
-        ]
-        datos = VentaCrear(
-            metodo_pago="efectivo", origen=self._origen,
-            idempotency_key=idempotency_key, lineas=lineas,
+                return None                      # fracción inexistente en el catálogo → al modelo
+
+        # Decisión #5b: el producto ya está resuelto; lo pre-cargo para que R1 no relea Postgres.
+        recursos.resueltos[prod.id] = ProductoCatalogo(
+            id=prod.id, nombre=prod.nombre, activo=True, esquema=prod.esquema
         )
-        return await self._ventas.registrar_venta(datos, vendedor_id)
+        tool_call = ToolCall(
+            id=f"bypass:{prod.id}",
+            name="registrar_venta",
+            arguments={
+                "items": [
+                    {"producto_id": prod.id, "cantidad": cantidad}
+                    for cantidad in analisis.componentes
+                ],
+                "metodo_pago": "efectivo",
+            },
+        )
+        return await self._dispatcher.ejecutar(tool_call, ctx, recursos)

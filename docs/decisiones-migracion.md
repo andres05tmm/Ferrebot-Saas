@@ -17,8 +17,11 @@
 | D9 | **Consecutivos legales** | Preservar el consecutivo embebido en `facturas_electronicas.numero` y `documentos_soporte.consecutivo`; las nuevas SEQUENCE arrancan en el máximo real. | §5 + `facturacion-matias-extract.md` §6 |
 | D10 | **Proveedores** | Se **deriva** una tabla `proveedores` desde los textos libres (`compras.proveedor`, `facturas_proveedores.proveedor`); el texto original se conserva como respaldo. | Paso ETL 3 (§4) |
 | D11 | **Datos operativos de IA** | `conversaciones_bot`, `audio_logs`, `api_costo_diario`, `ventas_pendientes_voz`, `memoria_entidades` **no** migran (se recrean en uso). `memoria_entidades` opcional si se quiere arranque tibio. | §4 |
+| D12 | **Arqueo de caja: `saldo_esperado` híbrido** | `saldo_esperado = saldo_inicial + ventas_efectivo + Σ ingresos − Σ egresos`. Las **ventas en efectivo se leen de la tabla `ventas`** (ventana de la caja, ese vendedor, `metodo_pago='efectivo'`, `completada`); ingresos/egresos **manuales y gastos** salen de `caja_movimientos`. **Anti-doble-conteo:** el gasto cuenta una sola vez como egreso (`caja_movimientos` es fuente única; la tabla `gastos` no se resta aparte). | `modules/caja/arqueo.py`; reproduce §6 (`caja_service.py:153`) sin tocar el slice de ventas |
 
 > Pendiente de confirmar (no bloquea el ETL, sí el corte final): **zona real con la que el servidor de FerreBot escribió los timestamps naive** (si corría en UTC, D5 no suma 5h). Verificar con una muestra (§6).
+
+> **Deuda nombrada — `wiring venta-efectivo → caja_movimientos ingreso`** (fase cross-módulo): hoy la venta en efectivo **no** postea un `caja_movimientos` ingreso; el arqueo la lee de la tabla `ventas` (D12). Cuando se conecte la venta a la caja (un ingreso por venta efectivo dentro de la caja abierta del vendedor), el `saldo_esperado` debe pasar a leerse **solo** de `caja_movimientos` y dejar de leer la tabla `ventas` para **no** doble-contar. No tocar el slice de ventas hasta esa fase.
 
 ## 2. Principios del ETL
 

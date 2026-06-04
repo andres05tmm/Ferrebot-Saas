@@ -85,8 +85,8 @@
 | GET/POST | `/clientes` | vendedor | listar (`?q=`) / crear |
 | GET | `/clientes/{id}/historial` | vendedor | compras, facturas, saldo |
 | GET/POST | `/proveedores` | admin | listar / crear |
-| POST | `/fiados` | vendedor | `{ cliente_id, venta_id, monto }` |
-| POST | `/fiados/{id}/abono` | vendedor | `{ monto }` (recalcula saldo) |
+| POST | `/fiados` | vendedor | `{ cliente_id, venta_id, monto }`; **Idempotency-Key**; emite `fiado_registrado` |
+| POST | `/fiados/{id}/abono` | vendedor | `{ monto }` (recalcula saldo; sobre-abono → 422); **Idempotency-Key**; emite `fiado_abonado` |
 | GET | `/fiados/deudas` | vendedor | clientes con saldo |
 
 ## Facturación DIAN — `/api/v1/facturacion`
@@ -123,7 +123,7 @@
 |---|---|---|---|
 | GET | `/events` | usuario | **SSE** acotado a la empresa. Eventos: ver catálogo abajo |
 
-**Catálogo de eventos SSE:** `venta_registrada`, `venta_anulada`, `caja_abierta`, `caja_cerrada`, `caja_movimiento`, `gasto_registrado`, `compra_registrada`, `inventario_actualizado`, `factura_pendiente`, `factura_aceptada`, `factura_rechazada`. Payload mínimo: `{ tipo, id, resumen }`.
+**Catálogo de eventos SSE:** `venta_registrada`, `venta_anulada`, `caja_abierta`, `caja_cerrada`, `caja_movimiento`, `gasto_registrado`, `fiado_registrado`, `fiado_abonado`, `compra_registrada`, `inventario_actualizado`, `factura_pendiente`, `factura_aceptada`, `factura_rechazada`. Payload mínimo: `{ tipo, id, resumen }`.
 
 ## Plataforma (super_admin) — `/api/v1/admin`
 

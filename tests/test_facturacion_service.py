@@ -1,20 +1,27 @@
-"""E3 RED — servicio de facturación (PURO: repo fake + MatiasClient fake; sin BD).
+"""E4b-1 RED — servicio de facturación dirigido por la política (PURO: fakes; sin BD).
 
-Pin del contrato: `crear_pendiente` reserva consecutivo (idempotente: no lo quema si la key existe);
-`emitir` mapea venta→payload (E1), llama a MATIAS (E2) y persiste `aceptada`|`error`, idempotente si
-ya está aceptada y tolerante a excepciones de transporte. En RED todos fallan por NotImplementedError.
+Pin del contrato: `crear_pendiente` reserva consecutivo (idempotente). `emitir` devuelve la `Decision`
+de la política (E4a) y persiste el estado que ella dicta: aceptada / rechazada (terminal de negocio) /
+error (reintentable hasta `MAX_INTENTOS`, luego dead-letter). En RED los tests de `emitir` fallan por
+NotImplementedError; `crear_pendiente` y el helper puro siguen verdes.
 """
 from datetime import datetime, timezone
 from decimal import Decimal
 
 from modules.facturacion.matias_client import EmisionResultado
+from modules.facturacion.politica import Decision
 from modules.facturacion.repository import (
     ClienteFiscalDatos,
     DatosVentaFiscal,
     FacturaLeer,
     ItemVentaDatos,
 )
-from modules.facturacion.service import ConfigFiscal, FacturacionService, _construir_factura_input
+from modules.facturacion.service import (
+    MAX_INTENTOS,
+    ConfigFiscal,
+    FacturacionService,
+    _construir_factura_input,
+)
 
 _CONFIG = ConfigFiscal(resolution_number="18760000001", prefix="FPR", notes="Punto Rojo", city_id_default="149")
 _CUFE = "a" * 40
@@ -68,6 +75,11 @@ class _FakeRepo:
         self._facturas[factura_id] = f
         return f
 
+    async def marcar_rechazada(self, factura_id, *, error_msg, dian_respuesta):
+        f = self._facturas[factura_id].model_copy(update={"estado": "rechazada"})
+        self._facturas[factura_id] = f
+        return f
+
     async def marcar_error(self, factura_id, *, error_msg):
         prev = self._facturas[factura_id]
         f = prev.model_copy(update={"estado": "error", "intentos": prev.intentos + 1})
@@ -118,35 +130,51 @@ async def test_crear_pendiente_idempotente():
     assert repo.consecutivo_llamado is False         # NO quema consecutivo
 
 
-# --- emitir ------------------------------------------------------------------
+# --- emitir (dirigido por la política → Decision) ----------------------------
 
 async def test_emitir_exito():
     repo = _FakeRepo(factura=_factura())
-    matias = _FakeMatias(resultado=EmisionResultado(ok=True, cufe=_CUFE))
-    res = await _svc(repo, matias).emitir(1)
-    assert res.estado == "aceptada" and res.cufe == _CUFE
+    matias = _FakeMatias(resultado=EmisionResultado(ok=True, cufe=_CUFE, categoria="aceptada"))
+    d = await _svc(repo, matias).emitir(1)
+    assert d == Decision("aceptada", False, False)
+    assert repo._facturas[1].estado == "aceptada"
     assert matias.emitir_llamado is True
 
 
-async def test_emitir_rechazo():
+async def test_emitir_rechazada():
     repo = _FakeRepo(factura=_factura())
-    matias = _FakeMatias(resultado=EmisionResultado(ok=False, error_msg="Rechazado por DIAN"))
-    res = await _svc(repo, matias).emitir(1)
-    assert res.estado == "error" and res.intentos == 1
+    matias = _FakeMatias(resultado=EmisionResultado(ok=False, error_msg="Rechazado DIAN", categoria="rechazada"))
+    d = await _svc(repo, matias).emitir(1)
+    assert d.estado == "rechazada" and d.reintentar is False
+    assert repo._facturas[1].estado == "rechazada"
+
+
+async def test_emitir_error_reintenta():
+    repo = _FakeRepo(factura=_factura(intentos=0))
+    matias = _FakeMatias(resultado=EmisionResultado(ok=False, error_msg="500", categoria="error"))
+    d = await _svc(repo, matias).emitir(1)
+    assert d.estado == "error" and d.reintentar is True and d.dead_letter is False
+
+
+async def test_emitir_error_dead_letter():
+    repo = _FakeRepo(factura=_factura(intentos=MAX_INTENTOS - 1))   # +1 (el actual) agota el tope
+    matias = _FakeMatias(resultado=EmisionResultado(ok=False, error_msg="500", categoria="error"))
+    d = await _svc(repo, matias).emitir(1)
+    assert d.reintentar is False and d.dead_letter is True
 
 
 async def test_emitir_excepcion_transporte():
-    repo = _FakeRepo(factura=_factura())
+    repo = _FakeRepo(factura=_factura(intentos=0))
     matias = _FakeMatias(excepcion=RuntimeError("timeout"))
-    res = await _svc(repo, matias).emitir(1)          # no propaga
-    assert res.estado == "error"
+    d = await _svc(repo, matias).emitir(1)            # no propaga
+    assert d.estado == "error" and d.reintentar is True
 
 
 async def test_emitir_idempotente_si_aceptada():
     repo = _FakeRepo(factura=_factura(estado="aceptada", cufe=_CUFE))
-    matias = _FakeMatias(resultado=EmisionResultado(ok=True, cufe="b" * 40))
-    res = await _svc(repo, matias).emitir(1)
-    assert res.estado == "aceptada"
+    matias = _FakeMatias(resultado=EmisionResultado(ok=True, cufe="b" * 40, categoria="aceptada"))
+    d = await _svc(repo, matias).emitir(1)
+    assert d == Decision("aceptada", False, False)
     assert matias.emitir_llamado is False             # no re-llama a MATIAS
 
 

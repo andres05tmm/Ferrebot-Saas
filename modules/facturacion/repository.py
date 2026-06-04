@@ -129,6 +129,19 @@ class SqlFacturacionRepository:
         await publish(self._s, "factura_aceptada", {"id": orm.id, "cufe": cufe})
         return FacturaLeer.model_validate(orm)
 
+    async def marcar_rechazada(
+        self, factura_id: int, *, error_msg: str, dian_respuesta: dict
+    ) -> FacturaLeer:
+        """estado=rechazada, `emitido_en`=now_co(), `dian_respuesta`; publica `factura_rechazada`.
+
+        No incrementa `intentos`: es un terminal de negocio (la DIAN rechazó), no un fallo técnico.
+        """
+        orm = await self._cargar(factura_id)
+        orm.estado, orm.emitido_en, orm.dian_respuesta = "rechazada", now_co(), dian_respuesta
+        await self._s.flush()
+        await publish(self._s, "factura_rechazada", {"id": orm.id, "error": error_msg})
+        return FacturaLeer.model_validate(orm)
+
     async def marcar_error(self, factura_id: int, *, error_msg: str) -> FacturaLeer:
         """estado=error, intentos+1, `dian_respuesta={'error': error_msg}`; publica `factura_error`."""
         orm = await self._cargar(factura_id)

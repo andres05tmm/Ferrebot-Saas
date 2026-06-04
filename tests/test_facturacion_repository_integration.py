@@ -69,6 +69,26 @@ async def test_marcar_aceptada(tenant):
     assert estado == "aceptada" and cufe == "a" * 40 and emitido is not None
 
 
+async def test_marcar_rechazada(tenant):
+    async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
+        repo = SqlFacturacionRepository(s)
+        f = await _crear_pendiente(repo, key="k-rech")
+        await s.commit()
+        out = await repo.marcar_rechazada(
+            f.id, error_msg="Rechazado DIAN", dian_respuesta={"rechazo": "Rechazado DIAN"}
+        )
+        await s.commit()
+    assert out.estado == "rechazada" and out.intentos == 0      # terminal de negocio: no incrementa
+    async with AsyncSession(tenant.engine) as s:
+        estado, resp, emitido = (
+            await s.execute(
+                text("SELECT estado, dian_respuesta, emitido_en FROM facturas_electronicas WHERE id=:i"),
+                {"i": f.id},
+            )
+        ).one()
+    assert estado == "rechazada" and resp == {"rechazo": "Rechazado DIAN"} and emitido is not None
+
+
 async def test_marcar_error(tenant):
     async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
         repo = SqlFacturacionRepository(s)

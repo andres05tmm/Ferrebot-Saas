@@ -13,10 +13,14 @@ from typing import Protocol
 from core.logging import get_logger
 from modules.facturacion import ubl
 from modules.facturacion.matias_client import MatiasClient
+from modules.facturacion.politica import Decision, decidir_emision
 from modules.facturacion.repository import DatosVentaFiscal, FacturaLeer
 from modules.facturacion.schemas import ClienteFiscal, DatosEmision, FacturaInput, ItemFactura
 
 log = get_logger("facturacion.service")
+
+# Tope de reintentos de emisión (política de plataforma, no per-empresa).
+MAX_INTENTOS = 5
 
 
 @dataclass(frozen=True, slots=True)
@@ -40,6 +44,7 @@ class FacturacionRepo(Protocol):
     ) -> FacturaLeer: ...
     async def obtener(self, factura_id: int) -> FacturaLeer | None: ...
     async def marcar_aceptada(self, factura_id: int, *, cufe: str, dian_respuesta: dict) -> FacturaLeer: ...
+    async def marcar_rechazada(self, factura_id: int, *, error_msg: str, dian_respuesta: dict) -> FacturaLeer: ...
     async def marcar_error(self, factura_id: int, *, error_msg: str) -> FacturaLeer: ...
     async def datos_para_factura(self, venta_id: int) -> DatosVentaFiscal | None: ...
 
@@ -95,24 +100,44 @@ class FacturacionService:
             consecutivo=consecutivo, idempotency_key=idempotency_key,
         )
 
-    async def emitir(self, factura_id: int) -> FacturaLeer:
-        """Arma el payload, llama a MATIAS y persiste `aceptada`|`error` (idempotente si ya aceptada)."""
+    async def emitir(self, factura_id: int) -> Decision:
+        """Emite la factura, persiste el estado que dicta la política (E4a) y devuelve la `Decision`.
+
+        La fuente única del estado es `decidir_emision`; el `try` envuelve SOLO la llamada a MATIAS.
+        """
         f = await self._repo.obtener(factura_id)
         if f is None:
-            return f                                  # caller maneja el None (no cubierto por tests)
+            log.warning("emitir_factura_inexistente", factura_id=factura_id)
+            return Decision("error", False, False)
         if f.estado == "aceptada":
-            return f                                  # idempotente: sin tocar MATIAS
+            return Decision("aceptada", False, False)   # idempotente: sin tocar MATIAS
         datos = await self._repo.datos_para_factura(f.venta_id)
         if datos is None:
-            return await self._repo.marcar_error(factura_id, error_msg="venta no encontrada")
+            await self._repo.marcar_error(factura_id, error_msg="venta no encontrada")
+            return decidir_emision("error", intentos=f.intentos + 1, max_intentos=MAX_INTENTOS)
         city = await self._matias.city_id(datos.cliente.municipio_dian)
         fi = _construir_factura_input(datos, self._config, consecutivo=f.consecutivo, city_id_matias=city)
         payload = ubl.armar_payload_factura(fi)
+        cufe = error_msg = None
         try:
             res = await self._matias.emitir_factura(payload)
-        except Exception as e:  # noqa: BLE001 — transporte/timeout → error persistido, no propaga (E4 reintenta)
+            categoria, error_msg, cufe = res.categoria, res.error_msg, res.cufe
+        except Exception:  # noqa: BLE001 — transporte/timeout: la política decide reintento, no propaga
             log.warning("emitir_fallo_transporte", exc_info=True)
-            return await self._repo.marcar_error(factura_id, error_msg=str(e))
-        if res.ok:
-            return await self._repo.marcar_aceptada(factura_id, cufe=res.cufe, dian_respuesta={"cufe": res.cufe})
-        return await self._repo.marcar_error(factura_id, error_msg=res.error_msg or "rechazo MATIAS")
+            categoria, error_msg = "error", "fallo de transporte"
+        decision = decidir_emision(categoria, intentos=f.intentos + 1, max_intentos=MAX_INTENTOS)
+        await self._persistir(decision, factura_id, cufe=cufe, error_msg=error_msg)
+        return decision
+
+    async def _persistir(
+        self, decision: Decision, factura_id: int, *, cufe: str | None, error_msg: str | None
+    ) -> None:
+        """Persiste el desenlace según `decision.estado` (la fuente del estado es `decidir_emision`)."""
+        if decision.estado == "aceptada":
+            await self._repo.marcar_aceptada(factura_id, cufe=cufe, dian_respuesta={"cufe": cufe})
+        elif decision.estado == "rechazada":
+            await self._repo.marcar_rechazada(
+                factura_id, error_msg=error_msg or "rechazo MATIAS", dian_respuesta={"rechazo": error_msg}
+            )
+        else:
+            await self._repo.marcar_error(factura_id, error_msg=error_msg or "error de emisión")

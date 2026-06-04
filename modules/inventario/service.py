@@ -48,6 +48,7 @@ class AjusteResultado:
     delta: Decimal
     stock_actual: Decimal
     replay: bool
+    movimiento_id: int
 
 
 class InventarioService:
@@ -80,25 +81,29 @@ class InventarioService:
         usuario_id: int | None,
         idempotency_key: str | None = None,
     ) -> AjusteResultado:
+        # Idempotencia estructural: si la key ya tiene movimiento, se devuelve ese (sin re-aplicar).
+        if idempotency_key:
+            previo = await self._repo.ajuste_por_key(idempotency_key)
+            if previo is not None:
+                stock = await self._repo.stock_actual(previo.producto_id)
+                return AjusteResultado(
+                    previo.producto_id, previo.cantidad, stock or Decimal("0"),
+                    replay=True, movimiento_id=previo.id,
+                )
+
         producto = await self._repo.obtener_producto(producto_id)
         if producto is None:
             raise ProductoInexistente(producto_id)
 
-        referencia = f"[{idempotency_key}] {motivo}" if idempotency_key else motivo
-        # Lock primero: ajustes con la misma key (mismo producto) se serializan en esta fila.
+        # Lock de la fila de inventario: serializa el cálculo de stock entre ajustes concurrentes.
         actual = await self._repo.lock_stock(producto_id)
-        if idempotency_key:
-            previo = await self._repo.ajuste_existente(referencia)
-            if previo is not None:
-                return AjusteResultado(producto_id, delta, previo, replay=True)
-
         base = actual if actual is not None else Decimal("0")
         nuevo = base + delta
         if nuevo < 0:
             raise AjusteDejaStockNegativo(producto_id, base, delta)
 
-        await self._repo.aplicar_ajuste(
+        movimiento_id = await self._repo.aplicar_ajuste(
             producto_id=producto_id, delta=delta, nuevo_stock=nuevo,
-            referencia=referencia, usuario_id=usuario_id,
+            referencia=motivo, usuario_id=usuario_id, idempotency_key=idempotency_key,
         )
-        return AjusteResultado(producto_id, delta, nuevo, replay=False)
+        return AjusteResultado(producto_id, delta, nuevo, replay=False, movimiento_id=movimiento_id)

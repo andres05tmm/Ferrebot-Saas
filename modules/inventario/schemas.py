@@ -58,6 +58,7 @@ class AjusteCrear(BaseModel):
 
 class AjusteLeer(BaseModel):
     producto_id: int
+    movimiento_id: int
     delta: Decimal
     stock_actual: Decimal
     replay: bool

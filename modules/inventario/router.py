@@ -117,7 +117,7 @@ async def ajustar_stock(
     if res.replay:
         response.status_code = status.HTTP_200_OK
     return AjusteLeer(
-        producto_id=res.producto_id, delta=res.delta,
+        producto_id=res.producto_id, movimiento_id=res.movimiento_id, delta=res.delta,
         stock_actual=res.stock_actual, replay=res.replay,
     )
 

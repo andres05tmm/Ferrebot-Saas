@@ -73,6 +73,8 @@ class MovimientoInventario(TenantBase):
     costo_unitario: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
     referencia: Mapped[str | None] = mapped_column(Text)
     usuario_id: Mapped[int | None] = mapped_column(BigInteger)
+    # Idempotencia estructural (migración 0002): UNIQUE parcial donde no es NULL.
+    idempotency_key: Mapped[str | None] = mapped_column(Text)
     creado_en: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

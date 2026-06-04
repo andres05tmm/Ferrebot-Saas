@@ -85,12 +85,12 @@ async def test_ajuste_aplica_y_registra_kardex(tenant):
         assert len(kardex) == 1 and kardex[0].tipo == "AJUSTE"
 
 
-async def test_ajuste_idempotente_no_duplica(tenant):
+async def test_ajuste_idempotente_devuelve_mismo_movimiento(tenant):
     async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
         pid = await _producto(s)
         await _inventario(s, pid, stock="10")
         await s.commit()
-        await _svc(s).ajustar(producto_id=pid, delta=Decimal("5"), motivo="conteo", usuario_id=None, idempotency_key="k1")
+        r1 = await _svc(s).ajustar(producto_id=pid, delta=Decimal("5"), motivo="conteo", usuario_id=None, idempotency_key="k1")
         await s.commit()
 
     async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
@@ -98,8 +98,18 @@ async def test_ajuste_idempotente_no_duplica(tenant):
         await s.commit()
 
     assert r2.replay is True
+    assert r2.movimiento_id == r1.movimiento_id          # el replay devuelve el movimiento original
     async with AsyncSession(tenant.engine) as s:
-        assert (await s.execute(text("SELECT count(*) FROM movimientos_inventario WHERE producto_id=:p"), {"p": pid})).scalar_one() == 1
+        # Un solo movimiento; la key vive en la columna dedicada y la referencia es solo el motivo.
+        rows = (
+            await s.execute(
+                text("SELECT idempotency_key, referencia FROM movimientos_inventario WHERE producto_id=:p"),
+                {"p": pid},
+            )
+        ).all()
+        assert len(rows) == 1
+        assert rows[0][0] == "k1"
+        assert rows[0][1] == "conteo"
         stock = (await s.execute(text("SELECT stock_actual FROM inventario WHERE producto_id=:p"), {"p": pid})).scalar_one()
         assert stock == Decimal("15.000")   # aplicado una sola vez
 

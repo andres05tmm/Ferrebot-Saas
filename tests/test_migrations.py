@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.config import get_settings
 from core.db.urls import tenant_url, to_libpq
 from tests.conftest import create_database, drop_database
-from tools._alembic import downgrade_tenant
+from tools._alembic import downgrade_tenant, upgrade_tenant
 
 _BASE_TABLES = (
     "SELECT count(*) FROM information_schema.tables "
@@ -35,6 +35,31 @@ async def test_tenant_upgrade_downgrade_limpio(tenant):
         # Solo queda alembic_version; el esquema de negocio se fue.
         assert (await s.execute(text(_BASE_TABLES))).scalar_one() == 1
         assert (await s.execute(text("SELECT count(*) FROM pg_type WHERE typtype='e'"))).scalar_one() == 0
+
+
+_COL_IDEM = (
+    "SELECT count(*) FROM information_schema.columns "
+    "WHERE table_name='movimientos_inventario' AND column_name='idempotency_key'"
+)
+_IDX_IDEM = "SELECT count(*) FROM pg_indexes WHERE indexname='uq_mov_inv_idempotency_key'"
+
+
+async def test_0002_idempotency_key_up_down(tenant):
+    # `tenant` viene en head (incluye 0002): la columna y el índice UNIQUE parcial existen.
+    async with AsyncSession(tenant.engine) as s:
+        assert (await s.execute(text(_COL_IDEM))).scalar_one() == 1
+        assert (await s.execute(text(_IDX_IDEM))).scalar_one() == 1
+
+    await tenant.engine.dispose()
+    downgrade_tenant(tenant.url, "0001_tenant")
+    async with AsyncSession(tenant.engine) as s:
+        assert (await s.execute(text(_COL_IDEM))).scalar_one() == 0
+        assert (await s.execute(text(_IDX_IDEM))).scalar_one() == 0
+
+    await tenant.engine.dispose()
+    upgrade_tenant(tenant.url)   # reaplica 0002 limpio (idempotente para el fixture)
+    async with AsyncSession(tenant.engine) as s:
+        assert (await s.execute(text(_COL_IDEM))).scalar_one() == 1
 
 
 def test_control_upgrade_downgrade_limpio(monkeypatch):

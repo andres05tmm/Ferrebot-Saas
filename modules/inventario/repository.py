@@ -76,19 +76,15 @@ class SqlInventarioRepository:
         return list((await self._s.execute(stmt)).scalars().all())
 
     # ---- Ajuste (transaccional) ---------------------------------------------
-    async def ajuste_existente(self, referencia: str) -> Decimal | None:
-        """Idempotencia del ajuste: si ya hay un AJUSTE con esta referencia, devuelve el stock."""
-        existe = (
+    async def ajuste_por_key(self, idempotency_key: str) -> MovimientoInventario | None:
+        """Idempotencia estructural: el movimiento ya registrado con esta key, o None."""
+        return (
             await self._s.execute(
-                select(MovimientoInventario.producto_id)
-                .where(MovimientoInventario.tipo == "AJUSTE")
-                .where(MovimientoInventario.referencia == referencia)
+                select(MovimientoInventario)
+                .where(MovimientoInventario.idempotency_key == idempotency_key)
                 .limit(1)
             )
         ).scalar_one_or_none()
-        if existe is None:
-            return None
-        return await self.stock_actual(existe)
 
     async def lock_stock(self, producto_id: int) -> Decimal | None:
         return (
@@ -112,10 +108,15 @@ class SqlInventarioRepository:
         producto_id: int,
         delta: Decimal,
         nuevo_stock: Decimal,
-        referencia: str,
+        referencia: str | None,
         usuario_id: int | None,
-    ) -> None:
-        """Actualiza inventario (o lo crea) e inserta el movimiento AJUSTE en la misma tx."""
+        idempotency_key: str | None = None,
+    ) -> int:
+        """Actualiza inventario (o lo crea), inserta el AJUSTE y emite el evento en la misma tx.
+
+        Devuelve el id del movimiento. El evento se emite solo aquí (primer apply); el replay
+        lo resuelve el servicio sin llamar a este método.
+        """
         existe = await self.stock_actual(producto_id)
         if existe is None:
             self._s.add(
@@ -126,18 +127,18 @@ class SqlInventarioRepository:
                 text("UPDATE inventario SET stock_actual = :s WHERE producto_id = :p"),
                 {"s": nuevo_stock, "p": producto_id},
             )
-        self._s.add(
-            MovimientoInventario(
-                producto_id=producto_id, tipo="AJUSTE", cantidad=delta,
-                referencia=referencia, usuario_id=usuario_id,
-            )
+        movimiento = MovimientoInventario(
+            producto_id=producto_id, tipo="AJUSTE", cantidad=delta,
+            referencia=referencia, usuario_id=usuario_id, idempotency_key=idempotency_key,
         )
+        self._s.add(movimiento)
         await self._s.flush()
         await publish(self._s, "inventario_actualizado", {
             "producto_id": producto_id,
             "stock_actual": str(nuevo_stock),
             "tipo": "AJUSTE",
         })
+        return movimiento.id
 
     # ---- Búsqueda (4 capas; implementa BusquedaRepo) ------------------------
     async def buscar_exacta(self, query: str, limite: int) -> list[tuple[int, str]]:

@@ -81,6 +81,15 @@ class InventarioService:
         usuario_id: int | None,
         idempotency_key: str | None = None,
     ) -> AjusteResultado:
+        producto = await self._repo.obtener_producto(producto_id)
+        if producto is None:
+            raise ProductoInexistente(producto_id)
+
+        # Lock primero: serializa los ajustes concurrentes del mismo producto. Así el chequeo de
+        # idempotencia queda DENTRO de la sección crítica: un reintento concurrente con la misma
+        # key espera el lock y luego ve el movimiento ya escrito → replay (no doble-apply ni 500).
+        actual = await self._repo.lock_stock(producto_id)
+
         # Idempotencia estructural: si la key ya tiene movimiento, se devuelve ese (sin re-aplicar).
         if idempotency_key:
             previo = await self._repo.ajuste_por_key(idempotency_key)
@@ -91,12 +100,6 @@ class InventarioService:
                     replay=True, movimiento_id=previo.id,
                 )
 
-        producto = await self._repo.obtener_producto(producto_id)
-        if producto is None:
-            raise ProductoInexistente(producto_id)
-
-        # Lock de la fila de inventario: serializa el cálculo de stock entre ajustes concurrentes.
-        actual = await self._repo.lock_stock(producto_id)
         base = actual if actual is not None else Decimal("0")
         nuevo = base + delta
         if nuevo < 0:

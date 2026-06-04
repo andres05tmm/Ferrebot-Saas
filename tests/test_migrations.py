@@ -62,6 +62,49 @@ async def test_0002_idempotency_key_up_down(tenant):
         assert (await s.execute(text(_COL_IDEM))).scalar_one() == 1
 
 
+_TABLAS_0003 = ("caja_movimientos", "gastos", "fiados", "fiados_movimientos")
+
+
+async def test_0003_dinero_idempotency_up_down(tenant):
+    # head incluye 0003: las 4 tablas de dinero tienen idempotency_key + su índice UNIQUE parcial.
+    async with AsyncSession(tenant.engine) as s:
+        for tabla in _TABLAS_0003:
+            col = (
+                await s.execute(
+                    text(
+                        "SELECT count(*) FROM information_schema.columns "
+                        "WHERE table_name=:t AND column_name='idempotency_key'"
+                    ),
+                    {"t": tabla},
+                )
+            ).scalar_one()
+            idx = (
+                await s.execute(
+                    text("SELECT count(*) FROM pg_indexes WHERE indexname=:i"),
+                    {"i": f"uq_{tabla}_idempotency_key"},
+                )
+            ).scalar_one()
+            assert col == 1 and idx == 1
+
+    await tenant.engine.dispose()
+    downgrade_tenant(tenant.url, "0002_mov_inv_idem")
+    async with AsyncSession(tenant.engine) as s:
+        for tabla in _TABLAS_0003:
+            col = (
+                await s.execute(
+                    text(
+                        "SELECT count(*) FROM information_schema.columns "
+                        "WHERE table_name=:t AND column_name='idempotency_key'"
+                    ),
+                    {"t": tabla},
+                )
+            ).scalar_one()
+            assert col == 0
+
+    await tenant.engine.dispose()
+    upgrade_tenant(tenant.url)   # reaplica head limpio
+
+
 def test_control_upgrade_downgrade_limpio(monkeypatch):
     name = f"test_control_{uuid.uuid4().hex[:12]}"
     url = tenant_url(get_settings().tenants_direct_url_base, name)

@@ -16,8 +16,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.auth import Principal, require_role
 from core.auth.features import require_feature
-from core.db.session import get_tenant_db
-from modules.facturacion.repository import FacturaLeer
+from core.config import get_settings
+from core.db.session import control_session, get_tenant_db
+from modules.facturacion.config import cargar_config_matias
+from modules.facturacion.repository import FacturaLeer, SqlFacturacionRepository
 from modules.facturacion.service import FacturacionService
 
 router = APIRouter(tags=["facturacion"])
@@ -35,9 +37,19 @@ class Enqueuer(Protocol):
     async def enqueue(self, job: str, *args) -> None: ...
 
 
-async def get_enqueuer() -> Enqueuer:
-    """Pool ARQ para encolar (glue; override en tests; en prod lo arma el lifespan del API)."""
-    raise NotImplementedError("E4e GREEN: get_enqueuer (pool ARQ)")
+class _ArqEnqueuer:
+    """Adaptador sobre el pool ARQ del lifespan: `enqueue(job, *args)` → `enqueue_job`."""
+
+    def __init__(self, pool) -> None:
+        self._pool = pool
+
+    async def enqueue(self, job: str, *args) -> None:
+        await self._pool.enqueue_job(job, *args)
+
+
+async def get_enqueuer(request: Request) -> Enqueuer:
+    """Encolador sobre el pool ARQ creado en el lifespan del API (`app.state.arq_pool`)."""
+    return _ArqEnqueuer(request.app.state.arq_pool)
 
 
 def get_tenant_id(request: Request) -> int:
@@ -48,12 +60,14 @@ def get_tenant_id(request: Request) -> int:
 async def get_facturacion_service(
     request: Request, session: AsyncSession = Depends(get_tenant_db)
 ) -> FacturacionService:
-    """Arma el `FacturacionService` de la empresa (glue; override en tests).
+    """Arma el `FacturacionService` para `crear_pendiente` (sin credenciales MATIAS; eso es del worker).
 
-    GREEN: `SqlFacturacionRepository(session)` + `MatiasClient` + `ConfigFiscal` descifrada del
-    control DB (`cargar_config_matias`).
+    Solo necesita `ConfigFiscal.prefix`; la carga vía `cargar_config_matias` sobre una sesión de
+    control per-call (ignora las credenciales). `matias=None`.
     """
-    raise NotImplementedError("E4e GREEN: get_facturacion_service (repo tenant + config control)")
+    async with control_session() as cs:
+        _cred, config = await cargar_config_matias(cs, get_settings().secrets_master_key, request.state.tenant.id)
+    return FacturacionService(SqlFacturacionRepository(session), config=config)
 
 
 @router.post(

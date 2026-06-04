@@ -11,16 +11,41 @@ from arq.connections import RedisSettings
 
 from apps.worker.jobs import emitir_documento
 from core.config import get_settings
-from modules.facturacion.service import MAX_INTENTOS
+from core.db.session import control_session, tenant_session
+from core.tenancy.control_repo import resolve_tenant_by_id
+from modules.facturacion.config import cargar_config_matias
+from modules.facturacion.matias_client import MatiasClient
+from modules.facturacion.politica import Decision
+from modules.facturacion.repository import SqlFacturacionRepository
+from modules.facturacion.service import MAX_INTENTOS, FacturacionService
+
+
+class _ServicioEmision:
+    """Adaptador por empresa: resuelve tenant + config (control DB) y emite sobre su base."""
+
+    def __init__(self, tenant_id: int, master: str) -> None:
+        self._tid = tenant_id
+        self._master = master
+
+    async def emitir(self, factura_id: int) -> Decision:
+        async with control_session() as cs:
+            tenant = await resolve_tenant_by_id(cs, self._tid)
+            cred, config = await cargar_config_matias(cs, self._master, self._tid)
+        decision: Decision | None = None
+        async for s in tenant_session(tenant):   # commit al cerrar el generador (no `return` dentro)
+            servicio = FacturacionService(SqlFacturacionRepository(s), MatiasClient(cred), config)
+            decision = await servicio.emitir(factura_id)
+        return decision
 
 
 async def on_startup(ctx: dict) -> None:
-    """Inyecta `ctx['crear_servicio']`: dado tenant_id, arma el `FacturacionService` por empresa.
+    """Inyecta `ctx['crear_servicio']`: dado tenant_id, devuelve el adaptador de emisión por empresa."""
+    master = get_settings().secrets_master_key
 
-    TODO GREEN (E4b-2): resolver el tenant, `cargar_config_matias` del control DB, abrir la sesión del
-    tenant y devolver un `FacturacionService(SqlFacturacionRepository(s), MatiasClient(cred), config)`.
-    """
-    ...   # TODO GREEN: ctx["crear_servicio"] = <factory por empresa>
+    async def crear_servicio(tenant_id: int) -> _ServicioEmision:
+        return _ServicioEmision(tenant_id, master)
+
+    ctx["crear_servicio"] = crear_servicio
 
 
 class WorkerSettings:

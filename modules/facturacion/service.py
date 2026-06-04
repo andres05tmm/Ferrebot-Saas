@@ -84,7 +84,12 @@ def _construir_factura_input(
 class FacturacionService:
     """Crea el pendiente y emite la factura (sin cola; el worker/reintentos es E4)."""
 
-    def __init__(self, repo: FacturacionRepo, matias: MatiasClient, config: ConfigFiscal) -> None:
+    def __init__(
+        self, repo: FacturacionRepo, matias: MatiasClient | None = None,
+        config: ConfigFiscal | None = None,
+    ) -> None:
+        # `matias`/`config` solo hacen falta para `emitir` (worker); el endpoint arma el servicio
+        # para `crear_pendiente` sin credenciales MATIAS (matias=None, config solo aporta `prefix`).
         self._repo = repo
         self._matias = matias
         self._config = config

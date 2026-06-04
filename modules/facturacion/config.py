@@ -1,10 +1,8 @@
-"""Composition root del worker por empresa: descifra la config MATIAS del control DB.
+"""Config de facturación de una empresa: credenciales MATIAS + parámetros DIAN, del control DB.
 
-SQL solo aquí (control DB). Espejo de `core/llm/stores.py` (ControlLLM*): de `secretos_empresa`
-descifra las credenciales MATIAS (decrypt_split) y de `config_empresa` lee los parámetros DIAN no
-secretos. El `FacturacionService` lo arma `apps.worker.main` con esto + la sesión del tenant.
-
-RED (E4b-2): `cargar_config_matias` lanza NotImplementedError; el shape es definitivo.
+Vive en el dominio (no en una app): la consumen tanto el worker (`apps.worker`) como el endpoint
+(`modules.facturacion.router`). SQL sobre la sesión de control que recibe (per-call); de
+`secretos_empresa` descifra las credenciales y de `config_empresa` lee los parámetros no secretos.
 """
 from __future__ import annotations
 

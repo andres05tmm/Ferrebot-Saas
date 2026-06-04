@@ -11,14 +11,8 @@ from core.tenancy.context import ResolvedTenant
 from core.tenancy.models import Empresa, TenantDatabase
 
 
-async def resolve_tenant_by_slug(session: AsyncSession, slug: str) -> ResolvedTenant | None:
-    """Devuelve la empresa (con su URL de conexión descifrada) o None si no existe."""
-    stmt = (
-        select(Empresa, TenantDatabase)
-        .join(TenantDatabase, TenantDatabase.empresa_id == Empresa.id)
-        .where(Empresa.slug == slug)
-    )
-    row = (await session.execute(stmt)).first()
+def _resolver(row) -> ResolvedTenant | None:
+    """Mapea (Empresa, TenantDatabase) → ResolvedTenant con la URL de conexión descifrada."""
     if row is None:
         return None
     empresa, tdb = row
@@ -30,3 +24,23 @@ async def resolve_tenant_by_slug(session: AsyncSession, slug: str) -> ResolvedTe
         db_name=tdb.db_name,
         connection_url=connection_url,
     )
+
+
+async def resolve_tenant_by_slug(session: AsyncSession, slug: str) -> ResolvedTenant | None:
+    """Devuelve la empresa (con su URL de conexión descifrada) o None si no existe."""
+    stmt = (
+        select(Empresa, TenantDatabase)
+        .join(TenantDatabase, TenantDatabase.empresa_id == Empresa.id)
+        .where(Empresa.slug == slug)
+    )
+    return _resolver((await session.execute(stmt)).first())
+
+
+async def resolve_tenant_by_id(session: AsyncSession, empresa_id: int) -> ResolvedTenant | None:
+    """Resuelve la empresa por id (para jobs del worker, que reciben `tenant_id` explícito)."""
+    stmt = (
+        select(Empresa, TenantDatabase)
+        .join(TenantDatabase, TenantDatabase.empresa_id == Empresa.id)
+        .where(Empresa.id == empresa_id)
+    )
+    return _resolver((await session.execute(stmt)).first())

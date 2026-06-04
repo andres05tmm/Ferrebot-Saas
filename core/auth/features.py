@@ -11,6 +11,9 @@ from __future__ import annotations
 
 from fastapi import Depends, HTTPException, Request, status
 
+from core.db.session import control_session
+from core.tenancy.capacidades import ControlCapacidades
+
 
 def verificar_feature(feature: str, capacidades: frozenset[str]) -> None:
     """Lanza HTTPException(404) si `feature` no está en `capacidades` (feature-flags.md). PURO.
@@ -22,8 +25,9 @@ def verificar_feature(feature: str, capacidades: frozenset[str]) -> None:
 
 
 async def get_capacidades(request: Request) -> frozenset[str]:
-    """Capacidades efectivas de la empresa del request (control DB). Glue; los tests lo overridean."""
-    raise NotImplementedError("E4e GREEN: get_capacidades (control DB)")
+    """Capacidades efectivas de la empresa del request (control DB, sesión per-call)."""
+    async with control_session() as cs:
+        return await ControlCapacidades(cs).efectivas(request.state.tenant.id)
 
 
 def require_feature(feature: str):

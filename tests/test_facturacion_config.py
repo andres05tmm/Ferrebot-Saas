@@ -1,8 +1,7 @@
-"""E4b-2 RED — loader de config MATIAS por empresa contra el control DB (efímero).
+"""Loader de config MATIAS por empresa (`modules.facturacion.config`) contra el control DB efímero.
 
 Patrón de `test_llm_stores`: siembra empresa + `secretos_empresa` (cifrados) + `config_empresa`, y
 verifica que `cargar_config_matias` descifra credenciales y arma `MatiasCredenciales`/`ConfigFiscal`.
-En RED falla por NotImplementedError (no por conexión: el control DB efímero sí levanta).
 """
 import uuid
 
@@ -12,7 +11,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.pool import NullPool
 
-from apps.worker.wiring import cargar_config_matias
+from modules.facturacion.config import cargar_config_matias
 from core.config import get_settings
 from core.crypto import encrypt_split
 from core.db.urls import tenant_url, to_async

@@ -82,6 +82,21 @@
 ## Entregable 5 — voz
 - `Transcriptor` como puerto aparte (no dentro de `LLMProvider`). Reusar R3/Redis para confirmación
   de voz; `ventas_pendientes_voz` como auditoría, no máquina de estado paralela.
+- **Implementado en E5:** `core.voz.transcriptor` (puerto `Transcriptor` + `Transcripcion` +
+  esqueleto `WhisperTranscriptor`); `core.voz.filtros.es_transcripcion_silencio` (porta las REGLAS
+  de `ai/voz_filtros.py`: alucinaciones conocidas + `no_speech_prob` alto); puerto
+  `apps.bot.ports.ArchivosTelegram`; `SqlAudioLogsRepository` (savepoint, misma disciplina
+  best-effort); el `TurnoHandler` enchufa voz ANTES del pipeline (capacidad `ventas_voz` →
+  descargar → transcribir → filtrar silencio → mismo flujo con el texto transcrito, que también es
+  el que se persiste como mensaje del usuario).
+- **FOLLOW-UP — `ventas_pendientes_voz` (auditoría, DIFERIDO):** la confirmación de voz reusa
+  R3/Redis a través del mismo pipeline; la fila de auditoría necesita una **superficie limpia de la
+  señal "confirmación pendiente"** (hoy el handler no la ve) → pendiente de mini-spec. No es máquina
+  de estado paralela.
+- **FOLLOW-UP — prompt adaptativo de Whisper + corrección Haiku (DIFERIDO):** minar vocabulario del
+  catálogo / `audio_logs` para el `prompt` de Whisper y una pasada de corrección con Haiku son
+  optimizaciones. En E5 el `prompt` de Whisper va plano (`None`). `limpiar_texto_voz` NO se porta
+  (solo aplica con TTS).
 
 ## Observabilidad (transversal, cierra deuda del despachador)
 - `request_id` (update_id) + `tenant_id` en los contextvars de `core.logging` al inicio de cada

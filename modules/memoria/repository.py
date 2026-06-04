@@ -6,6 +6,7 @@ Operan sobre la sesión del tenant que llega del TurnoHandler (multitenancy.md #
     con upsert idempotente vía `ON CONFLICT (tipo, clave)` (índice de la migración 0004).
   - `SqlCostosRepository`  → acumulación de tokens en `api_costo_diario` con `ON CONFLICT (fecha)`
     (PK=fecha; suma tokens; `modelo` = último escritor).
+  - `SqlAudioLogsRepository` → bitácora de transcripciones de voz en `audio_logs`.
 """
 from datetime import date
 
@@ -14,7 +15,12 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.config.timezone import now_co
-from modules.memoria.models import ApiCostoDiario, ConversacionBot, MemoriaEntidad
+from modules.memoria.models import (
+    ApiCostoDiario,
+    AudioLog,
+    ConversacionBot,
+    MemoriaEntidad,
+)
 from modules.memoria.schemas import EntidadGuardada, MensajeGuardado
 
 
@@ -79,4 +85,18 @@ class SqlCostosRepository:
         )
         async with self._s.begin_nested():
             await self._s.execute(stmt)
+            await self._s.flush()
+
+
+class SqlAudioLogsRepository:
+    def __init__(self, session: AsyncSession) -> None:
+        self._s = session
+
+    async def registrar(self, chat_id: int, transcripcion: str, duracion: int | None) -> None:
+        """Inserta la transcripción en `audio_logs`, aislada en savepoint (misma disciplina
+        best-effort que los otros side-writes; el flush va DENTRO del savepoint)."""
+        async with self._s.begin_nested():
+            self._s.add(
+                AudioLog(chat_id=chat_id, transcripcion=transcripcion, duracion=duracion)
+            )
             await self._s.flush()

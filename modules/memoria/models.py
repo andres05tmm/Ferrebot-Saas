@@ -6,7 +6,7 @@ Solo columnas que existen en la migración 0001 (+ el UNIQUE(tipo, clave) que ag
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import BigInteger, Date, DateTime, Numeric, Text, func
+from sqlalchemy import BigInteger, Date, DateTime, Integer, Numeric, Text, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -43,3 +43,15 @@ class ApiCostoDiario(TenantBase):
     tokens_in: Mapped[int | None] = mapped_column(BigInteger)
     tokens_out: Mapped[int | None] = mapped_column(BigInteger)
     costo: Mapped[Decimal | None] = mapped_column(Numeric(12, 4))
+
+
+class AudioLog(TenantBase):
+    __tablename__ = "audio_logs"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    chat_id: Mapped[int | None] = mapped_column(BigInteger)
+    transcripcion: Mapped[str | None] = mapped_column(Text)
+    duracion: Mapped[int | None] = mapped_column(Integer)
+    creado_en: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )

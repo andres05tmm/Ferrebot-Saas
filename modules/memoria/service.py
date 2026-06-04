@@ -36,6 +36,12 @@ class MemoriaRepo(Protocol):
     async def entidades_por_clave(self, clave: str) -> list[EntidadGuardada]: ...
 
 
+class AudioLogsRepo(Protocol):
+    """Puerto de la bitácora de voz (lo implementa SqlAudioLogsRepository; faked en tests)."""
+
+    async def registrar(self, chat_id: int, transcripcion: str, duracion: int | None) -> None: ...
+
+
 class MemoriaService:
     def __init__(self, repo: MemoriaRepo) -> None:
         self._repo = repo

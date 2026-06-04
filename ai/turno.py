@@ -43,14 +43,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ai.agent import RespuestaAgente, ejecutar_turno
 from ai.dispatcher import Dispatcher, Recursos
 from ai.envelope import Contexto
-from apps.bot.ports import Notificador, TurnoHandler, UpdateBot
+from apps.bot.ports import ArchivosTelegram, Notificador, TurnoHandler, UpdateBot
 from core.config.timezone import today_co
 from core.llm.factory import LLMResuelto, Turno
 from core.llm.medicion import CostosStore, ProveedorMedido
 from core.logging import get_logger
+from core.voz.filtros import es_transcripcion_silencio
+from core.voz.transcriptor import Transcriptor
 from modules.memoria.service import (
     TIPO_ULTIMO_CLIENTE,
     TIPO_ULTIMO_PRODUCTO,
+    AudioLogsRepo,
     MemoriaService,
 )
 
@@ -60,11 +63,17 @@ log = get_logger("ai.turno")
 MENSAJE_RESPALDO = (
     "Tuve un problema para procesar tu mensaje. Inténtalo de nuevo en un momento, por favor."
 )
+# Voz sin la capacidad habilitada / transcripción ininteligible (silencio/ruido/alucinación).
+MENSAJE_VOZ_DESHABILITADA = "El registro por voz no está habilitado para tu empresa."
+MENSAJE_NO_ENTENDI = "No te entendí, ¿puedes repetirlo?"
+# Capacidad requerida para procesar notas de voz (feature-flags.md; además de bot_telegram).
+CAP_VENTAS_VOZ = "ventas_voz"
 
 # Factories atadas a la sesión del tenant que el handler recibe en cada turno.
 MemoriaFactory = Callable[[AsyncSession], MemoriaService]
 CostosFactory = Callable[[AsyncSession], CostosStore]
 RecursosFactory = Callable[[AsyncSession], Recursos]
+AudioFactory = Callable[[AsyncSession], AudioLogsRepo]
 # El bucle del agente, inyectable para pruebas (default: el real).
 EjecutarTurno = Callable[..., Awaitable[RespuestaAgente]]
 
@@ -103,6 +112,42 @@ def _bloque_contexto(entidades: dict[str, dict]) -> str:
     return "Contexto reciente:\n" + "\n".join(partes)
 
 
+async def _resolver_texto_voz(
+    update: UpdateBot,
+    ctx: Contexto,
+    notificador: Notificador,
+    *,
+    transcriptor: Transcriptor | None,
+    archivos: ArchivosTelegram | None,
+    audios: "AudioFactory | None",
+    session: AsyncSession,
+) -> str | None:
+    """Convierte una nota de voz en texto para el pipeline. None = ya se respondió, el turno termina.
+
+    Orden: capacidad → descargar+transcribir (fallo → MENSAJE_RESPALDO) → filtrar silencio
+    (→ MENSAJE_NO_ENTENDI) → bitácora best-effort. El fallo de voz nunca llega a `ejecutar_turno`.
+    """
+    if not ctx.tiene_capacidad(CAP_VENTAS_VOZ):
+        await notificador.responder(update.chat_id, MENSAJE_VOZ_DESHABILITADA)
+        return None
+    try:
+        audio = await archivos.descargar(update.voz_file_id)   # type: ignore[union-attr]
+        transcripcion = await transcriptor.transcribir(audio, prompt=None)  # type: ignore[union-attr]
+    except Exception:
+        log.warning("voz_descarga_o_transcripcion_fallo", chat_id=update.chat_id, exc_info=True)
+        await notificador.responder(update.chat_id, MENSAJE_RESPALDO)
+        return None
+    if es_transcripcion_silencio(transcripcion.texto, transcripcion.segmentos):
+        await notificador.responder(update.chat_id, MENSAJE_NO_ENTENDI)
+        return None
+    if audios is not None:
+        try:
+            await audios(session).registrar(update.chat_id, transcripcion.texto, None)
+        except Exception:
+            log.warning("voz_audio_logs_fallo", chat_id=update.chat_id, exc_info=True)
+    return transcripcion.texto
+
+
 def crear_turno_handler(
     *,
     dispatcher: Dispatcher,
@@ -111,12 +156,31 @@ def crear_turno_handler(
     crear_recursos: RecursosFactory,
     ejecutar: EjecutarTurno = ejecutar_turno,
     turno: Turno = Turno.WORKER,
+    transcriptor: Transcriptor | None = None,
+    archivos: ArchivosTelegram | None = None,
+    audios: AudioFactory | None = None,
 ) -> TurnoHandler:
-    """Captura el dispatcher + stores y devuelve el `TurnoHandler` que el webhook inyecta."""
+    """Captura el dispatcher + stores (+ voz, opcional) y devuelve el `TurnoHandler` del webhook.
+
+    Las deps de voz (`transcriptor`, `archivos`, `audios`) son OPCIONALES: un despliegue sin voz
+    deja el pipeline de texto intacto. Con voz, un update con `voz_file_id` se transcribe ANTES del
+    pipeline y el texto resultante entra como si el usuario lo hubiera escrito (E5).
+    """
 
     async def handler(
         update: UpdateBot, ctx: Contexto, session: AsyncSession, notificador: Notificador
     ) -> None:
+        # Voz: se resuelve a texto ANTES del pipeline; None = ya se respondió (capacidad/fallo/silencio).
+        if update.voz_file_id:
+            texto = await _resolver_texto_voz(
+                update, ctx, notificador,
+                transcriptor=transcriptor, archivos=archivos, audios=audios, session=session,
+            )
+            if texto is None:
+                return
+        else:
+            texto = update.texto
+
         memoria_svc = memoria(session)
         historial = await memoria_svc.cargar_historial(update.chat_id)        # best-effort
         entidades = await memoria_svc.leer_entidades(update.chat_id)          # best-effort
@@ -130,7 +194,7 @@ def crear_turno_handler(
                 provider_nombre=base.provider_nombre,
             )
             respuesta = await ejecutar(
-                texto=update.texto, ctx=ctx, ejecutor=dispatcher, recursos=recursos,
+                texto=texto, ctx=ctx, ejecutor=dispatcher, recursos=recursos,
                 proveedor=proveedor, historial=historial, system=system,
             )
         except Exception:
@@ -142,7 +206,7 @@ def crear_turno_handler(
         # Persistencia best-effort: jamás degrada la respuesta ya enviada (try propio, sin respaldo).
         try:
             await memoria_svc.guardar_turno(
-                update.chat_id, usuario=update.texto or "", asistente=respuesta.texto
+                update.chat_id, usuario=texto or "", asistente=respuesta.texto
             )
         except Exception:
             log.warning("turno_persistencia_fallo", chat_id=update.chat_id, exc_info=True)

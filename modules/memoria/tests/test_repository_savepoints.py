@@ -5,7 +5,11 @@ de comportamiento real (la venta sobrevive al fallo) vive en tests/test_turno_tr
 Contra el código actual (sin savepoints) estos tests FALLAN; con `session.begin_nested()` PASAN.
 """
 from core.config.timezone import today_co
-from modules.memoria.repository import SqlCostosRepository, SqlMemoriaRepository
+from modules.memoria.repository import (
+    SqlAudioLogsRepository,
+    SqlCostosRepository,
+    SqlMemoriaRepository,
+)
 
 
 class _FakeNested:
@@ -59,4 +63,10 @@ async def test_upsert_entidad_usa_savepoint():
 async def test_acumular_usa_savepoint():
     s = FakeSession()
     await SqlCostosRepository(s).acumular(fecha=today_co(), modelo="m", tokens_in=1, tokens_out=1)
+    assert "begin" in s.savepoints
+
+
+async def test_registrar_audio_log_usa_savepoint():
+    s = FakeSession()
+    await SqlAudioLogsRepository(s).registrar(555, "2 martillos", 3)
     assert "begin" in s.savepoints

@@ -100,6 +100,15 @@ class Notificador(Protocol):
     async def responder(self, chat_id: int, texto: str) -> None: ...
 
 
+class ArchivosTelegram(Protocol):
+    """Descarga archivos de Telegram (nota de voz) usando el bot-token por empresa.
+
+    La implementación real (httpx contra la Bot API: getFile + descarga) vive en el composition
+    root, atada al token de la empresa; aquí solo el puerto, faked en tests (cero red)."""
+
+    async def descargar(self, file_id: str) -> bytes: ...
+
+
 # Abre una sesión atada a la base del tenant (CM). En prod envuelve core.db.session.tenant_session.
 SesionTenant = Callable[[ResolvedTenant], AbstractAsyncContextManager[AsyncSession]]
 # Construye el repo de usuarios sobre una sesión del tenant.

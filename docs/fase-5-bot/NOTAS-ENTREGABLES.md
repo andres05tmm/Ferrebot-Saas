@@ -25,14 +25,27 @@
   `ControlSecretosBot.webhook_secret` lo descifra (round-trip cripto), y (b) verifique
   `ControlCapacidades.efectivas` contra plan + `empresa_features`.
 
-## Entregable 2 — bucle + NL híbrida
-- Tope: **2 generaciones de modelo / 1 tool mutante** por turno.
+## Entregable 2 — bucle + NL híbrida (HECHO)
+- Tope: **2 generaciones de modelo / 1 tool mutante** por turno. ✔ (`ai/agent.ejecutar_turno`)
 - `Preguntar`/`Confirmar` van **directo** al usuario (sin ronda de modelo). Re-prompt **solo** para
-  errores recuperables genuinos del servicio.
-- **CORRECCIÓN (producto_ambiguo):** hoy `ItemResuelto` solo lleva el conteo de candidatos; antes
-  de mandar el corte directo, el riel/despachador debe **incluir la lista de nombres de candidatos**
-  (pasarlos a `riel_producto` o componer la lista en el despachador). Nada de "¿cuál?" sin mostrar
-  cuáles.
+  errores recuperables genuinos del servicio. ✔
+- **CORRECCIÓN (producto_ambiguo):** `ItemResuelto.candidatos` migró `int → tuple[str, ...]`;
+  `riel_producto` enumera los candidatos; `Dispatcher._rieles_venta` pasa `(prod.nombre,)`/`()`
+  (conducta idéntica para venta por `producto_id`). ✔
+- **Tripleta tool_use→tool_result:** `core.llm.base.Message` ganó `tool_calls`; OpenAI y Claude
+  traducen el assistant-con-tool_call. El loop arma `user → assistant(tool_call) → tool` agnóstico.
+- **Tripleta en providers cubierta** ✔: `test_llm_providers.py` valida `traducir_mensajes` para
+  `user → assistant(tool_call) → tool` en OpenAI (arguments JSON string, `tool_calls[{id,type,function}]`)
+  y Claude (bloques `tool_use` + `tool_result` emparejado por `tool_use_id`).
+- **Pendiente de cobertura / wiring:**
+  - **Token accounting:** `LLMResponse.usage` aún no se persiste en `api_costo_diario`. Cablear en
+    el composition root del bot (necesita la sesión del tenant), no en el loop puro.
+  - Wiring del loop como `TurnoHandler` del webhook (entregable 1 deja `procesar` inyectable):
+    pendiente de ensamblar con `Dispatcher` real + `seleccionar_proveedor`. Al cablearlo:
+    **(a)** `_MENSAJES_ERROR` ya da texto amable para `permiso_denegado`/`capacidad_no_habilitada`
+    (no el `detail` técnico); mantener ese criterio para códigos nuevos. **(b)** el composition root
+    DEBE envolver `ejecutar_turno` en `try/except` → mensaje de respaldo al usuario ante fallo del
+    provider (timeout/credencial/5xx); nunca 500 ni silencio.
 
 ## Entregable 3 — convergencia del bypass por el despachador
 - Bypass emite `ToolCall` normalizado → `dispatcher.ejecutar` (R1/R2 inertes por construcción,

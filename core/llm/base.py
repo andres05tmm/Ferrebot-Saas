@@ -3,6 +3,8 @@
 Todo el sistema habla este vocabulario; cada provider traduce desde/hacia el formato de su
 vendor en sus bordes. Nada fuera de `core/llm/providers/` debe conocer la forma de OpenAI/Claude.
 """
+from __future__ import annotations
+
 from dataclasses import dataclass, field
 from typing import Any, Protocol, runtime_checkable
 
@@ -33,11 +35,17 @@ class LLMSinCredencial(LLMError):
 
 @dataclass(frozen=True, slots=True)
 class Message:
-    """Mensaje de la conversación. `role`: system | user | assistant | tool."""
+    """Mensaje de la conversación. `role`: system | user | assistant | tool.
+
+    Un mensaje `assistant` que invocó herramientas lleva sus `tool_calls`; el siguiente mensaje
+    `tool` (con `tool_call_id`) trae el resultado. Así se arma la tripleta tool_use→tool_result
+    que esperan tanto Claude como OpenAI; cada provider la traduce a su formato.
+    """
     role: str
     content: str
     tool_call_id: str | None = None   # respuesta de una herramienta (role=tool)
     name: str | None = None           # nombre de la herramienta que respondió
+    tool_calls: list[ToolCall] = field(default_factory=list)  # herramientas que pidió el assistant
 
 
 @dataclass(frozen=True, slots=True)

@@ -129,7 +129,8 @@ class Dispatcher:
             prod = await recursos.catalogo.obtener(it.producto_id)
             resueltos[it.producto_id] = prod
             referencia = prod.nombre if prod is not None else f"producto {it.producto_id}"
-            candidatos = 1 if (prod is not None and prod.activo) else 0
+            # Venta por producto_id: 0 candidatos (no resuelto/inactivo) o 1 (el nombre del producto).
+            candidatos = (prod.nombre,) if (prod is not None and prod.activo) else ()
             items_r1.append(ItemResuelto(referencia, candidatos))
 
         decision = riel_producto(items_r1)

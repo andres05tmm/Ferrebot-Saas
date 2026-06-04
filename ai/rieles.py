@@ -46,8 +46,8 @@ Decision = Ejecutar | Preguntar | Confirmar
 class ItemResuelto:
     """Resultado de resolver un ítem contra el catálogo del tenant."""
 
-    referencia: str      # texto para el mensaje al usuario (nombre o "producto {id}")
-    candidatos: int      # 0 = no encontrado · 1 = único · >1 = ambiguo
+    referencia: str                 # texto para el mensaje al usuario (nombre o "producto {id}")
+    candidatos: tuple[str, ...]     # nombres de los candidatos: () no encontrado · 1 único · >1 ambiguo
 
 
 @dataclass(frozen=True, slots=True)
@@ -62,17 +62,24 @@ class ItemPrecio:
 
 # --- Riel 1: producto desconocido / ambiguo ----------------------------------
 def riel_producto(items: list[ItemResuelto]) -> Decision:
-    """Si algún ítem no resuelve a un único producto, corta y pregunta (no inventa)."""
+    """Si algún ítem no resuelve a un único producto, corta y pregunta (no inventa).
+
+    El corte va DIRECTO al usuario (sin ronda de modelo), así que debe ser autosuficiente:
+    `producto_ambiguo` enumera los candidatos por nombre — nada de "¿cuál?" sin mostrar cuáles.
+    """
     for it in items:
-        if it.candidatos == 0:
+        n = len(it.candidatos)
+        if n == 0:
             return Preguntar(
                 "producto_no_encontrado",
                 f"No encontré ningún producto para «{it.referencia}». ¿Cuál es?",
             )
-        if it.candidatos > 1:
+        if n > 1:
+            opciones = ", ".join(it.candidatos)
             return Preguntar(
                 "producto_ambiguo",
-                f"Hay varios productos que coinciden con «{it.referencia}». ¿Cuál de ellos?",
+                f"Hay varios productos que coinciden con «{it.referencia}»: {opciones}. "
+                "¿Cuál de ellos?",
             )
     return Ejecutar()
 

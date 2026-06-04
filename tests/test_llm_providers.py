@@ -3,6 +3,8 @@
 El test clave (swap) demuestra la abstracción: el mismo turno resuelto por Claude o por OpenAI
 produce el MISMO ToolCall canónico — cambiar de IA es configuración, no reescritura.
 """
+import json
+
 from core.llm.base import Message, ToolCall, ToolSpec
 from core.llm.providers.claude import ClaudeProvider
 from core.llm.providers.openai import OpenAIProvider
@@ -107,3 +109,72 @@ def test_swap_mismo_toolcall_canonico():
     canonico = lambda resp: [(tc.name, tc.arguments) for tc in resp.tool_calls]
     assert canonico(claude) == canonico(openai)
     assert canonico(claude) == [("registrar_venta", {"producto": "martillo", "cantidad": 2})]
+
+
+# --- Tripleta tool_use→tool_result en el re-prompt (linchpin del NL híbrido en providers reales) ---
+
+# La secuencia que arma el loop tras un error recuperable: user → assistant(tool_call) → tool.
+_TRIPLETA = [
+    Message(role="user", content="5 martillo"),
+    Message(
+        role="assistant", content="",
+        tool_calls=[ToolCall(id="call_1", name="registrar_venta",
+                             arguments={"producto": "martillo", "cantidad": 5})],
+    ),
+    Message(
+        role="tool", tool_call_id="call_1", name="registrar_venta",
+        content='{"ok": false, "error": "stock_insuficiente", "detail": "Quedan 3", "recuperable": true}',
+    ),
+]
+
+
+def test_openai_traduce_tripleta_tool_use_tool_result():
+    out = OpenAIProvider(api_key="x").traducir_mensajes(_TRIPLETA)
+    assert out[0] == {"role": "user", "content": "5 martillo"}
+
+    asistente = out[1]
+    assert asistente["role"] == "assistant"
+    assert asistente["content"] is None                      # sin texto → null, no ""
+    (tc,) = asistente["tool_calls"]
+    assert tc["id"] == "call_1"
+    assert tc["type"] == "function"
+    assert tc["function"]["name"] == "registrar_venta"
+    # OpenAI exige arguments como STRING JSON, no dict
+    assert isinstance(tc["function"]["arguments"], str)
+    assert json.loads(tc["function"]["arguments"]) == {"producto": "martillo", "cantidad": 5}
+
+    resultado = out[2]
+    assert resultado["role"] == "tool"
+    assert resultado["tool_call_id"] == "call_1"             # emparejado con el tool_call
+    assert resultado["name"] == "registrar_venta"
+    assert "stock_insuficiente" in resultado["content"]
+
+
+def test_claude_traduce_tripleta_tool_use_tool_result():
+    _system, cuerpo = ClaudeProvider(api_key="x").traducir_mensajes(_TRIPLETA)
+    assert cuerpo[0] == {"role": "user", "content": "5 martillo"}
+
+    asistente = cuerpo[1]
+    assert asistente["role"] == "assistant"
+    # assistant sin texto → solo el bloque tool_use (no un bloque text vacío)
+    (bloque,) = asistente["content"]
+    assert bloque == {
+        "type": "tool_use", "id": "call_1", "name": "registrar_venta",
+        "input": {"producto": "martillo", "cantidad": 5},   # Claude usa dict en input
+    }
+
+    resultado = cuerpo[2]
+    assert resultado["role"] == "user"                       # Anthropic manda el result como user
+    (tr,) = resultado["content"]
+    assert tr["type"] == "tool_result"
+    assert tr["tool_use_id"] == "call_1"                     # emparejado con el tool_use
+    assert "stock_insuficiente" in tr["content"]
+
+
+def test_claude_assistant_con_texto_y_tool_use_emite_ambos_bloques():
+    msgs = [Message(role="assistant", content="Registro la venta",
+                    tool_calls=[ToolCall(id="t1", name="registrar_venta", arguments={"x": 1})])]
+    _system, cuerpo = ClaudeProvider(api_key="x").traducir_mensajes(msgs)
+    bloques = cuerpo[0]["content"]
+    assert bloques[0] == {"type": "text", "text": "Registro la venta"}
+    assert bloques[1]["type"] == "tool_use" and bloques[1]["id"] == "t1"

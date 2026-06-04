@@ -24,21 +24,25 @@ MIN = Decimal("1")      # mínimo 1 peso
 
 # --- Riel 1: producto --------------------------------------------------------
 def test_producto_unico_ejecuta():
-    assert isinstance(riel_producto([ItemResuelto("cemento gris", 1)]), Ejecutar)
+    assert isinstance(riel_producto([ItemResuelto("cemento gris", ("Cemento gris 50kg",))]), Ejecutar)
 
 
 def test_producto_cero_candidatos_pregunta_no_encontrado():
-    d = riel_producto([ItemResuelto("xyz", 0)])
+    d = riel_producto([ItemResuelto("xyz", ())])
     assert isinstance(d, Preguntar) and d.codigo == "producto_no_encontrado"
 
 
 def test_producto_varios_candidatos_pregunta_ambiguo():
-    d = riel_producto([ItemResuelto("cemento", 3)])
+    d = riel_producto([ItemResuelto("cemento", ("Cemento gris", "Cemento blanco", "Cemento x"))])
     assert isinstance(d, Preguntar) and d.codigo == "producto_ambiguo"
 
 
 def test_producto_corta_en_el_primero_que_falla():
-    d = riel_producto([ItemResuelto("ok", 1), ItemResuelto("nada", 0), ItemResuelto("varios", 2)])
+    d = riel_producto([
+        ItemResuelto("ok", ("Producto ok",)),
+        ItemResuelto("nada", ()),
+        ItemResuelto("varios", ("A", "B")),
+    ])
     assert isinstance(d, Preguntar) and d.codigo == "producto_no_encontrado"
 
 

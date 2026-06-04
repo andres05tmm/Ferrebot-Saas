@@ -34,8 +34,11 @@ class SqlMemoriaRepository:
         return [MensajeGuardado(rol=rol, contenido=contenido) for rol, contenido in reversed(filas)]
 
     async def guardar_mensaje(self, chat_id: int, rol: str, contenido: str) -> None:
-        self._s.add(ConversacionBot(chat_id=chat_id, rol=rol, contenido=contenido))
-        await self._s.flush()
+        # Savepoint: si el insert falla, revierte solo hasta aquí y re-lanza (el caller lo traga
+        # best-effort) sin envenenar la transacción del turno. El flush va DENTRO del savepoint.
+        async with self._s.begin_nested():
+            self._s.add(ConversacionBot(chat_id=chat_id, rol=rol, contenido=contenido))
+            await self._s.flush()
 
     async def upsert_entidad(self, tipo: str, clave: str, valor: dict) -> None:
         stmt = pg_insert(MemoriaEntidad).values(
@@ -45,8 +48,9 @@ class SqlMemoriaRepository:
             index_elements=["tipo", "clave"],
             set_={"valor": stmt.excluded.valor, "actualizado_en": stmt.excluded.actualizado_en},
         )
-        await self._s.execute(stmt)
-        await self._s.flush()
+        async with self._s.begin_nested():
+            await self._s.execute(stmt)
+            await self._s.flush()
 
     async def entidades_por_clave(self, clave: str) -> list[EntidadGuardada]:
         stmt = select(MemoriaEntidad.tipo, MemoriaEntidad.valor).where(MemoriaEntidad.clave == clave)
@@ -73,5 +77,6 @@ class SqlCostosRepository:
                 "tokens_out": func.coalesce(ApiCostoDiario.tokens_out, 0) + stmt.excluded.tokens_out,
             },
         )
-        await self._s.execute(stmt)
-        await self._s.flush()
+        async with self._s.begin_nested():
+            await self._s.execute(stmt)
+            await self._s.flush()

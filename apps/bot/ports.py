@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ai.envelope import Contexto
 from core.tenancy.context import ResolvedTenant
+from core.voz.transcriptor import Transcriptor
 
 
 @dataclass(frozen=True, slots=True)
@@ -109,6 +110,26 @@ class ArchivosTelegram(Protocol):
     async def descargar(self, file_id: str) -> bytes: ...
 
 
+class RecursosEmpresa(Protocol):
+    """Los tres adaptadores atados a la credencial de UNA empresa (notificador, voz, archivos).
+
+    Es el *shape* que `ai.turno` consume en la rama de voz sin depender de la impl concreta
+    (`apps.bot.recursos.RecursosEmpresa`): un bundle por empresa, ya cableado a su bot-token y su
+    api-key. Faked en tests."""
+
+    notificador: Notificador
+    transcriptor: Transcriptor
+    archivos: ArchivosTelegram
+
+
+class RecursosBot(Protocol):
+    """Resuelve (y cachea) los recursos por empresa. Una sola app sirve N empresas, cada una con su
+    bot-token y su api-key; los adaptadores se atan a UNA credencial al construirse, así que hay que
+    pedir el bundle de la empresa ANTES de usarlo. Espeja `core.db.engine_cache.EngineCache`."""
+
+    async def para(self, empresa_id: int) -> RecursosEmpresa: ...
+
+
 # Abre una sesión atada a la base del tenant (CM). En prod envuelve core.db.session.tenant_session.
 SesionTenant = Callable[[ResolvedTenant], AbstractAsyncContextManager[AsyncSession]]
 # Construye el repo de usuarios sobre una sesión del tenant.
@@ -127,5 +148,5 @@ class BotDeps:
     dedup: DedupStore
     abrir_sesion: SesionTenant
     usuarios: UsuariosFactory
-    notificador: Notificador
+    recursos: RecursosBot
     procesar: TurnoHandler

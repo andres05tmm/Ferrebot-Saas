@@ -94,6 +94,26 @@ class FakeArchivos:
         return self._audio
 
 
+class FakeBundle:
+    def __init__(self, transcriptor, archivos):
+        self.notificador = None        # la voz usa transcriptor/archivos; el notificador llega por turno
+        self.transcriptor = transcriptor
+        self.archivos = archivos
+
+
+class FakeRecursosBot:
+    """`RecursosBot` falso: el handler pide `para(ctx.tenant_id)` y usa el transcriptor/archivos de
+    ESA empresa (multi-empresa: una sola app, un api-key/bot-token por empresa)."""
+
+    def __init__(self, transcriptor, archivos):
+        self._bundle = FakeBundle(transcriptor, archivos)
+        self.empresas = []
+
+    async def para(self, empresa_id):
+        self.empresas.append(empresa_id)
+        return self._bundle
+
+
 class FakeAudioLogs:
     def __init__(self, *, falla=False):
         self.registros = []
@@ -144,8 +164,7 @@ def _handler(*, transcriptor, archivos, audios=None, memoria=None, ejecutar=None
         costos=lambda s: FakeCostos(),
         crear_recursos=lambda s: object(),
         ejecutar=ejecutar,
-        transcriptor=transcriptor,
-        archivos=archivos,
+        recursos=FakeRecursosBot(transcriptor, archivos),   # voz por empresa (CR-3a)
         audios=(lambda s: audios) if audios is not None else None,
     )
 

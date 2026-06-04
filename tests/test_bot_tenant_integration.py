@@ -29,6 +29,23 @@ class _Notif:
         self.enviados.append((chat_id, texto))
 
 
+class _Bundle:
+    def __init__(self, notif):
+        self.notificador = notif
+        self.transcriptor = None
+        self.archivos = None
+
+
+class _RecursosBot:
+    """`RecursosBot` falso: un bundle por empresa (aquí el webhook solo usa `notificador`)."""
+
+    def __init__(self, notif):
+        self._bundle = _Bundle(notif)
+
+    async def para(self, empresa_id):
+        return self._bundle
+
+
 class _Secretos:
     async def webhook_secret(self, empresa_id):
         return SECRET
@@ -117,7 +134,7 @@ def _deps(resolver, spy) -> BotDeps:
     return BotDeps(
         resolver=resolver, secretos=_Secretos(), capacidades=_Caps(), dedup=_Dedup(),
         abrir_sesion=_abrir_sesion, usuarios=lambda s: SqlUsuariosBotRepo(s),
-        notificador=_Notif(), procesar=spy,
+        recursos=_RecursosBot(_Notif()), procesar=spy,
     )
 
 

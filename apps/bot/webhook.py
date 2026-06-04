@@ -103,6 +103,9 @@ async def manejar_update(
             log.warning("bot_secret_invalido", slug=slug)
             return ResultadoWebhook(Accion.SECRET_INVALIDO, 403)
 
+        # Recursos de ESTA empresa (notificador atado a su bot-token; cacheado por empresa).
+        bundle = await deps.recursos.para(tenant.id)
+
         # 3. Parsear; ignorar lo que no es un mensaje procesable.
         update = parsear_update(payload)
         if update is None:
@@ -118,7 +121,7 @@ async def manejar_update(
         async with deps.abrir_sesion(tenant) as session:
             usuario = await deps.usuarios(session).por_telegram_id(update.telegram_id)
             if usuario is None or not usuario.activo:
-                await deps.notificador.responder(update.chat_id, _MSG_NO_AUTORIZADO)
+                await bundle.notificador.responder(update.chat_id, _MSG_NO_AUTORIZADO)
                 log.info("bot_no_autorizado", telegram_id=update.telegram_id)
                 return ResultadoWebhook(Accion.NO_AUTORIZADO, 200)
 
@@ -132,7 +135,7 @@ async def manejar_update(
                 request_id=rid,
                 capacidades=await deps.capacidades.efectivas(tenant.id),
             )
-            await deps.procesar(update, ctx, session, deps.notificador)
+            await deps.procesar(update, ctx, session, bundle.notificador)
             log.info("bot_turno_procesado", usuario_id=usuario.id, update_id=update.update_id)
             return ResultadoWebhook(Accion.PROCESADO, 200, ctx)
     finally:

@@ -45,7 +45,7 @@ from ai.agent import RespuestaAgente, ejecutar_turno, texto_de_respuesta
 from ai.confirmacion import ConfirmStore, es_afirmacion, es_negacion
 from ai.dispatcher import Dispatcher, Recursos
 from ai.envelope import Contexto
-from apps.bot.ports import ArchivosTelegram, Notificador, TurnoHandler, UpdateBot
+from apps.bot.ports import ArchivosTelegram, Notificador, RecursosBot, TurnoHandler, UpdateBot
 from core.config.timezone import today_co
 from core.llm.factory import LLMResuelto, Turno
 from core.llm.medicion import CostosStore, ProveedorMedido
@@ -202,16 +202,17 @@ def crear_turno_handler(
     crear_recursos: RecursosFactory,
     ejecutar: EjecutarTurno = ejecutar_turno,
     turno: Turno = Turno.WORKER,
-    transcriptor: Transcriptor | None = None,
-    archivos: ArchivosTelegram | None = None,
+    recursos: RecursosBot | None = None,
     audios: AudioFactory | None = None,
     confirm: ConfirmStore | None = None,
 ) -> TurnoHandler:
     """Captura el dispatcher + stores (+ voz, opcional) y devuelve el `TurnoHandler` del webhook.
 
-    Las deps de voz (`transcriptor`, `archivos`, `audios`) son OPCIONALES: un despliegue sin voz
-    deja el pipeline de texto intacto. Con voz, un update con `voz_file_id` se transcribe ANTES del
-    pipeline y el texto resultante entra como si el usuario lo hubiera escrito (E5).
+    `recursos` (la caché `RecursosBot` por empresa) y `audios` son OPCIONALES: un despliegue sin voz
+    deja el pipeline de texto intacto. Con voz, un update con `voz_file_id` resuelve el transcriptor
+    y los archivos de ESA empresa (`recursos.para(ctx.tenant_id)`) y se transcribe ANTES del pipeline;
+    el texto resultante entra como si el usuario lo hubiera escrito (E5). Sin `recursos`, un update de
+    voz responde "voz no disponible" (no hay con qué transcribirla).
     """
 
     async def handler(
@@ -219,9 +220,14 @@ def crear_turno_handler(
     ) -> None:
         # Voz: se resuelve a texto ANTES del pipeline; None = ya se respondió (capacidad/fallo/silencio).
         if update.voz_file_id:
+            if recursos is None:
+                await notificador.responder(update.chat_id, MENSAJE_VOZ_DESHABILITADA)
+                return
+            bundle = await recursos.para(ctx.tenant_id)   # transcriptor/archivos de la empresa
             texto = await _resolver_texto_voz(
                 update, ctx, notificador,
-                transcriptor=transcriptor, archivos=archivos, audios=audios, session=session,
+                transcriptor=bundle.transcriptor, archivos=bundle.archivos,
+                audios=audios, session=session,
             )
             if texto is None:
                 return
@@ -240,7 +246,7 @@ def crear_turno_handler(
         historial = await memoria_svc.cargar_historial(update.chat_id)        # best-effort
         entidades = await memoria_svc.leer_entidades(update.chat_id)          # best-effort
         system = construir_system_prompt(entidades)
-        recursos = crear_recursos(session)                                    # fresco por turno
+        recursos_turno = crear_recursos(session)                              # fresco por turno
         try:
             base = await dispatcher.seleccionar_proveedor(ctx.tenant_id, turno=turno)
             proveedor = LLMResuelto(
@@ -249,7 +255,7 @@ def crear_turno_handler(
                 provider_nombre=base.provider_nombre,
             )
             respuesta = await ejecutar(
-                texto=texto, ctx=ctx, ejecutor=dispatcher, recursos=recursos,
+                texto=texto, ctx=ctx, ejecutor=dispatcher, recursos=recursos_turno,
                 proveedor=proveedor, historial=historial, system=system,
             )
         except Exception:

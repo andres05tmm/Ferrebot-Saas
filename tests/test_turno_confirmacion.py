@@ -110,6 +110,23 @@ class FakeArchivos:
         return b"OGG"
 
 
+class FakeBundle:
+    def __init__(self, transcriptor, archivos):
+        self.notificador = None
+        self.transcriptor = transcriptor
+        self.archivos = archivos
+
+
+class FakeRecursosBot:
+    """`RecursosBot` falso: la rama de voz del handler pide `para(ctx.tenant_id)` (CR-3a)."""
+
+    def __init__(self, transcriptor, archivos):
+        self._bundle = FakeBundle(transcriptor, archivos)
+
+    async def para(self, empresa_id):
+        return self._bundle
+
+
 class FakeEjecutar:
     def __init__(self, respuesta):
         self._r = respuesta
@@ -136,6 +153,8 @@ def _resp(texto="ok", *, confirmacion_pendiente=None) -> RespuestaAgente:
 
 
 def _handler(*, confirm, dispatcher=None, ejecutar=None, memoria=None, transcriptor=None, archivos=None):
+    # Solo los flujos por voz inyectan recursos; los de texto van sin voz (recursos=None).
+    recursos = FakeRecursosBot(transcriptor, archivos) if transcriptor is not None else None
     return crear_turno_handler(
         dispatcher=dispatcher or FakeDispatcher(),
         memoria=lambda s: memoria or FakeMemoria(),
@@ -143,8 +162,7 @@ def _handler(*, confirm, dispatcher=None, ejecutar=None, memoria=None, transcrip
         crear_recursos=lambda s: object(),
         ejecutar=ejecutar or FakeEjecutar(_resp()),
         confirm=confirm,
-        transcriptor=transcriptor,
-        archivos=archivos,
+        recursos=recursos,
     )
 
 

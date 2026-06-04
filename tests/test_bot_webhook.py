@@ -5,10 +5,13 @@ tests fijan:
   - El secret-token se valida ANTES de abrir la base del tenant (un secret malo no toca Postgres).
   - Empresa desconocida → 404; inactiva → 403; ambas sin sesión de negocio.
   - Dedup por update_id: un reintento del webhook no se procesa dos veces.
-  - telegram_id no mapeado / usuario inactivo → "no autorizado", sin mutar.
+  - telegram_id no mapeado / usuario inactivo → "no autorizado", sin mutar (vía bundle.notificador).
   - Turno válido → Contexto poblado (tenant, usuario, rol, capacidades, origen=bot) e
     idempotency_key determinista atada a (tenant, update_id).
   - La ruta FastAPI mapea ResultadoWebhook → status HTTP.
+
+CR-3a: el webhook ya no recibe un `notificador` único; pide a `deps.recursos.para(tenant.id)` el
+bundle de la empresa y usa `bundle.notificador` (multi-empresa, un bot-token por empresa).
 """
 from contextlib import asynccontextmanager
 
@@ -69,6 +72,28 @@ class FakeNotificador:
 
     async def responder(self, chat_id: int, texto: str) -> None:
         self.enviados.append((chat_id, texto))
+
+
+class _FakeBundle:
+    """Bundle por empresa: aquí el webhook solo usa `notificador` (voz/archivos son del turno)."""
+
+    def __init__(self, notificador: FakeNotificador):
+        self.notificador = notificador
+        self.transcriptor = None
+        self.archivos = None
+
+
+class FakeRecursosBot:
+    """`RecursosBot` falso: `para(empresa_id)` devuelve el bundle y registra la empresa pedida."""
+
+    def __init__(self, notificador: FakeNotificador | None = None):
+        self.notificador = notificador or FakeNotificador()
+        self._bundle = _FakeBundle(self.notificador)
+        self.empresas: list[int] = []
+
+    async def para(self, empresa_id: int) -> _FakeBundle:
+        self.empresas.append(empresa_id)
+        return self._bundle
 
 
 class FakeUsuariosRepo:
@@ -132,7 +157,7 @@ def make_deps(**kw) -> BotDeps:
         capacidades=FakeCapacidades({"fiados", "bot_telegram"}),
         dedup=FakeDedup(),
         abrir_sesion=FakeSesionTenant(),
-        notificador=FakeNotificador(),
+        recursos=FakeRecursosBot(),
         procesar=SpyProcesar(),
     )
     base.update(kw)
@@ -267,18 +292,18 @@ async def test_update_duplicado_no_se_reprocesa():
 
 async def test_telegram_id_no_mapeado_no_autorizado():
     procesar = SpyProcesar()
-    notif = FakeNotificador()
+    recursos = FakeRecursosBot()
     deps = make_deps(
         usuarios_repo=FakeUsuariosRepo({}),   # ningún usuario mapeado
-        procesar=procesar, notificador=notif,
+        procesar=procesar, recursos=recursos,
     )
 
     res = await manejar_update("puntorojo", SECRET, _payload_texto(), deps)
 
     assert res.accion is Accion.NO_AUTORIZADO
     assert res.status == 200
-    assert procesar.llamadas == []           # no se ejecuta el turno
-    assert len(notif.enviados) == 1          # se le responde algo al chat
+    assert procesar.llamadas == []                 # no se ejecuta el turno
+    assert len(recursos.notificador.enviados) == 1  # se responde por el notificador de la empresa
 
 
 async def test_usuario_inactivo_no_autorizado():
@@ -297,10 +322,10 @@ async def test_usuario_inactivo_no_autorizado():
 async def test_turno_valido_arma_contexto_y_delega():
     sesion = FakeSesionTenant()
     procesar = SpyProcesar()
-    notif = FakeNotificador()
+    recursos = FakeRecursosBot()
     deps = make_deps(
         capacidades=FakeCapacidades({"fiados", "bot_telegram"}),
-        abrir_sesion=sesion, procesar=procesar, notificador=notif,
+        abrir_sesion=sesion, procesar=procesar, recursos=recursos,
     )
 
     res = await manejar_update("puntorojo", SECRET, _payload_texto(update_id=100), deps)
@@ -317,12 +342,14 @@ async def test_turno_valido_arma_contexto_y_delega():
     assert ctx.idempotency_key                      # no vacío
     assert ctx.request_id                            # no vacío
 
-    # delega el turno con el MISMO contexto, la sesión del tenant y el notificador
+    # el bundle se resolvió para la empresa resuelta (un bot-token por empresa)
+    assert recursos.empresas == [1]
+    # delega el turno con el MISMO contexto, la sesión del tenant y el notificador del bundle
     assert len(procesar.llamadas) == 1
     update, ctx_pasado, session_pasada, notif_pasado = procesar.llamadas[0]
     assert ctx_pasado is ctx
     assert session_pasada is sesion.session
-    assert notif_pasado is notif
+    assert notif_pasado is recursos.notificador
     assert update.update_id == 100
 
 

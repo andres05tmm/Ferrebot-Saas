@@ -14,7 +14,18 @@ from sqlalchemy.pool import NullPool
 
 from core.config import get_settings
 from core.db.urls import tenant_url, to_async, to_libpq
+from core.tenancy.cache import control_cache
+from core.tenancy.capacidades_cache import capacidades_cache
 from tools._alembic import upgrade_tenant
+
+
+@pytest.fixture(autouse=True)
+def _reset_caches():
+    """Vacía los singletons de caché antes de cada test: las DB efímeras reusan empresa_id/slug y
+    el TTL haría que el estado de una prueba se filtrara a la siguiente."""
+    capacidades_cache.clear()
+    control_cache.clear()
+    yield
 
 
 def _admin():

@@ -30,5 +30,9 @@ class CapacidadesCache:
     def invalidate(self, empresa_id: int) -> None:
         self._data.pop(empresa_id, None)
 
+    def clear(self) -> None:
+        """Vacía toda la caché (útil para aislar estado global entre pruebas)."""
+        self._data.clear()
+
 
 capacidades_cache = CapacidadesCache()

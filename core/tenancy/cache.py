@@ -30,5 +30,9 @@ class ControlCache:
     def invalidate(self, slug: str) -> None:
         self._data.pop(slug, None)
 
+    def clear(self) -> None:
+        """Vacía toda la caché (útil para aislar estado global entre pruebas)."""
+        self._data.clear()
+
 
 control_cache = ControlCache()

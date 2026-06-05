@@ -18,7 +18,6 @@ from core.auth.features import get_capacidades, verificar_feature
 from core.config import get_settings
 from core.db.session import control_session
 from core.db.urls import tenant_url
-from core.tenancy.capacidades_cache import capacidades_cache
 from tests.conftest import create_database, drop_database
 
 
@@ -31,7 +30,6 @@ async def test_get_capacidades_efectivas(monkeypatch):
     monkeypatch.setattr(session_mod, "_control_sessionmaker", None)
     monkeypatch.setattr(session_mod, "_control_engine", None)
     create_database(name)
-    eid: int | None = None
     try:
         command.upgrade(Config("migrations/control/alembic.ini"), "head")
         async with control_session() as s:
@@ -59,7 +57,6 @@ async def test_get_capacidades_efectivas(monkeypatch):
             )
 
         request = SimpleNamespace(state=SimpleNamespace(tenant=SimpleNamespace(id=eid)))
-        capacidades_cache.invalidate(eid)   # caché singleton con TTL: forzar carga fresca de este DB efímero
         caps = await get_capacidades(request)
         # plan {facturacion_electronica, ventas}; override +documento_soporte, −ventas
         assert caps == frozenset({"facturacion_electronica", "documento_soporte"})
@@ -68,7 +65,6 @@ async def test_get_capacidades_efectivas(monkeypatch):
             verificar_feature("ventas", caps)                     # override la deshabilitó
         assert exc.value.status_code == 404
     finally:
-        capacidades_cache.invalidate(eid)   # no contaminar otros tests (ids serial reusados)
         if session_mod._control_engine is not None:
             await session_mod._control_engine.dispose()
         get_settings.cache_clear()

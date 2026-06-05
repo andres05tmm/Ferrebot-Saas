@@ -1,0 +1,214 @@
+/*
+ * FerreBot Dashboard — tokens semantic vivos
+ * Fase 3 — DESIGN.md v2 (light + dark)
+ * Capa primitive en tailwind.config.js; aquí solo la capa semantic
+ * mapeada a CSS vars que Tailwind consume vía hsl(var(--x) / alpha).
+ */
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Marca white-label: el boot la sobreescribe con branding.color_primario (GET /config). */
+    --color-primary: #C8200E;
+  }
+
+  :root,
+  [data-theme="light"] {
+    /* ── Fondos ────────────────────────────────────────────────────── */
+    --bg-body:        220 14% 96%;  /* #F3F4F6 blanco grisaceo neutro (mockup Gemini) */
+    --bg-body-strong: 220 13% 91%;  /* #E5E7EB hover/elevation */
+    --bg-surface:     0 0% 100%;    /* #FFFFFF cards contrastan con body */
+    --bg-surface-2:   220 14% 94%;  /* #EDEFF2 */
+    --bg-sidebar:     0 0% 100%;
+
+    /* ── Bordes ────────────────────────────────────────────────────── */
+    --border-subtle:  240 6% 90%;   /* #E4E4E7 */
+    --border:         240 5% 84%;   /* #D4D4D8 */
+    --border-strong:  240 5% 26%;
+    --input:          240 5% 84%;
+    --ring:           6 87% 42%;    /* brand-red-500 */
+
+    /* ── Texto ─────────────────────────────────────────────────────── */
+    --text-primary:   240 6% 10%;   /* #18181B */
+    --text-secondary: 240 5% 26%;   /* #3F3F46 */
+    --text-muted:     240 4% 46%;   /* #71717A */
+    --text-disabled:  240 5% 65%;
+
+    /* ── Accent (brand red) ───────────────────────────────────────── */
+    --accent:         6 87% 42%;    /* #C8200E */
+    --accent-hover:   6 90% 33%;    /* #A01808 */
+    --accent-soft:    9 75% 97%;    /* #FEF1EF */
+    --accent-on:      0 0% 100%;
+
+    /* ── Accent strips (top bars en KpiCard) ─────────────────────── */
+    --accent-yellow:  37 79% 57%;   /* #E8A53A warning amber */
+    --accent-blue:   207 52% 36%;   /* #2C5F8A info saturado */
+    --accent-green:  133 35% 45%;   /* #4A9B5C success calibrado */
+    --accent-orange:  23 63% 48%;   /* #C8682E orange totals */
+
+    /* ── Señales ──────────────────────────────────────────────────── */
+    --success:        142 67% 28%;  /* #15803D */
+    --warning:        20 80% 40%;   /* #C2410C */
+    --danger:         0 73% 41%;    /* #B91C1C */
+    --info:           199 89% 40%;  /* #0284C7 */
+
+    /* ── Paleta categórica de charts ───────────────────────────────── */
+    --chart-1:        6 87% 42%;    /* accent */
+    --chart-2:        142 67% 28%;  /* success */
+    --chart-3:        199 89% 40%;  /* info */
+    --chart-4:        20 80% 40%;   /* warning */
+    --chart-5:        262 71% 56%;  /* purple */
+    --chart-6:        240 4% 46%;   /* muted */
+  }
+
+  [data-theme="dark"] {
+    --bg-body:        33 17% 10%;   /* #1F1B16 warm dark */
+    --bg-body-strong: 33 15% 14%;   /* #261F17 variante elevation */
+    --bg-surface:     240 4% 16%;   /* #27272A */
+    --bg-surface-2:   240 5% 26%;   /* #3F3F46 */
+    --bg-sidebar:     33 17% 10%;
+
+    --border-subtle:  240 4% 16%;
+    --border:         240 5% 26%;
+    --border-strong:  240 4% 46%;
+    --input:          240 5% 26%;
+    --ring:           7 73% 58%;    /* brand-red-400 */
+
+    --text-primary:   0 0% 98%;
+    --text-secondary: 240 5% 90%;
+    --text-muted:     240 4% 46%;
+    --text-disabled:  240 5% 26%;
+
+    --accent:         6 87% 42%;
+    --accent-hover:   7 73% 58%;
+    --accent-soft:    6 87% 42%;    /* usar con alpha vía /10 en tailwind */
+    --accent-on:      0 0% 98%;
+
+    /* ── Accent strips — mismos colores en dark (high-contrast) ───── */
+    --accent-yellow:  37 79% 57%;
+    --accent-blue:   207 52% 36%;
+    --accent-green:  133 35% 45%;
+    --accent-orange:  23 63% 48%;
+
+    --success:        142 71% 45%;  /* #16A34A */
+    --warning:        21 90% 48%;   /* #EA580C */
+    --danger:         0 73% 51%;    /* #DC2626 */
+    --info:           199 89% 56%;  /* lighter blue for dark bg */
+
+    --chart-1:        7 73% 58%;    /* accent-hover */
+    --chart-2:        142 71% 45%;
+    --chart-3:        199 89% 56%;
+    --chart-4:        21 90% 48%;
+    --chart-5:        262 83% 68%;
+    --chart-6:        240 5% 65%;
+  }
+
+  /* Respeta sistema cuando no hay override manual */
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme]) {
+      --bg-body:        33 17% 10%;
+      --bg-body-strong: 33 15% 14%;
+      --bg-surface:     240 4% 16%;
+      --bg-surface-2:   240 5% 26%;
+      --bg-sidebar:     33 17% 10%;
+      --border-subtle:  240 4% 16%;
+      --border:         240 5% 26%;
+      --border-strong:  240 4% 46%;
+      --input:          240 5% 26%;
+      --ring:           7 73% 58%;
+      --text-primary:   0 0% 98%;
+      --text-secondary: 240 5% 90%;
+      --text-muted:     240 4% 46%;
+      --text-disabled:  240 5% 26%;
+      --accent:         6 87% 42%;
+      --accent-hover:   7 73% 58%;
+      --accent-soft:    6 87% 42%;
+      --accent-on:      0 0% 98%;
+      --accent-yellow:  37 79% 57%;
+      --accent-blue:   207 52% 36%;
+      --accent-green:  133 35% 45%;
+      --accent-orange:  23 63% 48%;
+      --success:        142 71% 45%;
+      --warning:        21 90% 48%;
+      --danger:         0 73% 51%;
+      --info:           199 89% 56%;
+      --chart-1:        7 73% 58%;
+      --chart-2:        142 71% 45%;
+      --chart-3:        199 89% 56%;
+      --chart-4:        21 90% 48%;
+      --chart-5:        262 83% 68%;
+      --chart-6:        240 5% 65%;
+    }
+  }
+
+  html, body {
+    background-color: hsl(var(--bg-body));
+    color: hsl(var(--text-primary));
+    font-family: 'Inter', ui-sans-serif, system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* ── Scrollbar fino brand-tinted con fade en hover ──────────────────────
+     Patrón inspirado en base-ui Scroll Area (sin dependencia extra).
+     Aplicar con la clase `.scrollbar-aurora` en cualquier contenedor scroll. */
+  .scrollbar-aurora {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--accent) / 0.28) transparent;
+  }
+  .scrollbar-aurora::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  .scrollbar-aurora::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .scrollbar-aurora::-webkit-scrollbar-thumb {
+    background: hsl(var(--accent) / 0.18);
+    border-radius: 999px;
+    transition: background 200ms;
+  }
+  .scrollbar-aurora::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--accent) / 0.55);
+  }
+  .scrollbar-aurora::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+  [data-theme="dark"] .scrollbar-aurora {
+    scrollbar-color: hsl(var(--accent) / 0.4) transparent;
+  }
+  [data-theme="dark"] .scrollbar-aurora::-webkit-scrollbar-thumb {
+    background: hsl(var(--accent) / 0.32);
+  }
+  [data-theme="dark"] .scrollbar-aurora::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--accent) / 0.65);
+  }
+  /* Contenido por encima del background */
+  #root { position: relative; z-index: 1; }
+
+  /* Cifras y métricas alinean dígitos */
+  .tabular,
+  [data-tabular] {
+    font-feature-settings: "tnum" 1, "lnum" 1;
+    font-variant-numeric: tabular-nums lining-nums;
+  }
+
+  /* Focus visible accesible para todos los interactivos */
+  :focus-visible {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: 2px;
+  }
+
+  /* reduce-motion: respetar */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}

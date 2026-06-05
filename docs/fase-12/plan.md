@@ -19,10 +19,11 @@
 |---|---|---|---|---|
 | **1** | **Inventario CRUD** — crear/editar/eliminar producto (fracciones, mayorista, escalonado, stock inicial) | repo+service+router en `modules/inventario` | completar `TabInventario` (solo-lectura → CRUD admin) | ✅ hecho |
 | **2** | **Reportes pesados** — Resultados (P&L, costo exacto opción C), Top productos | costo al vender + `modules/reportes` (consultas agregadas) | tabs Resultados / Top productos | ✅ hecho |
-| **3** | **Facturación** — historial + emitir | `modules/facturacion` (listar/detalle; emit ya existía) | tab Facturación (gateado) | **🚧 en progreso** |
-| 4 | Compras / Compras fiscal / Proveedores | `modules/compras` (+ fiscal), `modules/proveedores` | tabs Compras, Compras fiscal, Proveedores | ⏳ pendiente |
+| **3** | **Facturación** — historial + emitir | `modules/facturacion` (listar/detalle; emit ya existía) | tab Facturación (gateado) | ✅ hecho |
+| **4a** | **Compras** — registrar compras a proveedor (suman stock, fijan costo) | `modules/compras` (núcleo) | tab Compras | **🚧 en progreso** |
+| 4b | Proveedores + cuentas por pagar (Cloudinary) | `modules/proveedores` / cxp | tab Proveedores | ⏳ pendiente |
 | 5 | Libro IVA | `modules/facturacion` (libro/consolidado) | tab Libro IVA | ⏳ pendiente |
-| 6 | Cola fiscal — FE recibidas, notas, DS-NO, RADIAN, honorarios | `modules/facturacion` (DIAN inbound + documentos soporte) | tabs de la cola fiscal | ⏳ pendiente |
+| 6 | Cola fiscal — FE recibidas, notas, DS-NO, **compras fiscal/RADIAN**, honorarios | `modules/facturacion` (DIAN inbound + documentos soporte) | tabs de la cola fiscal | ⏳ pendiente |
 
 ---
 
@@ -128,5 +129,37 @@ emite por MATIAS → estado por SSE. Este slice añade el **historial** y el **t
   feature → 404; shapes del router.
 - **Vitest:** lista + badges; emitir abre confirmación y solo al confirmar postea con shape +
   Idempotency-Key; cancelar no postea; detalle trae el motivo; la ruta no aparece sin la feature.
+
+---
+
+## Slice 4a — Compras (en progreso)
+
+**Compras es NÚCLEO** (`'compras'` no está en `OPCIONALES` de `core/tenancy/catalogo.py`) → sin
+`require_feature`. Lo fiscal (`compras_fiscal`/RADIAN) sí va gateado y se movió al **Slice 6**. El CRUD de
+proveedores + cuentas por pagar (Cloudinary) es el **Slice 4b**. Las tablas ya existían (tenant 0001).
+
+### Backend (`modules/compras`, RBAC = admin)
+
+- Modelos `Proveedor`, `Compra`, `CompraDetalle` (sin `empresa_id`).
+- `POST /compras { proveedor:{id?}|{nombre,nit?}, fecha?, items:[{producto_id,cantidad,costo}] }`:
+  get-or-create del proveedor; inserta compra + detalle; por item genera **ENTRADA** (`costo_unitario=costo`,
+  `referencia "compra:{id}"`) que **suma** stock (regla #7) y fija `productos.precio_compra` al costo de esa
+  compra (el costo grabado en ventas pasadas NO se toca). `total = Σ(cantidad×costo)` en el servidor. `201`.
+  Emite `compra_registrada` + `inventario_actualizado`.
+- `GET /compras (?desde&hasta, default mes, hora Colombia)` → lista con proveedor + total. PUT/DELETE
+  diferidos (editar una compra que ya movió stock requiere reversa → otro slice).
+
+### Frontend (`TabCompras`, reemplaza el stub; admin-only como Resultados)
+
+Registrar compra (proveedor por nombre/nit + items: buscar producto vía `/productos?q`, cantidad, costo) y
+lista del rango. Vendedor: tab bloqueado ("solo administradores"). Live: re-fetch ante
+`compra_registrada` / `inventario_actualizado`.
+
+### Tests
+
+- **pytest** (integración Postgres): compra crea compra+detalle, ENTRADA por item (stock sube),
+  `productos.precio_compra` queda en el costo, total correcto, get-or-create dedup, admin-only (403),
+  listado por rango, emite el evento.
+- **Vitest:** admin registra (POST /compras con shape correcto) y ve la lista; vendedor sin controles.
 </content>
 </invoke>

@@ -48,9 +48,19 @@ contra `main`, Andrés pasa el diff).
   de esquema (`tests/test_schema_paridad.py`, 34 tablas en head). Suite **334 verdes**. Decisiones diferidas a
   momento-ETL (Fase 15): zona horaria G4, gasto→caja, proveedores desde texto, subtotal/impuestos históricos.
   Ver `docs/fase-8-esquema/plan.md`.
-- **Follow-up sembrado:** `provision_tenant` tiene cero cobertura → agregar smoke de provisioning en Fase 13.
-- **Próximo:** Fase 9 (feature flags efectivas + `GET /api/v1/config`). Prereq del dashboard (Fase 11); sin
-  dependencias externas. Fase 10 (asíncrono DIAN) paraleliza pero necesita el sandbox MATIAS — agendarlo.
+- **Fase 9 (feature flags efectivas + `GET /config`):** **CERRADA**. E1 catálogo canónico de capacidades +
+  validación de dependencias (`core/tenancy/catalogo.py`, modo OR); E2 caché TTL de efectivas
+  (`capacidades_cache.py`, espeja `ControlCache`) + endurecimiento de tests (fixture autouse que limpia los
+  singletons); E3 `GET /api/v1/config` (`modules/config/router.py`: features = núcleo ∪ efectivas + branding +
+  usuario; `leer_branding` en `control_repo`, default `#C8200E`); E4 guardarraíl de montaje de rutas. Suite
+  **~352 verdes**. Ver `docs/fase-9-features/plan.md`.
+- **Diferido a Fase 13:** `PUT /admin/empresas/{id}/features` + auth `super_admin` (cross-tenant) +
+  invalidación de caché de capacidades (hoy solo TTL). `validar_dependencias` ya existe pero aún sin consumir
+  (lo usará ese endpoint). + smoke de provisioning (cero cobertura).
+- **Drift de docs menor:** `api-contract.md` pone el chequeo de dependencias en `/health`, pero está en
+  `/ready` (`/health` es liveness). Reconciliar en docs cuando se toque.
+- **Próximo:** Fase 11 (dashboard React) — consume `GET /config`. O Fase 10 (asíncrono DIAN), que paraleliza
+  pero necesita el sandbox MATIAS — agendarlo.
 
 ### Cadena de Fase 6 (facturación síncrona, completa y probada de punta a punta)
 

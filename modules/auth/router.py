@@ -100,7 +100,12 @@ async def login(
     secretos: SecretosBot = Depends(get_secretos),
     usuarios: UsuariosBotRepo = Depends(get_usuarios),
 ) -> LoginOut:
-    """Verifica el widget con el bot-token de la empresa, mapea telegram_id→usuario activo y emite el JWT."""
+    """Verifica el widget con el bot-token de la empresa, mapea telegram_id→usuario activo y emite el JWT.
+
+    Códigos: 401 si la firma de Telegram no se puede validar (inválida/caduca/sin bot-token →
+    identidad NO probada); 403 si la firma es válida pero el telegram_id no mapea a un usuario activo
+    de la empresa (identidad probada por Telegram, pero no autorizado aquí).
+    """
     bot_token = await secretos.bot_token(tenant.id)
     if not bot_token or not verificar_widget(payload.datos_widget(), bot_token):
         log.warning("login_widget_invalido", tenant=tenant.slug, telegram_id=payload.id)
@@ -108,7 +113,7 @@ async def login(
     usuario = await usuarios.por_telegram_id(payload.id)
     if usuario is None or not usuario.activo:
         log.info("login_usuario_no_autorizado", tenant=tenant.slug, telegram_id=payload.id)
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Usuario no autorizado en esta empresa")
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Usuario no autorizado en esta empresa")
     token = create_access_token(user_id=usuario.id, tenant=tenant.slug, rol=usuario.rol)
     log.info("login_exitoso", tenant=tenant.slug, usuario_id=usuario.id, rol=usuario.rol)
     return LoginOut(

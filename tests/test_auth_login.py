@@ -124,19 +124,20 @@ async def test_login_ok_emite_jwt_con_claims():
     assert claims["rol"] == "admin"
 
 
-async def test_login_sin_usuario_401():
+async def test_login_sin_usuario_403():
+    # Firma válida pero el telegram_id no mapea a un usuario de la empresa → no autorizado.
     app = _app(token=_BOT_TOKEN, usuario=None)
     async with _cliente(app) as c:
         r = await c.post("/api/v1/auth/login", json=_payload())
-    assert r.status_code == 401
+    assert r.status_code == 403
 
 
-async def test_login_usuario_inactivo_401():
+async def test_login_usuario_inactivo_403():
     inactivo = UsuarioBot(id=42, rol="vendedor", activo=False)
     app = _app(token=_BOT_TOKEN, usuario=inactivo)
     async with _cliente(app) as c:
         r = await c.post("/api/v1/auth/login", json=_payload())
-    assert r.status_code == 401
+    assert r.status_code == 403
 
 
 async def test_login_hash_invalido_401():

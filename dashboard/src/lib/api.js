@@ -34,14 +34,22 @@ export const redirector = {
   },
 }
 
-export async function api(path, options = {}) {
-  const headers = new Headers(options.headers || {})
+// Única fuente de verdad de auth + tenant: Bearer (si hay sesión) y X-Tenant-Slug (solo en dev).
+// La usan api() y el stream SSE (useRealtime), que necesita los MISMOS headers (fetch-based).
+export function buildAuthHeaders() {
+  const headers = {}
   const token = getToken()
-  if (token) headers.set('Authorization', `Bearer ${token}`)
+  if (token) headers.Authorization = `Bearer ${token}`
   if (esDev()) {
     const slug = import.meta.env.VITE_TENANT_SLUG
-    if (slug) headers.set('X-Tenant-Slug', slug)
+    if (slug) headers['X-Tenant-Slug'] = slug
   }
+  return headers
+}
+
+export async function api(path, options = {}) {
+  const headers = new Headers(options.headers || {})
+  for (const [clave, valor] of Object.entries(buildAuthHeaders())) headers.set(clave, valor)
 
   const res = await fetch(`${BASE}${path}`, { ...options, headers })
 

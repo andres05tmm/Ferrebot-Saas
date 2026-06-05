@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { api, redirector } from './api.js'
+import { api, buildAuthHeaders, redirector } from './api.js'
 
 beforeEach(() => {
   localStorage.clear()
@@ -81,5 +81,24 @@ describe('api wrapper', () => {
 
     expect(localStorage.getItem('ferrebot_token')).toBeNull()
     expect(toLogin).not.toHaveBeenCalled()
+  })
+})
+
+describe('buildAuthHeaders', () => {
+  it('incluye Bearer y X-Tenant-Slug en dev', () => {
+    vi.stubEnv('DEV', true)
+    vi.stubEnv('VITE_TENANT_SLUG', 'puntorojo')
+    localStorage.setItem('ferrebot_token', 'jwt-1')
+
+    const h = buildAuthHeaders()
+
+    expect(h.Authorization).toBe('Bearer jwt-1')
+    expect(h['X-Tenant-Slug']).toBe('puntorojo')
+  })
+
+  it('sin token no pone Authorization', () => {
+    vi.stubEnv('DEV', true)
+    const h = buildAuthHeaders()
+    expect(h.Authorization).toBeUndefined()
   })
 })

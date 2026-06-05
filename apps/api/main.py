@@ -1,14 +1,16 @@
-"""Servicio API (FastAPI). Monta el middleware de tenant y los routers de dominio."""
+"""Servicio API (FastAPI). Monta el middleware de tenant, los routers de dominio y el SPA."""
 from collections.abc import Callable
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from dataclasses import dataclass
+from pathlib import Path
 
 from arq import create_pool
 from arq.connections import RedisSettings
 from fastapi import Depends, FastAPI
 from sqlalchemy import text
 from starlette.requests import Request
-from starlette.responses import JSONResponse
+from starlette.responses import FileResponse, JSONResponse
+from starlette.staticfiles import StaticFiles
 
 from core.config import get_settings
 from core.db.engine_cache import engine_cache
@@ -27,6 +29,9 @@ from modules.reportes.router import router as reportes_router
 from modules.ventas.router import router as ventas_router
 
 log = get_logger("api")
+
+# dist del dashboard (build de Vite): apps/api/main.py → repo root → dashboard/dist.
+DASHBOARD_DIST = Path(__file__).resolve().parents[2] / "dashboard" / "dist"
 
 
 @asynccontextmanager
@@ -80,7 +85,30 @@ async def evaluar_listo(request: Request) -> ResultadoListo:
     return await chequear_listo(request.app.state.arq_pool, _control())
 
 
-def create_app() -> FastAPI:
+def mount_spa(app: FastAPI, dist_dir: Path) -> None:
+    """Sirve el SPA del dashboard (build de Vite) con fallback a index.html (history API).
+
+    Se registra DESPUÉS de los routers, así nunca intercepta /api/. Resiliente: si `dist_dir` no
+    existe (sin `npm run build`), no monta estáticos y el catch-all responde 404 — la API queda intacta.
+    """
+    index = dist_dir / "index.html"
+    assets = dist_dir / "assets"
+    if assets.is_dir():
+        app.mount("/assets", StaticFiles(directory=assets), name="assets")
+
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def spa_fallback(full_path: str):
+        # Defensa en profundidad: /api/ ya lo capturan los routers; aquí, 404 (nunca el index).
+        if full_path.startswith("api/") or not index.is_file():
+            return JSONResponse({"detail": "Not Found"}, status_code=404)
+        # Sirve un archivo real del build si lo piden (favicon, manifest, logo…), si no, el index (SPA).
+        candidato = dist_dir / full_path if full_path else index
+        if candidato.is_file() and candidato.resolve().is_relative_to(dist_dir.resolve()):
+            return FileResponse(candidato)
+        return FileResponse(index)
+
+
+def create_app(spa_dist: Path | None = None) -> FastAPI:
     app = FastAPI(title="FerreBot SaaS API", version="0.1.0", lifespan=lifespan)
     app.add_middleware(TenantMiddleware)
     app.include_router(auth_router, prefix="/api/v1")
@@ -106,6 +134,8 @@ def create_app() -> FastAPI:
             )
         return {"status": "ready", "checks": resultado.checks}
 
+    # SPA al final: el catch-all no debe sombrear ninguna ruta /api ni de infra.
+    mount_spa(app, spa_dist or DASHBOARD_DIST)
     return app
 
 

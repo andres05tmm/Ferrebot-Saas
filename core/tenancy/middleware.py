@@ -2,6 +2,10 @@
 
 Si no resuelve a una empresa ACTIVA -> 404/403 y no se abre ninguna sesión de negocio.
 Liga request_id y tenant_id al contexto de logging (regla #6).
+
+Solo las rutas del API (`/api/`) son por-empresa: el SPA del dashboard (HTML/assets/rutas de
+cliente) se sirve igual para todos y resuelve su empresa después, vía `GET /api/v1/config`. Por eso
+todo path que NO empiece por `/api/` (más los públicos de infra) pasa sin resolver tenant.
 """
 import uuid
 
@@ -32,7 +36,8 @@ class TenantMiddleware:
         rid_token = request_id_var.set(request.headers.get("x-request-id") or uuid.uuid4().hex)
         tid_token = tenant_id_var.set(None)
         try:
-            if request.url.path in _PUBLIC_PATHS:
+            # Solo /api/ es por-empresa; el resto (SPA, infra) no resuelve tenant.
+            if request.url.path in _PUBLIC_PATHS or not request.url.path.startswith("/api/"):
                 await self.app(scope, receive, send)
                 return
             tenant = await self._resolve(request)

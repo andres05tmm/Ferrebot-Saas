@@ -11,7 +11,17 @@ import AppShell from './components/AppShell.jsx'
 import ProtectedRoute from './components/ProtectedRoute.jsx'
 import Login from './pages/Login.jsx'
 import TabStub from './tabs/TabStub.jsx'
+import TabHoy from './tabs/TabHoy.jsx'
+import TabVentasRapidas from './tabs/TabVentasRapidas.jsx'
+import TabInventario from './tabs/TabInventario.jsx'
 import { ROUTES } from './routes.jsx'
+
+// Tabs ya portados (E6 batch 1); el resto sigue como stub "Próximamente".
+const TABS = {
+  '/hoy': TabHoy,
+  '/ventas': TabVentasRapidas,
+  '/inventario': TabInventario,
+}
 import { bootConfig } from './lib/config.js'
 import { FeaturesProvider } from './lib/features.jsx'
 
@@ -89,9 +99,10 @@ export default function App() {
             }
           >
             <Route path="/" element={<Navigate to="/hoy" replace />} />
-            {ROUTES.map(r => (
-              <Route key={r.path} path={r.path} element={<TabStub />} />
-            ))}
+            {ROUTES.map(r => {
+              const Comp = TABS[r.path] || TabStub
+              return <Route key={r.path} path={r.path} element={<Comp />} />
+            })}
             <Route path="*" element={<Navigate to="/hoy" replace />} />
           </Route>
         </Routes>

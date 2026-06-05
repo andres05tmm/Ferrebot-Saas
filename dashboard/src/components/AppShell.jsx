@@ -5,9 +5,8 @@
  */
 import { useCallback, useEffect, useState } from 'react'
 import { Outlet } from 'react-router-dom'
-import { toast } from 'sonner'
 import { useIsMobile } from './shared.jsx'
-import { useRealtime } from '../hooks/useRealtime.js'
+import { RealtimeProvider } from './RealtimeProvider.jsx'
 import Sidebar from './Sidebar.jsx'
 import MobileNav from './MobileNav.jsx'
 import CommandPalette from './CommandPalette.jsx'
@@ -51,18 +50,12 @@ export default function AppShell() {
     setLastRefresh(new Date().toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', second: '2-digit' }))
   }, [])
 
-  // ── Tiempo real (SSE) ───────────────────────────────────────────────────────
-  // Bump del refreshKey en cada evento (seam que los tabs consumen en E6); toast al reconectar.
-  const onRealtime = useCallback((type) => {
-    if (type === 'reconnected') toast.success('Conexión restablecida')
-    doRefresh()
-  }, [doRefresh])
-  useRealtime(onRealtime)
-
   // ── Command Palette ─────────────────────────────────────────────────────────
   const [cmdOpen, setCmdOpen] = useState(false)
 
+  // El stream SSE es ÚNICO y vive en RealtimeProvider; cada tab se suscribe con useRealtimeEvent.
   return (
+    <RealtimeProvider>
     <div className="min-h-dvh text-foreground flex">
       {!isMobile && (
         <Sidebar
@@ -99,5 +92,6 @@ export default function AppShell() {
 
       <CommandPalette open={cmdOpen} setOpen={setCmdOpen} onRefresh={doRefresh} />
     </div>
+    </RealtimeProvider>
   )
 }

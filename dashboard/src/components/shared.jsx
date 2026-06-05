@@ -1,7 +1,32 @@
 // ── shared.jsx — helpers transversales del dashboard ─────────────────────────
-// Andamiaje E3: formatters, detector móvil y componentes de estado tokenizados.
-// El `useFetch` original (acoplado a useAuth) se reintroduce en E6 sobre lib/api.js.
-import { useState, useEffect } from 'react'
+// Formatters, detector móvil, componentes de estado tokenizados y el hook de datos
+// `useFetch` (reintroducido en E6 sobre lib/api.js: Bearer + X-Tenant-Slug centralizados).
+import { useCallback, useEffect, useState } from 'react'
+import { apiJson } from '@/lib/api.js'
+
+// ── useFetch — GET por api.js con estado loading/error y refetch() ───────────
+// `deps` controla cuándo re-pedir (p. ej. [refreshKey] del shell). Los tabs llaman a refetch()
+// ante eventos SSE (useRealtimeEvent). El 401 lo maneja api.js (redirige a /login).
+export function useFetch(path, deps = []) {
+  const [data, setData] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+  const [tick, setTick] = useState(0)
+  const refetch = useCallback(() => setTick(t => t + 1), [])
+
+  useEffect(() => {
+    let cancelado = false
+    setLoading(true)
+    setError(null)
+    apiJson(path)
+      .then(d => { if (!cancelado) { setData(d); setLoading(false) } })
+      .catch(e => { if (!cancelado) { setError(e.message); setLoading(false) } })
+    return () => { cancelado = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [path, tick, ...deps])
+
+  return { data, loading, error, refetch }
+}
 
 // ── FORMATTERS ───────────────────────────────────────────────────────────────
 export function cop(val) {

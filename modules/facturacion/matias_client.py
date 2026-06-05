@@ -53,6 +53,14 @@ class MatiasCredenciales:
 
 
 @dataclass(frozen=True, slots=True)
+class EventoResultado:
+    """Resultado de un evento RADIAN (acuse/aceptación/reclamo): `ok` + `error_msg` legible en fallo."""
+
+    ok: bool
+    error_msg: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class EmisionResultado:
     """Resultado de emitir un documento: `cufe` en éxito, `error_msg` legible en fallo.
 
@@ -105,6 +113,23 @@ def _parsear_emision(data: dict) -> EmisionResultado:
     else:
         error_msg = msg or str(data)
     return EmisionResultado(False, error_msg=error_msg, categoria="rechazada")
+
+
+def _parsear_evento(data: dict) -> EventoResultado:
+    """Parsea la respuesta de un evento RADIAN (`/events/...`, §14). PURO.
+
+    Éxito = `success` truthy. En fallo arma un `error_msg` legible con `message` + `errors` (dict),
+    espejo de `_parsear_emision`. Sin red: se prueba aislado y con `httpx.MockTransport`.
+    """
+    if bool(data.get("success")):
+        return EventoResultado(True)
+    msg = data.get("message") or ""
+    errors = data.get("errors")
+    if isinstance(errors, dict) and errors:
+        error_msg = f"{msg} | " + " | ".join(f"{k}: {v}" for k, v in errors.items())
+    else:
+        error_msg = msg or str(data)
+    return EventoResultado(False, error_msg=error_msg)
 
 
 def _parsear_ciudades(data: dict) -> dict[int, str]:
@@ -236,6 +261,34 @@ class MatiasClient:
             timeout=30,
         )
         return _parsear_emision(resp.json())
+
+    async def importar_track_id(self, cufe: str) -> EventoResultado:
+        """POST `/events/import-track-id` {trackId: cufe} (§14): registra en MATIAS la FE recibida.
+
+        Prerrequisito para enviar eventos RADIAN sobre esa factura. Bearer token; NO persiste.
+        """
+        tok = await self._token()
+        resp = await self._get_client().post(
+            "/events/import-track-id", json={"trackId": cufe},
+            headers={"Authorization": f"Bearer {tok}", "Accept": "application/json",
+                     "Content-Type": "application/json"},
+            timeout=30,
+        )
+        return _parsear_evento(resp.json())
+
+    async def enviar_evento(self, cufe: str, code: str, notes: str = "") -> EventoResultado:
+        """POST `/events/send/{cufe}` {code, notes} (§14): envía un evento RADIAN REAL a la DIAN.
+
+        `code`: 030 acuse · 031 reclamo · 032 recibo · 033 aceptación. Bearer token; NO persiste.
+        """
+        tok = await self._token()
+        resp = await self._get_client().post(
+            f"/events/send/{cufe}", json={"code": code, "notes": notes},
+            headers={"Authorization": f"Bearer {tok}", "Accept": "application/json",
+                     "Content-Type": "application/json"},
+            timeout=30,
+        )
+        return _parsear_evento(resp.json())
 
     async def city_id(self, dane_code: str | int | None) -> str | None:
         """Resuelve código DANE → id MATIAS de ciudad (caché perezosa por instancia, §5)."""

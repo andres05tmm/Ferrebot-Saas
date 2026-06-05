@@ -24,7 +24,7 @@
 | **4b** | **Proveedores / cuentas por pagar** (deuda, abonos, saldo) + fotos Cloudinary | `modules/proveedores` (núcleo) | tab Proveedores | **🚧 en progreso** |
 | **5** | **Libro IVA** — IVA generado (ventas) vs descontable (compras fiscal) + saldo del periodo | `modules/reportes` (`GET /reportes/libro-iva`, gateado por `libro_iva`) | tab Libro IVA | **🚧 en progreso** |
 | **6a** | **Compras fiscal (DATOS)** — registrar compras fiscales con desglose de IVA (alimenta el Libro IVA) | `modules/compras_fiscal` (núcleo de datos, gateado por `compras_fiscal`) | tab Compras Fiscal | ✅ hecho |
-| 6b | **RADIAN-FE recibidas** (eventos 030-033, acuse) + notas, DS-NO, honorarios | `modules/facturacion` / `compras_fiscal` (DIAN inbound) | tabs de la cola fiscal | ⏸️ DIFERIDO (contrato MATIAS sin confirmar) |
+| **6b** | **RADIAN-FE recibidas** — eventos DIAN 030-033 sobre la factura del proveedor (CUFE manual) | `compras_fiscal` (RADIAN) + `facturacion` (MATIAS/ambiente) | TabComprasFiscal · FE recibidas | **🚧 en progreso** |
 
 ---
 
@@ -286,10 +286,51 @@ re-fetch ante `reconnected` / `compra_registrada`.
 - **Vitest:** registrar postea el shape correcto; pinta la lista; "marcar fiscal" postea a `to-fiscal`;
   vendedor sin controles; la ruta no aparece sin la feature.
 
-### Slice 6b — RADIAN-FE recibidas + cola fiscal restante (DIFERIDO)
+### Slice 6b — RADIAN-FE recibidas (en progreso)
 
-FE recibidas (eventos RADIAN 030-033, acuse de recibo), notas electrónicas, DS-NO y honorarios. **Bloqueado**
-hasta confirmar el contrato de MATIAS para FE recibidas; llenará las columnas RADIAN de `compras_fiscal` y
-el resto de la cola fiscal inbound.
+Eventos DIAN RADIAN sobre la **factura recibida del proveedor**, con **CUFE manual** (se pega a mano; sin
+Gmail). ⚠️ Son **acciones DIAN REALES**: MATIAS se mockea por completo en los tests (cero red, cero DIAN) y
+la UI exige confirmación fuerte. La primera vez real la hace el operador a conciencia con
+`MATIAS_AMBIENTE=pruebas`. Contrato MATIAS (`docs/facturacion-matias-extract.md` §14): `POST
+/events/import-track-id {trackId:cufe}` + `POST /events/send/{cufe} {code, notes}`; codes 030 acuse, 031
+reclamo, 032 recibo, 033 aceptación (aceptar = 032+033; reclamar = 031). Se reflejan en `compras_fiscal`
+(`cufe_proveedor`, `evento_030_at`…`033_at`, `evento_estado`, `evento_error`), columnas que el 6a dejó NULL
+y el 6b ya mapea.
+
+#### Parte A — Ambiente DIAN único (emisión + RADIAN)
+
+`config_empresa.matias_ambiente` ('produccion'|'pruebas'); `cargar_config_matias` lo lee → `ConfigFiscal.
+ambiente` (**default seguro 'pruebas'** si falta) y `cargar_ambiente` lo lee ligero para la UI. Un solo
+ambiente lo comparten emisión (Fase 6) y RADIAN. Onboarding: `matias_ambiente` en el bloque `config`
+(`empresa.example.json` y `provision_tenant._CLAVES_CONFIG`).
+
+#### Parte B — RADIAN backend (`modules/compras_fiscal`, MATIAS por-empresa mockeable)
+
+`MatiasClient` gana `importar_track_id(cufe)` y `enviar_evento(cufe, code, notes)` (perezosos, sin red al
+construir). `RadianService` (cliente MATIAS inyectado → fakeable) orquesta y refleja el desenlace en
+`compras_fiscal`. Endpoints (`require_feature("compras_fiscal")` + admin):
+- `POST /compras-fiscal/{id}/importar { cufe }` → import-track-id + evento 030; guarda `cufe_proveedor`,
+  `evento_030_at`, `evento_estado='pendiente'`. Idempotente: si ya tiene 030, no re-acusa. 404 si no existe.
+- `POST /compras-fiscal/{id}/aceptar` → 032 luego 033; `evento_032_at`/`033_at`, estado 'aceptada'.
+- `POST /compras-fiscal/{id}/reclamar { motivo? }` → 031; `evento_031_at`, estado 'reclamada'.
+- `GET /compras-fiscal/ambiente` → `{ambiente}` para la confirmación de la UI.
+Un fallo de MATIAS **persiste `evento_error`** y responde **502** con el cuerpo (no rompe; no se lanza para
+no perder el error en el rollback). Aceptar/reclamar sin CUFE importado → 409.
+
+#### Parte C — Frontend (`TabComprasFiscal`, sub-sección "FE recibidas")
+
+Sobre cada compra fiscal: campo para pegar el CUFE + **Importar**; luego **Aceptar** / **Reclamar**. Cada
+acción abre una **confirmación fuerte** que declara "evento DIAN REAL (…)" y muestra el **ambiente**
+(`pruebas`|`produccion`); solo al confirmar se dispara el POST. Muestra `evento_estado` (badge) + el avance
+de eventos y el último `evento_error`.
+
+#### Tests (MATIAS 100% mockeado)
+
+- **pytest:** `_normalizar_ambiente` (default seguro) + `cargar_config_matias`/`cargar_ambiente` leen el
+  ambiente; `MatiasClient` por `httpx.MockTransport` (importar/enviar, cero red); router+servicio con MATIAS
+  FAKE: importar→030/pendiente, aceptar→032+033/aceptada, reclamar→031/reclamada, idempotencia del 030,
+  error MATIAS→`evento_error`+502, 404, gate 404, admin 403.
+- **Vitest:** Importar/Aceptar abren confirmación (DIAN REAL + ambiente) y SOLO al confirmar postean el
+  endpoint correcto; cancelar no postea; pinta el estado de eventos.
 </content>
 </invoke>

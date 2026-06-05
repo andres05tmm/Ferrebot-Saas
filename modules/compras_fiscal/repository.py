@@ -70,6 +70,29 @@ class SqlComprasFiscalRepository:
         ).scalar_one_or_none()
         return CompraFiscalLeer.model_validate(orm) if orm is not None else None
 
+    async def obtener(self, fiscal_id: int) -> CompraFiscalLeer | None:
+        """Una compra fiscal por id (con su estado RADIAN), o None si no existe."""
+        orm = (
+            await self._s.execute(select(CompraFiscal).where(CompraFiscal.id == fiscal_id))
+        ).scalar_one_or_none()
+        return CompraFiscalLeer.model_validate(orm) if orm is not None else None
+
+    async def set_radian(self, fiscal_id: int, **campos: object) -> CompraFiscalLeer:
+        """Actualiza SOLO las columnas RADIAN dadas de una compra fiscal y devuelve la fila actualizada.
+
+        Las claves válidas son `cufe_proveedor`, `evento_030_at`…`evento_033_at`, `evento_estado`,
+        `evento_error`. Persiste los eventos DIAN ya enviados (incluido `evento_error` en un fallo).
+        """
+        orm = (
+            await self._s.execute(
+                select(CompraFiscal).where(CompraFiscal.id == fiscal_id).with_for_update()
+            )
+        ).scalar_one()
+        for clave, valor in campos.items():
+            setattr(orm, clave, valor)
+        await self._s.flush()
+        return CompraFiscalLeer.model_validate(orm)
+
     async def total_de_compra(self, compra_id: int) -> Decimal | None:
         """Total de la compra normal; None si la compra no existe (la fila sin total cuenta como 0)."""
         fila = (

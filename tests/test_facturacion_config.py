@@ -11,11 +11,25 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.pool import NullPool
 
-from modules.facturacion.config import cargar_config_matias
+from modules.facturacion.config import (
+    _normalizar_ambiente,
+    cargar_ambiente,
+    cargar_config_matias,
+)
 from core.config import get_settings
 from core.crypto import encrypt_split
 from core.db.urls import tenant_url, to_async
 from tests.conftest import create_database, drop_database
+
+
+def test_normalizar_ambiente_default_seguro():
+    """Solo 'produccion' explícito activa producción; todo lo demás cae al default seguro 'pruebas'."""
+    assert _normalizar_ambiente("produccion") == "produccion"
+    assert _normalizar_ambiente("PRODUCCION") == "produccion"
+    assert _normalizar_ambiente("pruebas") == "pruebas"
+    assert _normalizar_ambiente(None) == "pruebas"        # ausente → default seguro
+    assert _normalizar_ambiente("") == "pruebas"
+    assert _normalizar_ambiente("otra-cosa") == "pruebas"  # desconocido → default seguro
 
 
 async def test_cargar_config_matias(monkeypatch):
@@ -56,19 +70,23 @@ async def test_cargar_config_matias(monkeypatch):
                     "(:e,'matias_resolution','18760000001'),"
                     "(:e,'matias_prefix','FPR'),"
                     "(:e,'matias_notes','Punto Rojo'),"
-                    "(:e,'matias_city_id','149')"
+                    "(:e,'matias_city_id','149'),"
+                    "(:e,'matias_ambiente','produccion')"
                 ),
                 {"e": eid},
             )
             await s.commit()
 
             cred, config = await cargar_config_matias(s, master, eid)
+            ambiente = await cargar_ambiente(s, eid)
         assert cred.email == "bot@empresa.co" and cred.password == "secreto"
         assert cred.base_url == "https://matias.test/api"
         assert config.resolution_number == "18760000001"
         assert config.prefix == "FPR"
         assert config.notes == "Punto Rojo"
         assert config.city_id_default == "149"
+        assert config.ambiente == "produccion"   # emisión y RADIAN comparten este ambiente
+        assert ambiente == "produccion"           # lectura ligera para la UI
     finally:
         await engine.dispose()
         get_settings.cache_clear()

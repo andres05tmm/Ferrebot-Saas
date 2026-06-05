@@ -1,10 +1,9 @@
 """Modelo de compras fiscales (schema.md / tenant 0001).
 
 Una compra fiscal registra el desglose de IVA (base + iva = total) de una compra a proveedor; alimenta
-el Libro IVA (Slice 5). La tabla `compras_fiscal` ya existe e incluye columnas de RADIAN-FE
-(`cufe_proveedor`, `evento_030_at`…`evento_033_at`, `evento_estado`, `evento_error`) que en este slice
-(6a, solo DATOS) se DEJAN sin mapear → quedan NULL. RADIAN es el Slice 6b (diferido). Tabla de negocio
-sin `empresa_id`: la base ES la frontera del tenant.
+el Libro IVA (Slice 5). La tabla incluye columnas de RADIAN-FE (Slice 6b): `cufe_proveedor`, las fechas
+de los eventos 030-033, `evento_estado` (pendiente/aceptada/reclamada) y `evento_error`. Tabla de
+negocio sin `empresa_id`: la base ES la frontera del tenant.
 """
 from datetime import datetime
 from decimal import Decimal
@@ -27,8 +26,14 @@ class CompraFiscal(TenantBase):
     iva: Mapped[Decimal | None] = mapped_column(MONEY)
     total: Mapped[Decimal | None] = mapped_column(MONEY)
     soporte_url: Mapped[str | None] = mapped_column(Text)
+    # RADIAN-FE (Slice 6b): eventos DIAN sobre la factura recibida del proveedor.
+    cufe_proveedor: Mapped[str | None] = mapped_column(Text)
+    evento_030_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    evento_031_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    evento_032_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    evento_033_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    evento_estado: Mapped[str | None] = mapped_column(Text)
+    evento_error: Mapped[str | None] = mapped_column(Text)
     creado_en: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
-    # Columnas RADIAN (cufe_proveedor, evento_030_at…033_at, evento_estado, evento_error) NO se modelan
-    # aquí a propósito: el Slice 6a es solo datos. Las usará el Slice 6b (RADIAN-FE recibidas, diferido).

@@ -25,12 +25,19 @@ MAX_INTENTOS = 5
 
 @dataclass(frozen=True, slots=True)
 class ConfigFiscal:
-    """Parámetros DIAN de la empresa (inyectados; nunca leídos con SQL del tenant)."""
+    """Parámetros DIAN de la empresa (inyectados; nunca leídos con SQL del tenant).
+
+    `ambiente` ('produccion'|'pruebas') es el ÚNICO ambiente DIAN de la empresa: lo comparten la emisión
+    (Fase 6) y los eventos RADIAN (Slice 6b). Default seguro 'pruebas' (nunca emitir/enviar real sin
+    declararlo a conciencia). La cuenta MATIAS define el ambiente efectivo; este valor lo declara la
+    empresa y se muestra al operador en cada confirmación.
+    """
 
     resolution_number: str
     prefix: str
     notes: str
     city_id_default: str | None
+    ambiente: str = "pruebas"
 
 
 class FacturacionRepo(Protocol):

@@ -13,6 +13,17 @@ from core.crypto import decrypt_split
 from modules.facturacion.matias_client import MatiasCredenciales
 from modules.facturacion.service import ConfigFiscal
 
+# Ambientes DIAN válidos; 'pruebas' es el default SEGURO si la empresa no lo declara.
+_AMBIENTE_DEFAULT = "pruebas"
+
+
+def _normalizar_ambiente(valor: str | None) -> str:
+    """Normaliza el ambiente DIAN: 'produccion' solo si se declaró explícitamente; si no, 'pruebas'.
+
+    Default seguro: cualquier valor ausente/desconocido cae a 'pruebas' (nunca asumir producción).
+    """
+    return "produccion" if (valor or "").strip().lower() == "produccion" else _AMBIENTE_DEFAULT
+
 
 async def _secreto(session: AsyncSession, master: str, empresa_id: int, clave: str) -> str | None:
     """Lee y descifra un secreto de `secretos_empresa` (patrón `ControlSecretosBot._leer`)."""
@@ -42,7 +53,8 @@ async def cargar_config_matias(
     """Descifra credenciales + parámetros DIAN de una empresa desde el control DB. SQL solo aquí.
 
     De `secretos_empresa` descifra 'matias_email'/'matias_password'; de `config_empresa` lee
-    'matias_base_url'/'matias_resolution'/'matias_prefix'/'matias_notes'/'matias_city_id'.
+    'matias_base_url'/'matias_resolution'/'matias_prefix'/'matias_notes'/'matias_city_id' y
+    'matias_ambiente' (default seguro 'pruebas'). El ambiente lo comparten emisión y RADIAN.
     """
     email = await _secreto(session, master, empresa_id, "matias_email")
     password = await _secreto(session, master, empresa_id, "matias_password")
@@ -53,5 +65,21 @@ async def cargar_config_matias(
     fiscal = ConfigFiscal(
         resolution_number=config["matias_resolution"], prefix=config["matias_prefix"],
         notes=config.get("matias_notes", ""), city_id_default=config.get("matias_city_id"),
+        ambiente=_normalizar_ambiente(config.get("matias_ambiente")),
     )
     return cred, fiscal
+
+
+async def cargar_ambiente(session: AsyncSession, empresa_id: int) -> str:
+    """Ambiente DIAN de la empresa ('produccion'|'pruebas'), default 'pruebas'. Lectura ligera.
+
+    Solo lee `config_empresa.matias_ambiente` (sin requerir el resto de la config MATIAS): lo usa la UI
+    para mostrar el ambiente en las confirmaciones de eventos RADIAN aunque MATIAS no esté completo.
+    """
+    valor = (
+        await session.execute(
+            text("SELECT valor FROM config_empresa WHERE empresa_id = :e AND clave = 'matias_ambiente'"),
+            {"e": empresa_id},
+        )
+    ).scalar_one_or_none()
+    return _normalizar_ambiente(valor)

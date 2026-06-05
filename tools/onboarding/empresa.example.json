@@ -16,7 +16,8 @@
     "matias_resolution": "18760000001",
     "matias_prefix": "FPR",
     "matias_notes": "Ferretería Punto Rojo",
-    "matias_city_id": "149"
+    "matias_city_id": "149",
+    "matias_ambiente": "pruebas"
   },
   "cloudinary": {
     "cloud_name": "puntorojo",

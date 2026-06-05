@@ -16,6 +16,7 @@ persistencia (ventas/`facturas_electronicas`) es E3.
 from __future__ import annotations
 
 import asyncio
+import json
 import time
 from dataclasses import dataclass
 from datetime import datetime
@@ -23,6 +24,16 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     import httpx
+
+
+def _a_json(payload: dict) -> str:
+    """Serializa el payload UBL a JSON emitiendo los montos `Decimal` como JSON number (float).
+
+    El payload de E1 lleva montos `Decimal` (no serializables por el codec JSON de httpx). Se emiten
+    como número, espejo del original (`round(x, 2)` → number, aceptado por DIAN); el formato exacto
+    (number vs string, nº de decimales) se confirma contra el sandbox MATIAS en E4d.
+    """
+    return json.dumps(payload, default=float)
 
 # CUFE mínimo válido (FAD06, §9): `success` sin CUFE de ≥40 chars se trata como fallo.
 CUFE_MIN_LEN = 40
@@ -160,7 +171,7 @@ class MatiasClient:
         """POST `/invoice` con Bearer token; devuelve `EmisionResultado` (NO persiste; eso es E3, §7/§10)."""
         tok = await self._token()
         resp = await self._get_client().post(
-            "/invoice", json=payload,
+            "/invoice", content=_a_json(payload),
             headers={"Authorization": f"Bearer {tok}", "Accept": "application/json",
                      "Content-Type": "application/json"},
             timeout=30,

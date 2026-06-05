@@ -26,7 +26,7 @@ async def lifespan(app: FastAPI):
     # Pool ARQ (perezoso, sobre Redis): el endpoint de facturación encola la emisión aquí.
     app.state.arq_pool = await create_pool(RedisSettings.from_dsn(get_settings().redis_url))
     yield
-    await app.state.arq_pool.close()
+    await app.state.arq_pool.aclose()
     await event_hub.dispose_all()
     await engine_cache.dispose_all()
     log.info("api_apagado")

@@ -105,6 +105,21 @@
 
 > Capacidades efectivas = features del `plan` ± overrides aquí. `planes.limites.features` trae el set por defecto.
 
+### config_empresa
+| Columna | Tipo | Restricciones / nota |
+|---|---|---|
+| id | BIGSERIAL | PK |
+| empresa_id | BIGINT | NOT NULL, FK empresas(id) |
+| clave | TEXT | NOT NULL (ej: `llm_provider`, `bypass_monto_max`, parámetros DIAN no secretos) |
+| valor | TEXT | NOT NULL (valor en claro; los secretos van cifrados en `secretos_empresa`) |
+| actualizado_en | TIMESTAMPTZ | DEFAULT now() |
+| | | UNIQUE(empresa_id, clave) |
+
+> **Config no-secreta por empresa vive en el control DB** (decisión Fase 8), no en la app DB: se siembra en el
+> provisioning junto a la empresa y se carga **una vez** en el contexto cacheado del tenant (como las capacidades,
+> `tenancy.md` §3), para que los hot paths (bypass) no paguen round-trip. Implementado en
+> `migrations/control/0002_config_empresa`.
+
 ### super_admins
 | Columna | Tipo | Restricciones / nota |
 |---|---|---|
@@ -382,7 +397,7 @@
 | activo | BOOLEAN | NOT NULL, DEFAULT true |
 | creado_en | TIMESTAMPTZ | DEFAULT now() |
 
-**config_empresa**: clave TEXT PK, valor JSONB (impuestos, textos, parámetros DIAN no secretos).
+**config_empresa**: vive en el **control DB**, no en la app DB (ver sección Control DB). Aquí no se crea.
 **conversaciones_bot**: id PK, chat_id, rol (user/assistant), contenido, creado_en; índice (chat_id, creado_en).
 **memoria_entidades**: id PK, tipo, clave, valor JSONB, actualizado_en.
 **ventas_pendientes_voz**: id PK, chat_id, payload JSONB, estado, creado_en.

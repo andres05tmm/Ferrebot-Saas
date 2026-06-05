@@ -78,13 +78,15 @@ tests/test_facturacion_router.py:
               yield s
       app.dependency_overrides[get_tenant_db] = _db
 
-Casos (uno por router, todos async, deben dar 2xx):
+Casos (uno por router, todos async). Lo que blinda el guardarraíl es que NINGUNO devuelva 422 por query
+param faltante (ese era el bug); por eso las afirmaciones son de status concreto:
 1. inventario: sembrar con seed_producto, GET /api/v1/productos → 200 y lista no vacía.
-2. caja:      GET /api/v1/caja/actual → 200 (o el código de "sin caja abierta" que el handler defina;
-              afírmalo explícito, no 422). Lo importante: NO 422 por query param faltante.
+2. caja:      GET /api/v1/caja/actual SIN sembrar caja → 404 con detail "No hay caja abierta"
+              (NO 200, NO 422). Eso ya prueba que get_tenant_db resolvió y el handler corrió.
 3. fiados:    GET /api/v1/fiados/deudas → 200 y lista (vacía está bien).
-4. ventas:    POST /api/v1/ventas con un detalle del producto sembrado (reusa seed_producto) → 201.
-              Mira modules/ventas/schemas.py (VentaCrear) para el body exacto.
+4. ventas:    POST /api/v1/ventas con el producto sembrado → 201. Body exacto (VentaCrear):
+                  {"metodo_pago": "efectivo", "lineas": [{"producto_id": <pid>, "cantidad": 2}]}
+              (precio_unitario es opcional para producto de catálogo; usa el precio del catálogo.)
 
 Reglas del repo: async/await, type hints 3.10+, sin print, Decimal en dinero, hora Colombia. No toques
 código de producción salvo que un smoke revele un bug real; si lo revela, para y descríbelo.
@@ -141,8 +143,9 @@ TDD:
      construyó UNA sola vez (espía el constructor o inyecta una factory contadora).
    - Para tenants DISTINTOS, verifique que NO comparten cliente.
    Respeta el patrón de los tests de worker existentes (MATIAS mockeado; sin Redis real).
-2) GREEN — introduce una caché tenant_id -> MatiasClient en el runtime del worker (en ctx, vía on_startup,
-   o un dict a nivel de _ServicioEmision/crear_servicio). Claves:
+2) GREEN — introduce una caché tenant_id -> MatiasClient que viva en el RUNTIME del worker (en ctx o en la
+   closure de on_startup), COMPARTIDA entre jobs. OJO: NO en la instancia de _ServicioEmision, que se crea
+   nueva por job (no cachearía nada). Claves:
    - El cliente httpx debe seguir siendo PEREZOSO (sin red al construir; regla del repo).
    - Concurrencia: protege la caché si dos jobs del mismo tenant entran a la vez (asyncio.Lock o
      get-or-create idempotente).

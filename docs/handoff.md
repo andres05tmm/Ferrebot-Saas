@@ -32,13 +32,18 @@ contra `main`, Andrés pasa el diff).
 - **Fases 1-4:** cerradas (núcleo multi-tenant, dominio ventas/caja/fiados/clientes/inventario/memoria, auth/RBAC, eventos SSE).
 - **Fase 5 (bot Telegram):** cerrada y **mergeada** a `main` (merge `991db09`, `--no-ff`).
 - **Fase 6 (facturación DIAN/MATIAS):** cerrada y **mergeada** a `main` (merge `d5e232d`, `--no-ff`).
-- **Suite:** 318 tests, 0 fallos, 0 errores (con Postgres + Redis arriba).
+- **Suite:** 330 tests, 0 fallos, 0 errores (con Postgres + Redis arriba). Incluye guardarraíles de Fase 7.
 
 **`main` creado e integrado** (fase-1 → fase-6) con ambos merge commits visibles, suite verde en cada paso.
-Verificado: `get_tenant_db(request)` intacto, lifespan con `arq_pool`, `/health`+`/ready` montados.
-**Pendiente:** el repo **no tiene remote** — todo es local. Considerar crear uno (GitHub) para respaldo.
-**Fase 7 en curso:** E1 (merge) hecho; faltan E2 smokes HTTP, E3 `/ready` real, E4 caché MatiasClient
-(ver `docs/fase-7-consolidacion/plan.md`).
+**Remote:** `https://github.com/andres05tmm/Ferrebot-Saas.git` (privado) — `main` pusheado.
+
+- **Fase 7 (consolidación + guardarraíles):** **CERRADA**. E1 merge a `main`; E2 smokes HTTP de los 4
+  routers núcleo (`tests/test_smoke_routers_http.py`); E3 `/ready` comprueba control DB + Redis (503 si
+  falla); E4 caché de `MatiasClient` por tenant en el worker. **Suite: 330 verdes, 0 fallos.** Ver
+  `docs/fase-7-consolidacion/plan.md`.
+- **Próximo:** Fase 8 (cierre de esquema del tenant, brechas §8 de `migracion-puntorojo.md`). Es prereq de
+  dashboard (11), facturación amplia (12) y ETL (15). Tratar las decisiones de modelado como checkpoints
+  con ADR antes del RED.
 
 ### Cadena de Fase 6 (facturación síncrona, completa y probada de punta a punta)
 

@@ -23,7 +23,8 @@
 | **4a** | **Compras** — registrar compras a proveedor (suman stock, fijan costo) | `modules/compras` (núcleo) | tab Compras | ✅ hecho |
 | **4b** | **Proveedores / cuentas por pagar** (deuda, abonos, saldo) + fotos Cloudinary | `modules/proveedores` (núcleo) | tab Proveedores | **🚧 en progreso** |
 | 5 | Libro IVA | `modules/facturacion` (libro/consolidado) | tab Libro IVA | ⏳ pendiente |
-| 6 | Cola fiscal — FE recibidas, notas, DS-NO, **compras fiscal/RADIAN**, honorarios | `modules/facturacion` (DIAN inbound + documentos soporte) | tabs de la cola fiscal | ⏳ pendiente |
+| **6a** | **Compras fiscal (DATOS)** — registrar compras fiscales con desglose de IVA (alimenta el Libro IVA) | `modules/compras_fiscal` (núcleo de datos, gateado por `compras_fiscal`) | tab Compras Fiscal | **🚧 en progreso** |
+| 6b | **RADIAN-FE recibidas** (eventos 030-033, acuse) + notas, DS-NO, honorarios | `modules/facturacion` / `compras_fiscal` (DIAN inbound) | tabs de la cola fiscal | ⏸️ DIFERIDO (contrato MATIAS sin confirmar) |
 
 ---
 
@@ -206,5 +207,55 @@ bloqueado. Live: re-fetch ante `reconnected`.
   con fake → guarda URL; sin Cloudinary → 503 (nunca red real).
 - **Vitest:** registrar factura/abono postea el shape correcto y el saldo se actualiza; el control de foto
   se comporta según disponibilidad (503 → oculto + aviso); vendedor sin acceso.
+
+---
+
+## Slice 6 — Cola fiscal (re-troceado)
+
+El Slice 6 original (toda la cola fiscal en un bloque) se parte: **6a = solo DATOS** de compras fiscales
+—lo que el Libro IVA necesita ya— y **6b = RADIAN-FE recibidas** (eventos 030-033, acuse), que **se
+difiere** porque el contrato de MATIAS para FE recibidas aún no está confirmado. La tabla `compras_fiscal`
+(tenant 0001) trae ambas mitades: columnas de datos (`base`/`iva`/`total`/`soporte_url`) y columnas RADIAN
+(`cufe_proveedor`, `evento_030_at`…`evento_033_at`, `evento_estado`, `evento_error`). El 6a llena las
+primeras y **deja NULL** las RADIAN.
+
+### Slice 6a — Compras fiscal (DATOS, sin RADIAN) (en progreso)
+
+**Compras fiscal es OPCIONAL** (`'compras_fiscal'` ∈ `OPCIONALES`) → router gateado con
+`require_feature("compras_fiscal")` (404 sin la capacidad). RBAC = admin. La tabla ya existía. **No toca
+RADIAN/DIAN ni MATIAS:** solo persiste el desglose de IVA que alimenta el Libro IVA (Slice 5).
+
+#### Backend (`modules/compras_fiscal`, RBAC = admin)
+
+- Modelo `CompraFiscal` que mapea **solo** las columnas de datos; las columnas RADIAN quedan sin mapear
+  (NULL), reservadas al Slice 6b.
+- `POST /compras-fiscal { proveedor_nit, base, iva, total, soporte_url?, compra_id? }` → inserta. Valida
+  montos `>= 0` y coherencia `base + iva == total` tolerando ±1 centavo (redondeo por línea de la DIAN);
+  incoherencia → `422`. `201`.
+- `GET /compras-fiscal (?desde&hasta, default mes, hora Colombia por `creado_en`)` → lista, recientes primero.
+- `POST /compras/{id}/to-fiscal` → deriva una entrada fiscal de una compra normal (toma su total; base/iva
+  en 0: el desglose no se conoce). **Idempotente** por `compra_id` (si ya hay fiscal ligada, devuelve la
+  existente con `200`; si la crea, `201`). `404` si la compra no existe.
+- (`to-compras` / `bulk` DIFERIDOS — no aportan al Libro IVA ahora.)
+
+#### Frontend (`TabComprasFiscal`, ruta `/compras-fiscal` ya gateada por `RUTA_FEATURE`)
+
+Admin: registrar compra fiscal (nit, base, iva, total, soporte) + lista del rango; botón **"marcar fiscal"**
+sobre una compra normal (`to-fiscal`), con badge "fiscal" en las ya derivadas. Vendedor: bloqueado. Live:
+re-fetch ante `reconnected` / `compra_registrada`.
+
+#### Tests
+
+- **pytest** (integración Postgres): registrar fiscal persiste el desglose; lista por rango; to-fiscal crea
+  (total de la compra, base/iva 0) y es idempotente (no duplica); compra inexistente → 404; gate sin la
+  feature → 404; admin-only → 403; montos incoherentes / negativos → 422.
+- **Vitest:** registrar postea el shape correcto; pinta la lista; "marcar fiscal" postea a `to-fiscal`;
+  vendedor sin controles; la ruta no aparece sin la feature.
+
+### Slice 6b — RADIAN-FE recibidas + cola fiscal restante (DIFERIDO)
+
+FE recibidas (eventos RADIAN 030-033, acuse de recibo), notas electrónicas, DS-NO y honorarios. **Bloqueado**
+hasta confirmar el contrato de MATIAS para FE recibidas; llenará las columnas RADIAN de `compras_fiscal` y
+el resto de la cola fiscal inbound.
 </content>
 </invoke>

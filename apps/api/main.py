@@ -22,6 +22,7 @@ from modules.auth.router import router as auth_router
 from modules.caja.router import gastos_router, router as caja_router
 from modules.clientes.router import router as clientes_router
 from modules.compras.router import router as compras_router
+from modules.compras_fiscal.router import router as compras_fiscal_router
 from modules.config.router import router as config_router
 from modules.facturacion.router import router as facturacion_router
 from modules.fiados.router import router as fiados_router
@@ -122,6 +123,7 @@ def create_app(spa_dist: Path | None = None) -> FastAPI:
     app.include_router(facturacion_router, prefix="/api/v1")
     app.include_router(clientes_router, prefix="/api/v1")
     app.include_router(compras_router, prefix="/api/v1")
+    app.include_router(compras_fiscal_router, prefix="/api/v1")
     app.include_router(proveedores_router, prefix="/api/v1")
     app.include_router(reportes_router, prefix="/api/v1")
     app.include_router(config_router, prefix="/api/v1")

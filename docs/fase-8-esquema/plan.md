@@ -1,93 +1,119 @@
-# Fase 8 — Cierre de esquema del tenant · plan + prompts
+# Fase 8 — Cierre de esquema del tenant · plan + prompts (REVISADO)
 
-> Re-scopeada contra el código real. **Sorpresa:** `schema.md` ya tomó casi todas las decisiones del §8 de
-> `migracion-puntorojo.md`, y varias tablas ya están implementadas. Fase 8 es sobre todo **implementación**
-> (igualar `schema.md`), no deliberación. Cowork redacta; Andrés ejecuta en Claude Code.
+> **Re-scope mayor:** la migración `migrations/tenant/versions/0001_tenant_init.py` **ya crea las 35 tablas**
+> de `schema.md`. El esquema físico del tenant **ya está cerrado**. Lo único partial son los **modelos ORM**
+> (varias tablas existen en la base pero no tienen clase SQLAlchemy mapeada — consistente con la nota en
+> `modules/inventario/models.py`: "solo las columnas que toca la Fase 1; el resto del esquema existe vía
+> migración"). Por tanto Fase 8 NO es construir esquema, sino **paridad + cleanup + modelos a demanda**.
 
-## Estado real (implementado vs. faltante)
+## Qué ya existe
 
-**Ya implementado** (modelos + migración tenant 0001-0004): `productos` (con pricing escalonado **y**
-mayorista), `productos_fracciones`, `inventario`, `movimientos_inventario`, `ventas`, `ventas_detalle`,
-`clientes`, `caja`, `caja_movimientos`, `gastos` (con `caja_id`), `fiados`, `fiados_movimientos`,
-`facturas_electronicas`, `usuarios`, `conversaciones_bot`, `memoria_entidades`, `api_costo_diario`,
-`audio_logs`. `config_empresa` existe en el **control DB**.
-
-**Faltante** (en `schema.md` pero sin tabla): `aliases`, `proveedores`, `compras` + `compras_detalle`,
-`facturas_proveedores`, `facturas_abonos`, `bancolombia_transferencias`, `historico_ventas`, `compras_fiscal`,
-`documentos_soporte`, `notas_electronicas`, `eventos_dian`, `cuentas_cobro`, `iva_saldos_bimestrales`,
-`ventas_pendientes_voz`.
+- **Esquema físico completo** vía `0001` (35 `create_table`): incluye `aliases`, `proveedores`, `compras`,
+  `compras_detalle`, `compras_fiscal`, `facturas_proveedores`, `facturas_abonos`, `bancolombia_transferencias`,
+  `historico_ventas`, `documentos_soporte`, `notas_electronicas`, `eventos_dian`, `cuentas_cobro`,
+  `iva_saldos_bimestrales`, `ventas_pendientes_voz`, `libro_iva`, etc. Cadena: `0001 → 0002 → 0003 → 0004`
+  (head = `0004_memoria_entidades_uq`).
+- **Modelos ORM** solo para lo que tocaron Fases 1-6 (catálogo/inventario/ventas/caja/fiados/clientes/
+  facturación/memoria/usuarios). El resto de tablas existe en la base sin clase mapeada.
 
 ## Decisiones (cerradas con Andrés)
 
-- **D1 — Alcance:** construir **TODO** el esquema restante en Fase 8 (incl. las tablas fiscales **vacías**).
-  La lógica fiscal sigue en Fase 12; aquí solo nacen las tablas. Razón: `feature-flags.md` ("el esquema NO
-  cambia entre empresas; una tabla vacía no cuesta nada") + el ETL de Punto Rojo necesita destinos fiscales.
-- **D2 — `config_empresa`:** vive en el **control DB** (ya implementado); se borró el duplicado app-DB de
-  `schema.md`. Se carga una vez en el contexto cacheado del tenant (como las capacidades) para no pegarle al
-  control DB en hot paths (bypass).
+- **D1 — Alcance esquema:** moot. El esquema ya está completo en `0001`.
+- **D2 — `config_empresa`:** vive en el **control DB**. (Nota: `0001` del tenant **también** crea una
+  `config_empresa` → vestigial; se reconcilia en E3.)
+- **D3 — Forma de Fase 8 (slim):** (1) test de paridad de esquema, (2) reconciliar/dropear el
+  `config_empresa` del tenant, (3) modelo `Alias` ahora. **Los demás modelos ORM se agregan en su fase
+  consumidora** (fiscal → Fase 12; `compras`/`proveedores`/`historico_ventas`/`bancolombia` → ETL Fase 15 /
+  dashboard Fase 11). Sin trabajo muerto.
 
-## Decisiones DIFERIDAS a momento-ETL (Fase 15, no ahora)
+## Decisiones DIFERIDAS a momento-ETL (Fase 15)
 
-No bloquean el esquema; se deciden al cargar datos reales de Punto Rojo:
+G4 zona horaria de marcas naive · reconstrucción `gasto→caja` · derivación de `proveedores` desde texto ·
+`subtotal`/`impuestos` de ventas históricas. No bloquean el esquema.
 
-- **G4 — zona horaria** de las marcas naive de FerreBot (¿el server escribía en UTC o en hora Colombia?).
-  La de mayor riesgo; confirmar antes de cargar.
-- **`gasto → caja`:** FerreBot no tiene `caja_id` en gastos; cómo reconstruir el vínculo.
-- **`proveedores` desde texto libre:** derivar la tabla del texto de compras/facturas, o mantener texto.
-- **`subtotal`/`impuestos`** de ventas históricas: FerreBot no los separa; derivar del detalle o `impuestos=0`.
+## Desglose (slim)
 
-## Nota de modelado menor (sigo `schema.md`, sin elevar a decisión)
-
-`compras.proveedor_id` es FK a `proveedores`, pero `facturas_proveedores.proveedor` es **TEXT** libre (espejo
-de FerreBot, 1 fila). Lo dejo así por ahora (normalizar facturas_proveedores a FK es trivial y se puede hacer
-después). Si prefieres FK desde ya, dilo.
-
-## Desglose (cada E = migración + modelos + tests; cadena Alembic 0005→00xx)
-
-| E | Dominio | Tablas |
+| E | Entregable | Qué |
 |---|---|---|
-| E1 | Búsqueda | `aliases` (+ índice de apoyo si aplica) |
-| E2 | Compras | `proveedores`, `compras`, `compras_detalle` |
-| E3 | Cuentas por pagar + banca | `facturas_proveedores`, `facturas_abonos`, `bancolombia_transferencias` |
-| E4 | Reportes + voz | `historico_ventas`, `ventas_pendientes_voz` |
-| E5 | Fiscal (schema-only) | `compras_fiscal`, `documentos_soporte`, `notas_electronicas`, `eventos_dian`, `cuentas_cobro`, `iva_saldos_bimestrales` + SEQUENCEs de consecutivo (factura por tipo, DS) + enums nuevos |
-| E6 | Verificación | test de paridad (todas las tablas de `schema.md` existen en un tenant fresco), `upgrade`/`downgrade` limpio, test de aislamiento sigue verde |
+| E1 | Modelo `Alias` | Clase SQLAlchemy `Alias` (tabla ya existe) + tests (existe en head con UNIQUE+FK; insert global y ligado). **SIN migración.** |
+| E2 | Test de paridad de esquema | Guardarraíl pre-ETL: un tenant migrado a head tiene **todas** las tablas de `schema.md` (35). Introspección con el inspector de SQLAlchemy / `information_schema`. Falla si hay drift. |
+| E3 | Reconciliar `config_empresa` | Confirmar que nada lee el `config_empresa` del **tenant** (el canónico es el del control DB). Si nadie lo lee → migración `0005` que lo **dropea** del tenant. Si algo lo lee → redirigir al control DB primero. |
 
-**Criterio de cierre de fase:** un tenant nuevo migrado a head tiene **todas** las tablas de `schema.md`;
-`upgrade`/`downgrade` corren limpio; suite verde. Modelos importables con un insert/select básico por tabla
-clave. (Repos/servicios de cada dominio llegan en su fase de feature; aquí solo esquema + modelos.)
+**Criterio de cierre:** modelo `Alias` mapeado y probado; test de paridad verde (esquema = `schema.md`);
+`config_empresa` con una sola fuente de verdad (control DB); suite verde; `upgrade`/`downgrade` limpio.
 
 ---
 
-## E1 — `aliases` (prompt RED para Claude Code)
+## E1 — Modelo `Alias` (en curso)
+
+Claude Code lo está haciendo vía la opción **"Solo modelo + tests"** (sin migración, porque la tabla ya
+existe desde `0001`). Spec en `schema.md` (sección "aliases"): `id, termino UNIQUE, reemplazo,
+producto_id FK NULL, creado_en/actualizado_en`. **Qué reviso:** clase con `TenantBase`, sin `empresa_id`,
+y tests que verifiquen tabla en head (UNIQUE+FK) + insert global y ligado a producto.
+
+## E2 — Test de paridad de esquema (prompt RED para Claude Code)
 
 ```
-Contexto: FerreBot SaaS, esquema tenant. Falta la tabla `aliases` (variantes/typos → producto; alimenta
-búsqueda y bypass). Especificación en docs/schema.md (sección "aliases"):
-  id BIGSERIAL PK; termino TEXT NOT NULL; reemplazo TEXT NOT NULL; producto_id BIGINT FK productos(id) NULL
-  (alias global si NULL); creado_en/actualizado_en TIMESTAMPTZ; UNIQUE(termino).
+Contexto: FerreBot SaaS. El esquema tenant lo crea migrations/tenant/0001. Quiero un guardarraíl de paridad
+que falle si el esquema migrado se desvía de la lista de tablas esperada (pre-ETL de Punto Rojo).
 
-TDD, siguiendo el patrón de las migraciones tenant existentes (migrations/tenant/0001-0004) y de los modelos
-(modules/inventario/models.py usa TenantBase):
-1) RED — test de migración en tests/ (patrón de test_migrations.py / test_migracion_tenant_0004.py):
-   - crea un tenant efímero con el fixture `tenant` (conftest), upgrade a head, y verifica que la tabla
-     `aliases` existe con sus columnas, el UNIQUE(termino) y la FK a productos.
-   - test de modelo: insertar un alias global (producto_id NULL) y uno ligado a un producto sembrado
-     (seed_producto), y leerlos.
-2) GREEN —
-   - nueva migración migrations/tenant/0005_aliases.py (down_revision = la última de tenant; revisa cuál es
-     el head actual con la cadena 0001→0004). upgrade crea la tabla; downgrade la dropea.
-   - modelo Alias en modules/inventario/models.py (o un modules/busqueda si encaja mejor), con TenantBase,
-     type hints 3.10+, Mapped/mapped_column como el resto.
+Crea tests/test_schema_paridad.py:
+- Usa el fixture `tenant` (conftest) → base efímera ya migrada a head.
+- Con el inspector de SQLAlchemy (sqlalchemy.inspect / Inspector.get_table_names) sobre tenant.engine,
+  obtén el set de tablas reales (excluye alembic_version).
+- Afírmalo igual al set ESPERADO de tablas de negocio de docs/schema.md (App DB). Lista explícita en el test
+  (las 35 de 0001 menos lo que decidamos), para que agregar/quitar una tabla sin actualizar el test falle.
+- (Opcional, si es barato) afirma columnas clave de 2-3 tablas críticas para el ETL (facturas_electronicas,
+  ventas, productos) con get_columns.
 
-Reglas del repo: NUMERIC/TIMESTAMPTZ según convenciones de schema.md, sin empresa_id (la base es la frontera),
-docstrings en español, sin print. Acceso a datos solo por repos cuando toque (aquí basta el modelo).
-Corre: .venv/Scripts/python.exe -m pytest tests/ -k "alias or migrac" -q
+Reglas: async donde aplique, sin print, type hints 3.10+. NO toques migraciones ni modelos.
+Corre: .venv/Scripts/python.exe -m pytest tests/test_schema_paridad.py -q
 ```
 
-**Qué reviso yo:** que la migración encadene bien del head actual de tenant, UNIQUE(termino) y FK presentes,
-modelo con `TenantBase` y sin `empresa_id`, y que el ETL futuro de FerreBot (`aliases` + `productos.aliases[]`
-aplanado) tenga destino limpio.
+**Qué reviso:** que la lista esperada sea explícita (no derivada del propio metadata, o no detectaría drift),
+y que excluya `alembic_version`.
 
-> Los prompts de E2-E6 los entrego uno a uno al avanzar (mismo patrón: spec de schema.md → migración → modelos
-> → tests), para revisar cada eslabón antes del siguiente.
+## Orden: E3 antes que E2
+
+E3 dropea `config_empresa` del tenant → cambia el esquema. Hacer E3 primero deja a E2 (paridad) fijando el
+set final de 34 tablas de una sola vez (35 de `0001` − `config_empresa`).
+
+## E3 — Reconciliar `config_empresa` (investigación HECHA → prompt RED)
+
+**Confirmado:** la `config_empresa` del **tenant** (creada en `0001`: `clave TEXT PK, valor JSONB`) está
+muerta para **lecturas**. Los lectores (`modules/facturacion/config.py`, `core/llm/stores.py`, `ai/ports.py`)
+consultan `WHERE empresa_id = :e` — columna que solo existe en el `config_empresa` del **control DB**
+(migración control `0002`).
+
+> **Hallazgo (Claude Code):** hay un **escritor** — `tools/provision_tenant.py:_seed()` inserta
+> `iva_incluido_en_precio='true'` en la `config_empresa` del tenant. Dropear la tabla sin tocar eso rompe el
+> próximo provisioning (`UndefinedTable`), y **no hay test de provisioning** que lo atrape. Por eso E3 también
+> quita ese INSERT muerto (`iva_incluido_en_precio` no lo lee nadie).
+>
+> **Intención preservada:** "IVA incluido en precio" es un setting real por empresa a futuro; cuando se
+> cablee (con su lector), va al `config_empresa` del **control DB**, no al tenant.
+>
+> **Follow-up Fase 13:** `provision_tenant` tiene cero cobertura de tests → agregar smoke de provisioning
+> como guardarraíl (mismo patrón que la deuda de smokes HTTP de Fase 7).
+
+```
+Contexto: FerreBot SaaS, esquema tenant. La migración 0001 creó en la app DB una tabla config_empresa
+(clave TEXT PK, valor JSONB). La config no-secreta por empresa vive en el CONTROL DB (migración control
+0002_config_empresa, con empresa_id). Confirmado que NADIE lee la config_empresa del tenant: los dos
+lectores (modules/facturacion/config.py, core/llm/stores.py) consultan "WHERE empresa_id = :e", que solo
+existe en la del control DB. La del tenant es vestigial.
+
+TDD:
+1) RED — test en tests/ (patrón test_migrations.py): sobre el fixture `tenant` (ya en head), afirma que la
+   tabla config_empresa NO existe en la app DB (inspector get_table_names).
+2) GREEN — migración migrations/tenant/0005_drop_config_empresa.py:
+   - down_revision = head actual del árbol tenant (0004_memoria_uq; confírmalo).
+   - upgrade(): op.drop_table("config_empresa").
+   - downgrade(): recrea config_empresa (clave TEXT PK, valor JSONB) como en 0001.
+
+Reglas: docstrings en español, sin print. No toques los lectores (ya usan el control DB).
+Corre: .venv/Scripts/python.exe -m pytest tests/ -k "migrac or config or schema" -q
+```
+
+**Qué reviso:** down_revision correcto (encadena del head real), downgrade que recrea fiel, y que ningún
+lector quede apuntando al tenant.

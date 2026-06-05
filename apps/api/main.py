@@ -16,6 +16,7 @@ from core.db.session import _control
 from core.events import event_hub
 from core.logging import configure_logging, get_logger
 from core.tenancy.middleware import TenantMiddleware
+from modules.auth.router import router as auth_router
 from modules.caja.router import gastos_router, router as caja_router
 from modules.config.router import router as config_router
 from modules.facturacion.router import router as facturacion_router
@@ -80,6 +81,7 @@ async def evaluar_listo(request: Request) -> ResultadoListo:
 def create_app() -> FastAPI:
     app = FastAPI(title="FerreBot SaaS API", version="0.1.0", lifespan=lifespan)
     app.add_middleware(TenantMiddleware)
+    app.include_router(auth_router, prefix="/api/v1")
     app.include_router(ventas_router, prefix="/api/v1")
     app.include_router(inventario_router, prefix="/api/v1")
     app.include_router(caja_router, prefix="/api/v1")

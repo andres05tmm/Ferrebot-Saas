@@ -8,6 +8,7 @@ from apps.api.main import create_app
 
 # Una ruta representativa por router montado, más salud (infra).
 _RUTAS_CLAVE = frozenset({
+    "/api/v1/auth/login",      # login del dashboard (Telegram → JWT)
     "/api/v1/config",          # bootstrap del dashboard
     "/api/v1/ventas",          # ventas
     "/api/v1/productos",       # inventario

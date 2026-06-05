@@ -6,7 +6,7 @@ se hace la búsqueda y el insert.
 """
 from decimal import Decimal
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules.clientes.models import Cliente
@@ -21,6 +21,20 @@ class SqlClientesRepository:
         return (
             await self._s.execute(select(Cliente).where(Cliente.documento == documento))
         ).scalar_one_or_none()
+
+    async def obtener(self, cliente_id: int) -> Cliente | None:
+        return (
+            await self._s.execute(select(Cliente).where(Cliente.id == cliente_id))
+        ).scalar_one_or_none()
+
+    async def listar(self, q: str | None = None) -> list[Cliente]:
+        """Clientes ordenados por nombre; si `q`, filtra por nombre o documento (ILIKE)."""
+        stmt = select(Cliente)
+        if q:
+            patron = f"%{q}%"
+            stmt = stmt.where(or_(Cliente.nombre.ilike(patron), Cliente.documento.ilike(patron)))
+        stmt = stmt.order_by(Cliente.nombre)
+        return list((await self._s.execute(stmt)).scalars().all())
 
     async def crear(self, datos: ClienteCrear) -> Cliente:
         cliente = Cliente(

@@ -16,6 +16,9 @@ _RUTAS_CLAVE = frozenset({
     "/api/v1/gastos",          # gastos
     "/api/v1/fiados/deudas",   # fiados
     "/api/v1/facturas",        # facturación
+    "/api/v1/clientes",        # clientes (B2)
+    "/api/v1/ventas",          # historial de ventas (B3)
+    "/api/v1/reportes/resumen",# resumen del día (B4)
     "/health",                 # liveness
     "/ready",                  # readiness
 })

@@ -4,12 +4,14 @@ Inserta venta + detalle + movimientos_inventario y descuenta stock en UNA transa
 (la sesión del tenant); el consecutivo sale de la SEQUENCE; emite el evento pg_notify.
 El stock se bloquea con SELECT ... FOR UPDATE en lock_inventario (evita carreras).
 """
+from datetime import date
 from decimal import Decimal
 
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import lazyload
 
-from core.config.timezone import now_co
+from core.config.timezone import now_co, rango_dia_co
 from core.events import publish
 from modules.inventario.models import Inventario, MovimientoInventario, Producto
 from modules.inventario.precios import FraccionPrecio
@@ -26,6 +28,32 @@ class SqlVentasRepository:
     async def buscar_por_idempotency(self, key: str) -> VentaLeer | None:
         venta = (
             await self._s.execute(select(Venta).where(Venta.idempotency_key == key))
+        ).scalar_one_or_none()
+        return VentaLeer.model_validate(venta) if venta is not None else None
+
+    async def listar(
+        self,
+        *,
+        desde: date | None = None,
+        hasta: date | None = None,
+        vendedor_id: int | None = None,
+    ) -> list[VentaLeer]:
+        """Ventas del rango (hora Colombia; default = hoy), fecha DESC. Incluye anuladas (el
+        estado va en `VentaLeer`). `vendedor_id` acota a un vendedor; `None` = todas. No carga el
+        detalle (`lazyload`): la lista no lo necesita."""
+        inicio, fin = rango_dia_co(desde, hasta)
+        stmt = select(Venta).where(Venta.fecha >= inicio, Venta.fecha <= fin)
+        if vendedor_id is not None:
+            stmt = stmt.where(Venta.vendedor_id == vendedor_id)
+        stmt = stmt.order_by(Venta.fecha.desc()).options(lazyload(Venta.detalles))
+        ventas = (await self._s.execute(stmt)).scalars().all()
+        return [VentaLeer.model_validate(v) for v in ventas]
+
+    async def obtener(self, venta_id: int) -> VentaLeer | None:
+        venta = (
+            await self._s.execute(
+                select(Venta).where(Venta.id == venta_id).options(lazyload(Venta.detalles))
+            )
         ).scalar_one_or_none()
         return VentaLeer.model_validate(venta) if venta is not None else None
 

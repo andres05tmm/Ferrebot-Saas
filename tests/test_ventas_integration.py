@@ -1,10 +1,12 @@
 """Integración del repositorio de ventas contra una base efímera real (Postgres)."""
+from datetime import timedelta
 from decimal import Decimal
 
 import pytest
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.config.timezone import today_co
 from modules.ventas.errors import StockInsuficiente
 from modules.ventas.repository import SqlVentasRepository
 from modules.ventas.schemas import VentaCrear, VentaDetalleCrear
@@ -79,3 +81,30 @@ async def test_stock_insuficiente_no_registra_nada(tenant, seed_producto):
             await s.execute(text("SELECT stock_actual FROM inventario WHERE producto_id=:p"), {"p": pid})
         ).scalar_one()
         assert stock == Decimal("5.000")   # intacto
+
+
+async def test_listar_filtra_por_fecha_y_vendedor(tenant, seed_producto):
+    async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
+        uid, pid = await seed_producto(s, stock="100")
+        otro = (
+            await s.execute(
+                text("INSERT INTO usuarios (nombre, rol) VALUES ('Otro','vendedor') RETURNING id")
+            )
+        ).scalar_one()
+        svc = VentaService(SqlVentasRepository(s))
+        await svc.registrar_venta(_venta(pid, "1", key="a"), vendedor_id=uid)
+        await svc.registrar_venta(_venta(pid, "1", key="b"), vendedor_id=uid)
+        await svc.registrar_venta(_venta(pid, "1", key="c"), vendedor_id=otro)
+        await s.commit()
+
+    async with AsyncSession(tenant.engine) as s:
+        repo = SqlVentasRepository(s)
+        hoy_uid = await repo.listar(vendedor_id=uid)          # default = hoy Colombia
+        hoy_todas = await repo.listar(vendedor_id=None)
+        ayer = today_co() - timedelta(days=1)
+        rango_pasado = await repo.listar(desde=ayer, hasta=ayer)
+
+    assert len(hoy_uid) == 2
+    assert {v.vendedor_id for v in hoy_uid} == {uid}          # scoping por vendedor
+    assert len(hoy_todas) == 3                                # admin (None) ve todas
+    assert rango_pasado == []                                 # las ventas son de hoy

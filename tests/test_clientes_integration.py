@@ -34,3 +34,23 @@ async def test_alta_persiste_y_dedup_por_documento(tenant):
             await s.execute(text("SELECT count(*) FROM clientes WHERE documento = '900123456'"))
         ).scalar_one()
         assert total == 1
+
+
+async def test_obtener_y_listar_con_filtro_ilike(tenant):
+    async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
+        repo = SqlClientesRepository(s)
+        ana = await repo.crear(ClienteCrear(nombre="Ana Pérez", tipo_documento="CC", documento="111"))
+        await repo.crear(ClienteCrear(nombre="Carlos Gómez", tipo_documento="CC", documento="222"))
+        await s.commit()
+        ana_id = ana.id
+
+    async with AsyncSession(tenant.engine) as s:
+        repo = SqlClientesRepository(s)
+        encontrado = await repo.obtener(ana_id)
+        assert encontrado is not None and encontrado.nombre == "Ana Pérez"
+        assert await repo.obtener(999_999) is None
+        # listar() ordena por nombre
+        assert [c.nombre for c in await repo.listar()] == ["Ana Pérez", "Carlos Gómez"]
+        # q filtra por nombre (case-insensitive) y por documento
+        assert [c.documento for c in await repo.listar("ana")] == ["111"]
+        assert [c.nombre for c in await repo.listar("222")] == ["Carlos Gómez"]

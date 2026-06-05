@@ -23,6 +23,8 @@ class ClientesRepo(Protocol):
 
     async def buscar_por_documento(self, documento: str) -> Cliente | None: ...
     async def crear(self, datos: ClienteCrear) -> Cliente: ...
+    async def obtener(self, cliente_id: int) -> Cliente | None: ...
+    async def listar(self, q: str | None = None) -> list[Cliente]: ...
 
 
 class ClientesService:
@@ -36,3 +38,9 @@ class ClientesService:
                 return ResultadoCliente(cliente=existente, creado=False)
         cliente = await self._repo.crear(datos)
         return ResultadoCliente(cliente=cliente, creado=True)
+
+    async def obtener(self, cliente_id: int) -> Cliente | None:
+        return await self._repo.obtener(cliente_id)
+
+    async def listar(self, q: str | None = None) -> list[Cliente]:
+        return await self._repo.listar(q)

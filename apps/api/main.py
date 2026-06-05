@@ -18,10 +18,12 @@ from core.logging import configure_logging, get_logger
 from core.tenancy.middleware import TenantMiddleware
 from modules.auth.router import router as auth_router
 from modules.caja.router import gastos_router, router as caja_router
+from modules.clientes.router import router as clientes_router
 from modules.config.router import router as config_router
 from modules.facturacion.router import router as facturacion_router
 from modules.fiados.router import router as fiados_router
 from modules.inventario.router import router as inventario_router
+from modules.reportes.router import router as reportes_router
 from modules.ventas.router import router as ventas_router
 
 log = get_logger("api")
@@ -88,6 +90,8 @@ def create_app() -> FastAPI:
     app.include_router(gastos_router, prefix="/api/v1")
     app.include_router(fiados_router, prefix="/api/v1")
     app.include_router(facturacion_router, prefix="/api/v1")
+    app.include_router(clientes_router, prefix="/api/v1")
+    app.include_router(reportes_router, prefix="/api/v1")
     app.include_router(config_router, prefix="/api/v1")
 
     @app.get("/health", tags=["infra"])

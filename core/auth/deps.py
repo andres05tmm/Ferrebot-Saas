@@ -5,7 +5,7 @@ nunca un token de la empresa A opera sobre la empresa B (aislamiento, SECURITY.m
 """
 from dataclasses import dataclass
 
-from fastapi import Depends, HTTPException, Request, status
+from fastapi import Depends, HTTPException, Query, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from core.auth.jwt import decode_token_optional
@@ -43,3 +43,18 @@ def require_role(rol_requerido: str):
             raise HTTPException(status.HTTP_403_FORBIDDEN, "Permisos insuficientes")
         return user
     return _dep
+
+
+def get_filtro_efectivo(
+    user: Principal = Depends(get_current_user),
+    vendedor_id: int | None = Query(default=None),
+) -> int | None:
+    """Vendedor efectivo para acotar listados/reportes (auth-rbac.md).
+
+    - vendedor → su propio `user_id` (IGNORA `?vendedor_id`: nunca ve lo de otro).
+    - admin/super_admin → el `?vendedor_id` recibido: `None` = ve todo; un id = impersona a ese
+      vendedor (selector de vendedor del dashboard).
+    """
+    if satisface(user.rol, "admin"):
+        return vendedor_id
+    return user.user_id

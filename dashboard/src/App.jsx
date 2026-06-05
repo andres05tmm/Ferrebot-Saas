@@ -17,9 +17,10 @@ import TabInventario from './tabs/TabInventario.jsx'
 import TabCaja from './tabs/TabCaja.jsx'
 import TabGastos from './tabs/TabGastos.jsx'
 import TabClientes from './tabs/TabClientes.jsx'
+import TabHistorial from './tabs/TabHistorial.jsx'
 import { ROUTES } from './routes.jsx'
 
-// Tabs ya portados (E6 batch 1-2); el resto sigue como stub "Próximamente".
+// Tabs núcleo ya portados (E6 b1-b3); el resto sigue como stub "Próximamente".
 const TABS = {
   '/hoy': TabHoy,
   '/ventas': TabVentasRapidas,
@@ -27,6 +28,7 @@ const TABS = {
   '/caja': TabCaja,
   '/gastos': TabGastos,
   '/clientes': TabClientes,
+  '/historial': TabHistorial,
 }
 import { bootConfig } from './lib/config.js'
 import { FeaturesProvider } from './lib/features.jsx'

@@ -46,6 +46,13 @@ export function rangoHoyCO() {
   return { desde: `${ymd}T00:00:00-05:00`, hasta: `${ymd}T23:59:59-05:00` }
 }
 
+// Rango del MES en curso en hora Colombia como fechas YYYY-MM-DD (primer día → hoy). Para los
+// endpoints de reportes (?desde&hasta tipo date). Default de las pestañas Resultados / Top productos.
+export function mesActualCO() {
+  const hoy = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' }) // YYYY-MM-DD
+  return { desde: `${hoy.slice(0, 8)}01`, hasta: hoy }
+}
+
 // ── SPINNER / ERRORMSG — tokenizados (consumers transversales) ───────────────
 export function Spinner() {
   return (

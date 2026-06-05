@@ -110,6 +110,58 @@ async def test_listar_filtra_por_fecha_y_vendedor(tenant, seed_producto):
     assert rango_pasado == []                                 # las ventas son de hoy
 
 
+async def test_venta_catalogo_hila_costo_de_compra_a_la_salida(tenant):
+    """Costo de ventas exacto (opción C): el SALIDA guarda el precio_compra del producto al vender."""
+    async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
+        uid = (
+            await s.execute(text("INSERT INTO usuarios (nombre, rol) VALUES ('V','vendedor') RETURNING id"))
+        ).scalar_one()
+        pid = (
+            await s.execute(
+                text(
+                    "INSERT INTO productos (nombre, unidad_medida, precio_venta, precio_compra, iva, "
+                    "permite_fraccion, activo) VALUES ('Cemento','unidad',20000,12000,19,false,true) "
+                    "RETURNING id"
+                )
+            )
+        ).scalar_one()
+        await s.execute(
+            text("INSERT INTO inventario (producto_id, stock_actual, stock_minimo) VALUES (:p,100,0)"),
+            {"p": pid},
+        )
+        await VentaService(SqlVentasRepository(s)).registrar_venta(_venta(pid, "3"), vendedor_id=uid)
+        await s.commit()
+
+    async with AsyncSession(tenant.engine) as s:
+        tipo, cant, costo = (
+            await s.execute(
+                text("SELECT tipo, cantidad, costo_unitario FROM movimientos_inventario WHERE producto_id=:p"),
+                {"p": pid},
+            )
+        ).one()
+        assert tipo == "SALIDA"
+        assert cant == Decimal("3.000")
+        assert costo == Decimal("12000.00")   # precio_compra hilado al movimiento al momento de vender
+
+
+async def test_venta_varia_no_genera_movimiento_ni_costo(tenant):
+    """Línea varia (sin producto_id) no mueve inventario → no hay costo (no hay mercancía)."""
+    async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
+        uid = (
+            await s.execute(text("INSERT INTO usuarios (nombre, rol) VALUES ('V','vendedor') RETURNING id"))
+        ).scalar_one()
+        datos = VentaCrear(
+            metodo_pago="efectivo",
+            lineas=[VentaDetalleCrear(descripcion="Corte de llave", precio_unitario=Decimal("5000"), cantidad=Decimal("1"))],
+        )
+        await VentaService(SqlVentasRepository(s)).registrar_venta(datos, vendedor_id=uid)
+        await s.commit()
+
+    async with AsyncSession(tenant.engine) as s:
+        n = (await s.execute(text("SELECT count(*) FROM movimientos_inventario"))).scalar_one()
+        assert n == 0
+
+
 async def test_obtener_trae_lineas(tenant, seed_producto):
     async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
         uid, pid = await seed_producto(s, precio="11900", iva=19, stock="100")

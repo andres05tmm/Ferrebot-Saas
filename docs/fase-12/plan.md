@@ -17,8 +17,8 @@
 
 | Slice | Alcance | Backend | Frontend | Estado |
 |---|---|---|---|---|
-| **1** | **Inventario CRUD** — crear/editar/eliminar producto (fracciones, mayorista, escalonado, stock inicial) | repo+service+router en `modules/inventario` | completar `TabInventario` (solo-lectura → CRUD admin) | **🚧 en progreso** |
-| 2 | Reportes pesados — Resultados (P&L), Top productos | `modules/reportes` (consultas agregadas) | tabs Resultados / Top productos | ⏳ pendiente |
+| **1** | **Inventario CRUD** — crear/editar/eliminar producto (fracciones, mayorista, escalonado, stock inicial) | repo+service+router en `modules/inventario` | completar `TabInventario` (solo-lectura → CRUD admin) | ✅ hecho |
+| **2** | **Reportes pesados** — Resultados (P&L, costo exacto opción C), Top productos | costo al vender + `modules/reportes` (consultas agregadas) | tabs Resultados / Top productos | **🚧 en progreso** |
 | 3 | Facturación — historial + tab | `modules/facturacion` (listado/detalle) | tab Facturación | ⏳ pendiente |
 | 4 | Compras / Compras fiscal / Proveedores | `modules/compras` (+ fiscal), `modules/proveedores` | tabs Compras, Compras fiscal, Proveedores | ⏳ pendiente |
 | 5 | Libro IVA | `modules/facturacion` (libro/consolidado) | tab Libro IVA | ⏳ pendiente |
@@ -61,5 +61,38 @@ productos con sus fracciones y precios (mayorista y escalonado por umbral).
   (vendedor → 403), emisión del evento, validación de montos.
 - **Vitest:** admin ve los controles y el create postea el shape `ProductoCrear` correcto; vendedor NO ve
   controles; editar hace `PUT`; eliminar hace `DELETE` con confirmación.
+
+---
+
+## Slice 2 — Reportes pesados: Resultados + Top productos (en progreso)
+
+**Costo de ventas exacto (opción C):** el costo se hila a la venta. Al vender una línea de catálogo, el
+movimiento **SALIDA** guarda `costo_unitario = producto.precio_compra` **al momento de vender**; las líneas
+varia (sin `producto_id`) no generan movimiento ni costo. Las ventas anteriores a este cambio quedan con
+`costo_unitario` NULL → cuentan como 0 en el P&L (etiquetado en la UI).
+
+### Backend (`modules/ventas` + `modules/reportes`)
+
+- **Parte A — costo al vender:** `ProductoPrecio`/`LineaResuelta` llevan el costo; `crear_venta` lo escribe
+  en el SALIDA. No cambia el shape de `VentaLeer` ni rompe las pruebas de venta.
+- **`GET /reportes/resultados`** (admin, sin scoping): P&L de un rango (`?desde&hasta`, default mes). ingresos
+  = Σ subtotal de ventas no anuladas (sin IVA); costo_ventas = Σ(costo×cantidad) de SALIDA (NULL=0);
+  utilidad_bruta = ingresos − costo_ventas; gastos = Σ gastos; utilidad_neta = bruta − gastos.
+- **`GET /reportes/top-productos`** (vendedor; scope por `get_filtro_efectivo`): ranking por ingreso del
+  rango (`?desde&hasta&limite`, default mes), `GROUP BY` producto sobre `ventas_detalle` de ventas no
+  anuladas, excluye varia.
+
+### Frontend
+
+- `TabResultados` (solo admin; oculto y sin pedir el endpoint para vendedor) — tarjetas del P&L + gráfica
+  (recharts) + selector de rango (default mes) + etiqueta del costo exacto.
+- `TabTopProductos` (vendedor/admin) — tabla del ranking + gráfica + selector de rango. Ruta `/top-productos`.
+
+### Tests
+
+- **pytest:** una venta de catálogo deja el SALIDA con `costo_unitario = precio_compra`; una varia no genera
+  costo; resultados cuadran y excluyen anuladas; admin-only (vendedor → 403); top-productos ordenado por
+  ingreso desc, respeta scoping, excluye anuladas/varia.
+- **Vitest:** cada tab pide su endpoint y pinta los números; Resultados no visible/no pide para vendedor.
 </content>
 </invoke>

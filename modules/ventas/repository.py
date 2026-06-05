@@ -74,7 +74,7 @@ class SqlVentasRepository:
         )
         return ProductoPrecio(
             id=prod.id, nombre=prod.nombre, precio_venta=prod.precio_venta,
-            iva=prod.iva, activo=prod.activo,
+            iva=prod.iva, activo=prod.activo, precio_compra=prod.precio_compra,
             precio_umbral=prod.precio_umbral,
             precio_bajo_umbral=prod.precio_bajo_umbral,
             precio_sobre_umbral=prod.precio_sobre_umbral,
@@ -123,7 +123,8 @@ class SqlVentasRepository:
             inv.stock_actual = inv.stock_actual - ln.cantidad
             self._s.add(MovimientoInventario(
                 producto_id=ln.producto_id, tipo="SALIDA", cantidad=ln.cantidad,
-                referencia=f"venta:{venta.id}", usuario_id=header.vendedor_id,
+                costo_unitario=ln.costo_unitario, referencia=f"venta:{venta.id}",
+                usuario_id=header.vendedor_id,
             ))
         await self._s.flush()
 

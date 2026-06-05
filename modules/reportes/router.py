@@ -6,13 +6,15 @@ RBAC (`get_filtro_efectivo`). El repo se inyecta por dependencia (overridable en
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
+from datetime import date
+
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.auth import Principal, get_filtro_efectivo, require_role
 from core.db.session import get_tenant_db
 from modules.reportes.repository import SqlReportesRepository
-from modules.reportes.schemas import ResumenDia
+from modules.reportes.schemas import EstadoResultados, ResumenDia, TopProducto
 from modules.reportes.service import ReportesService
 
 router = APIRouter(tags=["reportes"])
@@ -30,3 +32,29 @@ async def resumen_dia(
     filtro: int | None = Depends(get_filtro_efectivo),
 ) -> ResumenDia:
     return await ReportesService(repo).resumen_dia(filtro)
+
+
+@router.get("/reportes/resultados", response_model=EstadoResultados)
+async def estado_resultados(
+    desde: date | None = Query(default=None),
+    hasta: date | None = Query(default=None),
+    repo: SqlReportesRepository = Depends(get_reportes_repo),
+    _user: Principal = Depends(require_role("admin")),
+) -> EstadoResultados:
+    """Estado de resultados del rango (default mes). Admin-only: es del negocio completo, sin scoping."""
+    return await ReportesService(repo).estado_resultados(desde=desde, hasta=hasta)
+
+
+@router.get("/reportes/top-productos", response_model=list[TopProducto])
+async def top_productos(
+    desde: date | None = Query(default=None),
+    hasta: date | None = Query(default=None),
+    limite: int = Query(default=10, ge=1, le=100),
+    repo: SqlReportesRepository = Depends(get_reportes_repo),
+    _user: Principal = Depends(require_role("vendedor")),
+    filtro: int | None = Depends(get_filtro_efectivo),
+) -> list[TopProducto]:
+    """Ranking de productos por ingreso del rango (default mes); el vendedor efectivo lo da el filtro RBAC."""
+    return await ReportesService(repo).top_productos(
+        desde=desde, hasta=hasta, vendedor_id=filtro, limite=limite
+    )

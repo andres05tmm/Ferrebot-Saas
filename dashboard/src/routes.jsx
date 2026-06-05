@@ -6,7 +6,7 @@
 import {
   LayoutDashboard, ShoppingCart, Wallet, Package,
   Users, Truck, Building2, Receipt,
-  History, TrendingUp, BookOpen,
+  History, TrendingUp, Trophy, BookOpen,
   FileText, FileCheck, Calculator, FileCog,
 } from 'lucide-react'
 import { isRouteEnabled } from './lib/features.jsx'
@@ -29,6 +29,7 @@ export const ROUTES = [
   // Reportes
   { path: '/historial',           label: 'Historial',           icon: History,         group: 'reportes' },
   { path: '/resultados',          label: 'Resultados financieros', icon: TrendingUp,   group: 'reportes' },
+  { path: '/top-productos',       label: 'Top productos',       icon: Trophy,          group: 'reportes' },
   { path: '/kardex',              label: 'Kárdex',              icon: BookOpen,        group: 'reportes' },
 
   // Fiscal

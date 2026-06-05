@@ -25,6 +25,8 @@ class ProductoPrecio:
     precio_venta: Decimal
     iva: int
     activo: bool
+    # Costo de compra AL MOMENTO de vender: se hila hasta el movimiento SALIDA (costo de ventas exacto).
+    precio_compra: Decimal | None = None
     precio_umbral: Decimal | None = None
     precio_bajo_umbral: Decimal | None = None
     precio_sobre_umbral: Decimal | None = None
@@ -50,6 +52,8 @@ class LineaResuelta:
     iva: int
     total_linea: Decimal
     descontar_stock: bool
+    # Costo del producto al vender (None en varia: no hay mercancía → sin movimiento ni costo).
+    costo_unitario: Decimal | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -155,4 +159,5 @@ class VentaService:
         return LineaResuelta(
             producto_id=prod.id, descripcion=ln.descripcion or prod.nombre, cantidad=ln.cantidad,
             precio_unitario=precio, iva=prod.iva, total_linea=total, descontar_stock=True,
+            costo_unitario=prod.precio_compra,
         )

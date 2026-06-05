@@ -18,9 +18,11 @@ import TabCaja from './tabs/TabCaja.jsx'
 import TabGastos from './tabs/TabGastos.jsx'
 import TabClientes from './tabs/TabClientes.jsx'
 import TabHistorial from './tabs/TabHistorial.jsx'
+import TabResultados from './tabs/TabResultados.jsx'
+import TabTopProductos from './tabs/TabTopProductos.jsx'
 import { ROUTES } from './routes.jsx'
 
-// Tabs núcleo ya portados (E6 b1-b3); el resto sigue como stub "Próximamente".
+// Tabs núcleo ya portados (E6 b1-b3); reportes pesados en Fase 12 Slice 2; el resto sigue como stub.
 const TABS = {
   '/hoy': TabHoy,
   '/ventas': TabVentasRapidas,
@@ -29,6 +31,8 @@ const TABS = {
   '/gastos': TabGastos,
   '/clientes': TabClientes,
   '/historial': TabHistorial,
+  '/resultados': TabResultados,
+  '/top-productos': TabTopProductos,
 }
 import { bootConfig } from './lib/config.js'
 import { FeaturesProvider } from './lib/features.jsx'

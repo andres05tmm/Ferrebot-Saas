@@ -19,6 +19,7 @@ dependencies = [
     "sse-starlette>=2.1",            # SSE acotado por empresa
     "rapidfuzz>=3.10",              # fuzzy match conservador (búsqueda de catálogo)
     "redis>=5.2",                   # cola/caché + dedup y pendiente de confirmación (asyncio)
+    "arq>=0.26",                    # cola de jobs (emisión DIAN asíncrona) sobre Redis
 ]
 
 [project.optional-dependencies]

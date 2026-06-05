@@ -1,13 +1,17 @@
 """Servicio API (FastAPI). Monta el middleware de tenant y los routers de dominio."""
 from contextlib import asynccontextmanager
 
+from arq import create_pool
+from arq.connections import RedisSettings
 from fastapi import FastAPI
 
+from core.config import get_settings
 from core.db.engine_cache import engine_cache
 from core.events import event_hub
 from core.logging import configure_logging, get_logger
 from core.tenancy.middleware import TenantMiddleware
 from modules.caja.router import gastos_router, router as caja_router
+from modules.facturacion.router import router as facturacion_router
 from modules.fiados.router import router as fiados_router
 from modules.inventario.router import router as inventario_router
 from modules.ventas.router import router as ventas_router
@@ -16,10 +20,13 @@ log = get_logger("api")
 
 
 @asynccontextmanager
-async def lifespan(_app: FastAPI):
+async def lifespan(app: FastAPI):
     configure_logging()
     log.info("api_arranque")
+    # Pool ARQ (perezoso, sobre Redis): el endpoint de facturación encola la emisión aquí.
+    app.state.arq_pool = await create_pool(RedisSettings.from_dsn(get_settings().redis_url))
     yield
+    await app.state.arq_pool.aclose()
     await event_hub.dispose_all()
     await engine_cache.dispose_all()
     log.info("api_apagado")
@@ -33,6 +40,7 @@ def create_app() -> FastAPI:
     app.include_router(caja_router, prefix="/api/v1")
     app.include_router(gastos_router, prefix="/api/v1")
     app.include_router(fiados_router, prefix="/api/v1")
+    app.include_router(facturacion_router, prefix="/api/v1")
 
     @app.get("/health", tags=["infra"])
     async def health() -> dict:

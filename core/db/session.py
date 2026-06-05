@@ -7,6 +7,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
+from starlette.requests import Request
 
 from core.config import get_settings
 from core.db.engine_cache import engine_cache
@@ -65,8 +66,12 @@ async def tenant_session(tenant: ResolvedTenant) -> AsyncIterator[AsyncSession]:
             raise
 
 
-async def get_tenant_db(request) -> AsyncIterator[AsyncSession]:
-    """Dependencia FastAPI: sesión de la empresa resuelta por TenantMiddleware."""
+async def get_tenant_db(request: Request) -> AsyncIterator[AsyncSession]:
+    """Dependencia FastAPI: sesión de la empresa resuelta por TenantMiddleware.
+
+    `request` DEBE estar anotado `Request`: sin la anotación FastAPI lo trata como query param en
+    todos los endpoints que dependen de esto (lo destapó el smoke E2E de facturación).
+    """
     tenant: ResolvedTenant = request.state.tenant
     async for session in tenant_session(tenant):
         yield session

@@ -5,9 +5,10 @@ index.html para rutas de cliente (las que NO empiezan por /api/), sirviendo los 
 build cuando existen. Debe ser resiliente si `dist` no existe (no rompe el arranque; catch-all 404).
 """
 import httpx
+import pytest
 from httpx import ASGITransport
 
-from apps.api.main import create_app
+from apps.api.main import DASHBOARD_DIST, create_app
 
 _SENTINEL = '<div id="root">SPA OK</div>'
 
@@ -52,3 +53,26 @@ async def test_dist_ausente_no_rompe_el_app(tmp_path):
         cliente = await c.get("/historial")
     assert salud.status_code == 200
     assert cliente.status_code == 404
+
+
+async def test_build_real_servido_por_la_api():
+    """Con el dist REAL (tras `npm run build`): GET / → index.html, un asset resuelve, /api no se intercepta.
+
+    Skip si no hay build (mismo criterio que el catch-all): el dist no se versiona.
+    """
+    if not (DASHBOARD_DIST / "index.html").is_file():
+        pytest.skip("dashboard/dist no existe (correr `npm run build` en dashboard/)")
+
+    app = create_app()  # usa DASHBOARD_DIST por defecto
+    assets = sorted((DASHBOARD_DIST / "assets").iterdir()) if (DASHBOARD_DIST / "assets").is_dir() else []
+    async with _cliente(app) as c:
+        raiz = await c.get("/")
+        api = await c.get("/api/v1/config")
+        asset = await c.get(f"/assets/{assets[0].name}") if assets else None
+
+    assert raiz.status_code == 200
+    assert '<div id="root">' in raiz.text          # sirvió el index.html del build
+    assert "SPA OK" not in api.text                 # /api lo maneja el stack, no el SPA
+    assert api.status_code != 200
+    if asset is not None:
+        assert asset.status_code == 200             # un asset real del build resuelve

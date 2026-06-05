@@ -54,13 +54,36 @@ contra `main`, Andrés pasa el diff).
   singletons); E3 `GET /api/v1/config` (`modules/config/router.py`: features = núcleo ∪ efectivas + branding +
   usuario; `leer_branding` en `control_repo`, default `#C8200E`); E4 guardarraíl de montaje de rutas. Suite
   **~352 verdes**. Ver `docs/fase-9-features/plan.md`.
+- **Fase 11 (dashboard web MVP white-label):** **CERRADA**. Dashboard React (Vite+Tailwind+shadcn) servido
+  por la API (`StaticFiles dashboard/dist` + catch-all SPA; `TenantMiddleware` solo exige tenant en `/api/`).
+  - **Backend:** `POST /auth/login` (Telegram Login Widget → JWT; **401** firma inválida / **403** no
+    autorizado) + `GET /auth/me`; endpoints núcleo `clientes` (CRUD+dedup), `GET /ventas` (lista/historial con
+    scoping RBAC `get_filtro_efectivo`) + `GET /ventas/{id}` con líneas, `GET /reportes/resumen`; catálogos
+    fiscales `GET /clientes/ciudades|paises` (MATIAS por empresa, gate `facturacion_electronica` → 404).
+  - **Frontend:** auth (Telegram Widget + `useAuth` + Bearer/401 centralizado en `lib/api.js` + `ProtectedRoute`);
+    tiempo real (UN solo stream SSE por `RealtimeProvider` + `useRealtimeEvent`, fetch-based con
+    `@microsoft/fetch-event-source`); theming runtime `--color-primary` desde branding; gating de tabs por
+    `/config` (nombres de `catalogo.py`); **7 tabs núcleo** recableados (Hoy, Ventas rápidas, Inventario, Caja,
+    Gastos, Clientes, Historial).
+  - **E7 cierre:** `tests/test_e2e_dashboard.py` (login→resumen→SSE→venta→resumen, lifespan vivo) +
+    `test_spa_serving` con dist real + `docs/fase-11-dashboard/smoke-manual.md`. Suite **~395 verdes** +
+    dashboard **43 Vitest**. Ver `docs/fase-11-dashboard/plan.md`.
+  - **Diferido a Fase 12:** CRUD de inventario (crear/editar/eliminar, fracciones, mayorista), tabs fiscales
+    completos (Facturación, Libro IVA, Compras fiscal, Proveedores, FE recibidas, Kárdex), reportes pesados
+    (Resultados, Top productos), `VistaMes` rica (heatmap), selector de vendedor para admin.
+  - **Unknown a confirmar:** host de `/countries` de MATIAS (el original usaba `api-v2.matias-api.com`; el SaaS
+    lo cuelga del `base_url` por-tenant) — validar contra el sandbox MATIAS. `venta_anulada` aún no se publica
+    (no hay anulación todavía); el front ya se suscribe a ese evento.
 - **Diferido a Fase 13:** `PUT /admin/empresas/{id}/features` + auth `super_admin` (cross-tenant) +
   invalidación de caché de capacidades (hoy solo TTL). `validar_dependencias` ya existe pero aún sin consumir
   (lo usará ese endpoint). + smoke de provisioning (cero cobertura).
 - **Drift de docs menor:** `api-contract.md` pone el chequeo de dependencias en `/health`, pero está en
   `/ready` (`/health` es liveness). Reconciliar en docs cuando se toque.
-- **Próximo:** Fase 11 (dashboard React) — consume `GET /config`. O Fase 10 (asíncrono DIAN), que paraleliza
-  pero necesita el sandbox MATIAS — agendarlo.
+- **Nota transporte SSE en tests:** httpx `ASGITransport` bufferiza la respuesta hasta completarla → no se
+  puede leer un SSE infinito por HTTP en pytest; el E2E suscribe `event_hub` directamente (mismo bus que
+  `/api/v1/events`) y el SSE HTTP real se valida en el smoke manual.
+- **Próximo:** Fase 12 (amplitud facturación + tabs fiscales/reportes del dashboard). O Fase 10 (asíncrono
+  DIAN), que paraleliza pero necesita el sandbox MATIAS — agendarlo.
 
 ### Cadena de Fase 6 (facturación síncrona, completa y probada de punta a punta)
 

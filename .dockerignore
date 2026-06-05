@@ -1,0 +1,37 @@
+# Contexto de build mínimo y reproducible. NUNCA meter secretos ni artefactos locales en la imagen.
+
+# VCS / IDE / planeación
+.git
+.gitignore
+.gitattributes
+.planning
+.claude
+
+# Entornos y artefactos de Python
+.venv
+venv
+**/__pycache__
+*.pyc
+*.pyo
+.pytest_cache
+.ruff_cache
+.mypy_cache
+
+# Node / build local del dashboard (se reconstruye en el stage 1)
+node_modules
+dashboard/node_modules
+dashboard/dist
+
+# Secretos y onboarding por empresa (jamás horneados; van por env/control DB en runtime)
+.env
+.env.*
+!.env.example
+tools/onboarding/*.json
+!tools/onboarding/empresa.example.json
+
+# No aportan al runtime
+tests
+docs
+ferrebot_export
+*.md
+!README.md

@@ -19,6 +19,10 @@ class Settings(BaseSettings):
     secret_key: str = "dev-only-change-me"
     secrets_master_key: str = "dev-only-change-me-master"
     base_domain: str = "localhost"
+    # Empresa por defecto (opt-in) para despliegues SINGLE-TENANT sin dominio propio (p. ej. el dominio
+    # que da Railway, sin subdominio): último recurso de resolución de tenant. None = comportamiento
+    # multi-tenant normal (sin fallback). Ver core/tenancy/resolver.py.
+    default_tenant_slug: str | None = None
     service_type: str = "api"
     redis_url: str = "redis://localhost:6379/0"
     sentry_dsn: str = ""

@@ -58,11 +58,31 @@ Railway expone `DATABASE_URL` y `REDIS_URL` de los plugins (referéncialas con `
 | `REDIS_URL` | `${{Redis.REDIS_URL}}` | ✅ | ✅ | ✅ |
 | `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` | claves de plataforma | ✅ | ✅ | ✅ |
 | `SENTRY_DSN` | opcional | ✅ | ✅ | ✅ |
+| `DEFAULT_TENANT_SLUG` | `puntorojo` — **solo en la variante SIN dominio propio** (ver abajo) | ⚠️ | ⚠️ | — |
 | `VITE_TELEGRAM_BOT_USERNAME` | **build arg** del servicio `api` (no runtime) | (build) | — | — |
 
 > **Por qué las 3 URLs en todos los servicios:** `core/config/settings.py` exige `ADMIN_DATABASE_URL`,
 > `CONTROL_DATABASE_URL` y `TENANTS_DIRECT_URL_BASE` siempre (el `Settings` falla al arrancar si falta
 > alguna). `worker`/`bot` también resuelven empresas y abren la app DB del tenant, así que las necesitan.
+
+### Variante SIN dominio propio (deploy single-tenant en el dominio de Railway)
+
+Si **todavía no** tienes el dominio `puntorojo.<BASE_DOMAIN>` y quieres salir rápido usando el dominio que
+da Railway (p. ej. `ferrebot-api-production.up.railway.app`), hay un detalle: en ese host **no hay
+subdominio** que identifique la empresa, y el **login** ocurre *antes* de tener un JWT, así que el
+`TenantMiddleware` no puede resolver el tenant por subdominio ni por claim. Además, **el dashboard de
+producción NO envía `X-Tenant-Slug`** (ese header es solo de desarrollo). Para cubrirlo:
+
+- Setea **`DEFAULT_TENANT_SLUG=puntorojo`** en el servicio `api` (y en `bot` si su webhook no llega por un
+  subdominio con el slug). Es el **último recurso** de `resolve_slug`: solo aplica cuando nada explícito
+  resolvió, y las señales explícitas (subdominio / `X-Tenant-Slug` / claim del JWT) **siguen ganando**. Es
+  **opt-in**: sin esta variable el comportamiento es el multi-tenant de siempre (sin fallback).
+- En esta variante puedes omitir el paso 6 (dominio personalizado) y usar la URL de Railway directamente. El
+  `BASE_DOMAIN` puede quedar en el dominio que planeas usar a futuro (no afecta mientras uses el de Railway).
+
+> **Al pasar a multi-tenant** (segunda empresa): **quita `DEFAULT_TENANT_SLUG`** y configura el dominio con
+> **wildcard de subdominios** (`*.<BASE_DOMAIN>`) para que cada empresa resuelva por su `slug.<BASE_DOMAIN>`
+> (ver paso 6). El fallback es exclusivamente para el caso single-tenant sin dominio.
 
 ### Generar SECRET_KEY y SECRETS_MASTER_KEY para PROD
 

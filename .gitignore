@@ -10,6 +10,9 @@ venv/
 # Node / frontend
 node_modules/
 dashboard/dist/
+# Onboarding: valores REALES por empresa (secretos en claro) — nunca commitear.
+tools/onboarding/*.json
+!tools/onboarding/empresa.example.json
 # Varios
 .DS_Store
 *.log

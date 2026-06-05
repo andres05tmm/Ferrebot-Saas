@@ -1,0 +1,27 @@
+{
+  "slug": "puntorojo",
+  "nombre": "Ferretería Punto Rojo",
+  "nit": "900123456-7",
+  "admin": {
+    "nombre": "Andrés",
+    "telegram_id": 123456789
+  },
+  "secretos": {
+    "telegram_token": "0000000000:AA-EJEMPLO-token-del-bot",
+    "matias_email": "facturacion@puntorojo.example",
+    "matias_password": "CAMBIA-ESTO"
+  },
+  "config": {
+    "matias_base_url": "https://api.matias.example/api/ubl2.1",
+    "matias_resolution": "18760000001",
+    "matias_prefix": "FPR",
+    "matias_notes": "Ferretería Punto Rojo",
+    "matias_city_id": "149"
+  },
+  "branding": {
+    "color_primario": "#C8200E",
+    "logo_url": "https://cdn.example/puntorojo/logo.png",
+    "nombre_comercial": "Punto Rojo",
+    "dominio": "puntorojo.ferrebot.example"
+  }
+}

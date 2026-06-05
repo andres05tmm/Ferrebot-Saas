@@ -8,7 +8,6 @@ from decimal import Decimal
 
 import pytest
 
-from ai.bypass import Bypass, ProductoBypass
 from ai.dispatcher import Dispatcher, Recursos, catalogo_visible
 from ai.envelope import Contexto, ErrorTool, Resultado
 from ai.ports import ProductoCatalogo, Umbrales
@@ -286,28 +285,8 @@ async def test_venta_replay_marca_duplicada():
     assert isinstance(res, Resultado) and res.idempotente == "duplicada"
 
 
-# --------------------------- Paridad bypass ↔ tool-call -------------------
-class _FakeCatalogoBypass:
-    async def producto_exacto(self, slug):
-        return ProductoBypass(id=7, nombre="vinilo", esquema=_CAT.esquema)
-
-
-async def test_paridad_bypass_y_toolcall_mismo_efecto():
-    # Bypass "3 vinilo".
-    by_repo = _FakeVentasRepo(_PROD)
-    bypass = Bypass(_FakeCatalogoBypass(), VentaService(by_repo))
-    r_bypass = await bypass.intentar("3 vinilo", vendedor_id=1)
-
-    # Tool-call equivalente por el despachador.
-    rec, tc_repo = _recursos()
-    tc = ToolCall(id="1", name="registrar_venta",
-                  arguments={"items": [{"producto_id": 7, "cantidad": 3}], "metodo_pago": "efectivo"})
-    r_tool = await _disp().ejecutar(tc, _ctx(), rec)
-
-    assert isinstance(r_tool, Resultado)
-    assert r_bypass.venta.total == Decimal("60000.00")
-    assert Decimal(r_tool.data["total"]) == r_bypass.venta.total          # mismo total
-    assert len(tc_repo.ultimo_header.lineas) == len(by_repo.ultimo_header.lineas) == 1
+# Nota: la paridad bypass ↔ tool-call vive ahora en test_bypass_convergencia.py — al converger el
+# bypass por dispatcher.ejecutar, ambos caminos son el MISMO; ya no se prueba aquí por separado.
 
 
 # --------------------------- Selección de proveedor (get_llm) -------------

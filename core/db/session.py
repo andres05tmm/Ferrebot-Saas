@@ -4,6 +4,7 @@
 Nunca se cambia de tenant a mitad de flujo (regla de multitenancy #2).
 """
 from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 
@@ -30,6 +31,19 @@ def _control() -> async_sessionmaker[AsyncSession]:
 
 async def get_control_db() -> AsyncIterator[AsyncSession]:
     """Sesión del control DB (plano de control: empresas, planes, secretos)."""
+    async with _control()() as session:
+        try:
+            yield session
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            raise
+
+
+@asynccontextmanager
+async def control_session() -> AsyncIterator[AsyncSession]:
+    """Sesión del control DB como context manager (espejo de `tenant_session`, para el wiring del
+    bot: cada wrapper abre una sesión de control FRESCA por llamada, con commit/rollback)."""
     async with _control()() as session:
         try:
             yield session

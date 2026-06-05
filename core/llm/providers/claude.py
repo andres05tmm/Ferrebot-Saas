@@ -47,6 +47,15 @@ class ClaudeProvider:
                         "content": m.content,
                     }],
                 })
+            elif m.role == "assistant" and m.tool_calls:
+                bloques: list[dict[str, Any]] = []
+                if m.content:
+                    bloques.append({"type": "text", "text": m.content})
+                bloques.extend(
+                    {"type": "tool_use", "id": tc.id, "name": tc.name, "input": tc.arguments}
+                    for tc in m.tool_calls
+                )
+                cuerpo.append({"role": "assistant", "content": bloques})
             else:
                 cuerpo.append({"role": m.role, "content": m.content})
         system = "\n".join(system_partes) if system_partes else None

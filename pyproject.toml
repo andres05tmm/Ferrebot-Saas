@@ -18,6 +18,7 @@ dependencies = [
     "cryptography>=44.0",             # AEAD para secretos por empresa
     "sse-starlette>=2.1",            # SSE acotado por empresa
     "rapidfuzz>=3.10",              # fuzzy match conservador (búsqueda de catálogo)
+    "redis>=5.2",                   # cola/caché + dedup y pendiente de confirmación (asyncio)
 ]
 
 [project.optional-dependencies]

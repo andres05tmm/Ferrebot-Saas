@@ -36,6 +36,18 @@ class OpenAIProvider:
                     "role": "tool", "tool_call_id": m.tool_call_id,
                     "name": m.name, "content": m.content,
                 })
+            elif m.role == "assistant" and m.tool_calls:
+                cuerpo.append({
+                    "role": "assistant",
+                    "content": m.content or None,
+                    "tool_calls": [
+                        {"id": tc.id, "type": "function", "function": {
+                            "name": tc.name,
+                            "arguments": json.dumps(tc.arguments, ensure_ascii=False),
+                        }}
+                        for tc in m.tool_calls
+                    ],
+                })
             else:
                 cuerpo.append({"role": m.role, "content": m.content})
         return cuerpo

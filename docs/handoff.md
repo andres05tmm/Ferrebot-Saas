@@ -71,9 +71,14 @@ contra `main`, Andrés pasa el diff).
   - **Diferido a Fase 12:** CRUD de inventario (crear/editar/eliminar, fracciones, mayorista), tabs fiscales
     completos (Facturación, Libro IVA, Compras fiscal, Proveedores, FE recibidas, Kárdex), reportes pesados
     (Resultados, Top productos), `VistaMes` rica (heatmap), selector de vendedor para admin.
-  - **Unknown a confirmar:** host de `/countries` de MATIAS (el original usaba `api-v2.matias-api.com`; el SaaS
-    lo cuelga del `base_url` por-tenant) — validar contra el sandbox MATIAS. `venta_anulada` aún no se publica
+  - **Host MATIAS `/countries`: CONFIRMADO** contra producción (verificación de Punto Rojo, `tools/verify_tenant.py`):
+    colgado del `base_url` por-tenant funciona (`/paises` y `/ciudades` devuelven listas reales); el host
+    absoluto stale del original (`api-v2.matias-api.com`) NO hacía falta. `venta_anulada` aún no se publica
     (no hay anulación todavía); el front ya se suscribe a ese evento.
+  - **Provisioning ahora asigna plan/features:** `tools/provision_tenant` carga `plan` (`planes.limites`) y
+    `features_override` (`empresa_features`) desde el JSON de onboarding, validando catálogo y dependencias
+    (`core/tenancy/catalogo.py`) antes de escribir. Ya no hace falta el override manual de capacidades.
+    Caveat: el plan se upserta por NOMBRE (tier compartido) — cambiarlo afecta a otras empresas del plan.
 - **Diferido a Fase 13:** `PUT /admin/empresas/{id}/features` + auth `super_admin` (cross-tenant) +
   invalidación de caché de capacidades (hoy solo TTL). `validar_dependencias` ya existe pero aún sin consumir
   (lo usará ese endpoint). + smoke de provisioning (cero cobertura).

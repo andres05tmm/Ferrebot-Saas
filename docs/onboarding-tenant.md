@@ -23,10 +23,27 @@ y el **`telegram_id`** real del admin.
    ```bash
    cp tools/onboarding/empresa.example.json tools/onboarding/puntorojo.json
    # editar puntorojo.json: slug, nombre, nit, admin.telegram_id, secretos (telegram_token,
-   # matias_email, matias_password), config (matias_*), branding (color/logo/nombre/dominio)
+   # matias_email, matias_password), config (matias_*), branding (color/logo/nombre/dominio),
+   # plan + features_override (capacidades)
    ```
    `tools/onboarding/*.json` está en `.gitignore` (solo `empresa.example.json` se versiona). Los
    secretos van **cifrados** en el control DB con `SECRETS_MASTER_KEY`; nunca quedan en claro en git.
+
+   **Capacidades (`plan` / `features_override`):**
+   ```json
+   "plan": { "nombre": "Pro", "features": ["facturacion_electronica", "fiados"] },
+   "features_override": { "ventas_voz": false }
+   ```
+   - `plan.features` = capacidades del tier; `features_override` = excepciones por empresa
+     (`true` activa, `false` desactiva). Efectivas = plan ∪ overrides activos − desactivados;
+     el **núcleo** (ventas, inventario, caja, gastos, clientes, proveedores, reportes) está **siempre on**.
+   - El provisioning **valida** contra `core/tenancy/catalogo.py`: nombres desconocidos → error; y las
+     **dependencias** del set efectivo deben cumplirse (p. ej. `libro_iva` requiere `facturacion_electronica`
+     o `compras_fiscal`). Si algo no valida, **no se escribe nada**.
+   - **⚠️ Caveat — tier compartido:** el plan se upserta por **NOMBRE**. Cambiar `plan.features` de un
+     nombre ya existente afecta a **todas** las empresas de ese plan. Para variar capacidades de una sola
+     empresa, usa `features_override` (o un nombre de plan distinto). La consistencia es del operador.
+   - Sin bloque `plan` ni `features_override`, la empresa arranca **solo con el núcleo**.
 
 2. **Exportar el entorno** (la misma `SECRETS_MASTER_KEY` que usará la API/bot, o no se podrán descifrar):
    ```bash

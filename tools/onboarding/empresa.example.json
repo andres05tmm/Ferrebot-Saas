@@ -18,6 +18,13 @@
     "matias_notes": "Ferretería Punto Rojo",
     "matias_city_id": "149"
   },
+  "plan": {
+    "nombre": "Pro",
+    "features": ["facturacion_electronica", "fiados", "multi_vendedor"]
+  },
+  "features_override": {
+    "ventas_voz": false
+  },
   "branding": {
     "color_primario": "#C8200E",
     "logo_url": "https://cdn.example/puntorojo/logo.png",

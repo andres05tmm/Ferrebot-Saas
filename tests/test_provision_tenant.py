@@ -8,6 +8,7 @@ y que re-ejecutar es idempotente (no duplica).
 import uuid
 
 import psycopg
+import pytest
 from alembic import command
 from alembic.config import Config
 from sqlalchemy import text
@@ -17,10 +18,11 @@ from apps.bot.repos import ControlSecretosBot
 from core.config import get_settings
 from core.db.urls import tenant_url, to_libpq
 from core.tenancy.cache import control_cache
+from core.tenancy.capacidades import ControlCapacidades
 from core.tenancy.control_repo import leer_branding
 from modules.facturacion.config import cargar_config_matias
 from tests.conftest import create_database, drop_database
-from tools.provision_tenant import _db_name, provision_tenant_full
+from tools.provision_tenant import _db_name, cargar_plan_features, provision_tenant_full
 
 
 def _datos(slug: str) -> dict:
@@ -39,6 +41,8 @@ def _datos(slug: str) -> dict:
             "color_primario": "#0d6efd", "logo_url": "http://x/logo.png",
             "nombre_comercial": "Prueba", "dominio": "prueba.test",
         },
+        "plan": {"nombre": "Pro", "features": ["facturacion_electronica", "fiados"]},
+        "features_override": {"fiados": False},   # quita 'fiados' del plan para esta empresa
     }
 
 
@@ -84,7 +88,14 @@ async def test_provision_full_carga_secretos_config_branding_admin(monkeypatch):
                 text("SELECT count(*) FROM config_empresa WHERE empresa_id=:e"), {"e": empresa_id})).scalar_one()
             n_brand = (await cs.execute(
                 text("SELECT count(*) FROM branding WHERE empresa_id=:e"), {"e": empresa_id})).scalar_one()
+            # plan + features: efectivas = plan ∪ overrides; el override quitó 'fiados'.
+            efectivas = await ControlCapacidades(cs).efectivas(empresa_id)
+            n_feat = (await cs.execute(
+                text("SELECT count(*) FROM empresa_features WHERE empresa_id=:e"), {"e": empresa_id})).scalar_one()
         assert (n_sec, n_cfg, n_brand) == (3, 5, 1)
+        assert "facturacion_electronica" in efectivas
+        assert "fiados" not in efectivas          # el override habilitada=false lo quita
+        assert n_feat == 1                          # idempotente: una fila de override
 
         # Admin con su telegram_id en la base del tenant.
         tenant_db_url = tenant_url(get_settings().tenants_direct_url_base, _db_name(slug))
@@ -98,3 +109,18 @@ async def test_provision_full_carga_secretos_config_branding_admin(monkeypatch):
         control_cache.invalidate(slug)
         get_settings.cache_clear()
         drop_database(control_name)
+
+
+# La validación corre ANTES de cualquier escritura (no toca la BD), así que estos casos no
+# necesitan Postgres: una feature inválida o una dependencia incumplida lanzan ValueError y no se
+# escribe nada.
+
+def test_feature_desconocida_falla_sin_escribir():
+    with pytest.raises(ValueError, match="feature desconocida"):
+        cargar_plan_features(1, {"plan": {"nombre": "X", "features": ["no_existe"]}})
+
+
+def test_dependencia_incumplida_falla_sin_escribir():
+    # libro_iva requiere facturacion_electronica o compras_fiscal; sin ellos → error.
+    with pytest.raises(ValueError, match="dependencias"):
+        cargar_plan_features(1, {"plan": {"nombre": "X", "features": ["libro_iva"]}})

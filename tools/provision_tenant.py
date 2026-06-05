@@ -14,6 +14,11 @@ from psycopg.rows import dict_row
 from core.config import get_settings
 from core.crypto import encrypt, encrypt_split
 from core.db.urls import tenant_url, to_libpq
+from core.tenancy.catalogo import (
+    capacidades_completas,
+    es_feature_valida,
+    validar_dependencias,
+)
 from tools._alembic import upgrade_tenant
 
 # Claves CIFRADAS en secretos_empresa (las lee ControlSecretosBot / cargar_config_matias).
@@ -139,6 +144,66 @@ def cargar_secretos_empresa(empresa_id: int, datos: dict) -> None:
         conn.commit()
 
 
+def _features_efectivas(plan_features: list[str], overrides: dict) -> frozenset[str]:
+    """Set efectivo: features del plan ± overrides (true añade, false quita). PURO."""
+    efectivas = set(plan_features)
+    for feature, habilitada in overrides.items():
+        if habilitada:
+            efectivas.add(feature)
+        else:
+            efectivas.discard(feature)
+    return frozenset(efectivas)
+
+
+def cargar_plan_features(empresa_id: int, datos: dict) -> None:
+    """Asigna plan y features a la empresa desde el JSON, VALIDANDO antes de escribir. Idempotente.
+
+    - `plan`: UPSERT por NOMBRE (planes.limites = {"features": [...]}) + set empresas.plan_id.
+    - `features_override`: UPSERT en empresa_features (ON CONFLICT (empresa_id, feature)).
+    Valida que toda feature exista (`es_feature_valida`) y que las dependencias del set EFECTIVO se
+    cumplan (`validar_dependencias` sobre `capacidades_completas`); si no, lanza ValueError y NO escribe.
+
+    CAVEAT: el plan se upserta por NOMBRE (tier compartido); cambiar sus features afecta a otras
+    empresas del mismo plan. La consistencia es responsabilidad del operador.
+    """
+    plan = datos.get("plan")
+    overrides = datos.get("features_override") or {}
+    plan_features = list((plan or {}).get("features", []))
+    if plan is None and not overrides:
+        return  # empresa solo-núcleo: nada que asignar
+
+    # --- Validación ANTES de escribir (no dejar un estado inválido) ---
+    for feature in [*plan_features, *overrides.keys()]:
+        if not es_feature_valida(feature):
+            raise ValueError(f"feature desconocida en onboarding: '{feature}'")
+    errores = validar_dependencias(capacidades_completas(_features_efectivas(plan_features, overrides)))
+    if errores:
+        raise ValueError("dependencias de features no satisfechas: " + "; ".join(errores))
+
+    # --- Escritura idempotente ---
+    with psycopg.connect(to_libpq(get_settings().control_database_url), row_factory=dict_row) as conn:
+        if plan is not None:
+            nombre = plan.get("nombre") or "Custom"
+            limites = json.dumps({"features": plan_features})
+            row = conn.execute("SELECT id FROM planes WHERE nombre=%s", (nombre,)).fetchone()
+            if row:
+                plan_id = row["id"]
+                conn.execute("UPDATE planes SET limites=CAST(%s AS JSONB) WHERE id=%s", (limites, plan_id))
+            else:
+                plan_id = conn.execute(
+                    "INSERT INTO planes (nombre, limites) VALUES (%s, CAST(%s AS JSONB)) RETURNING id",
+                    (nombre, limites),
+                ).fetchone()["id"]
+            conn.execute("UPDATE empresas SET plan_id=%s WHERE id=%s", (plan_id, empresa_id))
+        for feature, habilitada in overrides.items():
+            conn.execute(
+                "INSERT INTO empresa_features (empresa_id, feature, habilitada) VALUES (%s,%s,%s) "
+                "ON CONFLICT (empresa_id, feature) DO UPDATE SET habilitada=EXCLUDED.habilitada",
+                (empresa_id, feature, bool(habilitada)),
+            )
+        conn.commit()
+
+
 def _set_admin_telegram(tenant_url_: str, telegram_id: int) -> None:
     """Asigna el `telegram_id` real al usuario admin sembrado (idempotente)."""
     with psycopg.connect(to_libpq(tenant_url_)) as conn:
@@ -157,6 +222,7 @@ def provision_tenant_full(datos: dict) -> int:
     empresa_id = provision_tenant(
         datos["slug"], datos["nombre"], datos["nit"], admin_nombre=admin.get("nombre", "Admin"),
     )
+    cargar_plan_features(empresa_id, datos)   # valida catálogo/dependencias antes de escribir
     cargar_secretos_empresa(empresa_id, datos)
     telegram_id = admin.get("telegram_id")
     if telegram_id is not None:

@@ -20,8 +20,8 @@
 | **1** | **Inventario CRUD** — crear/editar/eliminar producto (fracciones, mayorista, escalonado, stock inicial) | repo+service+router en `modules/inventario` | completar `TabInventario` (solo-lectura → CRUD admin) | ✅ hecho |
 | **2** | **Reportes pesados** — Resultados (P&L, costo exacto opción C), Top productos | costo al vender + `modules/reportes` (consultas agregadas) | tabs Resultados / Top productos | ✅ hecho |
 | **3** | **Facturación** — historial + emitir | `modules/facturacion` (listar/detalle; emit ya existía) | tab Facturación (gateado) | ✅ hecho |
-| **4a** | **Compras** — registrar compras a proveedor (suman stock, fijan costo) | `modules/compras` (núcleo) | tab Compras | **🚧 en progreso** |
-| 4b | Proveedores + cuentas por pagar (Cloudinary) | `modules/proveedores` / cxp | tab Proveedores | ⏳ pendiente |
+| **4a** | **Compras** — registrar compras a proveedor (suman stock, fijan costo) | `modules/compras` (núcleo) | tab Compras | ✅ hecho |
+| **4b** | **Proveedores / cuentas por pagar** (deuda, abonos, saldo) + fotos Cloudinary | `modules/proveedores` (núcleo) | tab Proveedores | **🚧 en progreso** |
 | 5 | Libro IVA | `modules/facturacion` (libro/consolidado) | tab Libro IVA | ⏳ pendiente |
 | 6 | Cola fiscal — FE recibidas, notas, DS-NO, **compras fiscal/RADIAN**, honorarios | `modules/facturacion` (DIAN inbound + documentos soporte) | tabs de la cola fiscal | ⏳ pendiente |
 
@@ -161,5 +161,50 @@ lista del rango. Vendedor: tab bloqueado ("solo administradores"). Live: re-fetc
   `productos.precio_compra` queda en el costo, total correcto, get-or-create dedup, admin-only (403),
   listado por rango, emite el evento.
 - **Vitest:** admin registra (POST /compras con shape correcto) y ve la lista; vendedor sin controles.
+
+---
+
+## Slice 4b — Proveedores / cuentas por pagar + fotos Cloudinary (en progreso)
+
+**Proveedores es NÚCLEO** (sin `require_feature`); RBAC = admin. Tablas ya existían (tenant 0001:
+`facturas_proveedores` con id TEXT = nº de factura del proveedor, `facturas_abonos`).
+
+### Parte A — Cloudinary como secreto por-empresa (provisioning)
+
+- Onboarding JSON: bloque `cloudinary: {cloud_name, api_key, api_secret}`. `cargar_secretos_empresa`
+  guarda `api_key`/`api_secret` **cifrados** en `secretos_empresa` (claves `cloudinary_api_key`/
+  `cloudinary_api_secret`) y `cloud_name` en claro en `config_empresa`. Claves ausentes → se omiten.
+- `cargar_config_cloudinary(session, master, empresa_id) -> CloudinaryCredenciales | None` (espeja
+  `cargar_config_matias`): descifra; None si la empresa no tiene Cloudinary. `pyproject`: +cloudinary,
+  +python-multipart.
+
+### Parte B — Cuentas por pagar (`modules/proveedores`, RBAC admin)
+
+- `POST /proveedores/facturas {id,proveedor,descripcion?,total,fecha?}` → pagado=0, pendiente=total,
+  estado='pendiente'. id duplicado → 409.
+- `POST /proveedores/abonos {factura_id,monto,fecha?}` → inserta abono; recalcula pagado=Σabonos,
+  pendiente=total−pagado (clamp 0), estado='pagada' si pendiente≤0. 404 si la factura no existe; 422 si
+  monto≤0 o excede el pendiente (criterio: no sobre-abonar).
+- `GET /proveedores/facturas (?estado)` → lista con saldo. `GET /proveedores/resumen` → total adeudado.
+
+### Parte C — Foto a Cloudinary (gateada a "configurado")
+
+- `CloudinaryClient` perezoso (no importa el SDK ni toca red al construir; `upload` en `asyncio.to_thread`,
+  `resource_type="auto"`). `POST /proveedores/facturas/{id}/foto` (multipart): **503** si la empresa no
+  tiene Cloudinary; si sí, sube y guarda `foto_url`/`foto_nombre`.
+
+### Parte D — Frontend (`TabProveedores`, admin-only, reemplaza el stub)
+
+Resumen del total adeudado + lista de cuentas por pagar; registrar factura y abono (recalcula y muestra
+el saldo); subir foto **solo si Cloudinary disponible** (ante 503 oculta el control con aviso). Vendedor:
+bloqueado. Live: re-fetch ante `reconnected`.
+
+### Tests
+
+- **pytest:** provisioning carga/recupera Cloudinary cifrado (None si ausente); factura nace pendiente;
+  abono recalcula; abonos que saldan → 'pagada'; dedup 409; 404/422; resumen suma; admin-only 403; foto
+  con fake → guarda URL; sin Cloudinary → 503 (nunca red real).
+- **Vitest:** registrar factura/abono postea el shape correcto y el saldo se actualiza; el control de foto
+  se comporta según disponibilidad (503 → oculto + aviso); vendedor sin acceso.
 </content>
 </invoke>

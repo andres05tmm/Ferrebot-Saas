@@ -27,6 +27,12 @@ _CLAVES_SECRETAS = ("telegram_token", "matias_email", "matias_password")
 _CLAVES_CONFIG = (
     "matias_base_url", "matias_resolution", "matias_prefix", "matias_notes", "matias_city_id",
 )
+# Cloudinary (bloque `cloudinary` del onboarding): api_key/api_secret CIFRADOS, cloud_name en claro.
+# (clave en el JSON → clave en secretos_empresa) — las lee `cargar_config_cloudinary`.
+_CLAVES_CLOUDINARY_SECRETAS = (
+    ("api_key", "cloudinary_api_key"),
+    ("api_secret", "cloudinary_api_secret"),
+)
 
 
 def _db_name(slug: str) -> str:
@@ -100,38 +106,48 @@ def provision_tenant(slug: str, nombre: str, nit: str, admin_nombre: str = "Admi
 def cargar_secretos_empresa(empresa_id: int, datos: dict) -> None:
     """UPSERT idempotente (control DB) de secretos cifrados + config en claro + branding de una empresa.
 
-    - `secretos` → `secretos_empresa` CIFRADO con `secrets_master_key` (encrypt_split; nunca en claro).
-    - `config`   → `config_empresa` en claro (claves exactas que lee `cargar_config_matias`).
-    - `branding` → tabla `branding` (lo lee `control_repo.leer_branding`).
+    - `secretos`   → `secretos_empresa` CIFRADO con `secrets_master_key` (encrypt_split; nunca en claro).
+    - `config`     → `config_empresa` en claro (claves exactas que lee `cargar_config_matias`).
+    - `cloudinary` → api_key/api_secret CIFRADOS en `secretos_empresa`; cloud_name en `config_empresa`.
+    - `branding`   → tabla `branding` (lo lee `control_repo.leer_branding`).
     Claves ausentes en `datos` se omiten; re-ejecutar no duplica (ON CONFLICT).
     """
     settings = get_settings()
     master = settings.secrets_master_key
     secretos = datos.get("secretos", {})
     config = datos.get("config", {})
+    cloudinary = datos.get("cloudinary", {})
     branding = datos.get("branding")
+
+    def _upsert_secreto(conn, clave: str, valor: str) -> None:
+        cifrado, nonce = encrypt_split(str(valor), master)
+        conn.execute(
+            "INSERT INTO secretos_empresa (empresa_id, clave, valor_cifrado, nonce) "
+            "VALUES (%s,%s,%s,%s) ON CONFLICT (empresa_id, clave) DO UPDATE "
+            "SET valor_cifrado=EXCLUDED.valor_cifrado, nonce=EXCLUDED.nonce, actualizado_en=now()",
+            (empresa_id, clave, cifrado, nonce),
+        )
+
+    def _upsert_config(conn, clave: str, valor: str) -> None:
+        conn.execute(
+            "INSERT INTO config_empresa (empresa_id, clave, valor) VALUES (%s,%s,%s) "
+            "ON CONFLICT (empresa_id, clave) DO UPDATE SET valor=EXCLUDED.valor, actualizado_en=now()",
+            (empresa_id, clave, str(valor)),
+        )
 
     with psycopg.connect(to_libpq(settings.control_database_url)) as conn:
         for clave in _CLAVES_SECRETAS:
-            valor = secretos.get(clave)
-            if valor is None:
-                continue
-            cifrado, nonce = encrypt_split(str(valor), master)
-            conn.execute(
-                "INSERT INTO secretos_empresa (empresa_id, clave, valor_cifrado, nonce) "
-                "VALUES (%s,%s,%s,%s) ON CONFLICT (empresa_id, clave) DO UPDATE "
-                "SET valor_cifrado=EXCLUDED.valor_cifrado, nonce=EXCLUDED.nonce, actualizado_en=now()",
-                (empresa_id, clave, cifrado, nonce),
-            )
+            if secretos.get(clave) is not None:
+                _upsert_secreto(conn, clave, secretos[clave])
         for clave in _CLAVES_CONFIG:
-            valor = config.get(clave)
-            if valor is None:
-                continue
-            conn.execute(
-                "INSERT INTO config_empresa (empresa_id, clave, valor) VALUES (%s,%s,%s) "
-                "ON CONFLICT (empresa_id, clave) DO UPDATE SET valor=EXCLUDED.valor, actualizado_en=now()",
-                (empresa_id, clave, str(valor)),
-            )
+            if config.get(clave) is not None:
+                _upsert_config(conn, clave, config[clave])
+        # Cloudinary: secretos cifrados + cloud_name en claro (claves ausentes se omiten).
+        for clave_json, clave_db in _CLAVES_CLOUDINARY_SECRETAS:
+            if cloudinary.get(clave_json) is not None:
+                _upsert_secreto(conn, clave_db, cloudinary[clave_json])
+        if cloudinary.get("cloud_name") is not None:
+            _upsert_config(conn, "cloudinary_cloud_name", cloudinary["cloud_name"])
         if branding:
             conn.execute(
                 "INSERT INTO branding (empresa_id, logo_url, color_primario, nombre_comercial, dominio) "

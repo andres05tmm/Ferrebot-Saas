@@ -21,6 +21,7 @@ from core.tenancy.cache import control_cache
 from core.tenancy.capacidades import ControlCapacidades
 from core.tenancy.control_repo import leer_branding
 from modules.facturacion.config import cargar_config_matias
+from modules.proveedores.cloudinary_config import cargar_config_cloudinary
 from tests.conftest import create_database, drop_database
 from tools.provision_tenant import _db_name, cargar_plan_features, provision_tenant_full
 
@@ -36,6 +37,9 @@ def _datos(slug: str) -> dict:
         "config": {
             "matias_base_url": "http://matias.fake", "matias_resolution": "18760000999",
             "matias_prefix": "FPX", "matias_notes": "Prueba", "matias_city_id": "149",
+        },
+        "cloudinary": {
+            "cloud_name": "prueba-cloud", "api_key": "123456789", "api_secret": "fake-cloud-secret",
         },
         "branding": {
             "color_primario": "#0d6efd", "logo_url": "http://x/logo.png",
@@ -75,6 +79,13 @@ async def test_provision_full_carga_secretos_config_branding_admin(monkeypatch):
             assert cred.base_url == "http://matias.fake"
             assert fiscal.prefix == "FPX" and fiscal.resolution_number == "18760000999"
             assert fiscal.city_id_default == "149"
+            # Cloudinary: secretos cifrados (api_key/api_secret) + cloud_name en claro, vía el lector real.
+            cloud = await cargar_config_cloudinary(cs, master, empresa_id)
+            assert cloud is not None
+            assert cloud.cloud_name == "prueba-cloud" and cloud.api_key == "123456789"
+            assert cloud.api_secret == "fake-cloud-secret"
+            # Empresa sin Cloudinary configurado → None (no rompe cuentas por pagar).
+            assert await cargar_config_cloudinary(cs, master, 999999) is None
             # bot-token descifra igual.
             assert await ControlSecretosBot(cs, master).bot_token(empresa_id) == "111222:FAKE-bot-token"
             # branding.
@@ -92,7 +103,8 @@ async def test_provision_full_carga_secretos_config_branding_admin(monkeypatch):
             efectivas = await ControlCapacidades(cs).efectivas(empresa_id)
             n_feat = (await cs.execute(
                 text("SELECT count(*) FROM empresa_features WHERE empresa_id=:e"), {"e": empresa_id})).scalar_one()
-        assert (n_sec, n_cfg, n_brand) == (3, 5, 1)
+        # 3 matias/telegram + 2 cloudinary (api_key/api_secret) = 5; 5 matias + 1 cloudinary_cloud_name = 6.
+        assert (n_sec, n_cfg, n_brand) == (5, 6, 1)
         assert "facturacion_electronica" in efectivas
         assert "fiados" not in efectivas          # el override habilitada=false lo quita
         assert n_feat == 1                          # idempotente: una fila de override

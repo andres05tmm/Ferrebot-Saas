@@ -20,6 +20,8 @@ dependencies = [
     "rapidfuzz>=3.10",              # fuzzy match conservador (búsqueda de catálogo)
     "redis>=5.2",                   # cola/caché + dedup y pendiente de confirmación (asyncio)
     "arq>=0.26",                    # cola de jobs (emisión DIAN asíncrona) sobre Redis
+    "python-multipart>=0.0.32",    # parseo multipart (subida de foto de soporte a proveedores)
+    "cloudinary>=1.44.2",          # fotos de soporte por empresa (import perezoso; cred. cifradas)
 ]
 
 [project.optional-dependencies]

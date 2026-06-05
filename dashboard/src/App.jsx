@@ -22,9 +22,10 @@ import TabResultados from './tabs/TabResultados.jsx'
 import TabTopProductos from './tabs/TabTopProductos.jsx'
 import TabFacturacion from './tabs/TabFacturacion.jsx'
 import TabCompras from './tabs/TabCompras.jsx'
+import TabProveedores from './tabs/TabProveedores.jsx'
 import { ROUTES } from './routes.jsx'
 
-// Tabs núcleo (E6) + reportes (S2) + facturación (S3) + compras (S4a) de Fase 12; el resto, stub.
+// Tabs núcleo (E6) + reportes (S2) + facturación (S3) + compras (S4a) + proveedores (S4b); el resto, stub.
 const TABS = {
   '/hoy': TabHoy,
   '/ventas': TabVentasRapidas,
@@ -37,6 +38,7 @@ const TABS = {
   '/top-productos': TabTopProductos,
   '/facturacion': TabFacturacion,
   '/compras': TabCompras,
+  '/proveedores': TabProveedores,
 }
 import { bootConfig } from './lib/config.js'
 import { FeaturesProvider } from './lib/features.jsx'

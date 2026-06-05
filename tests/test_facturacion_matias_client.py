@@ -17,7 +17,9 @@ from modules.facturacion.matias_client import (
     MatiasCredenciales,
     _extraer_token,
     _parsear_ciudades,
+    _parsear_ciudades_full,
     _parsear_emision,
+    _parsear_paises,
 )
 
 _CRED = MatiasCredenciales(email="bot@empresa.co", password="secreto", base_url="https://matias.test/api")
@@ -85,10 +87,11 @@ def test_parsear_ciudades_variantes():
 class _Handler:
     """Handler de MockTransport: respuestas canned por endpoint + traza de paths (sin red real)."""
 
-    def __init__(self, *, token="TKN", login=None, invoice=None, cities=None):
+    def __init__(self, *, token="TKN", login=None, invoice=None, cities=None, countries=None):
         self._login = login if login is not None else {"token": token, "expires_in": 3600}
         self._invoice = invoice
         self._cities = cities if cities is not None else {"data": []}
+        self._countries = countries if countries is not None else {"data": []}
         self.paths: list[str] = []
 
     def __call__(self, request: httpx.Request) -> httpx.Response:
@@ -100,6 +103,8 @@ class _Handler:
             return httpx.Response(200, json=self._invoice)
         if path.endswith("/cities"):
             return httpx.Response(200, json=self._cities)
+        if path.endswith("/countries"):
+            return httpx.Response(200, json=self._countries)
         return httpx.Response(404, json={})
 
 
@@ -142,3 +147,49 @@ async def test_city_id_carga_y_cachea():
     assert await cli.city_id(5001) == "149"            # segunda vez: sin recargar
     assert await cli.city_id("9999") is None           # desconocido → None
     assert _cuenta(handler, "/cities") == 1            # se cargó una sola vez
+
+
+# --- catálogos fiscales para los selectores del dashboard (§5) --------------
+
+def test_parsear_ciudades_full():
+    data = {"dataRecords": {"data": [
+        {"code": "5001", "id": "149", "name_city": "Medellín", "department": {"name_department": "Antioquia"}},
+        {"id": "1", "name": "Bogotá"},                 # sin code → dane 0; sin department → ""
+        {"code": "9999"},                              # sin id → se salta
+    ]}}
+    assert _parsear_ciudades_full(data, 45) == [
+        {"matias_id": "149", "dane_code": 5001, "nombre": "Medellín", "departamento": "Antioquia", "pais_id": 45},
+        {"matias_id": "1", "dane_code": 0, "nombre": "Bogotá", "departamento": "", "pais_id": 45},
+    ]
+
+
+def test_parsear_paises():
+    data = {"data": [
+        {"id": 45, "abbreviation_A2": "CO", "country_name": "Colombia", "phone_code": "57"},
+        {"abbreviation_A2": "XX"},                     # sin id → se salta
+    ]}
+    assert _parsear_paises(data) == [
+        {"matias_id": 45, "codigo_a2": "CO", "nombre": "Colombia", "telefono_codigo": "57"},
+    ]
+
+
+async def test_listar_ciudades_filtra_y_cachea():
+    cities = {"data": [
+        {"code": "5001", "id": "149", "name_city": "Medellín", "department": {"name_department": "Antioquia"}},
+        {"code": "11001", "id": "1", "name_city": "Bogotá", "department": {"name_department": "Bogotá D.C."}},
+    ]}
+    handler = _Handler(cities=cities)
+    cli = _client(handler)
+    assert len(await cli.listar_ciudades(pais_id=45)) == 2
+    medellin = await cli.listar_ciudades(pais_id=45, q="mede")
+    assert [c["nombre"] for c in medellin] == ["Medellín"]   # filtra por nombre
+    assert _cuenta(handler, "/cities") == 1                  # cacheada por pais_id
+
+
+async def test_listar_paises_cachea():
+    handler = _Handler(countries={"data": [{"id": 45, "country_name": "Colombia", "abbreviation_A2": "CO"}]})
+    cli = _client(handler)
+    p1 = await cli.listar_paises()
+    p2 = await cli.listar_paises()
+    assert p1 == p2 and p1[0]["nombre"] == "Colombia"
+    assert _cuenta(handler, "/countries") == 1

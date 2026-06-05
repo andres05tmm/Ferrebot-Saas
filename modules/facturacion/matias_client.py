@@ -124,6 +124,61 @@ def _parsear_ciudades(data: dict) -> dict[int, str]:
     return resultado
 
 
+def _ciudades_raw(data: dict) -> list[dict]:
+    """Lista cruda de ciudades desde `/cities` (`dataRecords.data` o `data`). PURO."""
+    return (data.get("dataRecords", {}) or {}).get("data", []) or data.get("data", []) or []
+
+
+def _parsear_ciudades_full(data: dict, pais_id: int) -> list[dict]:
+    """Ciudades para los selectores del dashboard (espeja `get_ciudades_list` del original). PURO.
+
+    Cada ítem: `{matias_id, dane_code, nombre, departamento, pais_id}`. Entradas sin `id` se saltan;
+    un `code` no numérico cae a `dane_code=0` (no rompe la lista).
+    """
+    resultado: list[dict] = []
+    for city in _ciudades_raw(data):
+        try:
+            matias_id = str(city["id"])
+        except (KeyError, TypeError):
+            continue
+        code = city.get("code") or city.get("dane_code") or city.get("municipality_code")
+        try:
+            dane = int(str(code)) if code else 0
+        except (ValueError, TypeError):
+            dane = 0
+        resultado.append({
+            "matias_id": matias_id,
+            "dane_code": dane,
+            "nombre": city.get("name_city") or city.get("name") or "",
+            "departamento": (city.get("department") or {}).get("name_department", ""),
+            "pais_id": pais_id,
+        })
+    return resultado
+
+
+def _parsear_paises(data: dict) -> list[dict]:
+    """Países desde `/countries` (espeja `get_paises_list` del original). PURO.
+
+    Cada ítem: `{matias_id, codigo_a2, nombre, telefono_codigo}`. Entradas sin `id` se saltan.
+    """
+    raw = (
+        (data.get("dataRecords", {}) or {}).get("data", [])
+        or data.get("data", [])
+        or (data if isinstance(data, list) else [])
+    )
+    resultado: list[dict] = []
+    for p in raw:
+        if not p.get("id"):
+            continue
+        resultado.append({
+            "matias_id": p.get("id"),
+            "codigo_a2": p.get("abbreviation_A2") or p.get("abbreviation_a2") or "",
+            "nombre": p.get("country_name") or p.get("name") or "",
+            "telefono_codigo": p.get("phone_code") or "",
+        })
+    return resultado
+
+
 # --- cliente por empresa (httpx perezoso) ------------------------------------
 
 class MatiasClient:
@@ -136,8 +191,12 @@ class MatiasClient:
         self._token_val: str | None = None
         self._token_expiry: float = 0.0
         self._ciudades: dict[int, str] | None = None
+        self._ciudades_full: dict[int, list[dict]] = {}   # por pais_id (selectores del dashboard)
+        self._paises: list[dict] | None = None
         self._token_lock = asyncio.Lock()
         self._ciudades_lock = asyncio.Lock()
+        self._ciudades_full_lock = asyncio.Lock()
+        self._paises_lock = asyncio.Lock()
 
     def _get_client(self) -> httpx.AsyncClient:
         """Cliente httpx perezoso y MEMOIZADO (uno por instancia atado al `base_url`); no abre red."""
@@ -190,6 +249,37 @@ class MatiasClient:
             return self._ciudades.get(int(dane_code))
         except (ValueError, TypeError):
             return None
+
+    async def listar_ciudades(self, *, pais_id: int = 45, q: str = "") -> list[dict]:
+        """Ciudades del país (caché perezosa por `pais_id`), filtradas por `q` (nombre/depto), máx 50.
+
+        Espeja `get_ciudades_list` del original: códigos DANE + nombre + departamento para los
+        selectores del form de cliente (uso fiscal).
+        """
+        async with self._ciudades_full_lock:
+            cache = self._ciudades_full.get(pais_id)
+            if cache is None:
+                resp = await self._get_client().get(
+                    "/cities", params={"country_id": pais_id}, timeout=15
+                )
+                cache = _parsear_ciudades_full(resp.json(), pais_id)
+                self._ciudades_full[pais_id] = cache
+        ql = q.strip().lower()
+        if ql:
+            cache = [c for c in cache if ql in c["nombre"].lower() or ql in c["departamento"].lower()]
+        return cache[:50]
+
+    async def listar_paises(self) -> list[dict]:
+        """Países de MATIAS (caché perezosa por instancia). Espeja `get_paises_list` del original.
+
+        Nota: el original usaba un host absoluto stale para `/countries`; aquí cuelga del `base_url`
+        por empresa (consistente con `/cities` y la decisión 'base_url único' de este cliente).
+        """
+        async with self._paises_lock:
+            if self._paises is None:
+                resp = await self._get_client().get("/countries", timeout=15)
+                self._paises = _parsear_paises(resp.json())
+        return self._paises
 
     async def aclose(self) -> None:
         """Cierra el cliente httpx si existe (lifecycle lo maneja la capa superior en E3)."""

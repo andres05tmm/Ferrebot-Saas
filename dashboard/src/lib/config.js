@@ -5,7 +5,9 @@
  *   (1) aplica el theming → inyecta --color-primary en :root desde branding.color_primario,
  *   (2) devuelve { features, branding, usuario } para el gating de navegación.
  *
- * Si /config falla (red caída, aún sin login en E4), arranca con defaults para no bloquear el shell.
+ * Corre SOLO autenticado (detrás de ProtectedRoute). El 401 lo maneja api.js (limpia sesión y va a
+ * /login), así que aquí NO se traga el error: se propaga para que el shell muestre un estado de error
+ * real (red caída). El default de color solo aplica si el branding no trae color_primario.
  */
 import { apiJson } from './api.js'
 
@@ -17,16 +19,11 @@ export function applyTheming(branding) {
 }
 
 export async function bootConfig() {
-  try {
-    const config = await apiJson('/config')
-    applyTheming(config.branding)
-    return {
-      features: config.features || [],
-      branding: config.branding || { color_primario: COLOR_PRIMARY_DEFAULT },
-      usuario: config.usuario || null,
-    }
-  } catch {
-    applyTheming(null)
-    return { features: [], branding: { color_primario: COLOR_PRIMARY_DEFAULT }, usuario: null }
+  const config = await apiJson('/config')
+  applyTheming(config.branding)
+  return {
+    features: config.features || [],
+    branding: config.branding || { color_primario: COLOR_PRIMARY_DEFAULT },
+    usuario: config.usuario || null,
   }
 }

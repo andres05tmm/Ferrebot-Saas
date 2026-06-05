@@ -1,28 +1,58 @@
 /*
- * api.js — wrapper único de fetch del dashboard.
+ * api.js — wrapper único de fetch del dashboard (auth + tenant centralizados).
  *
- * Base /api/v1 (el backend SaaS expone los endpoints bajo ese prefijo). En DESARROLLO añade el
- * header X-Tenant-Slug (VITE_TENANT_SLUG) para resolver la empresa sin subdominio; en PRODUCCIÓN
- * la empresa la da el subdominio y NO se manda el header.
- *
- * Punto de extensión (E4 — auth): cuando exista sesión, aquí se añadirá
- * `Authorization: Bearer <token>` antes de delegar en fetch.
+ * Base /api/v1. Añade Authorization: Bearer <token de localStorage> si hay sesión, y en DESARROLLO
+ * el header X-Tenant-Slug (VITE_TENANT_SLUG) para resolver la empresa sin subdominio (en prod la da
+ * el subdominio). Ante un 401 limpia la sesión y redirige a /login — salvo que ya estés en /login
+ * (evita el bucle: el propio POST /auth/login responde 401 en credenciales inválidas).
  */
 const BASE = '/api/v1'
+export const TOKEN_KEY = 'ferrebot_token'
+export const USER_KEY = 'ferrebot_user'
 
 function esDev() {
   const dev = import.meta.env.DEV
   return dev === true || dev === 'true'
 }
 
-export function api(path, options = {}) {
+export function getToken() {
+  try { return localStorage.getItem(TOKEN_KEY) } catch { return null }
+}
+
+export function limpiarSesion() {
+  try {
+    localStorage.removeItem(TOKEN_KEY)
+    localStorage.removeItem(USER_KEY)
+  } catch {}
+}
+
+// Seam de navegación: aislado en un objeto para poder espiarlo en tests (window.location en jsdom
+// es unforgeable). Lo usan tanto el intercept de 401 como useAuth.logout.
+export const redirector = {
+  toLogin() {
+    if (typeof window !== 'undefined') window.location.href = '/login'
+  },
+}
+
+export async function api(path, options = {}) {
   const headers = new Headers(options.headers || {})
-  // TODO(E4): si hay token de sesión → headers.set('Authorization', `Bearer ${token}`)
+  const token = getToken()
+  if (token) headers.set('Authorization', `Bearer ${token}`)
   if (esDev()) {
     const slug = import.meta.env.VITE_TENANT_SLUG
     if (slug) headers.set('X-Tenant-Slug', slug)
   }
-  return fetch(`${BASE}${path}`, { ...options, headers })
+
+  const res = await fetch(`${BASE}${path}`, { ...options, headers })
+
+  if (res.status === 401) {
+    limpiarSesion()
+    // No redirigir si ya estamos en /login (el error del login se muestra en el formulario).
+    if (typeof window !== 'undefined' && window.location?.pathname !== '/login') {
+      redirector.toLogin()
+    }
+  }
+  return res
 }
 
 export async function apiJson(path, options = {}) {

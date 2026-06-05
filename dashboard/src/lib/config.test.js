@@ -21,13 +21,9 @@ describe('boot theming', () => {
     expect(result.features).toEqual(['ventas', 'facturacion_electronica'])
   })
 
-  it('cae al color por defecto si /config falla', async () => {
+  it('propaga el error si /config falla (no traga el fallo; el shell muestra error)', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 500 }))
-
-    const result = await bootConfig()
-
-    expect(document.documentElement.style.getPropertyValue('--color-primary')).toBe(COLOR_PRIMARY_DEFAULT)
-    expect(result.features).toEqual([])
+    await expect(bootConfig()).rejects.toThrow('HTTP 500')
   })
 
   it('applyTheming usa el default cuando no hay branding', () => {

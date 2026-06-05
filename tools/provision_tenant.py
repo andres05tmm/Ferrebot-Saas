@@ -54,10 +54,8 @@ def _seed(tenant_url_: str, admin_nombre: str) -> None:
         existe = conn.execute("SELECT 1 FROM usuarios WHERE rol='admin' LIMIT 1").fetchone()
         if not existe:
             conn.execute("INSERT INTO usuarios (nombre, rol) VALUES (%s,'admin')", (admin_nombre,))
-        conn.execute(
-            "INSERT INTO config_empresa (clave, valor) VALUES ('iva_incluido_en_precio', 'true') "
-            "ON CONFLICT (clave) DO NOTHING"
-        )
+        # La config no-secreta por empresa vive en el CONTROL DB (config_empresa con empresa_id),
+        # no en la app DB (tabla retirada en tenant 0005). No se siembra nada aquí.
         conn.commit()
 
 

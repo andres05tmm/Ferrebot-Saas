@@ -39,6 +39,13 @@ export function num(n) {
   return Number(n).toLocaleString('es-CO', { maximumFractionDigits: 2 })
 }
 
+// Ventana [00:00, 23:59:59] de HOY en hora Colombia (UTC-5 fijo, sin DST) como ISO con offset.
+// Para filtrar endpoints por fecha sin ambigüedad de zona (regla #4).
+export function rangoHoyCO() {
+  const ymd = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' }) // YYYY-MM-DD
+  return { desde: `${ymd}T00:00:00-05:00`, hasta: `${ymd}T23:59:59-05:00` }
+}
+
 // ── SPINNER / ERRORMSG — tokenizados (consumers transversales) ───────────────
 export function Spinner() {
   return (

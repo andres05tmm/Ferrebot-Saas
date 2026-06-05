@@ -9,10 +9,13 @@ RED (E4e): `verificar_feature` y `get_capacidades` lanzan NotImplementedError; `
 """
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
+
 from fastapi import Depends, HTTPException, Request, status
 
 from core.db.session import control_session
 from core.tenancy.capacidades import ControlCapacidades
+from core.tenancy.capacidades_cache import CapacidadesCache, capacidades_cache
 
 
 def verificar_feature(feature: str, capacidades: frozenset[str]) -> None:
@@ -24,10 +27,32 @@ def verificar_feature(feature: str, capacidades: frozenset[str]) -> None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Recurso no disponible")
 
 
-async def get_capacidades(request: Request) -> frozenset[str]:
-    """Capacidades efectivas de la empresa del request (control DB, sesión per-call)."""
+async def _cargar_efectivas(empresa_id: int) -> frozenset[str]:
+    """Carga las capacidades efectivas desde el control DB (sesión per-call). IO."""
     async with control_session() as cs:
-        return await ControlCapacidades(cs).efectivas(request.state.tenant.id)
+        return await ControlCapacidades(cs).efectivas(empresa_id)
+
+
+async def _resolver_capacidades(
+    empresa_id: int,
+    cache: CapacidadesCache,
+    loader: Callable[[int], Awaitable[frozenset[str]]],
+) -> frozenset[str]:
+    """Capacidades de la empresa desde `cache`; en miss carga con `loader`, cachea y devuelve.
+
+    Núcleo inyectable (cache + loader) para testear sin tocar el control DB real.
+    """
+    cacheadas = cache.get(empresa_id)
+    if cacheadas is not None:
+        return cacheadas
+    efectivas = await loader(empresa_id)
+    cache.set(empresa_id, efectivas)
+    return efectivas
+
+
+async def get_capacidades(request: Request) -> frozenset[str]:
+    """Capacidades efectivas de la empresa del request, cacheadas con TTL corto (control DB en miss)."""
+    return await _resolver_capacidades(request.state.tenant.id, capacidades_cache, _cargar_efectivas)
 
 
 def require_feature(feature: str):

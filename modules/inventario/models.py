@@ -55,6 +55,26 @@ class ProductoFraccion(TenantBase):
     precio_unitario: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
 
 
+class Alias(TenantBase):
+    """Variante/typo de búsqueda → forma canónica; opcionalmente ligada a un producto.
+
+    Alimenta la búsqueda fuzzy y el bypass del bot. `producto_id` NULL = alias global (corrección de
+    término que no apunta a un producto concreto). UNIQUE(termino). La tabla la crea la migración
+    tenant 0001; aquí solo el mapeo ORM. Sin empresa_id: la base es la frontera del tenant.
+    """
+
+    __tablename__ = "aliases"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    termino: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    reemplazo: Mapped[str] = mapped_column(Text, nullable=False)
+    producto_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("productos.id"))
+    creado_en: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    actualizado_en: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
 class Inventario(TenantBase):
     __tablename__ = "inventario"
 

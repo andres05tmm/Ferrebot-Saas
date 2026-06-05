@@ -7,6 +7,9 @@ arma con el wiring real por empresa.
 """
 from __future__ import annotations
 
+import asyncio
+from collections.abc import Callable
+
 from arq.connections import RedisSettings
 
 from apps.worker.jobs import emitir_documento
@@ -14,36 +17,71 @@ from core.config import get_settings
 from core.db.session import control_session, tenant_session
 from core.tenancy.control_repo import resolve_tenant_by_id
 from modules.facturacion.config import cargar_config_matias
-from modules.facturacion.matias_client import MatiasClient
+from modules.facturacion.matias_client import MatiasClient, MatiasCredenciales
 from modules.facturacion.politica import Decision
 from modules.facturacion.repository import SqlFacturacionRepository
 from modules.facturacion.service import MAX_INTENTOS, FacturacionService
 
 
-class _ServicioEmision:
-    """Adaptador por empresa: resuelve tenant + config (control DB) y emite sobre su base."""
+class _MatiasClientCache:
+    """Caché de `MatiasClient` por tenant_id, COMPARTIDA entre jobs del runtime del worker.
 
-    def __init__(self, tenant_id: int, master: str) -> None:
+    Reusa el token JWT y la caché de ciudades entre emisiones del mismo tenant (antes se construía un
+    cliente nuevo por emisión → re-login y recarga de ciudades). El cliente se construye perezoso
+    (no toca red). Get-or-create bajo lock: dos jobs del mismo tenant a la vez no crean dos clientes.
+    Las credenciales se resuelven por empresa; nunca se mezclan entre tenants (aislamiento).
+    """
+
+    def __init__(self, factory: Callable[[MatiasCredenciales], MatiasClient] = MatiasClient) -> None:
+        self._factory = factory
+        self._clientes: dict[int, MatiasClient] = {}
+        self._lock = asyncio.Lock()
+
+    async def get_or_create(self, tenant_id: int, cred: MatiasCredenciales) -> MatiasClient:
+        """Devuelve el cliente cacheado del tenant o lo crea (perezoso) la primera vez."""
+        async with self._lock:
+            cliente = self._clientes.get(tenant_id)
+            if cliente is None:
+                cliente = self._factory(cred)
+                self._clientes[tenant_id] = cliente
+            return cliente
+
+
+class _ServicioEmision:
+    """Adaptador por empresa: resuelve tenant + config (control DB) y emite sobre su base.
+
+    Se crea NUEVO por job, pero reusa la `_MatiasClientCache` del runtime (compartida) para no
+    re-autenticar en cada emisión.
+    """
+
+    def __init__(self, tenant_id: int, master: str, cache: _MatiasClientCache) -> None:
         self._tid = tenant_id
         self._master = master
+        self._cache = cache
 
     async def emitir(self, factura_id: int) -> Decision:
         async with control_session() as cs:
             tenant = await resolve_tenant_by_id(cs, self._tid)
             cred, config = await cargar_config_matias(cs, self._master, self._tid)
+        cliente = await self._cache.get_or_create(self._tid, cred)
         decision: Decision | None = None
         async for s in tenant_session(tenant):   # commit al cerrar el generador (no `return` dentro)
-            servicio = FacturacionService(SqlFacturacionRepository(s), MatiasClient(cred), config)
+            servicio = FacturacionService(SqlFacturacionRepository(s), cliente, config)
             decision = await servicio.emitir(factura_id)
         return decision
 
 
 async def on_startup(ctx: dict) -> None:
-    """Inyecta `ctx['crear_servicio']`: dado tenant_id, devuelve el adaptador de emisión por empresa."""
+    """Inyecta `ctx['crear_servicio']`: dado tenant_id, devuelve el adaptador de emisión por empresa.
+
+    La `_MatiasClientCache` vive en esta closure (una por runtime), por lo que se comparte entre todos
+    los jobs y persiste el cliente —con su token y ciudades— entre emisiones.
+    """
     master = get_settings().secrets_master_key
+    cache = _MatiasClientCache()
 
     async def crear_servicio(tenant_id: int) -> _ServicioEmision:
-        return _ServicioEmision(tenant_id, master)
+        return _ServicioEmision(tenant_id, master, cache)
 
     ctx["crear_servicio"] = crear_servicio
 

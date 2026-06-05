@@ -5,14 +5,14 @@ Sesión del tenant (la base es la frontera; sin `empresa_id`). El consecutivo sa
 `modules/ventas/repository.py` (`SqlVentasRepository`).
 """
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.config.timezone import now_co
+from core.config.timezone import now_co, rango_dia_co
 from core.events import publish
 from modules.facturacion.models import FacturaElectronica
 
@@ -31,6 +31,27 @@ class FacturaLeer(BaseModel):
     estado: str
     idempotency_key: str | None
     intentos: int
+    # Fecha de creación (la trae el ORM; opcional para no romper construcciones manuales en tests).
+    creado_en: datetime | None = None
+
+
+class FacturaDetalle(FacturaLeer):
+    """Detalle de una factura: la vista base + emisión, total de la venta ligada y motivo de rechazo."""
+
+    emitido_en: datetime | None
+    total: Decimal | None   # total de la venta ligada (None si la factura no tiene venta)
+    motivo: str | None      # por qué se rechazó / falló (extraído de dian_respuesta), si aplica
+
+
+def _motivo(dian_respuesta: dict | None) -> str | None:
+    """Extrae el motivo legible de `dian_respuesta` (rechazo/error). None si no hay o no aplica."""
+    if not isinstance(dian_respuesta, dict):
+        return None
+    for clave in ("rechazo", "error", "mensaje", "message"):
+        valor = dian_respuesta.get(clave)
+        if valor:
+            return valor if isinstance(valor, str) else str(valor)
+    return None
 
 
 @dataclass(frozen=True, slots=True)
@@ -120,6 +141,45 @@ class SqlFacturacionRepository:
             await self._s.execute(select(FacturaElectronica).where(FacturaElectronica.id == factura_id))
         ).scalar_one_or_none()
         return FacturaLeer.model_validate(orm) if orm is not None else None
+
+    async def listar(
+        self, *, desde: date | None = None, hasta: date | None = None, estado: str | None = None,
+    ) -> list[FacturaLeer]:
+        """Historial del rango (hora Colombia), opcionalmente filtrado por estado; más reciente primero."""
+        stmt = select(FacturaElectronica)
+        if desde is not None:
+            inicio, _ = rango_dia_co(desde, desde)
+            stmt = stmt.where(FacturaElectronica.creado_en >= inicio)
+        if hasta is not None:
+            _, fin = rango_dia_co(hasta, hasta)
+            stmt = stmt.where(FacturaElectronica.creado_en <= fin)
+        if estado is not None:
+            stmt = stmt.where(FacturaElectronica.estado == estado)
+        stmt = stmt.order_by(FacturaElectronica.id.desc())
+        filas = (await self._s.execute(stmt)).scalars().all()
+        return [FacturaLeer.model_validate(o) for o in filas]
+
+    async def detalle(self, factura_id: int) -> FacturaDetalle | None:
+        """Detalle de una factura: base + emisión + total de la venta ligada + motivo de rechazo/error."""
+        orm = (
+            await self._s.execute(select(FacturaElectronica).where(FacturaElectronica.id == factura_id))
+        ).scalar_one_or_none()
+        if orm is None:
+            return None
+        total = None
+        if orm.venta_id is not None:
+            total = (
+                await self._s.execute(
+                    text("SELECT total FROM ventas WHERE id=:v"), {"v": orm.venta_id}
+                )
+            ).scalar_one_or_none()
+        base = FacturaLeer.model_validate(orm)
+        return FacturaDetalle(
+            **base.model_dump(),
+            emitido_en=orm.emitido_en,
+            total=Decimal(total) if total is not None else None,
+            motivo=_motivo(orm.dian_respuesta),
+        )
 
     async def marcar_aceptada(self, factura_id: int, *, cufe: str, dian_respuesta: dict) -> FacturaLeer:
         """estado=aceptada, guarda cufe/`emitido_en`/`dian_respuesta`; publica `factura_aceptada`."""

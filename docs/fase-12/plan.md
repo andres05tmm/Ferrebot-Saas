@@ -18,8 +18,8 @@
 | Slice | Alcance | Backend | Frontend | Estado |
 |---|---|---|---|---|
 | **1** | **Inventario CRUD** — crear/editar/eliminar producto (fracciones, mayorista, escalonado, stock inicial) | repo+service+router en `modules/inventario` | completar `TabInventario` (solo-lectura → CRUD admin) | ✅ hecho |
-| **2** | **Reportes pesados** — Resultados (P&L, costo exacto opción C), Top productos | costo al vender + `modules/reportes` (consultas agregadas) | tabs Resultados / Top productos | **🚧 en progreso** |
-| 3 | Facturación — historial + tab | `modules/facturacion` (listado/detalle) | tab Facturación | ⏳ pendiente |
+| **2** | **Reportes pesados** — Resultados (P&L, costo exacto opción C), Top productos | costo al vender + `modules/reportes` (consultas agregadas) | tabs Resultados / Top productos | ✅ hecho |
+| **3** | **Facturación** — historial + emitir | `modules/facturacion` (listar/detalle; emit ya existía) | tab Facturación (gateado) | **🚧 en progreso** |
 | 4 | Compras / Compras fiscal / Proveedores | `modules/compras` (+ fiscal), `modules/proveedores` | tabs Compras, Compras fiscal, Proveedores | ⏳ pendiente |
 | 5 | Libro IVA | `modules/facturacion` (libro/consolidado) | tab Libro IVA | ⏳ pendiente |
 | 6 | Cola fiscal — FE recibidas, notas, DS-NO, RADIAN, honorarios | `modules/facturacion` (DIAN inbound + documentos soporte) | tabs de la cola fiscal | ⏳ pendiente |
@@ -94,5 +94,39 @@ varia (sin `producto_id`) no generan movimiento ni costo. Las ventas anteriores 
   costo; resultados cuadran y excluyen anuladas; admin-only (vendedor → 403); top-productos ordenado por
   ingreso desc, respeta scoping, excluye anuladas/varia.
 - **Vitest:** cada tab pide su endpoint y pinta los números; Resultados no visible/no pide para vendedor.
+
+---
+
+## Slice 3 — Facturación: historial + emitir (en progreso)
+
+La **emisión asíncrona ya existía** (Fase 6): `POST /facturas {venta_id}` → crea `pendiente` → el worker
+emite por MATIAS → estado por SSE. Este slice añade el **historial** y el **tab**, gateados por
+`facturacion_electronica`.
+
+### Backend (`modules/facturacion`)
+
+- `SqlFacturacionRepository.listar(desde?, hasta?, estado?) -> list[FacturaLeer]` (rango hora Colombia,
+  más reciente primero). `FacturaLeer` gana `creado_en` (fecha).
+- `SqlFacturacionRepository.detalle(id) -> FacturaDetalle | None`: base + `emitido_en` + `total` (de la
+  venta ligada) + `motivo` (extraído de `dian_respuesta`: `rechazo`/`error`).
+- Router gateado (`require_feature("facturacion_electronica")`, `require_role("vendedor")`):
+  `GET /facturas` (?desde&hasta&estado) y `GET /facturas/{id}` (404 si no existe). **`POST /facturas` no se
+  tocó** (es el emit).
+
+### Frontend (`TabFacturacion`, ruta `/facturacion` ya gateada por `RUTA_FEATURE`)
+
+- Historial: lista (prefijo-consecutivo, fecha, estado con badge, cufe); estado en vivo por SSE
+  (`factura_pendiente/aceptada/rechazada/error`, `reconnected`) → re-fetch. Al expandir → detalle con
+  total y **motivo de rechazo** si aplica.
+- Emitir: sobre ventas recientes NO facturadas, con **confirmación fuerte** ("…factura electrónica REAL
+  ante la DIAN… legal e IRREVERSIBLE…"); solo al confirmar → `POST /facturas {venta_id}` (+ Idempotency-Key).
+  Cancelar no postea.
+
+### Tests
+
+- **pytest:** `listar` ordena/filtra por estado; `detalle` trae total + motivo en una rechazada; sin
+  feature → 404; shapes del router.
+- **Vitest:** lista + badges; emitir abre confirmación y solo al confirmar postea con shape +
+  Idempotency-Key; cancelar no postea; detalle trae el motivo; la ruta no aparece sin la feature.
 </content>
 </invoke>

@@ -11,8 +11,13 @@ from typing import Protocol
 
 from core.config.timezone import rango_dia_co, today_co
 from core.money import cuantizar
-from modules.reportes.repository import AgregadoDia, AgregadoResultados, TopProductoFila
-from modules.reportes.schemas import EstadoResultados, ResumenDia, TopProducto
+from modules.reportes.repository import (
+    AgregadoDia,
+    AgregadoLibroIVA,
+    AgregadoResultados,
+    TopProductoFila,
+)
+from modules.reportes.schemas import EstadoResultados, LibroIVA, ResumenDia, TopProducto
 
 
 class ReportesRepo(Protocol):
@@ -20,6 +25,7 @@ class ReportesRepo(Protocol):
 
     async def resumen(self, *, inicio, fin, vendedor_id: int | None) -> AgregadoDia: ...
     async def estado_resultados(self, *, inicio, fin) -> AgregadoResultados: ...
+    async def libro_iva(self, *, inicio, fin) -> AgregadoLibroIVA: ...
     async def top_productos(
         self, *, inicio, fin, vendedor_id: int | None, limite: int
     ) -> list[TopProductoFila]: ...
@@ -64,6 +70,23 @@ class ReportesService:
             desde=d, hasta=h,
             ingresos=agg.ingresos, costo_ventas=agg.costo_ventas,
             utilidad_bruta=utilidad_bruta, gastos=agg.gastos, utilidad_neta=utilidad_neta,
+        )
+
+    async def libro_iva(self, *, desde: date | None, hasta: date | None) -> LibroIVA:
+        """Libro IVA del rango (default mes en curso): IVA generado vs descontable y su saldo.
+
+        `saldo = iva_generado − iva_descontable` (positivo = a pagar; negativo = a favor). Solo cruza
+        datos existentes (ventas + compras fiscales); no toca la DIAN.
+        """
+        d, h = _rango_o_mes(desde, hasta)
+        inicio, fin = rango_dia_co(d, h)
+        agg = await self._repo.libro_iva(inicio=inicio, fin=fin)
+        saldo = agg.iva_generado - agg.iva_descontable
+        return LibroIVA(
+            desde=d, hasta=h,
+            base_ventas=agg.base_ventas, iva_generado=agg.iva_generado,
+            base_compras=agg.base_compras, iva_descontable=agg.iva_descontable,
+            saldo=saldo,
         )
 
     async def top_productos(

@@ -14,6 +14,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules.caja.models import Gasto
+from modules.compras_fiscal.models import CompraFiscal
 from modules.inventario.models import MovimientoInventario, Producto
 from modules.ventas.models import Venta, VentaDetalle
 
@@ -34,6 +35,16 @@ class AgregadoResultados:
     ingresos: Decimal       # suma de subtotal (sin IVA) de ventas NO anuladas
     costo_ventas: Decimal   # suma(costo_unitario × cantidad) de movimientos SALIDA (NULL = 0)
     gastos: Decimal         # suma de gastos del rango
+
+
+@dataclass(frozen=True, slots=True)
+class AgregadoLibroIVA:
+    """Insumos crudos del Libro IVA de un rango (el servicio deriva el saldo)."""
+
+    base_ventas: Decimal       # Σ subtotal de ventas NO anuladas (base gravable de las ventas)
+    iva_generado: Decimal      # Σ impuestos de ventas NO anuladas (IVA que se cobró)
+    base_compras: Decimal      # Σ base de compras fiscales del rango
+    iva_descontable: Decimal   # Σ iva de compras fiscales del rango (IVA que se puede descontar)
 
 
 @dataclass(frozen=True, slots=True)
@@ -120,6 +131,39 @@ class SqlReportesRepository:
         ).scalar_one()
         return AgregadoResultados(
             ingresos=Decimal(ingresos), costo_ventas=Decimal(costo_ventas), gastos=Decimal(gastos)
+        )
+
+    async def libro_iva(self, *, inicio: datetime, fin: datetime) -> AgregadoLibroIVA:
+        """Insumos del Libro IVA del rango: IVA generado (ventas) vs descontable (compras fiscales).
+
+        IVA generado/base de ventas = Σ impuestos/subtotal de ventas completadas (anuladas excluidas);
+        el IVA sale de la columna ya calculada al vender (no se recomputa por línea). IVA descontable/
+        base de compras = Σ iva/base de `compras_fiscal` del rango (por `creado_en`). Es del negocio
+        completo (soporte tributario, sin scoping).
+        """
+        base_ventas, iva_generado = (
+            await self._s.execute(
+                select(
+                    func.coalesce(func.sum(Venta.subtotal), 0),
+                    func.coalesce(func.sum(Venta.impuestos), 0),
+                ).where(
+                    Venta.estado == "completada", Venta.fecha >= inicio, Venta.fecha <= fin,
+                )
+            )
+        ).one()
+        base_compras, iva_descontable = (
+            await self._s.execute(
+                select(
+                    func.coalesce(func.sum(CompraFiscal.base), 0),
+                    func.coalesce(func.sum(CompraFiscal.iva), 0),
+                ).where(
+                    CompraFiscal.creado_en >= inicio, CompraFiscal.creado_en <= fin,
+                )
+            )
+        ).one()
+        return AgregadoLibroIVA(
+            base_ventas=Decimal(base_ventas), iva_generado=Decimal(iva_generado),
+            base_compras=Decimal(base_compras), iva_descontable=Decimal(iva_descontable),
         )
 
     async def top_productos(

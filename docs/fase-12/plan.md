@@ -22,8 +22,8 @@
 | **3** | **Facturación** — historial + emitir | `modules/facturacion` (listar/detalle; emit ya existía) | tab Facturación (gateado) | ✅ hecho |
 | **4a** | **Compras** — registrar compras a proveedor (suman stock, fijan costo) | `modules/compras` (núcleo) | tab Compras | ✅ hecho |
 | **4b** | **Proveedores / cuentas por pagar** (deuda, abonos, saldo) + fotos Cloudinary | `modules/proveedores` (núcleo) | tab Proveedores | **🚧 en progreso** |
-| 5 | Libro IVA | `modules/facturacion` (libro/consolidado) | tab Libro IVA | ⏳ pendiente |
-| **6a** | **Compras fiscal (DATOS)** — registrar compras fiscales con desglose de IVA (alimenta el Libro IVA) | `modules/compras_fiscal` (núcleo de datos, gateado por `compras_fiscal`) | tab Compras Fiscal | **🚧 en progreso** |
+| **5** | **Libro IVA** — IVA generado (ventas) vs descontable (compras fiscal) + saldo del periodo | `modules/reportes` (`GET /reportes/libro-iva`, gateado por `libro_iva`) | tab Libro IVA | **🚧 en progreso** |
+| **6a** | **Compras fiscal (DATOS)** — registrar compras fiscales con desglose de IVA (alimenta el Libro IVA) | `modules/compras_fiscal` (núcleo de datos, gateado por `compras_fiscal`) | tab Compras Fiscal | ✅ hecho |
 | 6b | **RADIAN-FE recibidas** (eventos 030-033, acuse) + notas, DS-NO, honorarios | `modules/facturacion` / `compras_fiscal` (DIAN inbound) | tabs de la cola fiscal | ⏸️ DIFERIDO (contrato MATIAS sin confirmar) |
 
 ---
@@ -210,6 +210,40 @@ bloqueado. Live: re-fetch ante `reconnected`.
 
 ---
 
+## Slice 5 — Libro IVA (en progreso)
+
+Reporte de **soporte tributario, solo lectura**: cruza el **IVA generado** (ventas) con el **IVA
+descontable** (compras fiscales del Slice 6a) en un periodo. **SIN DIAN/MATIAS** (no emite ni consulta).
+Gateado por la feature opcional `libro_iva` (dependencia OR: `facturacion_electronica` **o** `compras_fiscal`).
+
+### Backend (`modules/reportes`, RBAC = admin)
+
+- `GET /reportes/libro-iva (?desde&hasta, default mes, hora Colombia)`, gateado con
+  `require_feature("libro_iva")` (404 sin la capacidad) + `require_role("admin")` (403 vendedor). Calcula
+  sobre datos existentes (SQL solo en repo, Decimal):
+  - `base_ventas` / `iva_generado` = Σ `subtotal` / Σ `impuestos` de ventas **completadas** (anuladas
+    excluidas); el IVA sale de la columna ya calculada al vender (no se recomputa por línea).
+  - `base_compras` / `iva_descontable` = Σ `base` / Σ `iva` de `compras_fiscal` del rango (por `creado_en`).
+  - `saldo` = `iva_generado − iva_descontable` (positivo = a pagar; negativo = a favor).
+- Schema `LibroIVA { desde, hasta, base_ventas, iva_generado, base_compras, iva_descontable, saldo }`.
+- (Desglose por tarifa de IVA y listado documento-a-documento: DIFERIDOS — este MVP da totales + saldo.)
+
+### Frontend (`TabLibroIVA`, ruta `/libro-iva` ya gateada por `RUTA_FEATURE`)
+
+Admin: selector de rango (default mes) + tarjetas del libro (IVA generado con su base de ventas, IVA
+descontable con su base de compras, y el **saldo** con su rótulo "a pagar" / "a favor" según el signo).
+Vendedor: bloqueado. Live: re-fetch ante `reconnected`.
+
+### Tests
+
+- **pytest:** router (servicio real + repo fake) pinta totales + saldo, saldo a favor negativo, gate sin
+  la feature → 404, vendedor → 403; integración (Postgres efímero): totales y saldo cuadran con ventas +
+  compras_fiscal sembradas, ventas anuladas excluidas, sin datos → ceros.
+- **Vitest:** pide `/reportes/libro-iva` y pinta los totales + saldo; saldo negativo se rotula "a favor";
+  vendedor sin acceso; la ruta no aparece sin la feature.
+
+---
+
 ## Slice 6 — Cola fiscal (re-troceado)
 
 El Slice 6 original (toda la cola fiscal en un bloque) se parte: **6a = solo DATOS** de compras fiscales
@@ -219,7 +253,7 @@ difiere** porque el contrato de MATIAS para FE recibidas aún no está confirmad
 (`cufe_proveedor`, `evento_030_at`…`evento_033_at`, `evento_estado`, `evento_error`). El 6a llena las
 primeras y **deja NULL** las RADIAN.
 
-### Slice 6a — Compras fiscal (DATOS, sin RADIAN) (en progreso)
+### Slice 6a — Compras fiscal (DATOS, sin RADIAN) (hecho)
 
 **Compras fiscal es OPCIONAL** (`'compras_fiscal'` ∈ `OPCIONALES`) → router gateado con
 `require_feature("compras_fiscal")` (404 sin la capacidad). RBAC = admin. La tabla ya existía. **No toca

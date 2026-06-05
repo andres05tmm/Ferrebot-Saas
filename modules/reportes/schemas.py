@@ -27,6 +27,22 @@ class EstadoResultados(BaseModel):
     utilidad_neta: Decimal      # utilidad_bruta − gastos
 
 
+class LibroIVA(BaseModel):
+    """Libro IVA de un rango: cruza el IVA generado (ventas) con el descontable (compras fiscales).
+
+    `saldo = iva_generado − iva_descontable`: positivo = IVA a pagar; negativo = saldo a favor. Es un
+    reporte de soporte tributario (Fase 12, Slice 5); no emite ni consulta a la DIAN.
+    """
+
+    desde: date
+    hasta: date
+    base_ventas: Decimal        # base gravable de las ventas (Σ subtotal de no anuladas)
+    iva_generado: Decimal       # IVA cobrado en ventas (Σ impuestos de no anuladas)
+    base_compras: Decimal       # base de las compras fiscales del rango
+    iva_descontable: Decimal    # IVA descontable de compras fiscales del rango
+    saldo: Decimal              # iva_generado − iva_descontable (+ = a pagar; − = a favor)
+
+
 class TopProducto(BaseModel):
     """Una fila del ranking de productos por cantidad e ingreso en un rango."""
 

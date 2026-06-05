@@ -12,9 +12,10 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.auth import Principal, get_filtro_efectivo, require_role
+from core.auth.features import require_feature
 from core.db.session import get_tenant_db
 from modules.reportes.repository import SqlReportesRepository
-from modules.reportes.schemas import EstadoResultados, ResumenDia, TopProducto
+from modules.reportes.schemas import EstadoResultados, LibroIVA, ResumenDia, TopProducto
 from modules.reportes.service import ReportesService
 
 router = APIRouter(tags=["reportes"])
@@ -43,6 +44,22 @@ async def estado_resultados(
 ) -> EstadoResultados:
     """Estado de resultados del rango (default mes). Admin-only: es del negocio completo, sin scoping."""
     return await ReportesService(repo).estado_resultados(desde=desde, hasta=hasta)
+
+
+@router.get(
+    "/reportes/libro-iva",
+    response_model=LibroIVA,
+    dependencies=[Depends(require_feature("libro_iva"))],
+)
+async def libro_iva(
+    desde: date | None = Query(default=None),
+    hasta: date | None = Query(default=None),
+    repo: SqlReportesRepository = Depends(get_reportes_repo),
+    _user: Principal = Depends(require_role("admin")),
+) -> LibroIVA:
+    """Libro IVA del rango (default mes). Admin-only; gateado por la feature `libro_iva`. Solo cruza
+    datos existentes (ventas vs compras fiscales): NO emite ni consulta a la DIAN."""
+    return await ReportesService(repo).libro_iva(desde=desde, hasta=hasta)
 
 
 @router.get("/reportes/top-productos", response_model=list[TopProducto])

@@ -24,10 +24,11 @@ import TabFacturacion from './tabs/TabFacturacion.jsx'
 import TabCompras from './tabs/TabCompras.jsx'
 import TabProveedores from './tabs/TabProveedores.jsx'
 import TabComprasFiscal from './tabs/TabComprasFiscal.jsx'
+import TabLibroIVA from './tabs/TabLibroIVA.jsx'
 import { ROUTES } from './routes.jsx'
 
 // Tabs núcleo (E6) + reportes (S2) + facturación (S3) + compras (S4a) + proveedores (S4b) +
-// compras fiscal (S6a); el resto, stub.
+// compras fiscal (S6a) + libro IVA (S5); el resto, stub.
 const TABS = {
   '/hoy': TabHoy,
   '/ventas': TabVentasRapidas,
@@ -42,6 +43,7 @@ const TABS = {
   '/compras': TabCompras,
   '/proveedores': TabProveedores,
   '/compras-fiscal': TabComprasFiscal,
+  '/libro-iva': TabLibroIVA,
 }
 import { bootConfig } from './lib/config.js'
 import { FeaturesProvider } from './lib/features.jsx'

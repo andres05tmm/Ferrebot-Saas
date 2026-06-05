@@ -41,9 +41,16 @@ contra `main`, Andrés pasa el diff).
   routers núcleo (`tests/test_smoke_routers_http.py`); E3 `/ready` comprueba control DB + Redis (503 si
   falla); E4 caché de `MatiasClient` por tenant en el worker. **Suite: 330 verdes, 0 fallos.** Ver
   `docs/fase-7-consolidacion/plan.md`.
-- **Próximo:** Fase 8 (cierre de esquema del tenant, brechas §8 de `migracion-puntorojo.md`). Es prereq de
-  dashboard (11), facturación amplia (12) y ETL (15). Tratar las decisiones de modelado como checkpoints
-  con ADR antes del RED.
+- **Fase 8 (cierre de esquema del tenant):** **CERRADA** — y resultó mínima: la migración `0001` **ya creaba
+  las 35 tablas** de `schema.md`, así que no hubo "construir esquema". Quedó en: E1 modelo ORM `Alias` (tabla
+  ya existía); E3 drop del `config_empresa` **vestigial** del tenant (migración `0005`) + quitar su seed muerto
+  en `provision_tenant` (la config no-secreta vive en el control DB, decisión D2); E2 guardarraíl de paridad
+  de esquema (`tests/test_schema_paridad.py`, 34 tablas en head). Suite **334 verdes**. Decisiones diferidas a
+  momento-ETL (Fase 15): zona horaria G4, gasto→caja, proveedores desde texto, subtotal/impuestos históricos.
+  Ver `docs/fase-8-esquema/plan.md`.
+- **Follow-up sembrado:** `provision_tenant` tiene cero cobertura → agregar smoke de provisioning en Fase 13.
+- **Próximo:** Fase 9 (feature flags efectivas + `GET /api/v1/config`). Prereq del dashboard (Fase 11); sin
+  dependencias externas. Fase 10 (asíncrono DIAN) paraleliza pero necesita el sandbox MATIAS — agendarlo.
 
 ### Cadena de Fase 6 (facturación síncrona, completa y probada de punta a punta)
 

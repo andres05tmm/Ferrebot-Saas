@@ -10,7 +10,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.events import publish
 from modules.inventario.busqueda import AliasResuelto
-from modules.inventario.models import Inventario, MovimientoInventario, Producto
+from modules.inventario.models import (
+    Inventario,
+    MovimientoInventario,
+    Producto,
+    ProductoFraccion,
+)
+from modules.inventario.schemas import ProductoActualizar, ProductoCrear
 
 
 class SqlInventarioRepository:
@@ -41,6 +47,121 @@ class SqlInventarioRepository:
         return (
             await self._s.execute(select(Producto).where(Producto.id == producto_id))
         ).scalar_one_or_none()
+
+    # ---- Catálogo (mutaciones) ----------------------------------------------
+    async def codigo_existe(self, codigo: str, *, excluir_id: int | None = None) -> bool:
+        """¿Otro producto ya usa este código? (`excluir_id` se ignora a sí mismo al editar)."""
+        stmt = select(Producto.id).where(Producto.codigo == codigo)
+        if excluir_id is not None:
+            stmt = stmt.where(Producto.id != excluir_id)
+        return (await self._s.execute(stmt.limit(1))).first() is not None
+
+    async def crear_producto(self, datos: ProductoCrear, *, usuario_id: int | None) -> Producto:
+        """Inserta el producto, sus fracciones y su fila de inventario en la misma transacción.
+
+        Si `stock_inicial > 0` registra una ENTRADA (regla #7: nada cambia stock sin movimiento) y deja
+        el stock; si es 0, la fila de inventario nace en 0 sin movimiento. Emite el evento al final.
+        """
+        producto = Producto(
+            codigo=datos.codigo, nombre=datos.nombre, categoria=datos.categoria, marca=datos.marca,
+            unidad_medida=datos.unidad_medida, precio_venta=datos.precio_venta,
+            precio_compra=datos.precio_compra, precio_mayorista=datos.precio_mayorista,
+            precio_umbral=datos.precio_umbral, precio_bajo_umbral=datos.precio_bajo_umbral,
+            precio_sobre_umbral=datos.precio_sobre_umbral, iva=datos.iva,
+            permite_fraccion=datos.permite_fraccion, activo=datos.activo,
+            fracciones=[
+                ProductoFraccion(
+                    fraccion=fr.fraccion, decimal=fr.decimal,
+                    precio_total=fr.precio_total, precio_unitario=fr.precio_unitario,
+                )
+                for fr in datos.fracciones
+            ],
+        )
+        self._s.add(producto)
+        await self._s.flush()  # asigna producto.id
+
+        stock_inicial = datos.stock_inicial or Decimal("0")
+        self._s.add(
+            Inventario(
+                producto_id=producto.id, stock_actual=stock_inicial, stock_minimo=datos.stock_minimo,
+            )
+        )
+        if stock_inicial > 0:
+            self._s.add(
+                MovimientoInventario(
+                    producto_id=producto.id, tipo="ENTRADA", cantidad=stock_inicial,
+                    costo_unitario=datos.precio_compra, referencia="alta de producto",
+                    usuario_id=usuario_id,
+                )
+            )
+        await self._s.flush()
+        await publish(self._s, "inventario_actualizado", {
+            "producto_id": producto.id, "accion": "creado",
+        })
+        return producto
+
+    async def actualizar_producto(
+        self, producto_id: int, datos: ProductoActualizar
+    ) -> Producto | None:
+        """Actualiza los campos del producto y REEMPLAZA sus fracciones (cascade delete-orphan).
+
+        No toca `stock_actual` (eso va por el ajuste); sí actualiza `stock_minimo`. Devuelve None si el
+        producto no existe. Emite el evento al final.
+        """
+        producto = (
+            await self._s.execute(select(Producto).where(Producto.id == producto_id))
+        ).scalar_one_or_none()
+        if producto is None:
+            return None
+
+        producto.codigo = datos.codigo
+        producto.nombre = datos.nombre
+        producto.categoria = datos.categoria
+        producto.marca = datos.marca
+        producto.unidad_medida = datos.unidad_medida
+        producto.precio_venta = datos.precio_venta
+        producto.precio_compra = datos.precio_compra
+        producto.precio_mayorista = datos.precio_mayorista
+        producto.precio_umbral = datos.precio_umbral
+        producto.precio_bajo_umbral = datos.precio_bajo_umbral
+        producto.precio_sobre_umbral = datos.precio_sobre_umbral
+        producto.iva = datos.iva
+        producto.permite_fraccion = datos.permite_fraccion
+        producto.activo = datos.activo
+        # Reasignar la colección (cargada por selectin) borra las fracciones huérfanas en el flush.
+        producto.fracciones = [
+            ProductoFraccion(
+                fraccion=fr.fraccion, decimal=fr.decimal,
+                precio_total=fr.precio_total, precio_unitario=fr.precio_unitario,
+            )
+            for fr in datos.fracciones
+        ]
+        await self._s.execute(
+            text("UPDATE inventario SET stock_minimo = :m WHERE producto_id = :p"),
+            {"m": datos.stock_minimo, "p": producto_id},
+        )
+        await self._s.flush()
+        await publish(self._s, "inventario_actualizado", {
+            "producto_id": producto_id, "accion": "editado",
+        })
+        return producto
+
+    async def soft_delete_producto(self, producto_id: int) -> bool:
+        """Marca el producto como inactivo (`activo=false`); nunca hard-delete (lo referencian ventas).
+
+        Devuelve False si no existe. Emite el evento al final.
+        """
+        producto = (
+            await self._s.execute(select(Producto).where(Producto.id == producto_id))
+        ).scalar_one_or_none()
+        if producto is None:
+            return False
+        producto.activo = False
+        await self._s.flush()
+        await publish(self._s, "inventario_actualizado", {
+            "producto_id": producto_id, "accion": "eliminado",
+        })
+        return True
 
     async def listar_stock(
         self, *, solo_bajo: bool = False, limite: int = 100, offset: int = 0

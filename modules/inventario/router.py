@@ -10,13 +10,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.auth import Principal, get_current_user, require_role
 from core.db.session import get_tenant_db
-from modules.inventario.errors import AjusteDejaStockNegativo, ProductoInexistente
+from modules.inventario.errors import (
+    AjusteDejaStockNegativo,
+    CodigoDuplicado,
+    ProductoInexistente,
+)
 from modules.inventario.repository import SqlInventarioRepository
 from modules.inventario.schemas import (
     AjusteCrear,
     AjusteLeer,
     KardexItem,
     PrecioLeer,
+    ProductoActualizar,
+    ProductoCrear,
     ProductoLeer,
     StockLeer,
 )
@@ -53,6 +59,19 @@ async def listar_productos(
     return [ProductoLeer.model_validate(p) for p in productos]
 
 
+@router.post("/productos", response_model=ProductoLeer, status_code=status.HTTP_201_CREATED)
+async def crear_producto(
+    payload: ProductoCrear,
+    session: AsyncSession = Depends(get_tenant_db),
+    user: Principal = Depends(require_role("admin")),
+) -> ProductoLeer:
+    try:
+        producto = await _service(session).crear_producto(payload, usuario_id=user.user_id)
+    except CodigoDuplicado as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+    return ProductoLeer.model_validate(producto)
+
+
 @router.get("/productos/{producto_id}", response_model=ProductoLeer)
 async def obtener_producto(
     producto_id: int,
@@ -63,6 +82,36 @@ async def obtener_producto(
     if producto is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, f"Producto {producto_id} no existe")
     return ProductoLeer.model_validate(producto)
+
+
+@router.put("/productos/{producto_id}", response_model=ProductoLeer)
+async def actualizar_producto(
+    producto_id: int,
+    payload: ProductoActualizar,
+    session: AsyncSession = Depends(get_tenant_db),
+    _user: Principal = Depends(require_role("admin")),
+) -> ProductoLeer:
+    try:
+        producto = await _service(session).actualizar_producto(producto_id, payload)
+    except ProductoInexistente as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
+    except CodigoDuplicado as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+    return ProductoLeer.model_validate(producto)
+
+
+@router.delete("/productos/{producto_id}")
+async def eliminar_producto(
+    producto_id: int,
+    session: AsyncSession = Depends(get_tenant_db),
+    _user: Principal = Depends(require_role("admin")),
+) -> dict[str, object]:
+    """Soft delete: el producto queda inactivo (no se borra; lo referencian ventas)."""
+    try:
+        await _service(session).eliminar_producto(producto_id)
+    except ProductoInexistente as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
+    return {"producto_id": producto_id, "activo": False}
 
 
 @router.get("/productos/{producto_id}/precio", response_model=PrecioLeer)

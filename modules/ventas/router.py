@@ -14,7 +14,7 @@ from core.db.session import get_tenant_db
 from core.events.sse import tenant_event_stream
 from modules.ventas.errors import LineaInvalida, ProductoNoEncontrado, StockInsuficiente
 from modules.ventas.repository import SqlVentasRepository
-from modules.ventas.schemas import VentaCrear, VentaLeer
+from modules.ventas.schemas import VentaConLineas, VentaCrear, VentaLeer
 from modules.ventas.service import VentaService
 
 router = APIRouter(tags=["ventas"])
@@ -63,15 +63,15 @@ async def listar_ventas(
     return await repo.listar(desde=desde, hasta=hasta, vendedor_id=filtro)
 
 
-@router.get("/ventas/{venta_id}", response_model=VentaLeer)
+@router.get("/ventas/{venta_id}", response_model=VentaConLineas)
 async def obtener_venta(
     venta_id: int,
     repo: SqlVentasRepository = Depends(get_ventas_repo),
     _user: Principal = Depends(require_role("vendedor")),
     filtro: int | None = Depends(get_filtro_efectivo),
-) -> VentaLeer:
-    """Detalle de una venta, acotado al vendedor efectivo: si no existe o no es suya → 404
-    (mismo mensaje, para no revelar la existencia de ventas de otro vendedor)."""
+) -> VentaConLineas:
+    """Detalle de una venta con sus líneas, acotado al vendedor efectivo: si no existe o no es suya
+    → 404 (mismo mensaje, para no revelar la existencia de ventas de otro vendedor)."""
     venta = await repo.obtener(venta_id)
     if venta is None or (filtro is not None and venta.vendedor_id != filtro):
         raise HTTPException(status.HTTP_404_NOT_FOUND, f"Venta {venta_id} no existe")

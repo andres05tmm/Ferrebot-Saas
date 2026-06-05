@@ -9,14 +9,14 @@ from decimal import Decimal
 
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import lazyload
+from sqlalchemy.orm import lazyload, selectinload
 
 from core.config.timezone import now_co, rango_dia_co
 from core.events import publish
 from modules.inventario.models import Inventario, MovimientoInventario, Producto
 from modules.inventario.precios import FraccionPrecio
 from modules.ventas.models import Venta, VentaDetalle
-from modules.ventas.schemas import VentaLeer
+from modules.ventas.schemas import VentaConLineas, VentaDetalleLeer, VentaLeer
 from modules.ventas.service import ProductoPrecio, VentaHeader
 
 
@@ -49,13 +49,18 @@ class SqlVentasRepository:
         ventas = (await self._s.execute(stmt)).scalars().all()
         return [VentaLeer.model_validate(v) for v in ventas]
 
-    async def obtener(self, venta_id: int) -> VentaLeer | None:
+    async def obtener(self, venta_id: int) -> VentaConLineas | None:
+        """Detalle de una venta con sus líneas (carga `detalles` con selectin, no lazy)."""
         venta = (
             await self._s.execute(
-                select(Venta).where(Venta.id == venta_id).options(lazyload(Venta.detalles))
+                select(Venta).where(Venta.id == venta_id).options(selectinload(Venta.detalles))
             )
         ).scalar_one_or_none()
-        return VentaLeer.model_validate(venta) if venta is not None else None
+        if venta is None:
+            return None
+        cabecera = VentaLeer.model_validate(venta)
+        lineas = [VentaDetalleLeer.model_validate(d) for d in venta.detalles]
+        return VentaConLineas(**cabecera.model_dump(), lineas=lineas)
 
     async def obtener_producto(self, producto_id: int) -> ProductoPrecio | None:
         prod = (

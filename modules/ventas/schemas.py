@@ -47,3 +47,21 @@ class VentaLeer(BaseModel):
     estado: str
     origen: str
     idempotency_key: str | None
+
+
+class VentaDetalleLeer(BaseModel):
+    """Línea de una venta (detalle). Solo lectura, para el detalle del historial."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    producto_id: int | None
+    descripcion: str | None
+    cantidad: Decimal
+    precio_unitario: Decimal
+    iva: int
+
+
+class VentaConLineas(VentaLeer):
+    """Detalle de venta: cabecera (VentaLeer) + sus líneas. La LISTA usa VentaLeer (sin líneas)."""
+
+    lineas: list[VentaDetalleLeer]

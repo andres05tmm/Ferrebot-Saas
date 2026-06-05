@@ -15,7 +15,7 @@ from httpx import ASGITransport
 
 from core.auth import Principal, get_current_user
 from modules.ventas.router import get_ventas_repo, router
-from modules.ventas.schemas import VentaLeer
+from modules.ventas.schemas import VentaConLineas, VentaDetalleLeer, VentaLeer
 
 
 def _venta(vid: int = 1, vendedor_id: int = 5) -> VentaLeer:
@@ -25,6 +25,12 @@ def _venta(vid: int = 1, vendedor_id: int = 5) -> VentaLeer:
         impuestos=Decimal("0.00"), total=Decimal("10000.00"), metodo_pago="efectivo",
         estado="completada", origen="web", idempotency_key=None,
     )
+
+
+_LINEA = VentaDetalleLeer(
+    producto_id=1, descripcion="Martillo", cantidad=Decimal("2"),
+    precio_unitario=Decimal("5000.00"), iva=19,
+)
 
 
 class _FakeVentasRepo:
@@ -38,7 +44,10 @@ class _FakeVentasRepo:
         return self._ventas
 
     async def obtener(self, venta_id: int):
-        return self._por_id.get(venta_id)
+        v = self._por_id.get(venta_id)
+        if v is None:
+            return None
+        return VentaConLineas(**v.model_dump(), lineas=[_LINEA])
 
 
 def _app(repo: _FakeVentasRepo, *, rol: str = "vendedor", user_id: int = 5) -> FastAPI:
@@ -99,7 +108,9 @@ async def test_obtener_200_y_404():
         ok = await c.get("/api/v1/ventas/1")
         falta = await c.get("/api/v1/ventas/999")
     assert ok.status_code == 200, ok.text
-    assert ok.json()["id"] == 1
+    body = ok.json()
+    assert body["id"] == 1
+    assert body["lineas"][0]["descripcion"] == "Martillo"   # el detalle trae las líneas
     assert falta.status_code == 404
 
 

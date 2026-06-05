@@ -108,3 +108,22 @@ async def test_listar_filtra_por_fecha_y_vendedor(tenant, seed_producto):
     assert {v.vendedor_id for v in hoy_uid} == {uid}          # scoping por vendedor
     assert len(hoy_todas) == 3                                # admin (None) ve todas
     assert rango_pasado == []                                 # las ventas son de hoy
+
+
+async def test_obtener_trae_lineas(tenant, seed_producto):
+    async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
+        uid, pid = await seed_producto(s, precio="11900", iva=19, stock="100")
+        res = await VentaService(SqlVentasRepository(s)).registrar_venta(_venta(pid, "2"), vendedor_id=uid)
+        await s.commit()
+        venta_id = res.venta.id
+
+    async with AsyncSession(tenant.engine) as s:
+        detalle = await SqlVentasRepository(s).obtener(venta_id)
+
+    assert detalle is not None
+    assert detalle.id == venta_id
+    assert len(detalle.lineas) == 1                           # el detalle carga sus líneas
+    linea = detalle.lineas[0]
+    assert linea.producto_id == pid
+    assert linea.cantidad == Decimal("2.000")
+    assert linea.iva == 19

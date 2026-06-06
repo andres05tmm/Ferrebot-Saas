@@ -254,9 +254,21 @@ async def _consultar_producto(
             resumen=f"Hay varios productos que coinciden con «{args.nombre}»: {nombres}. ¿Cuál?",
         )
     p = matches[0]
+    # Con fracciones se enumeran (etiqueta + precio) para que el modelo responda cualquier fracción;
+    # sin fracciones, el resumen queda simple.
+    detalle = ""
+    if p.fracciones:
+        fracs = ", ".join(f"{fr.etiqueta} ${fr.precio_total}" for fr in p.fracciones)
+        detalle = f" Fracciones: {fracs}."
     return Resultado(
-        data={"id": p.id, "nombre": p.nombre, "precio": str(p.precio), "stock": str(p.stock)},
-        resumen=f"{p.nombre}: ${p.precio}, stock {p.stock}.",
+        data={
+            "id": p.id, "nombre": p.nombre, "unidad_medida": p.unidad_medida,
+            "precio": str(p.precio), "stock": str(p.stock),
+            "fracciones": [
+                {"etiqueta": fr.etiqueta, "precio_total": str(fr.precio_total)} for fr in p.fracciones
+            ],
+        },
+        resumen=f"{p.nombre} ({p.unidad_medida}): ${p.precio}.{detalle} Stock: {p.stock}.",
     )
 
 

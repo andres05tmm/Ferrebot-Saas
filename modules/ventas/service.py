@@ -60,18 +60,32 @@ class ProductoPrecio:
 
 
 @dataclass(frozen=True, slots=True)
+class FraccionBusqueda:
+    """Fracción disponible de un producto para la consulta: etiqueta de texto + precio total.
+
+    A diferencia de `FraccionPrecio` (decimal + precio_total, para el motor de precios), aquí importa
+    la ETIQUETA tal como está en `productos_fracciones.fraccion` (p. ej. "1/2") para mostrarla al usuario.
+    """
+
+    etiqueta: str
+    precio_total: Decimal
+
+
+@dataclass(frozen=True, slots=True)
 class ProductoBusqueda:
     """Coincidencia de búsqueda de catálogo para una consulta de SOLO LECTURA (consultar_producto).
 
     No se reusa `ProductoPrecio`: ese modela el esquema de PRECIOS (umbral/fracciones/iva) y NO lleva
-    stock. La consulta necesita exactamente precio + stock para mostrárselos al usuario, así que un
-    dataclass mínimo evita inflar `ProductoPrecio` con un campo ajeno a su propósito.
+    stock. La consulta necesita precio base, stock, la unidad de empaque y las fracciones (con su
+    etiqueta) para que el modelo responda cualquier fracción desde una sola consulta.
     """
 
     id: int
     nombre: str
     precio: Decimal
     stock: Decimal
+    unidad_medida: str = "Unidad"
+    fracciones: tuple[FraccionBusqueda, ...] = field(default_factory=tuple)
 
 
 @dataclass(frozen=True, slots=True)
@@ -119,7 +133,7 @@ class VentasRepo(Protocol):
     async def buscar_por_idempotency(self, key: str) -> VentaLeer | None: ...
     async def obtener_producto(self, producto_id: int) -> ProductoPrecio | None: ...
     async def lock_inventario(self, producto_id: int) -> Decimal | None: ...
-    async def stock_sin_lock(self, producto_id: int) -> Decimal | None: ...
+    async def obtener_producto_busqueda(self, producto_id: int) -> "ProductoBusqueda | None": ...
     async def buscar_productos_por_nombre(self, texto: str) -> list[tuple[int, str]]: ...
     async def listar(
         self, *, desde: date | None = None, hasta: date | None = None, vendedor_id: int | None = None
@@ -194,23 +208,18 @@ class VentaService:
         return await self._repo.listar(desde=None, hasta=None, vendedor_id=vendedor_id)
 
     async def buscar_producto_por_nombre(self, texto: str) -> list[ProductoBusqueda]:
-        """Coincidencias de catálogo por nombre (id, nombre, precio, stock). Solo lectura.
+        """Coincidencias de catálogo por nombre, enriquecidas (precio, stock, unidad, fracciones).
 
         Reusa la resolución nombre→producto del catálogo (la misma del resto del sistema) vía el repo;
-        para cada candidato el precio sale del catálogo (`obtener_producto`) y el stock de una lectura
-        SIN lock. El conteo está acotado por el límite del buscador, así que el bucle no es ilimitado.
+        cada candidato se surte con `obtener_producto_busqueda` (precio base + stock + unidad de empaque
+        + fracciones con etiqueta). El conteo está acotado por el límite del buscador, no es ilimitado.
         """
         candidatos = await self._repo.buscar_productos_por_nombre(texto)
         productos: list[ProductoBusqueda] = []
         for prod_id, _ in candidatos:
-            prod = await self._repo.obtener_producto(prod_id)
-            if prod is None:
-                continue
-            stock = await self._repo.stock_sin_lock(prod_id)
-            productos.append(ProductoBusqueda(
-                id=prod.id, nombre=prod.nombre, precio=prod.precio_venta,
-                stock=stock if stock is not None else Decimal("0"),
-            ))
+            prod = await self._repo.obtener_producto_busqueda(prod_id)
+            if prod is not None:
+                productos.append(prod)
         return productos
 
     async def _guard_modificacion(

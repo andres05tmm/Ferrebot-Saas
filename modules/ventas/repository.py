@@ -20,7 +20,13 @@ from modules.inventario.precios import FraccionPrecio
 from modules.inventario.repository import SqlInventarioRepository
 from modules.ventas.models import Venta, VentaDetalle
 from modules.ventas.schemas import VentaConLineas, VentaDetalleLeer, VentaLeer
-from modules.ventas.service import EdicionVenta, ProductoPrecio, VentaHeader
+from modules.ventas.service import (
+    EdicionVenta,
+    FraccionBusqueda,
+    ProductoBusqueda,
+    ProductoPrecio,
+    VentaHeader,
+)
 
 # Estados de factura electrónica que BLOQUEAN el borrado de la venta (factura "viva").
 _ESTADOS_FACTURA_VIVA = ("pendiente", "aceptada")
@@ -258,6 +264,29 @@ class SqlVentasRepository:
                 select(Inventario.stock_actual).where(Inventario.producto_id == producto_id)
             )
         ).scalar_one_or_none()
+
+    async def obtener_producto_busqueda(self, producto_id: int) -> ProductoBusqueda | None:
+        """Datos de un producto para la consulta del bot: nombre, precio base, unidad, stock y sus
+        fracciones con la etiqueta de texto (`productos_fracciones.fraccion`) y su precio total.
+
+        Solo lectura. Las fracciones (relación `selectin`, sin N+1) van de mayor a menor para que la
+        más grande aparezca primero. None si el producto no existe.
+        """
+        prod = (
+            await self._s.execute(select(Producto).where(Producto.id == producto_id))
+        ).scalar_one_or_none()
+        if prod is None:
+            return None
+        stock = await self.stock_sin_lock(producto_id)
+        fracciones = tuple(
+            FraccionBusqueda(etiqueta=fr.fraccion, precio_total=fr.precio_total)
+            for fr in sorted(prod.fracciones, key=lambda f: f.decimal or Decimal("0"), reverse=True)
+        )
+        return ProductoBusqueda(
+            id=prod.id, nombre=prod.nombre, precio=prod.precio_venta,
+            stock=stock if stock is not None else Decimal("0"),
+            unidad_medida=prod.unidad_medida, fracciones=fracciones,
+        )
 
     async def buscar_productos_por_nombre(
         self, texto: str, *, limite: int = 10

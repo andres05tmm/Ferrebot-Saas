@@ -26,7 +26,7 @@ from ai.tools import (
 )
 from core.config.timezone import now_co
 from modules.ventas.schemas import VentaLeer
-from modules.ventas.service import ProductoBusqueda
+from modules.ventas.service import FraccionBusqueda, ProductoBusqueda
 
 
 # --------------------------- Fakes ----------------------------------------
@@ -70,8 +70,15 @@ def _venta(consecutivo, total, metodo_pago="efectivo", vendedor_id=42) -> VentaL
     )
 
 
-def _prod(id_, nombre, precio="1000", stock="5") -> ProductoBusqueda:
-    return ProductoBusqueda(id=id_, nombre=nombre, precio=Decimal(precio), stock=Decimal(stock))
+def _frac(etiqueta, precio_total) -> FraccionBusqueda:
+    return FraccionBusqueda(etiqueta=etiqueta, precio_total=Decimal(precio_total))
+
+
+def _prod(id_, nombre, precio="1000", stock="5", unidad="Unidad", fracciones=()) -> ProductoBusqueda:
+    return ProductoBusqueda(
+        id=id_, nombre=nombre, precio=Decimal(precio), stock=Decimal(stock),
+        unidad_medida=unidad, fracciones=tuple(fracciones),
+    )
 
 
 # --------------------------- Registro / spec (estructura) -----------------
@@ -130,16 +137,35 @@ async def test_ventas_dia_sin_ventas():
 
 
 # --------------------------- consultar_producto --------------------------
-async def test_producto_unico_devuelve_precio_y_stock():
-    svc = _FakeVentaService(productos=[_prod(7, "Martillo", precio="12000", stock="5")])
+async def test_producto_unico_sin_fracciones_es_simple():
+    svc = _FakeVentaService(productos=[_prod(7, "Martillo", precio="12000", stock="5", unidad="Unidad")])
     res = await POR_NOMBRE["consultar_producto"].handler(
         ConsultarProductoArgs(nombre="martillo"), _ctx(), _deps(svc)
     )
     assert svc.texto_recibido == "martillo"
     assert isinstance(res, Resultado)
     assert res.data["id"] == 7 and res.data["nombre"] == "Martillo"
-    assert "precio" in res.data and "stock" in res.data
-    assert "12000" in res.resumen and "5" in res.resumen
+    assert res.data["unidad_medida"] == "Unidad" and res.data["fracciones"] == []
+    assert "Unidad" in res.resumen and "12000" in res.resumen and "5" in res.resumen
+    assert "Fracciones" not in res.resumen          # sin fracciones → resumen simple
+
+
+async def test_producto_unico_con_fracciones_incluye_etiqueta_precio_y_unidad():
+    svc = _FakeVentaService(productos=[_prod(
+        3, "Thinner", precio="26000", stock="0", unidad="Galón",
+        fracciones=[_frac("1/2", "13000"), _frac("1/4", "7000")],
+    )])
+    res = await POR_NOMBRE["consultar_producto"].handler(
+        ConsultarProductoArgs(nombre="thinner"), _ctx(), _deps(svc)
+    )
+    assert isinstance(res, Resultado)
+    # unidad + ambas fracciones (etiqueta y precio) + precio base + stock, todo en el resumen
+    for fragmento in ("Thinner", "Galón", "26000", "1/2", "13000", "1/4", "7000"):
+        assert fragmento in res.resumen
+    assert "Stock: 0" in res.resumen
+    assert res.data["unidad_medida"] == "Galón"
+    assert res.data["fracciones"][0] == {"etiqueta": "1/2", "precio_total": "13000"}
+    assert len(res.data["fracciones"]) == 2
 
 
 async def test_producto_ambiguo_enumera_candidatos():

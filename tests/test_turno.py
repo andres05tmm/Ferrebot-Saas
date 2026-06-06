@@ -179,6 +179,11 @@ def test_system_prompt_pide_texto_plano_sin_markdown():
     assert "**" not in prompt              # la propia regla no debe traer Markdown
 
 
+def test_system_prompt_pide_buscar_producto_por_nombre_base():
+    prompt = construir_system_prompt({})
+    assert "nombre base" in prompt.lower()
+
+
 # ----------------------- historial → ejecutar_turno -----------------------
 
 async def test_pasa_historial_y_system_a_ejecutar_turno():

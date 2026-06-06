@@ -99,6 +99,10 @@ def construir_system_prompt(entidades: dict[str, dict], *, hoy: date | None = No
         "Markdown ni símbolos de formato: nada de asteriscos, guiones bajos, almohadillas ni "
         "viñetas. Si necesitas enumerar opciones, sepáralas en renglones con frases completas. "
         "Usa emojis con moderación, solo si aportan claridad.",
+        "Cuando consultes o registres un producto, búscalo por su nombre base (el sustantivo "
+        "principal), sin cantidades, fracciones ni unidades de empaque: de 'medio galón de thinner' "
+        "busca 'thinner'; de 'galón de esmalte blanco' busca 'esmalte blanco'. Si no aparece, "
+        "reintenta con un término más corto o más general antes de rendirte.",
     ]
     bloque = _bloque_contexto(entidades)
     if bloque:

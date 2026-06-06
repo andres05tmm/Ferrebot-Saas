@@ -47,6 +47,7 @@ const TABS = {
 }
 import { bootConfig } from './lib/config.js'
 import { FeaturesProvider } from './lib/features.jsx'
+import { BrandingProvider } from './lib/branding.jsx'
 
 // ── Error Boundary ───────────────────────────────────────────────────────────
 class ErrorBoundary extends React.Component {
@@ -81,13 +82,13 @@ function BootError({ msg }) {
 
 // ── ShellBoot — ya autenticado: trae /config, tematiza y monta el shell ──────
 function ShellBoot() {
-  const [estado, setEstado] = useState({ cargando: true, error: null, features: [] })
+  const [estado, setEstado] = useState({ cargando: true, error: null, features: [], branding: {} })
 
   useEffect(() => {
     let cancelado = false
     bootConfig()
-      .then((cfg) => { if (!cancelado) setEstado({ cargando: false, error: null, features: cfg.features }) })
-      .catch((e) => { if (!cancelado) setEstado({ cargando: false, error: e.message, features: [] }) })
+      .then((cfg) => { if (!cancelado) setEstado({ cargando: false, error: null, features: cfg.features, branding: cfg.branding }) })
+      .catch((e) => { if (!cancelado) setEstado({ cargando: false, error: e.message, features: [], branding: {} }) })
     return () => { cancelado = true }
   }, [])
 
@@ -102,7 +103,9 @@ function ShellBoot() {
 
   return (
     <FeaturesProvider features={estado.features}>
-      <AppShell />
+      <BrandingProvider branding={estado.branding}>
+        <AppShell />
+      </BrandingProvider>
     </FeaturesProvider>
   )
 }

@@ -3,18 +3,21 @@ import { cleanup, render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import Sidebar from './Sidebar.jsx'
 import { FeaturesProvider } from '@/lib/features.jsx'
+import { BrandingProvider } from '@/lib/branding.jsx'
 
-function renderSidebar(features) {
+function renderSidebar(features, branding = {}) {
   return render(
     <MemoryRouter>
       <FeaturesProvider features={features}>
-        <Sidebar
-          collapsed={false}
-          setCollapsed={() => {}}
-          onOpenCommand={() => {}}
-          colorScheme="light"
-          onToggleColorScheme={() => {}}
-        />
+        <BrandingProvider branding={branding}>
+          <Sidebar
+            collapsed={false}
+            setCollapsed={() => {}}
+            onOpenCommand={() => {}}
+            colorScheme="light"
+            onToggleColorScheme={() => {}}
+          />
+        </BrandingProvider>
       </FeaturesProvider>
     </MemoryRouter>,
   )
@@ -54,5 +57,21 @@ describe('gating del Sidebar', () => {
     expect(screen.getByText('Facturas recibidas')).toBeInTheDocument()
     // Libro IVA sigue oculto: requiere su propia capacidad (libro_iva).
     expect(screen.queryByText('Libro IVA')).toBeNull()
+  })
+})
+
+describe('branding white-label del Sidebar', () => {
+  it('muestra el logo + nombre comercial de la empresa (GET /config)', () => {
+    renderSidebar([], { logo_url: 'https://cdn.test/pr/logo.png', nombre_comercial: 'Punto Rojo' })
+    expect(screen.getByText('Punto Rojo')).toBeInTheDocument()
+    const logo = screen.getByAltText('Punto Rojo')
+    expect(logo).toBeInTheDocument()
+    expect(logo.getAttribute('src')).toBe('https://cdn.test/pr/logo.png')
+  })
+
+  it('sin branding usa el fallback neutro "FerreBot" (no rompe)', () => {
+    renderSidebar([])
+    expect(screen.getByText('FerreBot')).toBeInTheDocument()
+    expect(screen.queryByRole('img')).toBeNull()   // sin logo_url → cuadro tematizado, no <img>
   })
 })

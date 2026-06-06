@@ -15,7 +15,14 @@ from core.auth import Principal, get_filtro_efectivo, require_role
 from core.auth.features import require_feature
 from core.db.session import get_tenant_db
 from modules.reportes.repository import SqlReportesRepository
-from modules.reportes.schemas import EstadoResultados, LibroIVA, ResumenDia, TopProducto
+from modules.reportes.schemas import (
+    EstadoResultados,
+    LibroIVA,
+    PuntoSerie,
+    ResumenDia,
+    TopProducto,
+    TotalesVentas,
+)
 from modules.reportes.service import ReportesService
 
 router = APIRouter(tags=["reportes"])
@@ -33,6 +40,28 @@ async def resumen_dia(
     filtro: int | None = Depends(get_filtro_efectivo),
 ) -> ResumenDia:
     return await ReportesService(repo).resumen_dia(filtro)
+
+
+@router.get("/reportes/serie-ventas", response_model=list[PuntoSerie])
+async def serie_ventas(
+    dias: int = Query(default=30, ge=1, le=365),
+    repo: SqlReportesRepository = Depends(get_reportes_repo),
+    _user: Principal = Depends(require_role("vendedor")),
+    filtro: int | None = Depends(get_filtro_efectivo),
+) -> list[PuntoSerie]:
+    """Serie diaria de ventas de los últimos `dias` (default 30, hora Colombia), para la gráfica de
+    evolución y el sparkline; el vendedor efectivo lo da el filtro RBAC."""
+    return await ReportesService(repo).serie_ventas(dias=dias, vendedor_id=filtro)
+
+
+@router.get("/reportes/totales", response_model=TotalesVentas)
+async def totales_ventas(
+    repo: SqlReportesRepository = Depends(get_reportes_repo),
+    _user: Principal = Depends(require_role("vendedor")),
+    filtro: int | None = Depends(get_filtro_efectivo),
+) -> TotalesVentas:
+    """Totales de ventas: hoy / últimos 7 días / mes en curso (hora Colombia), acotados al vendedor."""
+    return await ReportesService(repo).totales(vendedor_id=filtro)
 
 
 @router.get("/reportes/resultados", response_model=EstadoResultados)

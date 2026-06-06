@@ -8,6 +8,7 @@ import { NavLink } from 'react-router-dom'
 import { ChevronDown, ChevronRight, PanelLeftClose, PanelLeftOpen, Command, Sun, Moon } from 'lucide-react'
 import { ROUTES, GROUPS, routesByGroup } from '@/routes.jsx'
 import { useFeatures } from '@/lib/features.jsx'
+import { useBranding } from '@/lib/branding.jsx'
 import { cn } from '@/lib/utils'
 
 function loadGroupState() {
@@ -26,6 +27,8 @@ function saveGroupState(state) {
 
 export default function Sidebar({ collapsed, setCollapsed, onOpenCommand, colorScheme, onToggleColorScheme }) {
   const features = useFeatures()
+  const branding = useBranding()
+  const nombreComercial = branding?.nombre_comercial || 'FerreBot'
   const [groupOpen, setGroupOpen] = useState(loadGroupState)
 
   function toggleGroup(id) {
@@ -60,16 +63,25 @@ export default function Sidebar({ collapsed, setCollapsed, onOpenCommand, colorS
       )}
       aria-label="Navegación principal"
     >
-      {/* Brand — marca tematizada por --color-primary (white-label) */}
+      {/* Brand — white-label: logo + nombre comercial de la empresa (GET /config). Sin logo → cuadro
+          tematizado con --color-primary; sin nombre → fallback "FerreBot". */}
       <div className={cn('flex items-center gap-2.5 px-3 h-[88px] border-b border-border', collapsed && 'justify-center px-0')}>
-        <div
-          className={cn('shrink-0 rounded-md bg-color-primary', collapsed ? 'size-9' : 'size-10')}
-          aria-hidden="true"
-        />
+        {branding?.logo_url ? (
+          <img
+            src={branding.logo_url}
+            alt={nombreComercial}
+            className={cn('shrink-0 rounded-md object-contain bg-surface', collapsed ? 'size-9' : 'size-10')}
+          />
+        ) : (
+          <div
+            className={cn('shrink-0 rounded-md bg-color-primary', collapsed ? 'size-9' : 'size-10')}
+            aria-hidden="true"
+          />
+        )}
         {!collapsed && (
           <div className="flex flex-col leading-tight min-w-0">
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">FerreBot</span>
-            <span className="text-[17px] font-bold tracking-tight text-foreground truncate leading-tight">Dashboard</span>
+            <span className="text-[17px] font-bold tracking-tight text-foreground truncate leading-tight">{nombreComercial}</span>
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Dashboard</span>
           </div>
         )}
       </div>

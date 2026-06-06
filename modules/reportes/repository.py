@@ -7,7 +7,7 @@ calcula derivados (ticket promedio) y arma el contrato de salida.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 
 from sqlalchemy import func, select
@@ -88,6 +88,42 @@ class SqlReportesRepository:
         return AgregadoDia(
             num_ventas=num_ventas, total_vendido=total_vendido, por_metodo_pago=por_metodo
         )
+
+    async def serie_ventas(
+        self, *, inicio: datetime, fin: datetime, vendedor_id: int | None
+    ) -> list[tuple[date, Decimal]]:
+        """Serie diaria de ventas completadas del rango, agrupada por día en hora Colombia.
+
+        Convierte `fecha` (TIMESTAMPTZ) a la fecha local de Bogotá (`timezone(...)` → `date`) para que
+        cada venta caiga en su día Colombia. Excluye anuladas; acota a `vendedor_id` si se da. Devuelve
+        solo los días CON ventas (el servicio rellena los vacíos en 0).
+        """
+        dia = func.date(func.timezone("America/Bogota", Venta.fecha)).label("dia")
+        condiciones = [Venta.estado == "completada", Venta.fecha >= inicio, Venta.fecha <= fin]
+        if vendedor_id is not None:
+            condiciones.append(Venta.vendedor_id == vendedor_id)
+        stmt = (
+            select(dia, func.coalesce(func.sum(Venta.total), 0).label("total"))
+            .where(*condiciones)
+            .group_by(dia)
+            .order_by(dia)
+        )
+        filas = (await self._s.execute(stmt)).all()
+        return [(f.dia, Decimal(f.total)) for f in filas]
+
+    async def total_ventas(
+        self, *, inicio: datetime, fin: datetime, vendedor_id: int | None
+    ) -> Decimal:
+        """Suma del total de ventas completadas del rango (acotada al vendedor si se da). 0 si no hay."""
+        condiciones = [Venta.estado == "completada", Venta.fecha >= inicio, Venta.fecha <= fin]
+        if vendedor_id is not None:
+            condiciones.append(Venta.vendedor_id == vendedor_id)
+        total = (
+            await self._s.execute(
+                select(func.coalesce(func.sum(Venta.total), 0)).where(*condiciones)
+            )
+        ).scalar_one()
+        return Decimal(total)
 
     async def estado_resultados(
         self, *, inicio: datetime, fin: datetime

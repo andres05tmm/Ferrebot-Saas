@@ -5,7 +5,7 @@ promedio (Decimal, 0 si no hubo ventas) y fija la fecha del día en hora Colombi
 """
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 from typing import Protocol
 
@@ -17,7 +17,14 @@ from modules.reportes.repository import (
     AgregadoResultados,
     TopProductoFila,
 )
-from modules.reportes.schemas import EstadoResultados, LibroIVA, ResumenDia, TopProducto
+from modules.reportes.schemas import (
+    EstadoResultados,
+    LibroIVA,
+    PuntoSerie,
+    ResumenDia,
+    TopProducto,
+    TotalesVentas,
+)
 
 
 class ReportesRepo(Protocol):
@@ -26,6 +33,10 @@ class ReportesRepo(Protocol):
     async def resumen(self, *, inicio, fin, vendedor_id: int | None) -> AgregadoDia: ...
     async def estado_resultados(self, *, inicio, fin) -> AgregadoResultados: ...
     async def libro_iva(self, *, inicio, fin) -> AgregadoLibroIVA: ...
+    async def serie_ventas(
+        self, *, inicio, fin, vendedor_id: int | None
+    ) -> list[tuple[date, Decimal]]: ...
+    async def total_ventas(self, *, inicio, fin, vendedor_id: int | None) -> Decimal: ...
     async def top_productos(
         self, *, inicio, fin, vendedor_id: int | None, limite: int
     ) -> list[TopProductoFila]: ...
@@ -88,6 +99,38 @@ class ReportesService:
             base_compras=agg.base_compras, iva_descontable=agg.iva_descontable,
             saldo=saldo,
         )
+
+    async def serie_ventas(self, *, dias: int, vendedor_id: int | None) -> list[PuntoSerie]:
+        """Serie diaria de los últimos `dias` (incluido hoy), hora Colombia, con los vacíos en 0.
+
+        Para la gráfica de evolución y el sparkline del tab Hoy. Rellena TODOS los días del rango
+        (aunque no haya ventas) para que la serie tenga puntos continuos.
+        """
+        hoy = today_co()
+        desde = hoy - timedelta(days=dias - 1)
+        inicio, fin = rango_dia_co(desde, hoy)
+        por_dia = {
+            f: t for f, t in await self._repo.serie_ventas(inicio=inicio, fin=fin, vendedor_id=vendedor_id)
+        }
+        serie: list[PuntoSerie] = []
+        actual = desde
+        while actual <= hoy:
+            serie.append(PuntoSerie(fecha=actual, total=por_dia.get(actual, Decimal("0"))))
+            actual += timedelta(days=1)
+        return serie
+
+    async def totales(self, *, vendedor_id: int | None) -> TotalesVentas:
+        """Totales de ventas: hoy / últimos 7 días / mes en curso (hora Colombia), acotados al vendedor."""
+        hoy = today_co()
+        dia = await self._total(hoy, hoy, vendedor_id)
+        semana = await self._total(hoy - timedelta(days=6), hoy, vendedor_id)
+        mes = await self._total(hoy.replace(day=1), hoy, vendedor_id)
+        return TotalesVentas(dia=dia, semana=semana, mes=mes)
+
+    async def _total(self, desde: date, hasta: date, vendedor_id: int | None) -> Decimal:
+        """Suma del total de ventas completadas del rango [desde, hasta] (hora Colombia)."""
+        inicio, fin = rango_dia_co(desde, hasta)
+        return await self._repo.total_ventas(inicio=inicio, fin=fin, vendedor_id=vendedor_id)
 
     async def top_productos(
         self, *, desde: date | None, hasta: date | None, vendedor_id: int | None, limite: int

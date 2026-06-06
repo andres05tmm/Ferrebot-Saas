@@ -43,6 +43,21 @@ class LibroIVA(BaseModel):
     saldo: Decimal              # iva_generado − iva_descontable (+ = a pagar; − = a favor)
 
 
+class PuntoSerie(BaseModel):
+    """Un día de la serie de ventas (para la gráfica de evolución y el sparkline del tab Hoy)."""
+
+    fecha: date
+    total: Decimal
+
+
+class TotalesVentas(BaseModel):
+    """Totales de ventas completadas: hoy / últimos 7 días / mes en curso (hora Colombia)."""
+
+    dia: Decimal
+    semana: Decimal
+    mes: Decimal
+
+
 class TopProducto(BaseModel):
     """Una fila del ranking de productos por cantidad e ingreso en un rango."""
 

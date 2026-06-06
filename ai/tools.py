@@ -87,6 +87,14 @@ class CrearClienteArgs(ClienteCrear):
     """Mismos campos que ClienteCrear (ai-tools.md §5.4)."""
 
 
+class ConsultarVentasDiaArgs(BaseModel):
+    """Sin parámetros: la consulta es SIEMPRE de hoy (zona Colombia)."""
+
+
+class ConsultarProductoArgs(BaseModel):
+    nombre: str = Field(min_length=1)
+
+
 # --- Handlers: args validados + contexto → servicio de dominio → envelope ----
 async def _registrar_venta(args: RegistrarVentaArgs, ctx: Contexto, deps: Deps) -> Resultado | ErrorTool:
     lineas = [
@@ -192,6 +200,66 @@ async def _crear_cliente(args: CrearClienteArgs, ctx: Contexto, deps: Deps) -> R
     )
 
 
+# --- Handlers de SOLO LECTURA (consulta) ------------------------------------
+# No mutan: devuelven Resultado sin `evento` ni `idempotente`.
+async def _consultar_ventas_dia(
+    args: ConsultarVentasDiaArgs, ctx: Contexto, deps: Deps
+) -> Resultado | ErrorTool:
+    """Resumen de ventas de HOY (cantidad y total). Solo lectura.
+
+    Scope RBAC: el vendedor solo ve las suyas (vendedor_id=ctx.usuario_id); admin/super_admin ven todas
+    (vendedor_id=None). Sin ventas → conteo 0 y un resumen explícito.
+    """
+    vendedor_id = ctx.usuario_id if ctx.rol == "vendedor" else None
+    ventas = await deps.ventas.listar_dia(vendedor_id=vendedor_id)
+    if not ventas:
+        return Resultado(
+            data={"conteo": 0, "total": "0", "ventas": []},
+            resumen="Hoy no hay ventas registradas.",
+        )
+    total = sum((v.total for v in ventas), Decimal("0"))
+    etiqueta = "venta" if len(ventas) == 1 else "ventas"
+    return Resultado(
+        data={
+            "conteo": len(ventas),
+            "total": str(total),
+            "ventas": [
+                {"consecutivo": v.consecutivo, "total": str(v.total), "metodo_pago": v.metodo_pago}
+                for v in ventas
+            ],
+        },
+        resumen=f"Hoy hay {len(ventas)} {etiqueta} por ${total}.",
+    )
+
+
+async def _consultar_producto(
+    args: ConsultarProductoArgs, ctx: Contexto, deps: Deps
+) -> Resultado | ErrorTool:
+    """Precio y stock de un producto por su nombre. Solo lectura (espejo de `riel_producto`):
+
+    0 coincidencias → ErrorTool recuperable; varias → enumera los candidatos y pregunta cuál; una →
+    devuelve precio y stock.
+    """
+    matches = await deps.ventas.buscar_producto_por_nombre(args.nombre)
+    if not matches:
+        return ErrorTool(
+            "producto_no_encontrado",
+            f"No encontré ningún producto para «{args.nombre}».",
+            recuperable=True,
+        )
+    if len(matches) > 1:
+        nombres = ", ".join(m.nombre for m in matches)
+        return Resultado(
+            data={"candidatos": [{"id": m.id, "nombre": m.nombre} for m in matches]},
+            resumen=f"Hay varios productos que coinciden con «{args.nombre}»: {nombres}. ¿Cuál?",
+        )
+    p = matches[0]
+    return Resultado(
+        data={"id": p.id, "nombre": p.nombre, "precio": str(p.precio), "stock": str(p.stock)},
+        resumen=f"{p.nombre}: ${p.precio}, stock {p.stock}.",
+    )
+
+
 # --- Tabla del catálogo ------------------------------------------------------
 ArgsModel = type[BaseModel]
 Handler = Callable[[BaseModel, Contexto, Deps], Awaitable[Resultado | ErrorTool]]
@@ -249,6 +317,18 @@ CATALOGO: tuple[Tool, ...] = (
         descripcion="Crea un cliente. Si ya existe por documento, devuelve el existente.",
         args_model=CrearClienteArgs, rol_min="vendedor", feature=None,
         handler=_crear_cliente,
+    ),
+    Tool(
+        nombre="consultar_ventas_dia",
+        descripcion="Consulta el resumen de ventas de hoy (cantidad y total). Solo lectura.",
+        args_model=ConsultarVentasDiaArgs, rol_min="vendedor", feature=None,
+        handler=_consultar_ventas_dia,   # read-only: valida_productos/confirmable = False (defaults)
+    ),
+    Tool(
+        nombre="consultar_producto",
+        descripcion="Consulta el precio y el stock de un producto por su nombre. Solo lectura.",
+        args_model=ConsultarProductoArgs, rol_min="vendedor", feature=None,
+        handler=_consultar_producto,     # read-only: valida_productos/confirmable = False (defaults)
     ),
 )
 

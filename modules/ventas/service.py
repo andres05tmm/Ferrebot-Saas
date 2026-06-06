@@ -5,7 +5,7 @@ totales con IVA INCLUIDO en el precio (estándar retail Colombia): el precio del
 la fuente de verdad (ferrebot-logica-portar.md §1). El consecutivo sale de una SEQUENCE.
 """
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Protocol
 
@@ -60,6 +60,21 @@ class ProductoPrecio:
 
 
 @dataclass(frozen=True, slots=True)
+class ProductoBusqueda:
+    """Coincidencia de búsqueda de catálogo para una consulta de SOLO LECTURA (consultar_producto).
+
+    No se reusa `ProductoPrecio`: ese modela el esquema de PRECIOS (umbral/fracciones/iva) y NO lleva
+    stock. La consulta necesita exactamente precio + stock para mostrárselos al usuario, así que un
+    dataclass mínimo evita inflar `ProductoPrecio` con un campo ajeno a su propósito.
+    """
+
+    id: int
+    nombre: str
+    precio: Decimal
+    stock: Decimal
+
+
+@dataclass(frozen=True, slots=True)
 class LineaResuelta:
     producto_id: int | None
     descripcion: str | None
@@ -104,6 +119,11 @@ class VentasRepo(Protocol):
     async def buscar_por_idempotency(self, key: str) -> VentaLeer | None: ...
     async def obtener_producto(self, producto_id: int) -> ProductoPrecio | None: ...
     async def lock_inventario(self, producto_id: int) -> Decimal | None: ...
+    async def stock_sin_lock(self, producto_id: int) -> Decimal | None: ...
+    async def buscar_productos_por_nombre(self, texto: str) -> list[tuple[int, str]]: ...
+    async def listar(
+        self, *, desde: date | None = None, hasta: date | None = None, vendedor_id: int | None = None
+    ) -> list[VentaLeer]: ...
     async def siguiente_consecutivo(self) -> int: ...
     async def crear_venta(self, header: VentaHeader) -> VentaLeer: ...
     async def obtener_cabecera(self, venta_id: int) -> VentaLeer | None: ...
@@ -163,6 +183,35 @@ class VentaService:
         )
         venta = await self._repo.crear_venta(header)
         return ResultadoVenta(venta=venta, replay=False)
+
+    # --- Lecturas para el agente IA (solo lectura; no mutan) -------------------
+    async def listar_dia(self, *, vendedor_id: int | None) -> list[VentaLeer]:
+        """Ventas de HOY (Colombia). `vendedor_id` acota a un vendedor; None = todas. Solo lectura.
+
+        El rango por defecto (hoy) lo resuelve el repo; el scope RBAC (vendedor → su id, admin → None)
+        lo decide el handler de la herramienta, no el servicio.
+        """
+        return await self._repo.listar(desde=None, hasta=None, vendedor_id=vendedor_id)
+
+    async def buscar_producto_por_nombre(self, texto: str) -> list[ProductoBusqueda]:
+        """Coincidencias de catálogo por nombre (id, nombre, precio, stock). Solo lectura.
+
+        Reusa la resolución nombre→producto del catálogo (la misma del resto del sistema) vía el repo;
+        para cada candidato el precio sale del catálogo (`obtener_producto`) y el stock de una lectura
+        SIN lock. El conteo está acotado por el límite del buscador, así que el bucle no es ilimitado.
+        """
+        candidatos = await self._repo.buscar_productos_por_nombre(texto)
+        productos: list[ProductoBusqueda] = []
+        for prod_id, _ in candidatos:
+            prod = await self._repo.obtener_producto(prod_id)
+            if prod is None:
+                continue
+            stock = await self._repo.stock_sin_lock(prod_id)
+            productos.append(ProductoBusqueda(
+                id=prod.id, nombre=prod.nombre, precio=prod.precio_venta,
+                stock=stock if stock is not None else Decimal("0"),
+            ))
+        return productos
 
     async def _guard_modificacion(
         self, venta_id: int, *, user_id: int, es_admin: bool, accion: str

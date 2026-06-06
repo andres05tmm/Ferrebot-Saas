@@ -14,8 +14,10 @@ from sqlalchemy.orm import lazyload, selectinload
 from core.config.timezone import now_co, rango_dia_co
 from core.events import publish
 from modules.facturacion.models import FacturaElectronica
+from modules.inventario.busqueda import BuscadorProductos
 from modules.inventario.models import Inventario, MovimientoInventario, Producto
 from modules.inventario.precios import FraccionPrecio
+from modules.inventario.repository import SqlInventarioRepository
 from modules.ventas.models import Venta, VentaDetalle
 from modules.ventas.schemas import VentaConLineas, VentaDetalleLeer, VentaLeer
 from modules.ventas.service import EdicionVenta, ProductoPrecio, VentaHeader
@@ -244,6 +246,29 @@ class SqlVentasRepository:
             return None
         self._locked[producto_id] = inv
         return inv.stock_actual
+
+    async def stock_sin_lock(self, producto_id: int) -> Decimal | None:
+        """Stock actual SIN bloquear la fila: lectura para CONSULTA (nunca para vender).
+
+        A diferencia de `lock_inventario` (FOR UPDATE, camino de escritura), no toma lock: la consulta
+        del bot solo lee. None si el producto no tiene fila de inventario.
+        """
+        return (
+            await self._s.execute(
+                select(Inventario.stock_actual).where(Inventario.producto_id == producto_id)
+            )
+        ).scalar_one_or_none()
+
+    async def buscar_productos_por_nombre(
+        self, texto: str, *, limite: int = 10
+    ) -> list[tuple[int, str]]:
+        """Candidatos (id, nombre) por nombre reusando el buscador de inventario (misma resolución
+        de 4 capas que el resto del sistema: exacta → alias → trigram → fuzzy), sobre la sesión del
+        tenant. Acotado por `limite`. Quien arma precio/stock por candidato es el servicio.
+        """
+        buscador = BuscadorProductos(SqlInventarioRepository(self._s))
+        resultado = await buscador.buscar(texto, limite=limite)
+        return [(c.producto_id, c.nombre) for c in resultado.coincidencias]
 
     async def siguiente_consecutivo(self) -> int:
         return (await self._s.execute(text("SELECT nextval('ventas_consecutivo_seq')"))).scalar_one()

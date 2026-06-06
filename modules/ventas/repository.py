@@ -7,17 +7,21 @@ El stock se bloquea con SELECT ... FOR UPDATE en lock_inventario (evita carreras
 from datetime import date
 from decimal import Decimal
 
-from sqlalchemy import select, text
+from sqlalchemy import delete, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import lazyload, selectinload
 
 from core.config.timezone import now_co, rango_dia_co
 from core.events import publish
+from modules.facturacion.models import FacturaElectronica
 from modules.inventario.models import Inventario, MovimientoInventario, Producto
 from modules.inventario.precios import FraccionPrecio
 from modules.ventas.models import Venta, VentaDetalle
 from modules.ventas.schemas import VentaConLineas, VentaDetalleLeer, VentaLeer
 from modules.ventas.service import ProductoPrecio, VentaHeader
+
+# Estados de factura electrónica que BLOQUEAN el borrado de la venta (factura "viva").
+_ESTADOS_FACTURA_VIVA = ("pendiente", "aceptada")
 
 
 class SqlVentasRepository:
@@ -48,6 +52,77 @@ class SqlVentasRepository:
         stmt = stmt.order_by(Venta.fecha.desc()).options(lazyload(Venta.detalles))
         ventas = (await self._s.execute(stmt)).scalars().all()
         return [VentaLeer.model_validate(v) for v in ventas]
+
+    async def obtener_cabecera(self, venta_id: int) -> VentaLeer | None:
+        """Cabecera de una venta (sin líneas) para los guards del borrado: fecha y vendedor_id."""
+        venta = (
+            await self._s.execute(
+                select(Venta).where(Venta.id == venta_id).options(lazyload(Venta.detalles))
+            )
+        ).scalar_one_or_none()
+        return VentaLeer.model_validate(venta) if venta is not None else None
+
+    async def tiene_factura_viva(self, venta_id: int) -> bool:
+        """¿La venta tiene una factura electrónica VIVA (estado pendiente/aceptada)?
+
+        Lectura cross-módulo a `facturas_electronicas` (SQL solo en el repo, regla #2): bloquea el
+        borrado si hay un documento fiscal en curso o aceptado por la DIAN.
+        """
+        fila = (
+            await self._s.execute(
+                select(FacturaElectronica.id)
+                .where(
+                    FacturaElectronica.venta_id == venta_id,
+                    FacturaElectronica.estado.in_(_ESTADOS_FACTURA_VIVA),
+                )
+                .limit(1)
+            )
+        ).first()
+        return fila is not None
+
+    async def borrar_venta(self, venta_id: int) -> None:
+        """Borra una venta de forma TOTAL (física) restaurando stock, en una transacción.
+
+        Por cada línea de catálogo restaura el stock (`stock_actual += cantidad`, fila bloqueada) y
+        borra el movimiento SALIDA de la venta: el stock vuelve a su valor previo y su movimiento
+        desaparece — neto cero, como si la venta no hubiera ocurrido (respeta la regla #7). Luego
+        borra la venta (cascade a `ventas_detalle`) y emite `venta_anulada` + `inventario_actualizado`.
+        """
+        venta = (
+            await self._s.execute(
+                select(Venta).where(Venta.id == venta_id).options(selectinload(Venta.detalles))
+            )
+        ).scalar_one_or_none()
+        if venta is None:
+            return
+        consecutivo = venta.consecutivo  # capturar antes de borrar (el objeto queda expirado tras delete)
+
+        for det in venta.detalles:
+            if det.producto_id is None:
+                continue  # línea varia: no movió inventario
+            inv = (
+                await self._s.execute(
+                    select(Inventario)
+                    .where(Inventario.producto_id == det.producto_id)
+                    .with_for_update()
+                )
+            ).scalar_one_or_none()
+            if inv is not None:
+                inv.stock_actual = inv.stock_actual + det.cantidad
+
+        await self._s.execute(
+            delete(MovimientoInventario).where(
+                MovimientoInventario.referencia == f"venta:{venta_id}",
+                MovimientoInventario.tipo == "SALIDA",
+            )
+        )
+        await self._s.delete(venta)
+        await self._s.flush()
+
+        await publish(self._s, "venta_anulada", {"venta_id": venta_id, "consecutivo": consecutivo})
+        await publish(self._s, "inventario_actualizado", {
+            "venta_id": venta_id, "accion": "venta_anulada",
+        })
 
     async def obtener(self, venta_id: int) -> VentaConLineas | None:
         """Detalle de una venta con sus líneas (carga `detalles` con selectin, no lazy)."""

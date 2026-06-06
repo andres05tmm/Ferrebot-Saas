@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 
 let rtHandler = null
@@ -7,10 +7,12 @@ vi.mock('@/components/RealtimeProvider.jsx', () => ({
   RealtimeProvider: ({ children }) => children,
   useRealtimeEvent: (_t, handler) => { rtHandler = handler },
 }))
+vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 
+import { toast } from 'sonner'
 import VistaDia from './VistaDia.jsx'
 
-const VENTAS = [{ id: 1, consecutivo: 5, fecha: '2026-06-05T15:00:00+00:00', total: '23800.00', metodo_pago: 'efectivo', estado: 'completada' }]
+const VENTAS = [{ id: 1, consecutivo: 5, vendedor_id: 5, fecha: '2026-06-05T15:00:00+00:00', total: '23800.00', metodo_pago: 'efectivo', estado: 'completada' }]
 const DETALLE = {
   id: 1, consecutivo: 5, cliente_id: null, vendedor_id: 5, fecha: '2026-06-05T15:00:00+00:00',
   subtotal: '20000.00', impuestos: '3800.00', total: '23800.00', metodo_pago: 'efectivo',
@@ -18,12 +20,25 @@ const DETALLE = {
   lineas: [{ producto_id: 1, descripcion: 'Martillo', cantidad: '2', precio_unitario: '11900.00', iva: 19 }],
 }
 
+// Helpers para construir ventas de HOY (Colombia) usando el instante actual.
+const ahoraISO = () => new Date().toISOString()
+const ventaHoy = (over = {}) => ({ id: 1, consecutivo: 10, vendedor_id: 5, fecha: ahoraISO(), total: '100', metodo_pago: 'efectivo', estado: 'completada', ...over })
+const ventaVieja = (over = {}) => ({ id: 2, consecutivo: 9, vendedor_id: 5, fecha: '2020-01-01T12:00:00+00:00', total: '50', metodo_pago: 'efectivo', estado: 'completada', ...over })
+
+function sesion({ id = 5, rol = 'vendedor' } = {}) {
+  localStorage.setItem('ferrebot_token', 't')
+  localStorage.setItem('ferrebot_user', JSON.stringify({ id, rol }))
+}
+
 function jsonResp(data) { return { ok: true, status: 200, json: async () => data } }
 
-function instalarFetch() {
-  const fetchMock = vi.fn((url) => {
-    if (/\/ventas\/\d+/.test(String(url))) return Promise.resolve(jsonResp(DETALLE))   // detalle
-    if (String(url).includes('/ventas')) return Promise.resolve(jsonResp(VENTAS))        // lista
+function instalarFetch(ventas = VENTAS, { deleteStatus = 200 } = {}) {
+  const fetchMock = vi.fn((url, opts) => {
+    const u = String(url)
+    if (/\/ventas\/\d+$/.test(u) && opts?.method === 'DELETE')
+      return Promise.resolve({ ok: deleteStatus < 400, status: deleteStatus, json: async () => ({}) })
+    if (/\/ventas\/\d+/.test(u)) return Promise.resolve(jsonResp(DETALLE))   // detalle
+    if (u.includes('/ventas')) return Promise.resolve(jsonResp(ventas))        // lista
     return Promise.resolve(jsonResp([]))
   })
   vi.stubGlobal('fetch', fetchMock)
@@ -51,5 +66,66 @@ describe('VistaDia (historial)', () => {
     const antes = listaCalls()
     await act(async () => { rtHandler('venta_registrada') })
     expect(listaCalls()).toBeGreaterThan(antes)
+  })
+})
+
+describe('VistaDia — borrar venta', () => {
+  it('el botón borrar aparece solo para ventas de HOY propias (vieja/ajena sin botón)', async () => {
+    sesion({ id: 5, rol: 'vendedor' })
+    const ajena = { id: 3, consecutivo: 8, vendedor_id: 99, fecha: ahoraISO(), total: '70', metodo_pago: 'efectivo', estado: 'completada' }
+    instalarFetch([ventaHoy(), ventaVieja(), ajena])
+    render(<MemoryRouter><VistaDia /></MemoryRouter>)
+    await screen.findByText('N.º 10')
+
+    expect(screen.getByLabelText('Borrar venta N.º 10')).toBeInTheDocument()  // hoy + propia
+    expect(screen.queryByLabelText('Borrar venta N.º 9')).toBeNull()          // día anterior → sin botón
+    expect(screen.queryByLabelText('Borrar venta N.º 8')).toBeNull()          // ajena → sin botón
+  })
+
+  it('un admin ve el botón en ventas ajenas de hoy', async () => {
+    sesion({ id: 1, rol: 'admin' })
+    const ajenaHoy = { id: 3, consecutivo: 8, vendedor_id: 99, fecha: ahoraISO(), total: '70', metodo_pago: 'efectivo', estado: 'completada' }
+    instalarFetch([ajenaHoy])
+    render(<MemoryRouter><VistaDia /></MemoryRouter>)
+    await screen.findByText('N.º 8')
+
+    expect(screen.getByLabelText('Borrar venta N.º 8')).toBeInTheDocument()
+  })
+
+  it('borrar postea DELETE /ventas/{id} tras confirmar', async () => {
+    sesion({ id: 5, rol: 'vendedor' })
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const fetchMock = instalarFetch([ventaHoy()])
+    render(<MemoryRouter><VistaDia /></MemoryRouter>)
+    await screen.findByText('N.º 10')
+
+    fireEvent.click(screen.getByLabelText('Borrar venta N.º 10'))
+    await waitFor(() => {
+      expect(fetchMock.mock.calls.some(c => /\/ventas\/1$/.test(String(c[0])) && c[1]?.method === 'DELETE')).toBe(true)
+    })
+  })
+
+  it('NO borra si el usuario cancela la confirmación', async () => {
+    sesion({ id: 5, rol: 'vendedor' })
+    vi.spyOn(window, 'confirm').mockReturnValue(false)
+    const fetchMock = instalarFetch([ventaHoy()])
+    render(<MemoryRouter><VistaDia /></MemoryRouter>)
+    await screen.findByText('N.º 10')
+
+    fireEvent.click(screen.getByLabelText('Borrar venta N.º 10'))
+    expect(fetchMock.mock.calls.some(c => c[1]?.method === 'DELETE')).toBe(false)
+  })
+
+  it('un 409 muestra el mensaje de factura electrónica', async () => {
+    sesion({ id: 5, rol: 'vendedor' })
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    instalarFetch([ventaHoy()], { deleteStatus: 409 })
+    render(<MemoryRouter><VistaDia /></MemoryRouter>)
+    await screen.findByText('N.º 10')
+
+    fireEvent.click(screen.getByLabelText('Borrar venta N.º 10'))
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith('Tiene factura electrónica, no se puede borrar')
+    })
   })
 })

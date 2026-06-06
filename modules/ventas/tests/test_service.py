@@ -1,10 +1,19 @@
 """Unitarios del servicio de ventas: lógica pura con un repositorio falso (sin BD)."""
+from datetime import timedelta
 from decimal import Decimal
 
 import pytest
 
 from core.config.timezone import now_co
-from modules.ventas.errors import LineaInvalida, ProductoNoEncontrado, StockInsuficiente
+from modules.ventas.errors import (
+    BorradoNoAutorizado,
+    LineaInvalida,
+    ProductoNoEncontrado,
+    StockInsuficiente,
+    VentaConFacturaViva,
+    VentaNoEncontrada,
+    VentaNoEsDeHoy,
+)
 from modules.ventas.schemas import VentaCrear, VentaDetalleCrear, VentaLeer
 from modules.ventas.service import ProductoPrecio, VentaHeader, VentaService, calcular_totales
 
@@ -153,6 +162,74 @@ def test_varia_sin_precio_es_invalida_en_el_schema():
     # La validación de línea varia vive en el schema (Pydantic) antes de llegar al servicio.
     with pytest.raises(ValueError):
         VentaDetalleCrear(descripcion="x", cantidad=Decimal("1"))
+
+
+# --- Borrado de venta (guards del servicio, repo falso) -----------------------------------------
+class FakeBorradoRepo:
+    def __init__(self, *, cabecera=None, factura_viva=False):
+        self._cabecera = cabecera
+        self._factura_viva = factura_viva
+        self.borrado = None
+
+    async def obtener_cabecera(self, venta_id):
+        return self._cabecera
+
+    async def tiene_factura_viva(self, venta_id):
+        return self._factura_viva
+
+    async def borrar_venta(self, venta_id):
+        self.borrado = venta_id
+
+
+def _cabecera(*, venta_id=1, vendedor_id=7, fecha=None):
+    return VentaLeer(
+        id=venta_id, consecutivo=1, cliente_id=None, vendedor_id=vendedor_id,
+        fecha=fecha or now_co(), subtotal=Decimal("0"), impuestos=Decimal("0"),
+        total=Decimal("0"), metodo_pago="efectivo", estado="completada", origen="web",
+        idempotency_key=None,
+    )
+
+
+async def test_borrar_de_hoy_dueno_sin_factura_delega_al_repo():
+    repo = FakeBorradoRepo(cabecera=_cabecera(venta_id=3, vendedor_id=7))
+    out = await VentaService(repo).borrar_venta(3, user_id=7, es_admin=False)
+    assert out == 3
+    assert repo.borrado == 3
+
+
+async def test_borrar_inexistente_lanza_no_encontrada():
+    repo = FakeBorradoRepo(cabecera=None)
+    with pytest.raises(VentaNoEncontrada):
+        await VentaService(repo).borrar_venta(99, user_id=7, es_admin=True)
+    assert repo.borrado is None
+
+
+async def test_borrar_de_dia_anterior_lanza_no_es_de_hoy():
+    ayer = now_co() - timedelta(days=1)
+    repo = FakeBorradoRepo(cabecera=_cabecera(fecha=ayer, vendedor_id=7))
+    with pytest.raises(VentaNoEsDeHoy):
+        await VentaService(repo).borrar_venta(1, user_id=7, es_admin=True)
+    assert repo.borrado is None
+
+
+async def test_vendedor_no_puede_borrar_la_de_otro():
+    repo = FakeBorradoRepo(cabecera=_cabecera(vendedor_id=7))   # dueño = 7
+    with pytest.raises(BorradoNoAutorizado):
+        await VentaService(repo).borrar_venta(1, user_id=8, es_admin=False)  # lo intenta el 8
+    assert repo.borrado is None
+
+
+async def test_admin_borra_venta_ajena_de_hoy():
+    repo = FakeBorradoRepo(cabecera=_cabecera(vendedor_id=7))
+    out = await VentaService(repo).borrar_venta(1, user_id=999, es_admin=True)
+    assert out == 1 and repo.borrado == 1
+
+
+async def test_factura_viva_bloquea_el_borrado():
+    repo = FakeBorradoRepo(cabecera=_cabecera(vendedor_id=7), factura_viva=True)
+    with pytest.raises(VentaConFacturaViva):
+        await VentaService(repo).borrar_venta(1, user_id=7, es_admin=False)
+    assert repo.borrado is None   # nunca se borró
 
 
 def test_calcular_totales_multilinea():

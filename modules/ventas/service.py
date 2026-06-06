@@ -5,17 +5,33 @@ totales con IVA INCLUIDO en el precio (estándar retail Colombia): el precio del
 la fuente de verdad (ferrebot-logica-portar.md §1). El consecutivo sale de una SEQUENCE.
 """
 from dataclasses import dataclass, field
+from datetime import datetime
 from decimal import Decimal
 from typing import Protocol
 
+from core.config.timezone import rango_dia_co
 from core.money import cuantizar as _money
 from modules.inventario.precios import (
     EsquemaPrecio,
     FraccionPrecio,
     obtener_precio_para_cantidad,
 )
-from modules.ventas.errors import LineaInvalida, ProductoNoEncontrado, StockInsuficiente
+from modules.ventas.errors import (
+    BorradoNoAutorizado,
+    LineaInvalida,
+    ProductoNoEncontrado,
+    StockInsuficiente,
+    VentaConFacturaViva,
+    VentaNoEncontrada,
+    VentaNoEsDeHoy,
+)
 from modules.ventas.schemas import VentaCrear, VentaLeer
+
+
+def es_de_hoy_co(fecha: datetime) -> bool:
+    """¿El instante `fecha` cae dentro del día de HOY en hora Colombia? (función pura)."""
+    inicio, fin = rango_dia_co()
+    return inicio <= fecha <= fin
 
 
 @dataclass(frozen=True, slots=True)
@@ -78,6 +94,9 @@ class VentasRepo(Protocol):
     async def lock_inventario(self, producto_id: int) -> Decimal | None: ...
     async def siguiente_consecutivo(self) -> int: ...
     async def crear_venta(self, header: VentaHeader) -> VentaLeer: ...
+    async def obtener_cabecera(self, venta_id: int) -> VentaLeer | None: ...
+    async def tiene_factura_viva(self, venta_id: int) -> bool: ...
+    async def borrar_venta(self, venta_id: int) -> None: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -130,6 +149,25 @@ class VentaService:
         )
         venta = await self._repo.crear_venta(header)
         return ResultadoVenta(venta=venta, replay=False)
+
+    async def borrar_venta(self, venta_id: int, *, user_id: int, es_admin: bool) -> int:
+        """Borra una venta de HOY (Colombia) restaurando stock. Devuelve el `venta_id` borrado.
+
+        Guards (en orden): existe (VentaNoEncontrada/404) → es de hoy (VentaNoEsDeHoy/409) →
+        permiso, admin o vendedor dueño (BorradoNoAutorizado/403) → sin factura electrónica viva
+        (VentaConFacturaViva/409). Si pasa, delega el borrado físico transaccional al repositorio.
+        """
+        venta = await self._repo.obtener_cabecera(venta_id)
+        if venta is None:
+            raise VentaNoEncontrada(venta_id)
+        if not es_de_hoy_co(venta.fecha):
+            raise VentaNoEsDeHoy(venta_id)
+        if not (es_admin or venta.vendedor_id == user_id):
+            raise BorradoNoAutorizado(venta_id)
+        if await self._repo.tiene_factura_viva(venta_id):
+            raise VentaConFacturaViva(venta_id)
+        await self._repo.borrar_venta(venta_id)
+        return venta_id
 
     async def _resolver_linea(self, ln, control_stock_estricto: bool) -> LineaResuelta:
         if ln.producto_id is None:

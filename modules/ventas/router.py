@@ -10,10 +10,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sse_starlette.sse import EventSourceResponse
 
 from core.auth import Principal, get_current_user, get_filtro_efectivo, require_role
+from core.auth.rbac import satisface
 from core.db.session import control_session, get_tenant_db
 from core.events.sse import tenant_event_stream
 from modules.ventas.config import cargar_control_stock_estricto
-from modules.ventas.errors import LineaInvalida, ProductoNoEncontrado, StockInsuficiente
+from modules.ventas.errors import (
+    BorradoNoAutorizado,
+    LineaInvalida,
+    ProductoNoEncontrado,
+    StockInsuficiente,
+    VentaConFacturaViva,
+    VentaNoEncontrada,
+    VentaNoEsDeHoy,
+)
 from modules.ventas.repository import SqlVentasRepository
 from modules.ventas.schemas import VentaConLineas, VentaCrear, VentaLeer
 from modules.ventas.service import VentaService
@@ -93,6 +102,32 @@ async def obtener_venta(
     if venta is None or (filtro is not None and venta.vendedor_id != filtro):
         raise HTTPException(status.HTTP_404_NOT_FOUND, f"Venta {venta_id} no existe")
     return venta
+
+
+@router.delete("/ventas/{venta_id}")
+async def borrar_venta(
+    venta_id: int,
+    session: AsyncSession = Depends(get_tenant_db),
+    user: Principal = Depends(get_current_user),
+) -> dict[str, object]:
+    """Borra una venta de HOY (Colombia) restaurando stock. Permiso: admin o el vendedor dueño.
+
+    404 si no existe; 409 si no es del día o tiene factura electrónica viva; 403 si un vendedor
+    intenta borrar la venta de otro. El borrado físico (revierte stock + movimientos) lo hace el
+    servicio en una transacción y emite `venta_anulada` + `inventario_actualizado`.
+    """
+    service = VentaService(SqlVentasRepository(session))
+    try:
+        await service.borrar_venta(
+            venta_id, user_id=user.user_id, es_admin=satisface(user.rol, "admin")
+        )
+    except VentaNoEncontrada as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
+    except BorradoNoAutorizado as exc:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, str(exc)) from exc
+    except (VentaNoEsDeHoy, VentaConFacturaViva) as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+    return {"venta_id": venta_id, "borrada": True}
 
 
 @router.get("/events")

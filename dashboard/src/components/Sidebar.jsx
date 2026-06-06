@@ -30,6 +30,10 @@ export default function Sidebar({ collapsed, setCollapsed, onOpenCommand, colorS
   const branding = useBranding()
   const nombreComercial = branding?.nombre_comercial || 'FerreBot'
   const [groupOpen, setGroupOpen] = useState(loadGroupState)
+  // Logo resiliente: si la imagen no carga (URL rota/ausente), `onError` lo marca y caemos al cuadro
+  // tematizado — nunca se muestra el ícono de "imagen rota". Se reintenta si cambia la URL.
+  const [logoRoto, setLogoRoto] = useState(false)
+  useEffect(() => { setLogoRoto(false) }, [branding?.logo_url])
 
   function toggleGroup(id) {
     setGroupOpen(prev => {
@@ -66,10 +70,11 @@ export default function Sidebar({ collapsed, setCollapsed, onOpenCommand, colorS
       {/* Brand — white-label: logo + nombre comercial de la empresa (GET /config). Sin logo → cuadro
           tematizado con --color-primary; sin nombre → fallback "FerreBot". */}
       <div className={cn('flex items-center gap-2.5 px-3 h-[88px] border-b border-border', collapsed && 'justify-center px-0')}>
-        {branding?.logo_url ? (
+        {branding?.logo_url && !logoRoto ? (
           <img
             src={branding.logo_url}
             alt={nombreComercial}
+            onError={() => setLogoRoto(true)}
             className={cn('shrink-0 rounded-md object-contain bg-surface', collapsed ? 'size-9' : 'size-10')}
           />
         ) : (

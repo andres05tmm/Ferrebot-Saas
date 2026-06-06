@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import Sidebar from './Sidebar.jsx'
 import { FeaturesProvider } from '@/lib/features.jsx'
@@ -73,5 +73,13 @@ describe('branding white-label del Sidebar', () => {
     renderSidebar([])
     expect(screen.getByText('FerreBot')).toBeInTheDocument()
     expect(screen.queryByRole('img')).toBeNull()   // sin logo_url → cuadro tematizado, no <img>
+  })
+
+  it('si el logo no carga (onError) degrada al cuadro tematizado, no al img roto', () => {
+    renderSidebar([], { logo_url: 'https://cdn.test/rota.png', nombre_comercial: 'Punto Rojo' })
+    const logo = screen.getByAltText('Punto Rojo')
+    fireEvent.error(logo)                              // la imagen falla al cargar
+    expect(screen.queryByRole('img')).toBeNull()       // ya no se renderiza el <img> roto
+    expect(screen.getByText('Punto Rojo')).toBeInTheDocument()   // el nombre + cuadro siguen
   })
 })

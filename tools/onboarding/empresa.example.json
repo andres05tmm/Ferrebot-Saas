@@ -8,6 +8,7 @@
   },
   "secretos": {
     "telegram_token": "0000000000:AA-EJEMPLO-token-del-bot",
+    "telegram_webhook_secret": "CAMBIA-ESTO-secret-del-webhook",
     "matias_email": "facturacion@puntorojo.example",
     "matias_password": "CAMBIA-ESTO"
   },

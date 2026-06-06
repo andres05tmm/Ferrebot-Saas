@@ -22,7 +22,7 @@ from core.tenancy.catalogo import (
 from tools._alembic import upgrade_tenant
 
 # Claves CIFRADAS en secretos_empresa (las lee ControlSecretosBot / cargar_config_matias).
-_CLAVES_SECRETAS = ("telegram_token", "matias_email", "matias_password")
+_CLAVES_SECRETAS = ("telegram_token", "telegram_webhook_secret", "matias_email", "matias_password")
 # Claves EN CLARO en config_empresa (las leen cargar_config_matias / cargar_control_stock_estricto;
 # nombres exactos).
 _CLAVES_CONFIG = (

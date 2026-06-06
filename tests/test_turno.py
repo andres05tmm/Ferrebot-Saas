@@ -173,6 +173,12 @@ def test_system_prompt_no_incluye_catalogo_ni_precios():
     assert "catálogo" not in prompt and "catalogo" not in prompt
 
 
+def test_system_prompt_pide_texto_plano_sin_markdown():
+    prompt = construir_system_prompt({})
+    assert "texto plano" in prompt.lower()
+    assert "**" not in prompt              # la propia regla no debe traer Markdown
+
+
 # ----------------------- historial → ejecutar_turno -----------------------
 
 async def test_pasa_historial_y_system_a_ejecutar_turno():

@@ -95,6 +95,10 @@ def construir_system_prompt(entidades: dict[str, dict], *, hoy: date | None = No
         "concreta, y ayudas a registrar ventas, gastos, fiados y consultas del negocio.",
         f"Fecha de hoy (Colombia): {hoy.isoformat()}.",
         "Para cualquier dato del negocio usa las herramientas disponibles; nunca inventes valores.",
+        "Escribe siempre en texto plano para Telegram, con tono profesional y cordial. No uses "
+        "Markdown ni símbolos de formato: nada de asteriscos, guiones bajos, almohadillas ni "
+        "viñetas. Si necesitas enumerar opciones, sepáralas en renglones con frases completas. "
+        "Usa emojis con moderación, solo si aportan claridad.",
     ]
     bloque = _bloque_contexto(entidades)
     if bloque:

@@ -19,6 +19,13 @@ function nuevaKey() {
   return (crypto?.randomUUID?.() || `k-${Date.now()}-${Math.random()}`)
 }
 
+// Precio efectivo de una línea del carrito: el de la varia, o normal/especial según el toggle.
+function precioEfectivo(it) {
+  if (it.varia) return Number(it.precio_unitario) || 0
+  if (it.usarEspecial && it.precio_especial != null) return Number(it.precio_especial)
+  return Number(it.precio_normal) || 0
+}
+
 export default function TabVentasRapidas() {
   const [q, setQ] = useState('')
   const [resultados, setResultados] = useState([])
@@ -46,8 +53,11 @@ export default function TabVentasRapidas() {
         return copia
       }
       return [...prev, {
-        key: nuevaKey(), producto_id: p.id, nombre: p.nombre,
-        cantidad: 1, precio_unitario: Number(p.precio_venta), varia: false,
+        key: nuevaKey(), producto_id: p.id, nombre: p.nombre, cantidad: 1, varia: false,
+        precio_normal: Number(p.precio_venta),
+        // Precio especial opcional del producto: habilita el selector por línea (default: normal).
+        precio_especial: p.precio_especial != null ? Number(p.precio_especial) : null,
+        usarEspecial: false,
       }]
     })
     setQ(''); setResultados([])
@@ -63,17 +73,28 @@ export default function TabVentasRapidas() {
   function setCantidad(key, cantidad) {
     setCarrito(prev => prev.map(it => it.key === key ? { ...it, cantidad } : it))
   }
+  function setUsarEspecial(key, usarEspecial) {
+    setCarrito(prev => prev.map(it => it.key === key ? { ...it, usarEspecial } : it))
+  }
   function quitar(key) {
     setCarrito(prev => prev.filter(it => it.key !== key))
   }
 
-  const total = carrito.reduce((a, it) => a + (Number(it.precio_unitario) || 0) * (Number(it.cantidad) || 0), 0)
+  const total = carrito.reduce((a, it) => a + precioEfectivo(it) * (Number(it.cantidad) || 0), 0)
 
   async function registrar() {
     if (carrito.length === 0) return
-    const lineas = carrito.map(it => it.varia
-      ? { descripcion: it.nombre, cantidad: Number(it.cantidad), precio_unitario: Number(it.precio_unitario) }
-      : { producto_id: it.producto_id, cantidad: Number(it.cantidad) })
+    const lineas = carrito.map(it => {
+      if (it.varia) {
+        return { descripcion: it.nombre, cantidad: Number(it.cantidad), precio_unitario: Number(it.precio_unitario) }
+      }
+      const linea = { producto_id: it.producto_id, cantidad: Number(it.cantidad) }
+      // Precio especial elegido → override explícito por línea (gana sobre el motor de precios).
+      if (it.usarEspecial && it.precio_especial != null) {
+        linea.precio_unitario = Number(it.precio_especial)
+      }
+      return linea
+    })
     const payload = { metodo_pago: metodoPago, origen: 'web', lineas }
     if (cliente?.id) payload.cliente_id = cliente.id
 
@@ -134,18 +155,28 @@ export default function TabVentasRapidas() {
         ) : (
           <ul className="divide-y divide-border-subtle mb-3">
             {carrito.map(it => (
-              <li key={it.key} className="py-2 flex items-center gap-2">
-                <div className="min-w-0 flex-1">
-                  <div className="text-[13px] truncate">{it.nombre}</div>
-                  <div className="text-[11px] text-muted-foreground tabular">{cop(Number(it.precio_unitario))} c/u</div>
+              <li key={it.key} className="py-2">
+                <div className="flex items-center gap-2">
+                  <div className="min-w-0 flex-1">
+                    <div className="text-[13px] truncate">{it.nombre}</div>
+                    <div className="text-[11px] text-muted-foreground tabular">{cop(precioEfectivo(it))} c/u</div>
+                  </div>
+                  <Input type="number" min="0" step="any" value={it.cantidad}
+                    onChange={(e) => setCantidad(it.key, e.target.value)}
+                    aria-label={`Cantidad de ${it.nombre}`} className="w-16 h-8 text-center" />
+                  <button onClick={() => quitar(it.key)} aria-label={`Quitar ${it.nombre}`}
+                    className="size-8 grid place-items-center rounded-md text-muted-foreground hover:text-destructive">
+                    <Trash2 className="size-4" />
+                  </button>
                 </div>
-                <Input type="number" min="0" step="any" value={it.cantidad}
-                  onChange={(e) => setCantidad(it.key, e.target.value)}
-                  aria-label={`Cantidad de ${it.nombre}`} className="w-16 h-8 text-center" />
-                <button onClick={() => quitar(it.key)} aria-label={`Quitar ${it.nombre}`}
-                  className="size-8 grid place-items-center rounded-md text-muted-foreground hover:text-destructive">
-                  <Trash2 className="size-4" />
-                </button>
+                {!it.varia && it.precio_especial != null && (
+                  <div className="mt-1.5 flex items-center gap-1" role="group" aria-label={`Precio de ${it.nombre}`}>
+                    <PrecioOpcion activo={!it.usarEspecial} onClick={() => setUsarEspecial(it.key, false)}
+                      aria-label={`Precio normal de ${it.nombre}`}>Normal {cop(it.precio_normal)}</PrecioOpcion>
+                    <PrecioOpcion activo={it.usarEspecial} onClick={() => setUsarEspecial(it.key, true)}
+                      aria-label={`Precio especial de ${it.nombre}`}>Especial {cop(it.precio_especial)}</PrecioOpcion>
+                  </div>
+                )}
               </li>
             ))}
           </ul>
@@ -170,6 +201,20 @@ export default function TabVentasRapidas() {
         </button>
       </Card>
     </div>
+  )
+}
+
+// Botón de un selector segmentado (Normal / Especial) por línea del carrito.
+function PrecioOpcion({ activo, onClick, children, ...props }) {
+  return (
+    <button type="button" onClick={onClick} aria-pressed={activo} {...props}
+      className={`flex-1 h-7 px-2 rounded-md border text-[11px] tabular transition-colors ${
+        activo
+          ? 'border-primary bg-primary/10 text-primary font-medium'
+          : 'border-border bg-surface text-muted-foreground hover:bg-surface-2'
+      }`}>
+      {children}
+    </button>
   )
 }
 

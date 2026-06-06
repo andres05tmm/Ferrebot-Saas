@@ -7,17 +7,26 @@ import TabVentasRapidas from './TabVentasRapidas.jsx'
 
 function jsonResp(data) { return { ok: true, status: 200, json: async () => data } }
 
-function instalarFetch() {
+const MARTILLO = { id: 1, nombre: 'Martillo', precio_venta: '11900', unidad_medida: 'unidad' }
+// Producto con precio especial: habilita el selector Normal/Especial por línea.
+const TALADRO_ESP = { id: 2, nombre: 'Taladro', precio_venta: '100000', precio_especial: '90000', unidad_medida: 'unidad' }
+
+function instalarFetch(productos = [MARTILLO]) {
   const fetchMock = vi.fn((url) => {
-    if (String(url).includes('/productos')) {
-      return Promise.resolve(jsonResp([{ id: 1, nombre: 'Martillo', precio_venta: '11900', unidad_medida: 'unidad' }]))
-    }
-    if (String(url).includes('/clientes')) return Promise.resolve(jsonResp([]))
-    if (String(url).includes('/ventas')) return Promise.resolve(jsonResp({ id: 9, consecutivo: 1 }))
+    const u = String(url)
+    if (u.includes('/productos')) return Promise.resolve(jsonResp(productos))
+    if (u.includes('/clientes')) return Promise.resolve(jsonResp([]))
+    if (u.includes('/ventas')) return Promise.resolve(jsonResp({ id: 9, consecutivo: 1 }))
     return Promise.resolve(jsonResp([]))
   })
   vi.stubGlobal('fetch', fetchMock)
   return fetchMock
+}
+
+function ventaBody(fetchMock) {
+  const call = fetchMock.mock.calls.find(c => String(c[0]).includes('/ventas') && c[1]?.method === 'POST')
+  expect(call).toBeTruthy()
+  return JSON.parse(call[1].body)
 }
 
 beforeEach(() => { localStorage.clear() })
@@ -49,5 +58,55 @@ describe('TabVentasRapidas', () => {
     expect(call[1].headers.get('Idempotency-Key')).toBeTruthy()
     const body = JSON.parse(call[1].body)
     expect(body).toMatchObject({ metodo_pago: 'efectivo', origen: 'web', lineas: [{ producto_id: 1, cantidad: 1 }] })
+  })
+
+  it('un producto SIN precio_especial no muestra el selector y postea { producto_id, cantidad }', async () => {
+    const fetchMock = instalarFetch()  // Martillo: sin precio_especial
+    render(<TabVentasRapidas />)
+
+    fireEvent.change(screen.getByLabelText('Buscar producto'), { target: { value: 'mar' } })
+    fireEvent.click(await screen.findByText('Martillo'))
+
+    expect(screen.queryByRole('button', { name: /precio especial/i })).toBeNull()
+
+    fireEvent.click(screen.getByText('Registrar venta'))
+    await screen.findByText('Agrega productos para vender.')
+    expect(ventaBody(fetchMock).lineas).toEqual([{ producto_id: 1, cantidad: 1 }])
+  })
+
+  it('un producto CON precio_especial muestra ambos precios; "especial" envía precio_unitario override', async () => {
+    const fetchMock = instalarFetch([TALADRO_ESP])
+    render(<TabVentasRapidas />)
+
+    fireEvent.change(screen.getByLabelText('Buscar producto'), { target: { value: 'tal' } })
+    fireEvent.click(await screen.findByText('Taladro'))
+
+    // El selector muestra ambos valores (normal y especial).
+    expect(screen.getByRole('button', { name: /precio normal de taladro/i })).toHaveTextContent('$100.000')
+    const especial = screen.getByRole('button', { name: /precio especial de taladro/i })
+    expect(especial).toHaveTextContent('$90.000')
+
+    fireEvent.click(especial)                                 // elegir especial
+    fireEvent.click(screen.getByText('Registrar venta'))
+    await screen.findByText('Agrega productos para vender.')
+
+    // Override explícito por línea con el precio especial.
+    expect(ventaBody(fetchMock).lineas).toEqual([{ producto_id: 2, cantidad: 1, precio_unitario: 90000 }])
+  })
+
+  it('elegir "normal" (incluso tras tocar especial) NO manda override', async () => {
+    const fetchMock = instalarFetch([TALADRO_ESP])
+    render(<TabVentasRapidas />)
+
+    fireEvent.change(screen.getByLabelText('Buscar producto'), { target: { value: 'tal' } })
+    fireEvent.click(await screen.findByText('Taladro'))
+
+    fireEvent.click(screen.getByRole('button', { name: /precio especial de taladro/i }))  // especial…
+    fireEvent.click(screen.getByRole('button', { name: /precio normal de taladro/i }))    // …y de vuelta a normal
+
+    fireEvent.click(screen.getByText('Registrar venta'))
+    await screen.findByText('Agrega productos para vender.')
+
+    expect(ventaBody(fetchMock).lineas).toEqual([{ producto_id: 2, cantidad: 1 }])  // sin precio_unitario
   })
 })

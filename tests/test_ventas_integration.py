@@ -68,11 +68,14 @@ async def test_idempotencia_no_duplica_venta_ni_movimiento(tenant, seed_producto
         assert stock == Decimal("97.000")   # se descontó una sola vez (100 - 3)
 
 
-async def test_stock_insuficiente_no_registra_nada(tenant, seed_producto):
+async def test_stock_insuficiente_no_registra_nada_en_modo_estricto(tenant, seed_producto):
+    """Modo ESTRICTO (opt-in): vender más que el stock bloquea y no registra nada (stock intacto)."""
     async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
         uid, pid = await seed_producto(s, stock="5")
         with pytest.raises(StockInsuficiente):
-            await VentaService(SqlVentasRepository(s)).registrar_venta(_venta(pid, "10"), uid)
+            await VentaService(SqlVentasRepository(s)).registrar_venta(
+                _venta(pid, "10"), uid, control_stock_estricto=True
+            )
         await s.rollback()
 
     async with AsyncSession(tenant.engine) as s:
@@ -81,6 +84,26 @@ async def test_stock_insuficiente_no_registra_nada(tenant, seed_producto):
             await s.execute(text("SELECT stock_actual FROM inventario WHERE producto_id=:p"), {"p": pid})
         ).scalar_one()
         assert stock == Decimal("5.000")   # intacto
+
+
+async def test_default_permisivo_vende_y_deja_stock_negativo(tenant, seed_producto):
+    """Default PERMISIVO: vender más que el stock SÍ registra la venta y el stock queda NEGATIVO."""
+    async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
+        uid, pid = await seed_producto(s, stock="5")
+        res = await VentaService(SqlVentasRepository(s)).registrar_venta(_venta(pid, "10"), uid)
+        await s.commit()
+
+    assert res.replay is False
+    async with AsyncSession(tenant.engine) as s:
+        assert (await s.execute(text("SELECT count(*) FROM ventas"))).scalar_one() == 1
+        tipo, cant = (
+            await s.execute(text("SELECT tipo, cantidad FROM movimientos_inventario WHERE producto_id=:p"), {"p": pid})
+        ).one()
+        assert tipo == "SALIDA" and cant == Decimal("10.000")
+        stock = (
+            await s.execute(text("SELECT stock_actual FROM inventario WHERE producto_id=:p"), {"p": pid})
+        ).scalar_one()
+        assert stock == Decimal("-5.000")   # 5 - 10: negativo OK (se corrige con la compra faltante)
 
 
 async def test_listar_filtra_por_fecha_y_vendedor(tenant, seed_producto):

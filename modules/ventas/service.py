@@ -102,13 +102,18 @@ class VentaService:
     def __init__(self, repo: VentasRepo) -> None:
         self._repo = repo
 
-    async def registrar_venta(self, datos: VentaCrear, vendedor_id: int) -> ResultadoVenta:
+    async def registrar_venta(
+        self, datos: VentaCrear, vendedor_id: int, *, control_stock_estricto: bool = False
+    ) -> ResultadoVenta:
+        """Registra la venta. `control_stock_estricto` (opt-in por empresa) bloquea con
+        StockInsuficiente cuando el stock no alcanza; el default PERMISIVO (False) deja pasar la venta y
+        el stock baja (puede quedar negativo: negocios informales que no llevan inventario estricto)."""
         if datos.idempotency_key:
             existente = await self._repo.buscar_por_idempotency(datos.idempotency_key)
             if existente is not None:
                 return ResultadoVenta(venta=existente, replay=True)
 
-        lineas = [await self._resolver_linea(ln) for ln in datos.lineas]
+        lineas = [await self._resolver_linea(ln, control_stock_estricto) for ln in datos.lineas]
         subtotal, impuestos, total = calcular_totales(lineas)
         consecutivo = await self._repo.siguiente_consecutivo()
         header = VentaHeader(
@@ -126,10 +131,10 @@ class VentaService:
         venta = await self._repo.crear_venta(header)
         return ResultadoVenta(venta=venta, replay=False)
 
-    async def _resolver_linea(self, ln) -> LineaResuelta:
+    async def _resolver_linea(self, ln, control_stock_estricto: bool) -> LineaResuelta:
         if ln.producto_id is None:
             return self._linea_varia(ln)
-        return await self._linea_catalogo(ln)
+        return await self._linea_catalogo(ln, control_stock_estricto)
 
     def _linea_varia(self, ln) -> LineaResuelta:
         if ln.precio_unitario is None or not ln.descripcion:
@@ -141,13 +146,16 @@ class VentaService:
             total_linea=total, descontar_stock=False,
         )
 
-    async def _linea_catalogo(self, ln) -> LineaResuelta:
+    async def _linea_catalogo(self, ln, control_stock_estricto: bool) -> LineaResuelta:
         prod = await self._repo.obtener_producto(ln.producto_id)
         if prod is None or not prod.activo:
             raise ProductoNoEncontrado(ln.producto_id)
+        # Siempre se bloquea el inventario (FOR UPDATE) para descontar en la misma tx, aun en modo
+        # permisivo. Solo el modo ESTRICTO (opt-in por empresa) rechaza cuando el stock no alcanza;
+        # en permisivo se deja pasar y el stock baja (crear_venta descuenta sin clamp → negativo OK).
         disponible = await self._repo.lock_inventario(ln.producto_id)
         disponible = disponible if disponible is not None else Decimal("0")
-        if disponible < ln.cantidad:
+        if control_stock_estricto and disponible < ln.cantidad:
             raise StockInsuficiente(ln.producto_id, disponible, ln.cantidad)
         # Precio declarado (override explícito) gana; si no, el motor de precios es la fuente
         # de verdad: escalonado por umbral → fracción → simple (ferrebot-logica-portar.md §3).

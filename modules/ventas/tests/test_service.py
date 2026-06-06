@@ -74,11 +74,21 @@ async def test_idempotencia_devuelve_existente_sin_crear():
     assert repo.creado is None   # no se intentó crear de nuevo
 
 
-async def test_stock_insuficiente():
+async def test_stock_insuficiente_solo_en_modo_estricto():
+    """Con control_stock_estricto=ON (opt-in), vender más que el stock lanza StockInsuficiente."""
     repo = FakeRepo(productos={1: _producto()}, stock={1: Decimal("1")})
     datos = VentaCrear(metodo_pago="efectivo", lineas=[VentaDetalleCrear(producto_id=1, cantidad=Decimal("2"))])
     with pytest.raises(StockInsuficiente):
-        await (VentaService(repo)).registrar_venta(datos, vendedor_id=7)
+        await (VentaService(repo)).registrar_venta(datos, vendedor_id=7, control_stock_estricto=True)
+
+
+async def test_stock_insuficiente_permisivo_por_defecto_no_bloquea():
+    """Default PERMISIVO (flag OFF): vender más que el stock NO lanza; la línea descuenta stock igual."""
+    repo = FakeRepo(productos={1: _producto()}, stock={1: Decimal("1")})
+    datos = VentaCrear(metodo_pago="efectivo", lineas=[VentaDetalleCrear(producto_id=1, cantidad=Decimal("2"))])
+    res = await (VentaService(repo)).registrar_venta(datos, vendedor_id=7)   # sin pasar el flag
+    assert res.replay is False
+    assert repo.creado is not None and repo.creado.lineas[0].descontar_stock is True
 
 
 async def test_producto_no_encontrado():

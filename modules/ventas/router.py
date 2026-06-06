@@ -10,8 +10,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sse_starlette.sse import EventSourceResponse
 
 from core.auth import Principal, get_current_user, get_filtro_efectivo, require_role
-from core.db.session import get_tenant_db
+from core.db.session import control_session, get_tenant_db
 from core.events.sse import tenant_event_stream
+from modules.ventas.config import cargar_control_stock_estricto
 from modules.ventas.errors import LineaInvalida, ProductoNoEncontrado, StockInsuficiente
 from modules.ventas.repository import SqlVentasRepository
 from modules.ventas.schemas import VentaConLineas, VentaCrear, VentaLeer
@@ -25,12 +26,26 @@ def get_ventas_repo(session: AsyncSession = Depends(get_tenant_db)) -> SqlVentas
     return SqlVentasRepository(session)
 
 
+async def get_control_stock_estricto(request: Request) -> bool:
+    """Flag de control de stock estricto de la empresa resuelta (control DB per-call; overridable en test).
+
+    Patrón de `get_facturacion_service`: lee del control DB sobre una sesión per-call. Default PERMISIVO:
+    si no hay empresa resuelta (apps mínimas de test sin TenantMiddleware) → False.
+    """
+    tenant = getattr(request.state, "tenant", None)
+    if tenant is None:
+        return False
+    async with control_session() as cs:
+        return await cargar_control_stock_estricto(cs, tenant.id)
+
+
 @router.post("/ventas", response_model=VentaLeer, status_code=status.HTTP_201_CREATED)
 async def crear_venta(
     payload: VentaCrear,
     response: Response,
     session: AsyncSession = Depends(get_tenant_db),
     user: Principal = Depends(require_role("vendedor")),
+    control_stock_estricto: bool = Depends(get_control_stock_estricto),
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
 ) -> VentaLeer:
     if payload.idempotency_key is None and idempotency_key:
@@ -38,7 +53,9 @@ async def crear_venta(
 
     service = VentaService(SqlVentasRepository(session))
     try:
-        resultado = await service.registrar_venta(payload, vendedor_id=user.user_id)
+        resultado = await service.registrar_venta(
+            payload, vendedor_id=user.user_id, control_stock_estricto=control_stock_estricto
+        )
     except ProductoNoEncontrado as exc:
         raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
     except StockInsuficiente as exc:

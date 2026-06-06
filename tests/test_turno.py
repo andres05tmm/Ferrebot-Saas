@@ -184,6 +184,14 @@ def test_system_prompt_pide_buscar_producto_por_nombre_base():
     assert "nombre base" in prompt.lower()
 
 
+def test_system_prompt_prohibe_calcular_fracciones():
+    prompt = construir_system_prompt({})
+    bajo = prompt.lower()
+    assert "consultar_producto" in bajo and "fracción" in bajo
+    assert "precio" not in bajo                          # respeta el invariante del prompt
+    assert "catálogo" not in bajo and "catalogo" not in bajo
+
+
 # ----------------------- historial → ejecutar_turno -----------------------
 
 async def test_pasa_historial_y_system_a_ejecutar_turno():

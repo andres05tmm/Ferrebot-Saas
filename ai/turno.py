@@ -103,6 +103,11 @@ def construir_system_prompt(entidades: dict[str, dict], *, hoy: date | None = No
         "principal), sin cantidades, fracciones ni unidades de empaque: de 'medio galón de thinner' "
         "busca 'thinner'; de 'galón de esmalte blanco' busca 'esmalte blanco'. Si no aparece, "
         "reintenta con un término más corto o más general antes de rendirte.",
+        "Para saber cuánto cuesta un producto, una cantidad o una fracción, usa SIEMPRE la "
+        "herramienta consultar_producto. NUNCA calcules el valor de una fracción dividiendo el del "
+        "galón o de la unidad entera: las fracciones no valen proporcional (un 1/2 no es la mitad "
+        "del entero). Si la herramienta no devuelve un valor para la fracción que piden, dilo "
+        "claramente y pregunta cuánto cobrar, en vez de inventarlo.",
     ]
     bloque = _bloque_contexto(entidades)
     if bloque:

@@ -5,6 +5,16 @@ from decimal import Decimal
 from pydantic import BaseModel, ConfigDict, Field
 
 
+class ProveedorLeer(BaseModel):
+    """Proveedor registrado para los desplegables (modal de producto). Solo id/nombre/nit."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    nombre: str
+    nit: str | None
+
+
 class FacturaProveedorCrear(BaseModel):
     """Alta de una factura de proveedor (deuda). `id` = nº de factura del proveedor."""
 

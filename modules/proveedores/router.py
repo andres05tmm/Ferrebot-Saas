@@ -22,6 +22,7 @@ from modules.proveedores.schemas import (
     AbonoCrear,
     FacturaProveedorCrear,
     FacturaProveedorLeer,
+    ProveedorLeer,
     ResumenCxP,
 )
 from modules.proveedores.service import ProveedoresService
@@ -40,6 +41,15 @@ async def get_cloudinary_client(request: Request) -> CloudinaryClient | None:
             cs, get_settings().secrets_master_key, request.state.tenant.id
         )
     return CloudinaryClient(cred) if cred is not None else None
+
+
+@router.get("/proveedores", response_model=list[ProveedorLeer])
+async def listar_proveedores(
+    session: AsyncSession = Depends(get_tenant_db),
+    _user: Principal = Depends(require_role("admin")),
+) -> list[ProveedorLeer]:
+    """Proveedores registrados (id/nombre/nit) — alimenta el select de proveedor del modal de producto."""
+    return await _service(session).listar_proveedores()
 
 
 @router.post(

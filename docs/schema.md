@@ -142,11 +142,11 @@
 | codigo | TEXT | UNIQUE (código de barras / SKU) |
 | nombre | TEXT | NOT NULL |
 | categoria | TEXT | |
-| marca | TEXT | |
+| proveedor_id | BIGINT | FK proveedores(id) ON DELETE SET NULL, NULLABLE (tenant 0006; reemplaza la antigua `marca`) |
 | unidad_medida | TEXT | NOT NULL (unidad, metro, kg…) |
 | precio_venta | NUMERIC(12,2) | NOT NULL |
 | precio_compra | NUMERIC(12,2) | |
-| precio_mayorista | NUMERIC(12,2) | precio único de mayoreo (modelo simple) |
+| precio_especial | NUMERIC(12,2) | precio especial (tenant 0006; antes `precio_mayorista`) |
 | precio_umbral | NUMERIC(12,3) | cantidad umbral del precio escalonado (modelo FerreBot); NULL si no aplica |
 | precio_bajo_umbral | NUMERIC(12,2) | precio unidad por debajo del umbral |
 | precio_sobre_umbral | NUMERIC(12,2) | precio unidad en/por encima del umbral (mayoreo por cantidad) |
@@ -157,7 +157,7 @@
 
 Índices: `UNIQUE(codigo)`; GIN/trigram sobre `nombre` (búsqueda fuzzy/FTS).
 
-> **Precios (Punto Rojo = modelo FerreBot).** Tres esquemas que conviven (ver `ferrebot-logica-portar.md` §3): (1) `precio_venta` simple; (2) escalonado por cantidad con `precio_umbral`/`precio_bajo_umbral`/`precio_sobre_umbral`; (3) por fracción en `productos_fracciones`. Un tenant simple usa solo `precio_venta`/`precio_mayorista` y deja lo demás en NULL.
+> **Precios (Punto Rojo = modelo FerreBot).** Tres esquemas que conviven (ver `ferrebot-logica-portar.md` §3): (1) `precio_venta` simple; (2) escalonado por cantidad con `precio_umbral`/`precio_bajo_umbral`/`precio_sobre_umbral`; (3) por fracción en `productos_fracciones`. Un tenant simple usa solo `precio_venta`/`precio_especial` y deja lo demás en NULL. El alta de producto NO recibe stock: el inventario nace en 0 (stock y mínimo) y el stock real se fija con el conteo físico.
 
 **productos_fracciones** (precio por fracción: 1/2, 1/4…)
 | Columna | Tipo | Restricciones / nota |

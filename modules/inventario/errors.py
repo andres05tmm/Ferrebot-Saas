@@ -19,6 +19,14 @@ class CodigoDuplicado(InventarioError):
         self.codigo = codigo
 
 
+class ProveedorInexistente(InventarioError):
+    """El `proveedor_id` indicado no corresponde a un proveedor registrado (→ 422)."""
+
+    def __init__(self, proveedor_id: int) -> None:
+        super().__init__(f"El proveedor {proveedor_id} no existe")
+        self.proveedor_id = proveedor_id
+
+
 class AjusteDejaStockNegativo(InventarioError):
     def __init__(self, producto_id: int, actual, delta) -> None:
         super().__init__(

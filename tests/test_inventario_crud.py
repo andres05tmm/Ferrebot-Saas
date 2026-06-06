@@ -1,9 +1,10 @@
-"""CRUD de catálogo (Fase 12, Slice 1) por HTTP contra base efímera real.
+"""CRUD de catálogo (rediseño de producto) por HTTP contra base efímera real.
 
 Patrón test_smoke_routers_http: app FastAPI mínima + ASGITransport + overrides de auth y de sesión
-del tenant. La sesión del override hace commit (como get_tenant_db real) para que persista y para que
-el pg_notify del evento se entregue. Cubre: alta (con/sin stock_inicial → ENTRADA, regla #7),
-fracciones, código duplicado (409), edición (reemplaza fracciones), soft-delete, RBAC y el evento.
+del tenant (que hace commit, como get_tenant_db real, para que persista y se entregue el pg_notify).
+Cubre: alta (inventario nace en 0, sin movimiento), proveedor_id válido/ inválido (422),
+precio_especial, fracciones, código duplicado (409), edición (reemplaza fracciones, no toca stock),
+categorías, soft-delete, RBAC, conteo físico y el evento.
 """
 import asyncio
 import json
@@ -53,6 +54,15 @@ async def _seed_usuario(s: AsyncSession, *, rol: str = "admin") -> int:
     ).scalar_one()
 
 
+async def _seed_proveedor(s: AsyncSession, *, nombre: str = "Ferre SAS", nit: str = "900.111") -> int:
+    return (
+        await s.execute(
+            text("INSERT INTO proveedores (nombre, nit) VALUES (:n, :nit) RETURNING id"),
+            {"n": nombre, "nit": nit},
+        )
+    ).scalar_one()
+
+
 def _payload(**over) -> dict:
     base = {
         "nombre": "Taladro Bosch",
@@ -61,24 +71,25 @@ def _payload(**over) -> dict:
         "iva": 19,
         "permite_fraccion": False,
         "activo": True,
-        "stock_minimo": "5",
     }
     base.update(over)
     return base
 
 
 # ---- Alta ------------------------------------------------------------------
-async def test_crear_sin_stock_inicial_crea_inventario_en_cero(tenant):
+async def test_crear_nace_con_inventario_en_cero(tenant):
+    """El producto nace con inventario en 0 (stock y mínimo) y SIN movimiento de inventario."""
     async with AsyncSession(tenant.engine) as s:
         uid = await _seed_usuario(s)
         await s.commit()
 
     app = _app(tenant, user_id=uid)
     async with _cliente(app) as c:
-        r = await c.post("/api/v1/productos", json=_payload(stock_minimo="7"))
+        r = await c.post("/api/v1/productos", json=_payload())
     assert r.status_code == 201, r.text
     pid = r.json()["id"]
     assert r.json()["activo"] is True
+    assert r.json()["proveedor_id"] is None and r.json()["proveedor_nombre"] is None
 
     async with AsyncSession(tenant.engine) as s:
         stock, minimo = (
@@ -87,47 +98,64 @@ async def test_crear_sin_stock_inicial_crea_inventario_en_cero(tenant):
             )
         ).one()
         assert stock == Decimal("0.000")
-        assert minimo == Decimal("7.000")
+        assert minimo == Decimal("0.000")
         movs = (
             await s.execute(
                 text("SELECT count(*) FROM movimientos_inventario WHERE producto_id=:p"), {"p": pid}
             )
         ).scalar_one()
-        assert movs == 0  # sin stock inicial → sin movimiento
+        assert movs == 0  # nace en 0 → sin movimiento
 
 
-async def test_crear_con_stock_inicial_registra_entrada(tenant):
-    """Regla #7: el stock inicial entra por un movimiento ENTRADA, no por un set crudo."""
+async def test_crear_con_proveedor_valido_persiste_y_devuelve_nombre(tenant):
+    async with AsyncSession(tenant.engine) as s:
+        uid = await _seed_usuario(s)
+        prov_id = await _seed_proveedor(s, nombre="Distribuidora Andina")
+        await s.commit()
+
+    app = _app(tenant, user_id=uid)
+    async with _cliente(app) as c:
+        r = await c.post("/api/v1/productos", json=_payload(proveedor_id=prov_id))
+    assert r.status_code == 201, r.text
+    assert r.json()["proveedor_id"] == prov_id
+    assert r.json()["proveedor_nombre"] == "Distribuidora Andina"
+
+    async with AsyncSession(tenant.engine) as s:
+        guardado = (
+            await s.execute(text("SELECT proveedor_id FROM productos WHERE id=:p"), {"p": r.json()["id"]})
+        ).scalar_one()
+        assert guardado == prov_id
+
+
+async def test_crear_con_proveedor_invalido_422(tenant):
     async with AsyncSession(tenant.engine) as s:
         uid = await _seed_usuario(s)
         await s.commit()
 
     app = _app(tenant, user_id=uid)
     async with _cliente(app) as c:
-        r = await c.post(
-            "/api/v1/productos",
-            json=_payload(stock_inicial="10", precio_compra="30000"),
-        )
+        r = await c.post("/api/v1/productos", json=_payload(proveedor_id=999999))
+    assert r.status_code == 422, r.text
+
+
+async def test_precio_especial_persiste(tenant):
+    async with AsyncSession(tenant.engine) as s:
+        uid = await _seed_usuario(s)
+        await s.commit()
+
+    app = _app(tenant, user_id=uid)
+    async with _cliente(app) as c:
+        r = await c.post("/api/v1/productos", json=_payload(precio_especial="45000", precio_compra="30000"))
     assert r.status_code == 201, r.text
-    pid = r.json()["id"]
+    # El módulo no cuantiza precios: la respuesta refleja la escala de entrada (comparar numéricamente).
+    assert Decimal(r.json()["precio_especial"]) == Decimal("45000")
+    assert Decimal(r.json()["precio_compra"]) == Decimal("30000")
 
     async with AsyncSession(tenant.engine) as s:
-        stock = (
-            await s.execute(text("SELECT stock_actual FROM inventario WHERE producto_id=:p"), {"p": pid})
+        especial = (
+            await s.execute(text("SELECT precio_especial FROM productos WHERE id=:p"), {"p": r.json()["id"]})
         ).scalar_one()
-        assert stock == Decimal("10.000")
-        tipo, cant, costo = (
-            await s.execute(
-                text(
-                    "SELECT tipo, cantidad, costo_unitario FROM movimientos_inventario "
-                    "WHERE producto_id=:p"
-                ),
-                {"p": pid},
-            )
-        ).one()
-        assert tipo == "ENTRADA"
-        assert cant == Decimal("10.000")
-        assert costo == Decimal("30000.00")
+        assert especial == Decimal("45000.00")
 
 
 async def test_crear_con_fracciones(tenant):
@@ -173,6 +201,23 @@ async def test_crear_codigo_duplicado_409(tenant):
     assert r2.status_code == 409, r2.text
 
 
+# ---- Categorías ------------------------------------------------------------
+async def test_categorias_distinct_lista_existentes(tenant):
+    async with AsyncSession(tenant.engine) as s:
+        uid = await _seed_usuario(s)
+        await s.commit()
+
+    app = _app(tenant, user_id=uid)
+    async with _cliente(app) as c:
+        await c.post("/api/v1/productos", json=_payload(nombre="A", categoria="Herramientas"))
+        await c.post("/api/v1/productos", json=_payload(nombre="B", categoria="Pinturas"))
+        await c.post("/api/v1/productos", json=_payload(nombre="C", categoria="Herramientas"))  # repetida
+        await c.post("/api/v1/productos", json=_payload(nombre="D"))  # sin categoría → no aparece
+        r = await c.get("/api/v1/productos/categorias")
+    assert r.status_code == 200, r.text
+    assert r.json() == ["Herramientas", "Pinturas"]  # DISTINCT, sin nulos, ordenadas
+
+
 # ---- Edición ---------------------------------------------------------------
 async def test_editar_reemplaza_fracciones_y_no_toca_stock(tenant):
     async with AsyncSession(tenant.engine) as s:
@@ -184,18 +229,18 @@ async def test_editar_reemplaza_fracciones_y_no_toca_stock(tenant):
         creado = await c.post(
             "/api/v1/productos",
             json=_payload(
-                stock_inicial="20",
                 permite_fraccion=True,
                 fracciones=[{"fraccion": "1/2", "decimal": "0.5", "precio_total": "30000"}],
             ),
         )
         pid = creado.json()["id"]
+        # El stock se fija por conteo (no por el alta): lo dejamos en 20 para comprobar que el PUT no lo toca.
+        await c.post("/api/v1/inventario/conteo", json={"producto_id": pid, "cantidad_contada": 20})
         r = await c.put(
             f"/api/v1/productos/{pid}",
             json=_payload(
                 nombre="Taladro Editado",
                 precio_venta="55000",
-                stock_minimo="9",
                 permite_fraccion=True,
                 fracciones=[
                     {"fraccion": "1/3", "decimal": "0.333", "precio_total": "20000"},
@@ -214,13 +259,25 @@ async def test_editar_reemplaza_fracciones_y_no_toca_stock(tenant):
             )
         ).scalars().all()
         assert fracs == ["1/3", "2/3"]  # la original (1/2) se reemplazó
-        stock, minimo = (
-            await s.execute(
-                text("SELECT stock_actual, stock_minimo FROM inventario WHERE producto_id=:p"), {"p": pid}
-            )
-        ).one()
+        stock = (
+            await s.execute(text("SELECT stock_actual FROM inventario WHERE producto_id=:p"), {"p": pid})
+        ).scalar_one()
         assert stock == Decimal("20.000")  # el PUT NO toca stock_actual
-        assert minimo == Decimal("9.000")  # sí actualiza el mínimo
+
+
+async def test_editar_con_proveedor_invalido_422(tenant):
+    async with AsyncSession(tenant.engine) as s:
+        uid = await _seed_usuario(s)
+        prov_id = await _seed_proveedor(s)
+        await s.commit()
+
+    app = _app(tenant, user_id=uid)
+    async with _cliente(app) as c:
+        pid = (await c.post("/api/v1/productos", json=_payload(proveedor_id=prov_id))).json()["id"]
+        ok = await c.put(f"/api/v1/productos/{pid}", json=_payload(proveedor_id=prov_id))
+        mal = await c.put(f"/api/v1/productos/{pid}", json=_payload(proveedor_id=888888))
+    assert ok.status_code == 200, ok.text
+    assert mal.status_code == 422, mal.text
 
 
 async def test_editar_inexistente_404(tenant):
@@ -311,7 +368,7 @@ async def test_conteo_fija_stock_a_lo_contado_via_http(tenant):
 
     app = _app(tenant, user_id=uid)
     async with _cliente(app) as c:
-        creado = await c.post("/api/v1/productos", json=_payload(stock_inicial="10"))
+        creado = await c.post("/api/v1/productos", json=_payload())  # nace en 0
         pid = creado.json()["id"]
         r = await c.post(
             "/api/v1/inventario/conteo",
@@ -320,7 +377,7 @@ async def test_conteo_fija_stock_a_lo_contado_via_http(tenant):
         )
     assert r.status_code == 201, r.text
     body = r.json()
-    assert body["stock_actual"] == "25.000" and body["delta"] == "15.000"
+    assert body["stock_actual"] == "25.000" and body["delta"] == "25.000"
 
     async with AsyncSession(tenant.engine) as s:
         stock = (await s.execute(text("SELECT stock_actual FROM inventario WHERE producto_id=:p"), {"p": pid})).scalar_one()
@@ -347,7 +404,7 @@ async def test_conteo_emite_inventario_actualizado(tenant):
 
     app = _app(tenant, user_id=uid)
     async with _cliente(app) as c:
-        pid = (await c.post("/api/v1/productos", json=_payload(stock_inicial="10"))).json()["id"]
+        pid = (await c.post("/api/v1/productos", json=_payload())).json()["id"]
 
     queue = await event_hub.subscribe(tenant_id=7778, dsn=tenant.url)
     try:
@@ -356,7 +413,7 @@ async def test_conteo_emite_inventario_actualizado(tenant):
         assert r.status_code == 201, r.text
 
         eventos = set()
-        # Llega el inventario_actualizado del AJUSTE del conteo (3 ≠ 10 → delta −7).
+        # Llega el inventario_actualizado del AJUSTE del conteo (3 ≠ 0 → delta +3).
         for _ in range(2):
             try:
                 payload = await asyncio.wait_for(queue.get(), timeout=5.0)

@@ -12,6 +12,7 @@ from modules.inventario.errors import (
     AjusteDejaStockNegativo,
     CodigoDuplicado,
     ProductoInexistente,
+    ProveedorInexistente,
 )
 from modules.inventario.models import Producto
 from modules.inventario.precios import (
@@ -65,21 +66,30 @@ class InventarioService:
 
     # ---- CRUD de catálogo (admin) -------------------------------------------
     async def crear_producto(self, datos: ProductoCrear, *, usuario_id: int | None) -> Producto:
-        """Da de alta el producto (con fracciones y stock inicial). 409 lógico si el código ya existe."""
+        """Da de alta el producto (con fracciones; inventario en 0). 409 si el código ya existe; 422 si
+        el `proveedor_id` no corresponde a un proveedor registrado."""
         if datos.codigo and await self._repo.codigo_existe(datos.codigo):
             raise CodigoDuplicado(datos.codigo)
+        await self._validar_proveedor(datos.proveedor_id)
         return await self._repo.crear_producto(datos, usuario_id=usuario_id)
 
     async def actualizar_producto(
         self, producto_id: int, datos: ProductoActualizar
     ) -> Producto:
-        """Edita el producto y reemplaza sus fracciones. Levanta ProductoInexistente / CodigoDuplicado."""
+        """Edita el producto y reemplaza sus fracciones. Levanta ProductoInexistente / CodigoDuplicado /
+        ProveedorInexistente (422)."""
         if datos.codigo and await self._repo.codigo_existe(datos.codigo, excluir_id=producto_id):
             raise CodigoDuplicado(datos.codigo)
+        await self._validar_proveedor(datos.proveedor_id)
         producto = await self._repo.actualizar_producto(producto_id, datos)
         if producto is None:
             raise ProductoInexistente(producto_id)
         return producto
+
+    async def _validar_proveedor(self, proveedor_id: int | None) -> None:
+        """Si viene `proveedor_id`, exige que exista en `proveedores` (si no → ProveedorInexistente)."""
+        if proveedor_id is not None and not await self._repo.proveedor_existe(proveedor_id):
+            raise ProveedorInexistente(proveedor_id)
 
     async def eliminar_producto(self, producto_id: int) -> None:
         """Soft delete (activo=false). Levanta ProductoInexistente si no existe."""

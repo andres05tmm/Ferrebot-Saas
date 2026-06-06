@@ -17,6 +17,7 @@ from modules.inventario.models import (
     ProductoFraccion,
 )
 from modules.inventario.schemas import ProductoActualizar, ProductoCrear
+from modules.compras.models import Proveedor
 
 
 class SqlInventarioRepository:
@@ -56,19 +57,44 @@ class SqlInventarioRepository:
             stmt = stmt.where(Producto.id != excluir_id)
         return (await self._s.execute(stmt.limit(1))).first() is not None
 
-    async def crear_producto(self, datos: ProductoCrear, *, usuario_id: int | None) -> Producto:
-        """Inserta el producto, sus fracciones y su fila de inventario en la misma transacción.
+    async def proveedor_existe(self, proveedor_id: int) -> bool:
+        """¿El `proveedor_id` corresponde a un proveedor registrado? (valida la FK antes de insertar)."""
+        return (
+            await self._s.execute(select(Proveedor.id).where(Proveedor.id == proveedor_id).limit(1))
+        ).first() is not None
 
-        Si `stock_inicial > 0` registra una ENTRADA (regla #7: nada cambia stock sin movimiento) y deja
-        el stock; si es 0, la fila de inventario nace en 0 sin movimiento. Emite el evento al final.
+    async def categorias_distinct(self) -> list[str]:
+        """Categorías existentes (DISTINCT, no nulas, ordenadas) para el select de categoría."""
+        rows = (
+            await self._s.execute(
+                select(Producto.categoria)
+                .where(Producto.categoria.is_not(None))
+                .distinct()
+                .order_by(Producto.categoria)
+            )
+        ).scalars().all()
+        return list(rows)
+
+    async def _cargar_proveedor(self, producto: Producto, proveedor_id: int | None) -> None:
+        """Fija la relación `proveedor` para la respuesta (evita un lazy-load async tras mutar)."""
+        producto.proveedor = (
+            await self._s.get(Proveedor, proveedor_id) if proveedor_id is not None else None
+        )
+
+    async def crear_producto(self, datos: ProductoCrear, *, usuario_id: int | None) -> Producto:
+        """Inserta el producto, sus fracciones y su fila de inventario (stock 0) en la misma transacción.
+
+        El inventario nace en 0 (stock_actual y stock_minimo) SIN movimiento: el stock real lo fija el
+        conteo físico después. `usuario_id` se mantiene por compatibilidad de firma (ya no hay ENTRADA).
+        Emite el evento al final.
         """
         producto = Producto(
-            codigo=datos.codigo, nombre=datos.nombre, categoria=datos.categoria, marca=datos.marca,
-            unidad_medida=datos.unidad_medida, precio_venta=datos.precio_venta,
-            precio_compra=datos.precio_compra, precio_mayorista=datos.precio_mayorista,
-            precio_umbral=datos.precio_umbral, precio_bajo_umbral=datos.precio_bajo_umbral,
-            precio_sobre_umbral=datos.precio_sobre_umbral, iva=datos.iva,
-            permite_fraccion=datos.permite_fraccion, activo=datos.activo,
+            codigo=datos.codigo, nombre=datos.nombre, categoria=datos.categoria,
+            proveedor_id=datos.proveedor_id, unidad_medida=datos.unidad_medida,
+            precio_venta=datos.precio_venta, precio_compra=datos.precio_compra,
+            precio_especial=datos.precio_especial, precio_umbral=datos.precio_umbral,
+            precio_bajo_umbral=datos.precio_bajo_umbral, precio_sobre_umbral=datos.precio_sobre_umbral,
+            iva=datos.iva, permite_fraccion=datos.permite_fraccion, activo=datos.activo,
             fracciones=[
                 ProductoFraccion(
                     fraccion=fr.fraccion, decimal=fr.decimal,
@@ -80,21 +106,13 @@ class SqlInventarioRepository:
         self._s.add(producto)
         await self._s.flush()  # asigna producto.id
 
-        stock_inicial = datos.stock_inicial or Decimal("0")
         self._s.add(
             Inventario(
-                producto_id=producto.id, stock_actual=stock_inicial, stock_minimo=datos.stock_minimo,
+                producto_id=producto.id, stock_actual=Decimal("0"), stock_minimo=Decimal("0"),
             )
         )
-        if stock_inicial > 0:
-            self._s.add(
-                MovimientoInventario(
-                    producto_id=producto.id, tipo="ENTRADA", cantidad=stock_inicial,
-                    costo_unitario=datos.precio_compra, referencia="alta de producto",
-                    usuario_id=usuario_id,
-                )
-            )
         await self._s.flush()
+        await self._cargar_proveedor(producto, datos.proveedor_id)
         await publish(self._s, "inventario_actualizado", {
             "producto_id": producto.id, "accion": "creado",
         })
@@ -105,8 +123,8 @@ class SqlInventarioRepository:
     ) -> Producto | None:
         """Actualiza los campos del producto y REEMPLAZA sus fracciones (cascade delete-orphan).
 
-        No toca `stock_actual` (eso va por el ajuste); sí actualiza `stock_minimo`. Devuelve None si el
-        producto no existe. Emite el evento al final.
+        No toca el inventario (`stock_actual`/`stock_minimo` van por el ajuste/conteo). Devuelve None si
+        el producto no existe. Emite el evento al final.
         """
         producto = (
             await self._s.execute(select(Producto).where(Producto.id == producto_id))
@@ -117,11 +135,11 @@ class SqlInventarioRepository:
         producto.codigo = datos.codigo
         producto.nombre = datos.nombre
         producto.categoria = datos.categoria
-        producto.marca = datos.marca
+        producto.proveedor_id = datos.proveedor_id
         producto.unidad_medida = datos.unidad_medida
         producto.precio_venta = datos.precio_venta
         producto.precio_compra = datos.precio_compra
-        producto.precio_mayorista = datos.precio_mayorista
+        producto.precio_especial = datos.precio_especial
         producto.precio_umbral = datos.precio_umbral
         producto.precio_bajo_umbral = datos.precio_bajo_umbral
         producto.precio_sobre_umbral = datos.precio_sobre_umbral
@@ -136,11 +154,8 @@ class SqlInventarioRepository:
             )
             for fr in datos.fracciones
         ]
-        await self._s.execute(
-            text("UPDATE inventario SET stock_minimo = :m WHERE producto_id = :p"),
-            {"m": datos.stock_minimo, "p": producto_id},
-        )
         await self._s.flush()
+        await self._cargar_proveedor(producto, datos.proveedor_id)
         await publish(self._s, "inventario_actualizado", {
             "producto_id": producto_id, "accion": "editado",
         })

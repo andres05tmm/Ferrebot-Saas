@@ -279,46 +279,48 @@ function AjusteForm({ productoId, onDone }) {
 }
 
 // ── ProductoForm — alta (POST) / edición (PUT) ────────────────────────────────
+const NUEVA_CATEGORIA = '__nueva__'
+const SELECT_CLS = 'h-9 w-full px-2 rounded-md border border-border bg-surface text-sm'
+
 const FORM_VACIO = {
-  nombre: '', codigo: '', categoria: '', marca: '', unidad_medida: 'unidad',
-  precio_venta: '', precio_compra: '', precio_mayorista: '',
+  nombre: '', codigo: '', categoria: '', categoriaNueva: '', proveedor_id: '',
+  unidad_medida: 'unidad',
+  precio_venta: '', precio_compra: '', precio_especial: '',
   precio_umbral: '', precio_bajo_umbral: '', precio_sobre_umbral: '',
-  iva: '19', permite_fraccion: false, activo: true,
-  stock_minimo: '0', stock_inicial: '0', fracciones: [],
+  iva: '19', permite_fraccion: false, activo: true, fracciones: [],
 }
 
 function desdeProducto(p) {
   const s = (v) => (v === null || v === undefined ? '' : String(v))
   return {
     ...FORM_VACIO,
-    nombre: s(p.nombre), codigo: s(p.codigo), categoria: s(p.categoria), marca: s(p.marca),
-    unidad_medida: s(p.unidad_medida) || 'unidad', precio_venta: s(p.precio_venta),
-    precio_compra: s(p.precio_compra), precio_mayorista: s(p.precio_mayorista),
+    nombre: s(p.nombre), codigo: s(p.codigo), categoria: s(p.categoria),
+    proveedor_id: s(p.proveedor_id), unidad_medida: s(p.unidad_medida) || 'unidad',
+    precio_venta: s(p.precio_venta), precio_compra: s(p.precio_compra),
+    precio_especial: s(p.precio_especial),
     precio_umbral: s(p.precio_umbral), precio_bajo_umbral: s(p.precio_bajo_umbral),
     precio_sobre_umbral: s(p.precio_sobre_umbral), iva: s(p.iva) || '19',
-    permite_fraccion: !!p.permite_fraccion, activo: p.activo !== false,
-    stock_minimo: s(p.stock_minimo) || '0', fracciones: [],
+    permite_fraccion: !!p.permite_fraccion, activo: p.activo !== false, fracciones: [],
   }
 }
 
-function construirPayload(f, { incluirStockInicial }) {
+// `incluirEscalonado`: el bloque de umbral solo se envía si está desplegado (si no, el backend lo
+// deja en NULL). El proveedor viaja como id (de la lista registrada); nunca como texto libre.
+function construirPayload(f, { incluirEscalonado }) {
   const dec = (v) => (v === '' || v === null || v === undefined ? null : Number(v))
+  const categoria = (f.categoria === NUEVA_CATEGORIA ? f.categoriaNueva : f.categoria).trim() || null
   const payload = {
     nombre: f.nombre.trim(),
     codigo: f.codigo.trim() || null,
-    categoria: f.categoria.trim() || null,
-    marca: f.marca.trim() || null,
+    categoria,
+    proveedor_id: f.proveedor_id ? Number(f.proveedor_id) : null,
     unidad_medida: f.unidad_medida.trim() || 'unidad',
     precio_venta: Number(f.precio_venta || 0),
     precio_compra: dec(f.precio_compra),
-    precio_mayorista: dec(f.precio_mayorista),
-    precio_umbral: dec(f.precio_umbral),
-    precio_bajo_umbral: dec(f.precio_bajo_umbral),
-    precio_sobre_umbral: dec(f.precio_sobre_umbral),
+    precio_especial: dec(f.precio_especial),
     iva: Number(f.iva || 0),
     permite_fraccion: !!f.permite_fraccion,
     activo: !!f.activo,
-    stock_minimo: Number(f.stock_minimo || 0),
     fracciones: f.fracciones
       .filter(fr => fr.fraccion.trim())
       .map(fr => ({
@@ -328,14 +330,35 @@ function construirPayload(f, { incluirStockInicial }) {
         precio_unitario: dec(fr.precio_unitario),
       })),
   }
-  if (incluirStockInicial) payload.stock_inicial = Number(f.stock_inicial || 0)
+  if (incluirEscalonado) {
+    payload.precio_umbral = dec(f.precio_umbral)
+    payload.precio_bajo_umbral = dec(f.precio_bajo_umbral)
+    payload.precio_sobre_umbral = dec(f.precio_sobre_umbral)
+  }
   return payload
+}
+
+function tieneEscalonado(p) {
+  return !!p && (p.precio_umbral != null || p.precio_bajo_umbral != null || p.precio_sobre_umbral != null)
 }
 
 function ProductoForm({ producto, onClose, onSaved }) {
   const esEdicion = !!producto
   const [f, setF] = useState(() => (producto ? desdeProducto(producto) : FORM_VACIO))
   const [enviando, setEnviando] = useState(false)
+  // Escalonado colapsado por defecto; al editar, abierto si el producto ya trae umbral.
+  const [escalonado, setEscalonado] = useState(() => tieneEscalonado(producto))
+
+  // Desplegables: categorías existentes (+ "nueva") y proveedores registrados (no texto libre).
+  const categoriasQ = useFetch('/productos/categorias')
+  const proveedoresQ = useFetch('/proveedores')
+  const categorias = Array.isArray(categoriasQ.data) ? categoriasQ.data : []
+  const proveedores = Array.isArray(proveedoresQ.data) ? proveedoresQ.data : []
+  // El valor actual siempre debe existir como opción (p. ej. al editar antes de que cargue el endpoint).
+  const opcionesCategoria = [...new Set(
+    [...(f.categoria && f.categoria !== NUEVA_CATEGORIA ? [f.categoria] : []), ...categorias],
+  )]
+
   const set = (k) => (e) => setF(prev => ({ ...prev, [k]: e.target.value }))
   const setBool = (k) => (e) => setF(prev => ({ ...prev, [k]: e.target.checked }))
 
@@ -352,7 +375,7 @@ function ProductoForm({ producto, onClose, onSaved }) {
   async function guardar() {
     if (!f.nombre.trim()) { toast.error('El nombre es obligatorio'); return }
     if (!(Number(f.precio_venta) >= 0) || f.precio_venta === '') { toast.error('Indica un precio de venta válido'); return }
-    const payload = construirPayload(f, { incluirStockInicial: !esEdicion })
+    const payload = construirPayload(f, { incluirEscalonado: escalonado })
     setEnviando(true)
     try {
       const res = esEdicion
@@ -363,6 +386,7 @@ function ProductoForm({ producto, onClose, onSaved }) {
             method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
           })
       if (res.status === 409) { toast.error('Ya existe un producto con ese código'); return }
+      if (res.status === 422) { toast.error('Revisa los datos del producto (proveedor o precios)'); return }
       if (!res.ok) { toast.error(esEdicion ? 'No se pudo guardar' : 'No se pudo crear el producto'); return }
       toast.success(esEdicion ? 'Producto actualizado' : 'Producto creado')
       onSaved()
@@ -380,8 +404,29 @@ function ProductoForm({ producto, onClose, onSaved }) {
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
           <Input value={f.nombre} onChange={set('nombre')} placeholder="Nombre *" aria-label="Nombre" className="h-9" />
           <Input value={f.codigo} onChange={set('codigo')} placeholder="Código" aria-label="Código" className="h-9" />
-          <Input value={f.categoria} onChange={set('categoria')} placeholder="Categoría" aria-label="Categoría" className="h-9" />
-          <Input value={f.marca} onChange={set('marca')} placeholder="Marca" aria-label="Marca" className="h-9" />
+
+          <div className="space-y-1">
+            <select value={f.categoria} onChange={set('categoria')} aria-label="Categoría" className={SELECT_CLS}>
+              <option value="">Sin categoría</option>
+              {opcionesCategoria.map(c => <option key={c} value={c}>{c}</option>)}
+              <option value={NUEVA_CATEGORIA}>+ Nueva categoría…</option>
+            </select>
+            {f.categoria === NUEVA_CATEGORIA && (
+              <Input value={f.categoriaNueva} onChange={set('categoriaNueva')}
+                placeholder="Nueva categoría" aria-label="Nueva categoría" className="h-9" />
+            )}
+          </div>
+
+          <div className="space-y-1">
+            <select value={f.proveedor_id} onChange={set('proveedor_id')} aria-label="Proveedor" className={SELECT_CLS}>
+              <option value="">Sin proveedor</option>
+              {proveedores.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+            </select>
+            {proveedores.length === 0 && !proveedoresQ.loading && (
+              <p className="text-[10px] text-muted-foreground">Registra proveedores en el tab Proveedores.</p>
+            )}
+          </div>
+
           <Input value={f.unidad_medida} onChange={set('unidad_medida')} placeholder="Unidad" aria-label="Unidad de medida" className="h-9" />
           <Input type="number" value={f.iva} onChange={set('iva')} placeholder="IVA %" aria-label="IVA" className="h-9" />
         </div>
@@ -391,20 +436,25 @@ function ProductoForm({ producto, onClose, onSaved }) {
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
             <Input type="number" value={f.precio_venta} onChange={set('precio_venta')} placeholder="Venta *" aria-label="Precio de venta" className="h-9" />
             <Input type="number" value={f.precio_compra} onChange={set('precio_compra')} placeholder="Compra" aria-label="Precio de compra" className="h-9" />
-            <Input type="number" value={f.precio_mayorista} onChange={set('precio_mayorista')} placeholder="Mayorista" aria-label="Precio mayorista" className="h-9" />
+            <Input type="number" value={f.precio_especial} onChange={set('precio_especial')} placeholder="Especial" aria-label="Precio especial" className="h-9" />
           </div>
-          <p className="text-[10px] uppercase tracking-wider text-muted-foreground mt-3 mb-2">Precio escalonado (por cantidad)</p>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-            <Input type="number" value={f.precio_umbral} onChange={set('precio_umbral')} placeholder="Umbral (cantidad)" aria-label="Umbral de cantidad" className="h-9" />
-            <Input type="number" value={f.precio_bajo_umbral} onChange={set('precio_bajo_umbral')} placeholder="Precio bajo umbral" aria-label="Precio bajo umbral" className="h-9" />
-            <Input type="number" value={f.precio_sobre_umbral} onChange={set('precio_sobre_umbral')} placeholder="Precio sobre umbral" aria-label="Precio sobre umbral" className="h-9" />
-          </div>
-        </div>
 
-        <div className="pt-2 border-t border-border-subtle grid grid-cols-1 sm:grid-cols-2 gap-2">
-          <Input type="number" value={f.stock_minimo} onChange={set('stock_minimo')} placeholder="Stock mínimo" aria-label="Stock mínimo" className="h-9" />
-          {!esEdicion && (
-            <Input type="number" value={f.stock_inicial} onChange={set('stock_inicial')} placeholder="Stock inicial" aria-label="Stock inicial" className="h-9" />
+          {!escalonado ? (
+            <button type="button" onClick={() => setEscalonado(true)}
+              className="mt-3 text-[11px] text-primary hover:underline">+ Añadir precio escalonado</button>
+          ) : (
+            <div className="mt-3">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Precio escalonado (por cantidad)</p>
+                <button type="button" onClick={() => setEscalonado(false)}
+                  className="text-[11px] text-destructive hover:underline">Quitar</button>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <Input type="number" value={f.precio_umbral} onChange={set('precio_umbral')} placeholder="Umbral (cantidad)" aria-label="Umbral de cantidad" className="h-9" />
+                <Input type="number" value={f.precio_bajo_umbral} onChange={set('precio_bajo_umbral')} placeholder="Precio bajo umbral" aria-label="Precio bajo umbral" className="h-9" />
+                <Input type="number" value={f.precio_sobre_umbral} onChange={set('precio_sobre_umbral')} placeholder="Precio sobre umbral" aria-label="Precio sobre umbral" className="h-9" />
+              </div>
+            </div>
           )}
         </div>
 

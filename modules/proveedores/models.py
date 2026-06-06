@@ -14,6 +14,9 @@ from core.db.base import TenantBase
 
 MONEY = Numeric(12, 2)
 
+# La entidad `Proveedor` (tabla `proveedores`) la define `modules.compras.models` (mapeo único de esa
+# tabla). Aquí solo viven las cuentas por pagar (`facturas_proveedores` / `facturas_abonos`).
+
 
 class FacturaProveedor(TenantBase):
     __tablename__ = "facturas_proveedores"

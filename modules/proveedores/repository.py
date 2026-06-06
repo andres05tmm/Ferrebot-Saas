@@ -12,8 +12,9 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.money import cuantizar
+from modules.compras.models import Proveedor
 from modules.proveedores.models import AbonoProveedor, FacturaProveedor
-from modules.proveedores.schemas import FacturaProveedorLeer
+from modules.proveedores.schemas import FacturaProveedorLeer, ProveedorLeer
 
 
 @dataclass(frozen=True, slots=True)
@@ -25,6 +26,13 @@ class ResumenDatos:
 class SqlProveedoresRepository:
     def __init__(self, session: AsyncSession) -> None:
         self._s = session
+
+    async def listar_proveedores(self) -> list[ProveedorLeer]:
+        """Proveedores registrados (id/nombre/nit), ordenados por nombre — para los desplegables."""
+        filas = (
+            await self._s.execute(select(Proveedor).order_by(Proveedor.nombre))
+        ).scalars().all()
+        return [ProveedorLeer.model_validate(p) for p in filas]
 
     async def existe(self, factura_id: str) -> bool:
         return (

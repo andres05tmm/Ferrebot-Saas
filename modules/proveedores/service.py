@@ -17,6 +17,7 @@ from modules.proveedores.schemas import (
     AbonoCrear,
     FacturaProveedorCrear,
     FacturaProveedorLeer,
+    ProveedorLeer,
     ResumenCxP,
 )
 
@@ -24,6 +25,10 @@ from modules.proveedores.schemas import (
 class ProveedoresService:
     def __init__(self, repo: SqlProveedoresRepository) -> None:
         self._repo = repo
+
+    async def listar_proveedores(self) -> list[ProveedorLeer]:
+        """Lista de proveedores registrados (id/nombre/nit) para los desplegables del modal."""
+        return await self._repo.listar_proveedores()
 
     async def crear_factura(
         self, datos: FacturaProveedorCrear, *, usuario_id: int | None

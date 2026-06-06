@@ -10,6 +10,7 @@ from sqlalchemy.dialects.postgresql import ENUM as PgEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from core.db.base import TenantBase
+from modules.compras.models import Proveedor
 
 mov_inventario_tipo = PgEnum(
     "ENTRADA", "SALIDA", "AJUSTE", "DEVOLUCION",
@@ -24,11 +25,14 @@ class Producto(TenantBase):
     codigo: Mapped[str | None] = mapped_column(Text)
     nombre: Mapped[str] = mapped_column(Text, nullable=False)
     categoria: Mapped[str | None] = mapped_column(Text)
-    marca: Mapped[str | None] = mapped_column(Text)
+    # Proveedor de la lista registrada (tenant 0006, FK ON DELETE SET NULL); reemplaza la vieja `marca`.
+    proveedor_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("proveedores.id", ondelete="SET NULL")
+    )
     unidad_medida: Mapped[str] = mapped_column(Text, nullable=False)
     precio_venta: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
     precio_compra: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
-    precio_mayorista: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
+    precio_especial: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
     # Precio escalonado por cantidad (modelo FerreBot): NULL si no aplica.
     precio_umbral: Mapped[Decimal | None] = mapped_column(Numeric(12, 3))
     precio_bajo_umbral: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
@@ -40,6 +44,13 @@ class Producto(TenantBase):
     fracciones: Mapped[list["ProductoFraccion"]] = relationship(
         cascade="all, delete-orphan", lazy="selectin"
     )
+    # Many-to-one al proveedor (selectin: sin N+1 al listar; el FK NULL no dispara consulta).
+    proveedor: Mapped["Proveedor | None"] = relationship("Proveedor", lazy="selectin")
+
+    @property
+    def proveedor_nombre(self) -> str | None:
+        """Nombre del proveedor para mostrar (None si el producto no tiene proveedor asignado)."""
+        return self.proveedor.nombre if self.proveedor is not None else None
 
 
 class ProductoFraccion(TenantBase):

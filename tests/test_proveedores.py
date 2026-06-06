@@ -165,6 +165,40 @@ async def test_abono_monto_no_positivo_422(tenant):
     assert r.status_code == 422, r.text   # Field(gt=0) lo rechaza
 
 
+# ---- Proveedores registrados (desplegable del modal de producto) -----------
+async def test_listar_proveedores_registrados(tenant):
+    async with AsyncSession(tenant.engine) as s:
+        uid = await _seed_usuario(s)
+        await s.execute(
+            text(
+                "INSERT INTO proveedores (nombre, nit) VALUES "
+                "('Zeta Ferre', '900.3'), ('Andina', '900.1'), ('Beta', NULL)"
+            )
+        )
+        await s.commit()
+
+    app = _app(tenant, user_id=uid)
+    async with _cliente(app) as c:
+        r = await c.get("/api/v1/proveedores")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert [p["nombre"] for p in body] == ["Andina", "Beta", "Zeta Ferre"]  # ordenado por nombre
+    andina = next(p for p in body if p["nombre"] == "Andina")
+    assert andina["nit"] == "900.1" and isinstance(andina["id"], int)
+    assert next(p for p in body if p["nombre"] == "Beta")["nit"] is None
+
+
+async def test_listar_proveedores_es_solo_admin_403(tenant):
+    async with AsyncSession(tenant.engine) as s:
+        uid = await _seed_usuario(s, rol="vendedor")
+        await s.commit()
+
+    app = _app(tenant, user_id=uid, rol="vendedor")
+    async with _cliente(app) as c:
+        r = await c.get("/api/v1/proveedores")
+    assert r.status_code == 403, r.text
+
+
 # ---- Resumen / listado -----------------------------------------------------
 async def test_resumen_suma_pendientes(tenant):
     async with AsyncSession(tenant.engine) as s:

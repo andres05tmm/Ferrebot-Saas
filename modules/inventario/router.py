@@ -14,6 +14,7 @@ from modules.inventario.errors import (
     AjusteDejaStockNegativo,
     CodigoDuplicado,
     ProductoInexistente,
+    ProveedorInexistente,
 )
 from modules.inventario.repository import SqlInventarioRepository
 from modules.inventario.schemas import (
@@ -71,7 +72,19 @@ async def crear_producto(
         producto = await _service(session).crear_producto(payload, usuario_id=user.user_id)
     except CodigoDuplicado as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+    except ProveedorInexistente as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
     return ProductoLeer.model_validate(producto)
+
+
+@router.get("/productos/categorias", response_model=list[str])
+async def listar_categorias(
+    session: AsyncSession = Depends(get_tenant_db),
+    _user: Principal = Depends(require_role("vendedor")),
+) -> list[str]:
+    """Categorías existentes (DISTINCT) para el select de categoría del modal. Declarado antes de
+    `/productos/{producto_id}` para que 'categorias' no se interprete como un id."""
+    return await SqlInventarioRepository(session).categorias_distinct()
 
 
 @router.get("/productos/{producto_id}", response_model=ProductoLeer)
@@ -99,6 +112,8 @@ async def actualizar_producto(
         raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
     except CodigoDuplicado as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+    except ProveedorInexistente as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
     return ProductoLeer.model_validate(producto)
 
 

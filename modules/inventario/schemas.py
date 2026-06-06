@@ -15,16 +15,20 @@ class FraccionCrear(BaseModel):
 
 
 class _ProductoBase(BaseModel):
-    """Campos comunes a crear y actualizar (el contrato editable del producto)."""
+    """Campos comunes a crear y actualizar (el contrato editable del producto).
+
+    Sin `stock_inicial`/`stock_minimo`: el producto nace con inventario en 0 (el conteo físico fija
+    el stock después). El proveedor se elige por id de la lista registrada (no es texto libre).
+    """
 
     nombre: str = Field(min_length=1)
     codigo: str | None = None
     categoria: str | None = None
-    marca: str | None = None
+    proveedor_id: int | None = Field(default=None, gt=0)
     unidad_medida: str = Field(min_length=1, default="unidad")
     precio_venta: Decimal = Field(ge=0)
     precio_compra: Decimal | None = Field(default=None, ge=0)
-    precio_mayorista: Decimal | None = Field(default=None, ge=0)
+    precio_especial: Decimal | None = Field(default=None, ge=0)
     # Precio escalonado por cantidad: los tres NULL o los tres presentes (lo valida el motor de precios).
     precio_umbral: Decimal | None = Field(default=None, ge=0)
     precio_bajo_umbral: Decimal | None = Field(default=None, ge=0)
@@ -33,9 +37,8 @@ class _ProductoBase(BaseModel):
     permite_fraccion: bool = False
     activo: bool = True
     fracciones: list[FraccionCrear] = Field(default_factory=list)
-    stock_minimo: Decimal = Field(default=Decimal("0"), ge=0)
 
-    @field_validator("codigo", "categoria", "marca", mode="before")
+    @field_validator("codigo", "categoria", mode="before")
     @classmethod
     def _vacio_a_none(cls, v: str | None) -> str | None:
         """Normaliza cadenas vacías/espacios a None (el código vacío no debe colisionar como UNIQUE)."""
@@ -46,13 +49,11 @@ class _ProductoBase(BaseModel):
 
 
 class ProductoCrear(_ProductoBase):
-    """Alta de producto. `stock_inicial > 0` genera una ENTRADA de inventario (regla #7)."""
-
-    stock_inicial: Decimal = Field(default=Decimal("0"), ge=0)
+    """Alta de producto. El inventario nace en 0 (stock y mínimo); el stock real lo fija el conteo."""
 
 
 class ProductoActualizar(_ProductoBase):
-    """Edición de producto. No toca `stock_actual` (eso va por /inventario/ajuste); reemplaza fracciones."""
+    """Edición de producto. No toca el inventario (`stock_actual`/`stock_minimo`); reemplaza fracciones."""
 
 
 class ProductoLeer(BaseModel):
@@ -62,10 +63,12 @@ class ProductoLeer(BaseModel):
     codigo: str | None
     nombre: str
     categoria: str | None
-    marca: str | None
+    proveedor_id: int | None
+    proveedor_nombre: str | None
     unidad_medida: str
     precio_venta: Decimal
-    precio_mayorista: Decimal | None
+    precio_compra: Decimal | None
+    precio_especial: Decimal | None
     precio_umbral: Decimal | None
     precio_bajo_umbral: Decimal | None
     precio_sobre_umbral: Decimal | None

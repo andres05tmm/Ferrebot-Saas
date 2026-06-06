@@ -31,10 +31,12 @@
 | Método | Ruta | Rol | Request / Notas | Emite |
 |---|---|---|---|---|
 | GET | `/productos` | vendedor | `?q=&categoria=&activo=` (q = fuzzy/FTS) | — |
+| GET | `/productos/categorias` | vendedor | categorías DISTINCT (select del modal) | — |
 | GET | `/productos/{id}` | vendedor | — | — |
-| POST | `/productos` | admin | producto (ver schema) | `inventario_actualizado` |
-| PATCH | `/productos/{id}` | admin | campos a cambiar | `inventario_actualizado` |
-| GET | `/productos/{id}/precio` | vendedor | precios venta/mayorista | — |
+| POST | `/productos` | admin | producto (sin stock; `proveedor_id`/`precio_especial`; 422 si proveedor no existe) | `inventario_actualizado` |
+| PUT | `/productos/{id}` | admin | producto completo (no toca stock) | `inventario_actualizado` |
+| GET | `/productos/{id}/precio` | vendedor | precio para una cantidad | — |
+| GET | `/proveedores` | admin | proveedores registrados `{id, nombre, nit}` (select del modal) | — |
 
 ## Inventario / kardex — `/api/v1/inventario`
 

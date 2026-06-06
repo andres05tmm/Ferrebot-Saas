@@ -1,6 +1,6 @@
 """Guardarraíl de paridad del esquema tenant: red de seguridad antes del ETL de Punto Rojo.
 
-Falla si el esquema migrado a head (0001→0005) se desvía del set esperado de tablas. La lista
+Falla si el esquema migrado a head (0001→0006) se desvía del set esperado de tablas. La lista
 ESPERADA está hardcodeada a propósito: agregar o quitar una tabla sin actualizar este test rompe la
 prueba, forzando la revisión. Tras la 0005, `config_empresa` ya NO existe en la app DB.
 """

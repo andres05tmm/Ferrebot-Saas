@@ -114,6 +114,26 @@ class AjusteLeer(BaseModel):
     replay: bool
 
 
+class ConteoCrear(BaseModel):
+    """Conteo físico (set-to-absolute): fija el stock a la cantidad REAL contada (>= 0).
+
+    A diferencia del ajuste por delta, aquí el admin escribe el número contado; el servidor calcula el
+    delta = cantidad_contada − stock_actual y aplica un AJUSTE de ese delta. Así se "cuadran" negativos.
+    """
+
+    producto_id: int
+    cantidad_contada: Decimal = Field(ge=0, description="Cantidad real contada; el stock queda en este valor")
+    motivo: str | None = Field(default=None)
+
+
+class ConteoLeer(BaseModel):
+    producto_id: int
+    movimiento_id: int | None   # None si fue no-op (la cantidad contada coincidía con el stock)
+    delta: Decimal              # cantidad_contada − stock anterior
+    stock_actual: Decimal       # = cantidad_contada
+    replay: bool
+
+
 class KardexItem(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

@@ -139,10 +139,15 @@ export default function TabInventario() {
   )
 }
 
+// Stock negativo: aviso SUAVE (ámbar atenuado, sin rojo ni ⚠️). El número honesto + "por cuadrar".
+const TOOLTIP_POR_CUADRAR =
+  'Vendiste más de lo registrado; registra tus compras o haz un conteo físico para cuadrar.'
+
 function ProductoRow({ producto, stock, admin, onAjustado, onEditar, onEliminar }) {
   const [abierto, setAbierto] = useState(false)
   const stockActual = stock ? Number(stock.stock_actual) : null
   const bajo = stock?.bajo
+  const negativo = stockActual !== null && stockActual < 0
 
   return (
     <li className="px-3.5 py-2.5">
@@ -159,9 +164,19 @@ function ProductoRow({ producto, stock, admin, onAjustado, onEditar, onEliminar 
         <div className="text-right shrink-0">
           <div className="text-[13px] font-semibold tabular">{cop(Number(producto.precio_venta))}</div>
           {stockActual !== null && (
-            <div className={`text-[11px] tabular ${bajo ? 'text-warning font-semibold' : 'text-muted-foreground'}`}>
-              {num(stockActual)} {producto.unidad_medida}
-            </div>
+            negativo ? (
+              <div className="inline-flex items-center justify-end gap-1 text-[11px] tabular text-warning/80"
+                title={TOOLTIP_POR_CUADRAR}>
+                <span>{num(stockActual)} {producto.unidad_medida}</span>
+                <span className="text-[9px] font-normal px-1 py-px rounded bg-warning/10 border border-warning/20 text-warning/80">
+                  por cuadrar
+                </span>
+              </div>
+            ) : (
+              <div className={`text-[11px] tabular ${bajo ? 'text-warning font-semibold' : 'text-muted-foreground'}`}>
+                {num(stockActual)} {producto.unidad_medida}
+              </div>
+            )
           )}
         </div>
         {admin && (
@@ -191,10 +206,31 @@ function ProductoRow({ producto, stock, admin, onAjustado, onEditar, onEliminar 
 function AjusteForm({ productoId, onDone }) {
   const [delta, setDelta] = useState('')
   const [motivo, setMotivo] = useState('')
+  const [contada, setContada] = useState('')
   const [enviando, setEnviando] = useState(false)
   const [error, setError] = useState('')
 
-  async function guardar() {
+  // Conteo físico (set-to-absolute): el admin escribe el número REAL contado; el backend calcula el
+  // delta y deja el stock en ese valor (así se cuadran los negativos). POST /inventario/conteo.
+  async function ajustarAReal() {
+    if (contada === '' || !(Number(contada) >= 0)) { setError('Indica la cantidad real contada (0 o más).'); return }
+    setEnviando(true); setError('')
+    try {
+      const res = await api('/inventario/conteo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Idempotency-Key': crypto.randomUUID() },
+        body: JSON.stringify({ producto_id: productoId, cantidad_contada: Number(contada), motivo: 'conteo físico' }),
+      })
+      if (res.ok) {
+        const r = await res.json().catch(() => null)
+        if (r) toast.success(`Stock ajustado a ${num(Number(r.stock_actual))}`)   // muestra el stock resultante
+        onDone()
+      } else setError('No se pudo ajustar a la cantidad contada.')
+    } catch { setError('Error de conexión.') } finally { setEnviando(false) }
+  }
+
+  // Ajuste por delta (complementario): +sobrante / −merma con su motivo. POST /inventario/ajuste.
+  async function guardarDelta() {
     const n = Number(delta)
     if (!n || !motivo.trim()) { setError('Indica un delta distinto de 0 y un motivo.'); return }
     setEnviando(true); setError('')
@@ -206,24 +242,38 @@ function AjusteForm({ productoId, onDone }) {
       })
       if (res.ok) onDone()
       else setError('No se pudo ajustar el stock.')
-    } catch {
-      setError('Error de conexión.')
-    } finally {
-      setEnviando(false)
-    }
+    } catch { setError('Error de conexión.') } finally { setEnviando(false) }
   }
 
   return (
-    <div className="mt-2.5 flex flex-wrap items-center gap-2 bg-surface-2/50 rounded-md p-2">
-      <Input type="number" value={delta} onChange={(e) => setDelta(e.target.value)}
-        placeholder="Delta (+/-)" aria-label="Delta de ajuste" className="w-28 h-8" />
-      <Input value={motivo} onChange={(e) => setMotivo(e.target.value)}
-        placeholder="Motivo" aria-label="Motivo del ajuste" className="flex-1 min-w-[120px] h-8" />
-      <button onClick={guardar} disabled={enviando}
-        className="text-xs px-3 h-8 rounded-md bg-primary text-primary-foreground hover:bg-primary-hover disabled:opacity-60">
-        {enviando ? 'Guardando…' : 'Guardar'}
-      </button>
-      {error && <span className="w-full text-[11px] text-destructive">{error}</span>}
+    <div className="mt-2.5 space-y-2 bg-surface-2/50 rounded-md p-2">
+      <div>
+        <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Conteo físico · ajustar a cantidad real</p>
+        <div className="flex flex-wrap items-center gap-2">
+          <Input type="number" value={contada} onChange={(e) => setContada(e.target.value)}
+            placeholder="Cantidad real contada" aria-label="Cantidad real contada" className="w-40 h-8" />
+          <button onClick={ajustarAReal} disabled={enviando}
+            className="text-xs px-3 h-8 rounded-md bg-primary text-primary-foreground hover:bg-primary-hover disabled:opacity-60">
+            {enviando ? 'Guardando…' : 'Ajustar a real'}
+          </button>
+        </div>
+      </div>
+
+      <div className="pt-2 border-t border-border-subtle">
+        <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Ajuste por delta (+/−)</p>
+        <div className="flex flex-wrap items-center gap-2">
+          <Input type="number" value={delta} onChange={(e) => setDelta(e.target.value)}
+            placeholder="Delta (+/-)" aria-label="Delta de ajuste" className="w-28 h-8" />
+          <Input value={motivo} onChange={(e) => setMotivo(e.target.value)}
+            placeholder="Motivo" aria-label="Motivo del ajuste" className="flex-1 min-w-[120px] h-8" />
+          <button onClick={guardarDelta} disabled={enviando}
+            className="text-xs px-3 h-8 rounded-md border border-border bg-surface hover:bg-surface-2 disabled:opacity-60">
+            {enviando ? 'Guardando…' : 'Guardar'}
+          </button>
+        </div>
+      </div>
+
+      {error && <span className="block text-[11px] text-destructive">{error}</span>}
     </div>
   )
 }

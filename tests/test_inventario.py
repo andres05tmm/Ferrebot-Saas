@@ -114,6 +114,79 @@ async def test_ajuste_idempotente_devuelve_mismo_movimiento(tenant):
         assert stock == Decimal("15.000")   # aplicado una sola vez
 
 
+async def test_conteo_fija_stock_a_lo_contado(tenant):
+    """Conteo físico: el stock queda en lo contado; el movimiento AJUSTE lleva el delta correcto."""
+    async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
+        pid = await _producto(s)
+        await _inventario(s, pid, stock="10")
+        await s.commit()
+        res = await _svc(s).contar(producto_id=pid, cantidad_contada=Decimal("25"), usuario_id=None)
+        await s.commit()
+
+    assert res.replay is False
+    assert res.delta == Decimal("15.000")        # 25 − 10
+    assert res.stock_actual == Decimal("25.000")
+
+    async with AsyncSession(tenant.engine) as s:
+        tipo, cant = (
+            await s.execute(text("SELECT tipo, cantidad FROM movimientos_inventario WHERE producto_id=:p"), {"p": pid})
+        ).one()
+        assert tipo == "AJUSTE" and cant == Decimal("15.000")
+        stock = (await s.execute(text("SELECT stock_actual FROM inventario WHERE producto_id=:p"), {"p": pid})).scalar_one()
+        assert stock == Decimal("25.000")
+
+
+async def test_conteo_cuadra_stock_negativo(tenant):
+    """Desde stock negativo (−20), contar 40 deja 40 (delta +60): así se cuadran los negativos."""
+    async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
+        pid = await _producto(s)
+        await _inventario(s, pid, stock="-20")
+        await s.commit()
+        res = await _svc(s).contar(producto_id=pid, cantidad_contada=Decimal("40"), usuario_id=None)
+        await s.commit()
+
+    assert res.delta == Decimal("60.000")        # 40 − (−20)
+    assert res.stock_actual == Decimal("40.000")
+    async with AsyncSession(tenant.engine) as s:
+        stock = (await s.execute(text("SELECT stock_actual FROM inventario WHERE producto_id=:p"), {"p": pid})).scalar_one()
+        assert stock == Decimal("40.000")        # ya no negativo
+
+
+async def test_conteo_igual_al_actual_es_no_op(tenant):
+    """Si lo contado coincide con el stock, no se registra movimiento (no-op)."""
+    async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
+        pid = await _producto(s)
+        await _inventario(s, pid, stock="7")
+        await s.commit()
+        res = await _svc(s).contar(producto_id=pid, cantidad_contada=Decimal("7"), usuario_id=None)
+        await s.commit()
+
+    assert res.delta == Decimal("0") and res.movimiento_id is None
+    async with AsyncSession(tenant.engine) as s:
+        assert (await s.execute(text("SELECT count(*) FROM movimientos_inventario WHERE producto_id=:p"), {"p": pid})).scalar_one() == 0
+        stock = (await s.execute(text("SELECT stock_actual FROM inventario WHERE producto_id=:p"), {"p": pid})).scalar_one()
+        assert stock == Decimal("7.000")
+
+
+async def test_conteo_idempotente(tenant):
+    """Reintento con la misma Idempotency-Key devuelve el mismo movimiento (no aplica dos veces)."""
+    async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
+        pid = await _producto(s)
+        await _inventario(s, pid, stock="10")
+        await s.commit()
+        r1 = await _svc(s).contar(producto_id=pid, cantidad_contada=Decimal("30"), usuario_id=None, idempotency_key="c1")
+        await s.commit()
+    async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
+        r2 = await _svc(s).contar(producto_id=pid, cantidad_contada=Decimal("30"), usuario_id=None, idempotency_key="c1")
+        await s.commit()
+
+    assert r2.replay is True and r2.movimiento_id == r1.movimiento_id
+    async with AsyncSession(tenant.engine) as s:
+        assert (await s.execute(text("SELECT count(*) FROM movimientos_inventario WHERE producto_id=:p"), {"p": pid})).scalar_one() == 1
+        stock = (await s.execute(text("SELECT stock_actual FROM inventario WHERE producto_id=:p"), {"p": pid})).scalar_one()
+        assert stock == Decimal("30.000")
+
+
 async def test_ajuste_que_deja_stock_negativo_se_rechaza(tenant):
     async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
         pid = await _producto(s)

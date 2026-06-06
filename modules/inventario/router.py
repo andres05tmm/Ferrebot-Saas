@@ -19,6 +19,8 @@ from modules.inventario.repository import SqlInventarioRepository
 from modules.inventario.schemas import (
     AjusteCrear,
     AjusteLeer,
+    ConteoCrear,
+    ConteoLeer,
     KardexItem,
     PrecioLeer,
     ProductoActualizar,
@@ -166,6 +168,34 @@ async def ajustar_stock(
     if res.replay:
         response.status_code = status.HTTP_200_OK
     return AjusteLeer(
+        producto_id=res.producto_id, movimiento_id=res.movimiento_id, delta=res.delta,
+        stock_actual=res.stock_actual, replay=res.replay,
+    )
+
+
+@router.post("/inventario/conteo", response_model=ConteoLeer, status_code=status.HTTP_201_CREATED)
+async def conteo_fisico(
+    payload: ConteoCrear,
+    response: Response,
+    session: AsyncSession = Depends(get_tenant_db),
+    user: Principal = Depends(require_role("admin")),
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+) -> ConteoLeer:
+    """Conteo físico (set-to-absolute): fija el stock a la cantidad real contada. delta 0 → no-op.
+
+    Reusa la lógica de ajuste (movimiento AJUSTE del delta calculado). 404 si el producto no existe.
+    """
+    try:
+        res = await _service(session).contar(
+            producto_id=payload.producto_id, cantidad_contada=payload.cantidad_contada,
+            motivo=payload.motivo, usuario_id=user.user_id, idempotency_key=idempotency_key,
+        )
+    except ProductoInexistente as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
+
+    if res.replay:
+        response.status_code = status.HTTP_200_OK
+    return ConteoLeer(
         producto_id=res.producto_id, movimiento_id=res.movimiento_id, delta=res.delta,
         stock_actual=res.stock_actual, replay=res.replay,
     )

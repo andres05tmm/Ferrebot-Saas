@@ -53,7 +53,7 @@ class AjusteResultado:
     delta: Decimal
     stock_actual: Decimal
     replay: bool
-    movimiento_id: int
+    movimiento_id: int | None   # None en el conteo no-op (cantidad contada == stock; sin movimiento)
 
 
 class InventarioService:
@@ -136,5 +136,51 @@ class InventarioService:
         movimiento_id = await self._repo.aplicar_ajuste(
             producto_id=producto_id, delta=delta, nuevo_stock=nuevo,
             referencia=motivo, usuario_id=usuario_id, idempotency_key=idempotency_key,
+        )
+        return AjusteResultado(producto_id, delta, nuevo, replay=False, movimiento_id=movimiento_id)
+
+    async def contar(
+        self,
+        *,
+        producto_id: int,
+        cantidad_contada: Decimal,
+        motivo: str | None = None,
+        usuario_id: int | None,
+        idempotency_key: str | None = None,
+    ) -> AjusteResultado:
+        """Conteo físico (set-to-absolute): deja el stock en `cantidad_contada` (>= 0).
+
+        Calcula `delta = cantidad_contada − stock_actual` (con la fila bloqueada) y REUSA el movimiento
+        AJUSTE de `aplicar_ajuste` (no duplica la lógica de stock). Como `cantidad_contada >= 0`, el
+        stock resultante nunca queda negativo: así se cuadran los negativos. Si `delta == 0`, es no-op
+        (sin movimiento ni evento). Idempotente por `idempotency_key`. 404 si el producto no existe.
+        """
+        producto = await self._repo.obtener_producto(producto_id)
+        if producto is None:
+            raise ProductoInexistente(producto_id)
+
+        # Lock antes de la idempotencia (igual que `ajustar`): serializa conteos concurrentes y deja el
+        # chequeo de la key dentro de la sección crítica.
+        actual = await self._repo.lock_stock(producto_id)
+
+        if idempotency_key:
+            previo = await self._repo.ajuste_por_key(idempotency_key)
+            if previo is not None:
+                stock = await self._repo.stock_actual(previo.producto_id)
+                return AjusteResultado(
+                    previo.producto_id, previo.cantidad, stock or Decimal("0"),
+                    replay=True, movimiento_id=previo.id,
+                )
+
+        base = actual if actual is not None else Decimal("0")
+        delta = cantidad_contada - base
+        if delta == 0:
+            return AjusteResultado(producto_id, Decimal("0"), base, replay=False, movimiento_id=None)
+
+        # `nuevo` == cantidad_contada, pero con la escala del stock (NUMERIC 12,3) heredada de `base`.
+        nuevo = base + delta
+        movimiento_id = await self._repo.aplicar_ajuste(
+            producto_id=producto_id, delta=delta, nuevo_stock=nuevo,
+            referencia=motivo or "conteo físico", usuario_id=usuario_id, idempotency_key=idempotency_key,
         )
         return AjusteResultado(producto_id, delta, nuevo, replay=False, movimiento_id=movimiento_id)

@@ -22,10 +22,12 @@ const STOCK = [{ producto_id: 1, nombre: 'Martillo', stock_actual: '50', stock_m
 
 function jsonResp(data, status = 200) { return { ok: status < 400, status, json: async () => data } }
 
-function instalarFetch() {
+function instalarFetch(stock = STOCK) {
   const fetchMock = vi.fn((url, opts) => {
     const u = String(url)
-    if (u.includes('/inventario/stock')) return Promise.resolve(jsonResp(STOCK))
+    if (u.includes('/inventario/conteo') && opts?.method === 'POST')
+      return Promise.resolve(jsonResp({ producto_id: 1, movimiento_id: 5, delta: '40', stock_actual: '40', replay: false }, 201))
+    if (u.includes('/inventario/stock')) return Promise.resolve(jsonResp(stock))
     if (u.includes('/productos') && opts?.method === 'POST') return Promise.resolve(jsonResp({ id: 99 }, 201))
     if (u.includes('/productos') && opts?.method === 'PUT') return Promise.resolve(jsonResp({ id: 1 }, 200))
     if (u.includes('/productos') && opts?.method === 'DELETE') return Promise.resolve(jsonResp({ producto_id: 1, activo: false }, 200))
@@ -138,5 +140,36 @@ describe('TabInventario — CRUD (admin)', () => {
 
     fireEvent.click(screen.getAllByTitle('Eliminar producto')[0])
     expect(fetchMock.mock.calls.some(c => c[1]?.method === 'DELETE')).toBe(false)
+  })
+
+  it('conteo físico postea /inventario/conteo con cantidad_contada (no el delta)', async () => {
+    const fetchMock = instalarFetch()
+    render(<MemoryRouter><TabInventario /></MemoryRouter>)
+    await screen.findByText('Martillo')
+
+    fireEvent.click(screen.getAllByTitle('Ajustar stock')[0])           // abre el panel del producto 1
+    fireEvent.change(await screen.findByLabelText('Cantidad real contada'), { target: { value: '40' } })
+    fireEvent.click(screen.getByText('Ajustar a real'))
+
+    await waitFor(() => {
+      const call = fetchMock.mock.calls.find(c => String(c[0]).includes('/inventario/conteo') && c[1]?.method === 'POST')
+      expect(call).toBeTruthy()
+      expect(JSON.parse(call[1].body)).toMatchObject({ producto_id: 1, cantidad_contada: 40 })
+    })
+  })
+})
+
+describe('TabInventario — indicador de stock negativo (suave)', () => {
+  it('una fila con stock < 0 muestra "por cuadrar" con tooltip, sin estilo de error', async () => {
+    instalarFetch([{ producto_id: 2, nombre: 'Clavo', stock_actual: '-5', stock_minimo: '0', bajo: false }])
+    render(<MemoryRouter><TabInventario /></MemoryRouter>)
+    await screen.findByText('Clavo')
+
+    const etiqueta = await screen.findByText('por cuadrar')
+    expect(etiqueta).toBeInTheDocument()
+    expect(etiqueta.className).not.toMatch(/destructive/)            // ámbar atenuado, NO rojo
+    // Tooltip amable explicativo (sin ⚠️).
+    expect(screen.getByTitle(/conteo físico para cuadrar/i)).toBeInTheDocument()
+    expect(screen.queryByText('⚠️')).toBeNull()
   })
 })

@@ -303,6 +303,71 @@ async def test_crear_emite_inventario_actualizado(tenant):
         await event_hub.unsubscribe(7777, queue)
 
 
+# ---- Conteo físico (set-to-absolute) ---------------------------------------
+async def test_conteo_fija_stock_a_lo_contado_via_http(tenant):
+    async with AsyncSession(tenant.engine) as s:
+        uid = await _seed_usuario(s)
+        await s.commit()
+
+    app = _app(tenant, user_id=uid)
+    async with _cliente(app) as c:
+        creado = await c.post("/api/v1/productos", json=_payload(stock_inicial="10"))
+        pid = creado.json()["id"]
+        r = await c.post(
+            "/api/v1/inventario/conteo",
+            json={"producto_id": pid, "cantidad_contada": 25, "motivo": "conteo físico"},
+            headers={"Idempotency-Key": "ct-1"},
+        )
+    assert r.status_code == 201, r.text
+    body = r.json()
+    assert body["stock_actual"] == "25.000" and body["delta"] == "15.000"
+
+    async with AsyncSession(tenant.engine) as s:
+        stock = (await s.execute(text("SELECT stock_actual FROM inventario WHERE producto_id=:p"), {"p": pid})).scalar_one()
+        assert stock == Decimal("25.000")
+        tipo = (await s.execute(text("SELECT tipo FROM movimientos_inventario WHERE producto_id=:p AND tipo='AJUSTE'"), {"p": pid})).scalar_one()
+        assert tipo == "AJUSTE"
+
+
+async def test_conteo_es_solo_admin_vendedor_403(tenant):
+    async with AsyncSession(tenant.engine) as s:
+        uid = await _seed_usuario(s, rol="vendedor")
+        await s.commit()
+
+    app = _app(tenant, user_id=uid, rol="vendedor")
+    async with _cliente(app) as c:
+        r = await c.post("/api/v1/inventario/conteo", json={"producto_id": 1, "cantidad_contada": 5})
+    assert r.status_code == 403, r.text
+
+
+async def test_conteo_emite_inventario_actualizado(tenant):
+    async with AsyncSession(tenant.engine) as s:
+        uid = await _seed_usuario(s)
+        await s.commit()
+
+    app = _app(tenant, user_id=uid)
+    async with _cliente(app) as c:
+        pid = (await c.post("/api/v1/productos", json=_payload(stock_inicial="10"))).json()["id"]
+
+    queue = await event_hub.subscribe(tenant_id=7778, dsn=tenant.url)
+    try:
+        async with _cliente(app) as c:
+            r = await c.post("/api/v1/inventario/conteo", json={"producto_id": pid, "cantidad_contada": 3})
+        assert r.status_code == 201, r.text
+
+        eventos = set()
+        # Llega el inventario_actualizado del AJUSTE del conteo (3 ≠ 10 → delta −7).
+        for _ in range(2):
+            try:
+                payload = await asyncio.wait_for(queue.get(), timeout=5.0)
+            except asyncio.TimeoutError:
+                break
+            eventos.add(json.loads(payload)["event"])
+        assert "inventario_actualizado" in eventos
+    finally:
+        await event_hub.unsubscribe(7778, queue)
+
+
 # ---- Validación ------------------------------------------------------------
 async def test_validacion_montos_negativos_e_iva_fuera_de_rango_422(tenant):
     async with AsyncSession(tenant.engine) as s:

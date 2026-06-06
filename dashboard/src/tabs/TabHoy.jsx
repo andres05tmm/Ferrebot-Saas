@@ -24,8 +24,8 @@ import { cn } from '@/lib/utils'
 
 const HORA_CO = { hour: '2-digit', minute: '2-digit', timeZone: 'America/Bogota' }
 const EVENTOS = [
-  'venta_registrada', 'venta_anulada', 'caja_abierta', 'caja_cerrada', 'caja_movimiento',
-  'gasto_registrado', 'inventario_actualizado', 'reconnected',
+  'venta_registrada', 'venta_anulada', 'venta_editada', 'caja_abierta', 'caja_cerrada',
+  'caja_movimiento', 'gasto_registrado', 'inventario_actualizado', 'reconnected',
 ]
 
 export default function TabHoy() {

@@ -17,15 +17,15 @@ from modules.inventario.precios import (
     obtener_precio_para_cantidad,
 )
 from modules.ventas.errors import (
-    BorradoNoAutorizado,
     LineaInvalida,
+    OperacionNoAutorizada,
     ProductoNoEncontrado,
     StockInsuficiente,
     VentaConFacturaViva,
     VentaNoEncontrada,
     VentaNoEsDeHoy,
 )
-from modules.ventas.schemas import VentaCrear, VentaLeer
+from modules.ventas.schemas import VentaConLineas, VentaCrear, VentaLeer
 
 
 def es_de_hoy_co(fecha: datetime) -> bool:
@@ -86,6 +86,18 @@ class VentaHeader:
     lineas: list[LineaResuelta] = field(default_factory=list)
 
 
+@dataclass(frozen=True, slots=True)
+class EdicionVenta:
+    """Cabecera + líneas resueltas de una edición en el lugar (mantiene id/consecutivo/fecha)."""
+
+    cliente_id: int | None
+    metodo_pago: str
+    subtotal: Decimal
+    impuestos: Decimal
+    total: Decimal
+    lineas: list[LineaResuelta] = field(default_factory=list)
+
+
 class VentasRepo(Protocol):
     """Puerto de datos de ventas (lo implementa SqlVentasRepository; los tests lo falsean)."""
 
@@ -97,6 +109,8 @@ class VentasRepo(Protocol):
     async def obtener_cabecera(self, venta_id: int) -> VentaLeer | None: ...
     async def tiene_factura_viva(self, venta_id: int) -> bool: ...
     async def borrar_venta(self, venta_id: int) -> None: ...
+    async def revertir_lineas(self, venta_id: int) -> None: ...
+    async def aplicar_edicion(self, venta_id: int, edicion: EdicionVenta) -> VentaConLineas | None: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -150,24 +164,62 @@ class VentaService:
         venta = await self._repo.crear_venta(header)
         return ResultadoVenta(venta=venta, replay=False)
 
-    async def borrar_venta(self, venta_id: int, *, user_id: int, es_admin: bool) -> int:
-        """Borra una venta de HOY (Colombia) restaurando stock. Devuelve el `venta_id` borrado.
+    async def _guard_modificacion(
+        self, venta_id: int, *, user_id: int, es_admin: bool, accion: str
+    ) -> VentaLeer:
+        """Guards compartidos de borrar/editar una venta; devuelve la cabecera si todos pasan.
 
-        Guards (en orden): existe (VentaNoEncontrada/404) → es de hoy (VentaNoEsDeHoy/409) →
-        permiso, admin o vendedor dueño (BorradoNoAutorizado/403) → sin factura electrónica viva
-        (VentaConFacturaViva/409). Si pasa, delega el borrado físico transaccional al repositorio.
+        En orden: existe (VentaNoEncontrada/404) → es de HOY Colombia (VentaNoEsDeHoy/409) → permiso,
+        admin o vendedor dueño (OperacionNoAutorizada/403) → sin factura electrónica viva
+        (VentaConFacturaViva/409). `accion` ("borrar"/"editar") solo ajusta el mensaje del error.
         """
         venta = await self._repo.obtener_cabecera(venta_id)
         if venta is None:
             raise VentaNoEncontrada(venta_id)
         if not es_de_hoy_co(venta.fecha):
-            raise VentaNoEsDeHoy(venta_id)
+            raise VentaNoEsDeHoy(venta_id, accion=accion)
         if not (es_admin or venta.vendedor_id == user_id):
-            raise BorradoNoAutorizado(venta_id)
+            raise OperacionNoAutorizada(venta_id, accion=accion)
         if await self._repo.tiene_factura_viva(venta_id):
-            raise VentaConFacturaViva(venta_id)
+            raise VentaConFacturaViva(venta_id, accion=accion)
+        return venta
+
+    async def borrar_venta(self, venta_id: int, *, user_id: int, es_admin: bool) -> int:
+        """Borra una venta de HOY (Colombia) restaurando stock. Devuelve el `venta_id` borrado.
+
+        Aplica los guards comunes (404/409/403/409) y, si pasa, delega el borrado físico transaccional
+        (reversión de stock + movimientos) al repositorio.
+        """
+        await self._guard_modificacion(venta_id, user_id=user_id, es_admin=es_admin, accion="borrar")
         await self._repo.borrar_venta(venta_id)
         return venta_id
+
+    async def editar_venta(
+        self, venta_id: int, datos: VentaCrear, *, user_id: int, es_admin: bool,
+        control_stock_estricto: bool = False,
+    ) -> VentaConLineas:
+        """Edita una venta de HOY EN EL LUGAR: mantiene id, consecutivo y fecha original.
+
+        Mismos guards que el borrado (404/409/403/409, mensajes con verbo "editar"). Luego, en la misma
+        transacción: revierte el stock de las líneas viejas (reusa la reversión del borrado), resuelve
+        las líneas nuevas contra el stock YA restaurado (reusa `_resolver_linea`, respetando
+        `control_stock_estricto`), recalcula totales y aplica el detalle nuevo + sus SALIDA. Devuelve la
+        venta con sus líneas (`venta_editada` emitido por el repositorio).
+        """
+        await self._guard_modificacion(venta_id, user_id=user_id, es_admin=es_admin, accion="editar")
+        # Revertir ANTES de resolver: así `lock_inventario` ve el stock ya restaurado (el modo estricto
+        # cuenta como disponible lo que liberan las líneas viejas).
+        await self._repo.revertir_lineas(venta_id)
+        lineas = [await self._resolver_linea(ln, control_stock_estricto) for ln in datos.lineas]
+        subtotal, impuestos, total = calcular_totales(lineas)
+        edicion = EdicionVenta(
+            cliente_id=datos.cliente_id, metodo_pago=datos.metodo_pago,
+            subtotal=subtotal, impuestos=impuestos, total=total, lineas=lineas,
+        )
+        venta = await self._repo.aplicar_edicion(venta_id, edicion)
+        if venta is None:  # carrera improbable: la venta se borró entre el guard y el apply
+            raise VentaNoEncontrada(venta_id)
+        return venta
 
     async def _resolver_linea(self, ln, control_stock_estricto: bool) -> LineaResuelta:
         if ln.producto_id is None:

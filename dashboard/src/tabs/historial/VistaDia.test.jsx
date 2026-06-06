@@ -32,12 +32,14 @@ function sesion({ id = 5, rol = 'vendedor' } = {}) {
 
 function jsonResp(data) { return { ok: true, status: 200, json: async () => data } }
 
-function instalarFetch(ventas = VENTAS, { deleteStatus = 200 } = {}) {
+function instalarFetch(ventas = VENTAS, { deleteStatus = 200, putStatus = 200 } = {}) {
   const fetchMock = vi.fn((url, opts) => {
     const u = String(url)
     if (/\/ventas\/\d+$/.test(u) && opts?.method === 'DELETE')
       return Promise.resolve({ ok: deleteStatus < 400, status: deleteStatus, json: async () => ({}) })
-    if (/\/ventas\/\d+/.test(u)) return Promise.resolve(jsonResp(DETALLE))   // detalle
+    if (/\/ventas\/\d+$/.test(u) && opts?.method === 'PUT')
+      return Promise.resolve({ ok: putStatus < 400, status: putStatus, json: async () => DETALLE })
+    if (/\/ventas\/\d+/.test(u)) return Promise.resolve(jsonResp(DETALLE))   // detalle (GET)
     if (u.includes('/ventas')) return Promise.resolve(jsonResp(ventas))        // lista
     return Promise.resolve(jsonResp([]))
   })
@@ -126,6 +128,56 @@ describe('VistaDia — borrar venta', () => {
     fireEvent.click(screen.getByLabelText('Borrar venta N.º 10'))
     await waitFor(() => {
       expect(toast.error).toHaveBeenCalledWith('Tiene factura electrónica, no se puede borrar')
+    })
+  })
+})
+
+describe('VistaDia — editar venta', () => {
+  it('el control editar aparece solo para ventas de HOY propias (vieja/ajena sin botón)', async () => {
+    sesion({ id: 5, rol: 'vendedor' })
+    const ajena = { id: 3, consecutivo: 8, vendedor_id: 99, fecha: ahoraISO(), total: '70', metodo_pago: 'efectivo', estado: 'completada' }
+    instalarFetch([ventaHoy(), ventaVieja(), ajena])
+    render(<MemoryRouter><VistaDia /></MemoryRouter>)
+    await screen.findByText('N.º 10')
+
+    expect(screen.getByLabelText('Editar venta N.º 10')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Editar venta N.º 9')).toBeNull()
+    expect(screen.queryByLabelText('Editar venta N.º 8')).toBeNull()
+  })
+
+  it('editar abre el form prellenado y postea PUT con el shape correcto', async () => {
+    sesion({ id: 5, rol: 'vendedor' })
+    const fetchMock = instalarFetch([ventaHoy()])
+    render(<MemoryRouter><VistaDia /></MemoryRouter>)
+    await screen.findByText('N.º 10')
+
+    fireEvent.click(screen.getByLabelText('Editar venta N.º 10'))
+    // El form carga del GET /ventas/1 (DETALLE) → línea Martillo prellenada con cantidad 2.
+    const cantidad = await screen.findByLabelText('Cantidad línea 1')
+    expect(cantidad).toHaveValue(2)
+    fireEvent.change(cantidad, { target: { value: '5' } })
+    fireEvent.click(screen.getByText('Guardar cambios'))
+
+    await waitFor(() => {
+      const call = fetchMock.mock.calls.find(c => /\/ventas\/1$/.test(String(c[0])) && c[1]?.method === 'PUT')
+      expect(call).toBeTruthy()
+      expect(JSON.parse(call[1].body)).toMatchObject({
+        metodo_pago: 'efectivo',
+        lineas: [{ producto_id: 1, cantidad: 5, precio_unitario: 11900 }],
+      })
+    })
+  })
+
+  it('un 409 al editar muestra el mensaje de factura electrónica', async () => {
+    sesion({ id: 5, rol: 'vendedor' })
+    instalarFetch([ventaHoy()], { putStatus: 409 })
+    render(<MemoryRouter><VistaDia /></MemoryRouter>)
+    await screen.findByText('N.º 10')
+
+    fireEvent.click(screen.getByLabelText('Editar venta N.º 10'))
+    fireEvent.click(await screen.findByText('Guardar cambios'))
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith('Tiene factura electrónica, no se puede editar')
     })
   })
 })

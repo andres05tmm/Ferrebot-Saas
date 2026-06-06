@@ -6,8 +6,8 @@ import pytest
 
 from core.config.timezone import now_co
 from modules.ventas.errors import (
-    BorradoNoAutorizado,
     LineaInvalida,
+    OperacionNoAutorizada,
     ProductoNoEncontrado,
     StockInsuficiente,
     VentaConFacturaViva,
@@ -170,6 +170,7 @@ class FakeBorradoRepo:
         self._cabecera = cabecera
         self._factura_viva = factura_viva
         self.borrado = None
+        self.revertido = None
 
     async def obtener_cabecera(self, venta_id):
         return self._cabecera
@@ -179,6 +180,12 @@ class FakeBorradoRepo:
 
     async def borrar_venta(self, venta_id):
         self.borrado = venta_id
+
+    async def revertir_lineas(self, venta_id):
+        self.revertido = venta_id
+
+    async def aplicar_edicion(self, venta_id, edicion):  # no se alcanza en los tests de guard
+        raise AssertionError("aplicar_edicion no debería llamarse cuando un guard falla")
 
 
 def _cabecera(*, venta_id=1, vendedor_id=7, fecha=None):
@@ -214,7 +221,7 @@ async def test_borrar_de_dia_anterior_lanza_no_es_de_hoy():
 
 async def test_vendedor_no_puede_borrar_la_de_otro():
     repo = FakeBorradoRepo(cabecera=_cabecera(vendedor_id=7))   # dueño = 7
-    with pytest.raises(BorradoNoAutorizado):
+    with pytest.raises(OperacionNoAutorizada):
         await VentaService(repo).borrar_venta(1, user_id=8, es_admin=False)  # lo intenta el 8
     assert repo.borrado is None
 
@@ -230,6 +237,40 @@ async def test_factura_viva_bloquea_el_borrado():
     with pytest.raises(VentaConFacturaViva):
         await VentaService(repo).borrar_venta(1, user_id=7, es_admin=False)
     assert repo.borrado is None   # nunca se borró
+
+
+# --- Edición de venta: los guards (idénticos al borrado) cortan antes de tocar stock --------------
+def _datos_edicion():
+    return VentaCrear(metodo_pago="efectivo", lineas=[VentaDetalleCrear(producto_id=1, cantidad=Decimal("1"))])
+
+
+async def test_editar_inexistente_lanza_no_encontrada():
+    repo = FakeBorradoRepo(cabecera=None)
+    with pytest.raises(VentaNoEncontrada):
+        await VentaService(repo).editar_venta(99, _datos_edicion(), user_id=7, es_admin=True)
+    assert repo.revertido is None   # ni siquiera se intentó revertir
+
+
+async def test_editar_de_dia_anterior_lanza_no_es_de_hoy():
+    ayer = now_co() - timedelta(days=1)
+    repo = FakeBorradoRepo(cabecera=_cabecera(fecha=ayer, vendedor_id=7))
+    with pytest.raises(VentaNoEsDeHoy):
+        await VentaService(repo).editar_venta(1, _datos_edicion(), user_id=7, es_admin=True)
+    assert repo.revertido is None
+
+
+async def test_vendedor_no_puede_editar_la_de_otro():
+    repo = FakeBorradoRepo(cabecera=_cabecera(vendedor_id=7))
+    with pytest.raises(OperacionNoAutorizada):
+        await VentaService(repo).editar_venta(1, _datos_edicion(), user_id=8, es_admin=False)
+    assert repo.revertido is None
+
+
+async def test_factura_viva_bloquea_la_edicion():
+    repo = FakeBorradoRepo(cabecera=_cabecera(vendedor_id=7), factura_viva=True)
+    with pytest.raises(VentaConFacturaViva):
+        await VentaService(repo).editar_venta(1, _datos_edicion(), user_id=7, es_admin=False)
+    assert repo.revertido is None
 
 
 def test_calcular_totales_multilinea():

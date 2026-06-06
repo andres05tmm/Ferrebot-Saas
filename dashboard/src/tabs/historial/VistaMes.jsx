@@ -14,7 +14,7 @@ export default function VistaMes() {
   const hoy = hoyCO()
   const desde = `${hoy.slice(0, 8)}01`   // primer día del mes en curso
   const ventasQ = useFetch(`/ventas?desde=${desde}&hasta=${hoy}`, [])
-  useRealtimeEvent(['venta_registrada', 'venta_anulada', 'reconnected'], ventasQ.refetch)
+  useRealtimeEvent(['venta_registrada', 'venta_anulada', 'venta_editada', 'reconnected'], ventasQ.refetch)
 
   const { dias, total } = useMemo(() => {
     const acc = {}

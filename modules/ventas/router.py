@@ -15,8 +15,8 @@ from core.db.session import control_session, get_tenant_db
 from core.events.sse import tenant_event_stream
 from modules.ventas.config import cargar_control_stock_estricto
 from modules.ventas.errors import (
-    BorradoNoAutorizado,
     LineaInvalida,
+    OperacionNoAutorizada,
     ProductoNoEncontrado,
     StockInsuficiente,
     VentaConFacturaViva,
@@ -104,6 +104,38 @@ async def obtener_venta(
     return venta
 
 
+@router.put("/ventas/{venta_id}", response_model=VentaConLineas)
+async def editar_venta(
+    venta_id: int,
+    payload: VentaCrear,
+    session: AsyncSession = Depends(get_tenant_db),
+    user: Principal = Depends(get_current_user),
+    control_stock_estricto: bool = Depends(get_control_stock_estricto),
+) -> VentaConLineas:
+    """Edita una venta de HOY EN EL LUGAR (mismo id/consecutivo/fecha). Permiso: admin o el dueño.
+
+    404 si no existe; 409 si no es del día o tiene factura electrónica viva; 403 si un vendedor edita
+    la de otro; 404/422 si una línea nueva referencia un producto inexistente o es inválida. El servicio
+    revierte el stock viejo y aplica el nuevo en una transacción y emite `venta_editada`.
+    """
+    service = VentaService(SqlVentasRepository(session))
+    try:
+        return await service.editar_venta(
+            venta_id, payload, user_id=user.user_id,
+            es_admin=satisface(user.rol, "admin"), control_stock_estricto=control_stock_estricto,
+        )
+    except VentaNoEncontrada as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
+    except OperacionNoAutorizada as exc:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, str(exc)) from exc
+    except (VentaNoEsDeHoy, VentaConFacturaViva, StockInsuficiente) as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+    except ProductoNoEncontrado as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
+    except LineaInvalida as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
+
+
 @router.delete("/ventas/{venta_id}")
 async def borrar_venta(
     venta_id: int,
@@ -123,7 +155,7 @@ async def borrar_venta(
         )
     except VentaNoEncontrada as exc:
         raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
-    except BorradoNoAutorizado as exc:
+    except OperacionNoAutorizada as exc:
         raise HTTPException(status.HTTP_403_FORBIDDEN, str(exc)) from exc
     except (VentaNoEsDeHoy, VentaConFacturaViva) as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc

@@ -26,9 +26,11 @@ class StockInsuficiente(VentaError):
         self.solicitado = solicitado
 
 
-# --- Borrado de venta (DELETE /ventas/{id}) ------------------------------------------------------
+# --- Modificación de venta (borrar/editar) -------------------------------------------------------
+# Guards compartidos por DELETE y PUT /ventas/{id}; el verbo `accion` ("borrar"/"editar") solo cambia
+# el texto del mensaje (mismas reglas: solo HOY, sin factura viva, admin o vendedor dueño).
 class VentaNoEncontrada(VentaError):
-    """La venta a borrar no existe (→ 404)."""
+    """La venta no existe (→ 404)."""
 
     def __init__(self, venta_id: int) -> None:
         super().__init__(f"La venta {venta_id} no existe")
@@ -36,24 +38,24 @@ class VentaNoEncontrada(VentaError):
 
 
 class VentaNoEsDeHoy(VentaError):
-    """Solo se pueden borrar ventas del día en curso (hora Colombia) (→ 409)."""
+    """Solo se puede modificar una venta del día en curso (hora Colombia) (→ 409)."""
 
-    def __init__(self, venta_id: int) -> None:
-        super().__init__("Solo se pueden borrar ventas del día")
+    def __init__(self, venta_id: int, *, accion: str = "borrar") -> None:
+        super().__init__(f"Solo se pueden {accion} ventas del día")
         self.venta_id = venta_id
 
 
-class BorradoNoAutorizado(VentaError):
-    """Un vendedor intenta borrar una venta que no es suya (→ 403). El admin puede cualquiera."""
+class OperacionNoAutorizada(VentaError):
+    """Un vendedor intenta modificar una venta que no es suya (→ 403). El admin puede cualquiera."""
 
-    def __init__(self, venta_id: int) -> None:
-        super().__init__("No puedes borrar una venta de otro vendedor")
+    def __init__(self, venta_id: int, *, accion: str = "borrar") -> None:
+        super().__init__(f"No puedes {accion} una venta de otro vendedor")
         self.venta_id = venta_id
 
 
 class VentaConFacturaViva(VentaError):
-    """La venta tiene una factura electrónica viva (pendiente/aceptada); no se puede borrar (→ 409)."""
+    """La venta tiene una factura electrónica viva (pendiente/aceptada); no se puede modificar (→ 409)."""
 
-    def __init__(self, venta_id: int) -> None:
-        super().__init__("La venta tiene factura electrónica; no se puede borrar")
+    def __init__(self, venta_id: int, *, accion: str = "borrar") -> None:
+        super().__init__(f"La venta tiene factura electrónica; no se puede {accion}")
         self.venta_id = venta_id

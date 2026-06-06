@@ -18,7 +18,7 @@ from modules.inventario.models import Inventario, MovimientoInventario, Producto
 from modules.inventario.precios import FraccionPrecio
 from modules.ventas.models import Venta, VentaDetalle
 from modules.ventas.schemas import VentaConLineas, VentaDetalleLeer, VentaLeer
-from modules.ventas.service import ProductoPrecio, VentaHeader
+from modules.ventas.service import EdicionVenta, ProductoPrecio, VentaHeader
 
 # Estados de factura electrónica que BLOQUEAN el borrado de la venta (factura "viva").
 _ESTADOS_FACTURA_VIVA = ("pendiente", "aceptada")
@@ -97,6 +97,23 @@ class SqlVentasRepository:
             return
         consecutivo = venta.consecutivo  # capturar antes de borrar (el objeto queda expirado tras delete)
 
+        await self._revertir_stock_y_salidas(venta)
+        await self._s.delete(venta)
+        await self._s.flush()
+
+        await publish(self._s, "venta_anulada", {"venta_id": venta_id, "consecutivo": consecutivo})
+        await publish(self._s, "inventario_actualizado", {
+            "venta_id": venta_id, "accion": "venta_anulada",
+        })
+
+    async def _revertir_stock_y_salidas(self, venta: Venta) -> None:
+        """Reversión de las líneas de una venta: devuelve su stock y borra sus movimientos SALIDA.
+
+        Por cada línea de catálogo restaura el stock (`stock_actual += cantidad`, fila bloqueada con
+        FOR UPDATE) y borra los SALIDA de la venta (`referencia = venta:{id}`). NO toca la venta ni su
+        detalle: lo reusan tanto el borrado (que luego elimina la venta) como la edición (que reemplaza
+        las líneas). Neto cero respecto al stock previo a la venta (regla #7).
+        """
         for det in venta.detalles:
             if det.producto_id is None:
                 continue  # línea varia: no movió inventario
@@ -112,17 +129,78 @@ class SqlVentasRepository:
 
         await self._s.execute(
             delete(MovimientoInventario).where(
-                MovimientoInventario.referencia == f"venta:{venta_id}",
+                MovimientoInventario.referencia == f"venta:{venta.id}",
                 MovimientoInventario.tipo == "SALIDA",
             )
         )
-        await self._s.delete(venta)
+
+    async def revertir_lineas(self, venta_id: int) -> None:
+        """Revierte las líneas de una venta SIN borrarla (para la edición en el lugar).
+
+        Restaura el stock y borra los SALIDA de las líneas viejas (reusa `_revertir_stock_y_salidas`)
+        y vacía el detalle viejo (`detalles = []` → delete-orphan en el flush). La venta queda lista
+        para recibir el detalle nuevo en `aplicar_edicion`.
+        """
+        venta = (
+            await self._s.execute(
+                select(Venta).where(Venta.id == venta_id).options(selectinload(Venta.detalles))
+            )
+        ).scalar_one_or_none()
+        if venta is None:
+            return
+        await self._revertir_stock_y_salidas(venta)
+        venta.detalles = []
         await self._s.flush()
 
-        await publish(self._s, "venta_anulada", {"venta_id": venta_id, "consecutivo": consecutivo})
-        await publish(self._s, "inventario_actualizado", {
-            "venta_id": venta_id, "accion": "venta_anulada",
+    async def aplicar_edicion(self, venta_id: int, edicion: "EdicionVenta") -> VentaConLineas | None:
+        """Aplica las líneas nuevas a una venta YA revertida, EN EL LUGAR (mismo id/consecutivo/fecha).
+
+        Actualiza cabecera (cliente_id/metodo_pago + totales recalculados), inserta el detalle nuevo y
+        sus movimientos SALIDA (descuenta stock de las filas ya bloqueadas por `lock_inventario`; permite
+        negativo en modo permisivo). Emite `venta_editada` + `inventario_actualizado` y devuelve la venta
+        con sus líneas. Debe llamarse tras `revertir_lineas` (y tras resolver las líneas en el servicio).
+        """
+        venta = (
+            await self._s.execute(
+                select(Venta).where(Venta.id == venta_id).options(selectinload(Venta.detalles))
+            )
+        ).scalar_one_or_none()
+        if venta is None:
+            return None
+
+        venta.cliente_id = edicion.cliente_id
+        venta.metodo_pago = edicion.metodo_pago
+        venta.subtotal = edicion.subtotal
+        venta.impuestos = edicion.impuestos
+        venta.total = edicion.total
+        for ln in edicion.lineas:
+            venta.detalles.append(VentaDetalle(
+                producto_id=ln.producto_id, descripcion=ln.descripcion, cantidad=ln.cantidad,
+                precio_unitario=ln.precio_unitario, iva=ln.iva,
+            ))
+        await self._s.flush()
+
+        for ln in edicion.lineas:
+            if not ln.descontar_stock or ln.producto_id is None:
+                continue
+            inv = self._locked[ln.producto_id]
+            inv.stock_actual = inv.stock_actual - ln.cantidad
+            self._s.add(MovimientoInventario(
+                producto_id=ln.producto_id, tipo="SALIDA", cantidad=ln.cantidad,
+                costo_unitario=ln.costo_unitario, referencia=f"venta:{venta.id}",
+                usuario_id=venta.vendedor_id,
+            ))
+        await self._s.flush()
+
+        await publish(self._s, "venta_editada", {
+            "venta_id": venta.id, "consecutivo": venta.consecutivo, "total": str(venta.total),
         })
+        await publish(self._s, "inventario_actualizado", {
+            "venta_id": venta.id, "accion": "venta_editada",
+        })
+        cabecera = VentaLeer.model_validate(venta)
+        lineas = [VentaDetalleLeer.model_validate(d) for d in venta.detalles]
+        return VentaConLineas(**cabecera.model_dump(), lineas=lineas)
 
     async def obtener(self, venta_id: int) -> VentaConLineas | None:
         """Detalle de una venta con sus líneas (carga `detalles` con selectin, no lazy)."""

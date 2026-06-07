@@ -1,13 +1,15 @@
 """Guardarraíl de paridad del esquema tenant: red de seguridad antes del ETL de Punto Rojo.
 
-Falla si el esquema migrado a head (0001→0006) se desvía del set esperado de tablas. La lista
+Falla si el esquema migrado a head se desvía del set esperado de tablas. La lista
 ESPERADA está hardcodeada a propósito: agregar o quitar una tabla sin actualizar este test rompe la
 prueba, forzando la revisión. Tras la 0005, `config_empresa` ya NO existe en la app DB.
 """
 from sqlalchemy import inspect
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-# 34 tablas de negocio del esquema tenant en head (sin 'alembic_version').
+# 41 tablas de negocio del esquema tenant en head (sin 'alembic_version').
+# Incluye el pack Agenda/Citas (0008): agenda_config, bloqueos, citas, disponibilidad,
+# recurso_servicio, recursos, servicios.
 _TABLAS_ESPERADAS: frozenset[str] = frozenset({
     "aliases", "api_costo_diario", "audio_logs", "bancolombia_transferencias", "caja",
     "caja_movimientos", "clientes", "compras", "compras_detalle", "compras_fiscal",
@@ -16,6 +18,8 @@ _TABLAS_ESPERADAS: frozenset[str] = frozenset({
     "historico_ventas", "inventario", "iva_saldos_bimestrales", "libro_iva", "memoria_entidades",
     "movimientos_inventario", "notas_electronicas", "productos", "productos_fracciones",
     "proveedores", "usuarios", "ventas", "ventas_detalle", "ventas_pendientes_voz",
+    "agenda_config", "bloqueos", "citas", "disponibilidad", "recurso_servicio", "recursos",
+    "servicios",
 })
 
 

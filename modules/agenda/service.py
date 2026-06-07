@@ -15,7 +15,7 @@ from datetime import date, datetime, timedelta
 
 from sqlalchemy.exc import IntegrityError
 
-from core.config.timezone import COLOMBIA_TZ, now_co, to_co, today_co
+from core.config.timezone import COLOMBIA_TZ, now_co, rango_dia_co, to_co, today_co
 from modules.agenda.errors import (
     CitaInexistente,
     CitaNoModificable,
@@ -26,9 +26,16 @@ from modules.agenda.errors import (
     ReagendarNoPermitido,
     ServicioInexistente,
 )
-from modules.agenda.models import Cita, Servicio
+from modules.agenda.models import AgendaConfig, Bloqueo, Cita, Disponibilidad, Recurso, Servicio
 from modules.agenda.repository import AgendaRepo
-from modules.agenda.schemas import CitaCrear
+from modules.agenda.schemas import (
+    AgendaConfigCrear,
+    BloqueoCrear,
+    CitaCrear,
+    DisponibilidadCrear,
+    RecursoCrear,
+    ServicioCrear,
+)
 from modules.agenda.slots import (
     HorarioSemanal,
     Intervalo,
@@ -114,9 +121,9 @@ class AgendaService:
         slots.sort(key=lambda s: (s.inicio, s.recurso_id))
         return slots
 
-    async def listar_servicios(self) -> list[Servicio]:
-        """Servicios activos del negocio (para que el agente los ofrezca)."""
-        return await self._repo.listar_servicios(solo_activos=True)
+    async def listar_servicios(self, *, solo_activos: bool = True) -> list[Servicio]:
+        """Servicios del negocio. Por defecto solo activos (el agente solo ofrece activos)."""
+        return await self._repo.listar_servicios(solo_activos=solo_activos)
 
     async def proximas_citas(self, telefono: str) -> list[Cita]:
         """Citas vigentes (pendiente/confirmada) aún no pasadas del cliente, ordenadas por fecha.
@@ -219,6 +226,139 @@ class AgendaService:
         config = await self._cargar_config()
         self._exigir_politica(cita.inicio, config.politica_cancelacion_horas)
         return await self._repo.cambiar_estado_cita(cita, "cancelada")
+
+    # --- dashboard: catálogo (servicios / recursos / N:N) --------------------
+    async def crear_servicio(self, datos: ServicioCrear) -> Servicio:
+        return await self._repo.crear_servicio(datos)
+
+    async def obtener_servicio(self, servicio_id: int) -> Servicio:
+        servicio = await self._repo.servicio_por_id(servicio_id)
+        if servicio is None:
+            raise ServicioInexistente(servicio_id)
+        return servicio
+
+    async def actualizar_servicio(self, servicio_id: int, datos: ServicioCrear) -> Servicio:
+        servicio = await self.obtener_servicio(servicio_id)
+        return await self._repo.actualizar_servicio(servicio, datos)
+
+    async def desactivar_servicio(self, servicio_id: int) -> Servicio:
+        servicio = await self.obtener_servicio(servicio_id)
+        return await self._repo.desactivar_servicio(servicio)
+
+    async def listar_recursos(self, *, solo_activos: bool = True) -> list[Recurso]:
+        return await self._repo.listar_recursos(solo_activos=solo_activos)
+
+    async def crear_recurso(self, datos: RecursoCrear) -> Recurso:
+        return await self._repo.crear_recurso(datos)
+
+    async def obtener_recurso(self, recurso_id: int) -> Recurso:
+        recurso = await self._repo.recurso_por_id(recurso_id)
+        if recurso is None:
+            raise RecursoInexistente(recurso_id)
+        return recurso
+
+    async def actualizar_recurso(self, recurso_id: int, datos: RecursoCrear) -> Recurso:
+        recurso = await self.obtener_recurso(recurso_id)
+        return await self._repo.actualizar_recurso(recurso, datos)
+
+    async def desactivar_recurso(self, recurso_id: int) -> Recurso:
+        recurso = await self.obtener_recurso(recurso_id)
+        return await self._repo.desactivar_recurso(recurso)
+
+    async def asignar_recurso_servicio(self, *, recurso_id: int, servicio_id: int) -> None:
+        """Vincula recurso↔servicio (valida que ambos existan)."""
+        await self.obtener_servicio(servicio_id)
+        await self.obtener_recurso(recurso_id)
+        await self._repo.asignar_servicio(recurso_id=recurso_id, servicio_id=servicio_id)
+
+    async def desasignar_recurso_servicio(self, *, recurso_id: int, servicio_id: int) -> None:
+        await self._repo.desasignar_servicio(recurso_id=recurso_id, servicio_id=servicio_id)
+
+    async def recursos_de_servicio(self, servicio_id: int) -> list[Recurso]:
+        await self.obtener_servicio(servicio_id)
+        return await self._repo.recursos_de_servicio(servicio_id, solo_activos=False)
+
+    # --- dashboard: disponibilidad / bloqueos --------------------------------
+    async def listar_disponibilidad(self, recurso_id: int) -> list[Disponibilidad]:
+        await self.obtener_recurso(recurso_id)
+        return await self._repo.disponibilidad_de(recurso_id)
+
+    async def crear_disponibilidad(self, datos: DisponibilidadCrear) -> Disponibilidad:
+        await self.obtener_recurso(datos.recurso_id)
+        return await self._repo.crear_disponibilidad(datos)
+
+    async def eliminar_disponibilidad(self, disponibilidad_id: int) -> bool:
+        return await self._repo.eliminar_disponibilidad(disponibilidad_id)
+
+    async def listar_bloqueos(
+        self, *, desde: date | None = None, hasta: date | None = None
+    ) -> list[Bloqueo]:
+        inicio, fin = rango_dia_co(desde, hasta) if (desde or hasta) else (None, None)
+        return await self._repo.listar_bloqueos(desde=inicio, hasta=fin)
+
+    async def crear_bloqueo(self, datos: BloqueoCrear) -> Bloqueo:
+        if datos.recurso_id is not None:
+            await self.obtener_recurso(datos.recurso_id)
+        return await self._repo.crear_bloqueo(datos)
+
+    async def eliminar_bloqueo(self, bloqueo_id: int) -> bool:
+        return await self._repo.eliminar_bloqueo(bloqueo_id)
+
+    # --- dashboard: agenda_config (fila única) -------------------------------
+    async def obtener_config(self) -> AgendaConfig | None:
+        return await self._repo.obtener_config()
+
+    async def guardar_config(self, datos: AgendaConfigCrear) -> AgendaConfig:
+        return await self._repo.guardar_config(datos)
+
+    # --- dashboard: citas (lectura + acciones del negocio) -------------------
+    async def listar_citas(
+        self,
+        *,
+        desde: date | None = None,
+        hasta: date | None = None,
+        estado: str | None = None,
+        recurso_id: int | None = None,
+    ) -> list[Cita]:
+        """Citas del rango (hora Colombia), con filtros opcionales. Default: hoy → +30 días."""
+        hoy = today_co()
+        inicio, fin = rango_dia_co(desde or hoy, hasta or (hoy + timedelta(days=30)))
+        return await self._repo.listar_citas(
+            inicio=inicio, fin=fin, estado=estado, recurso_id=recurso_id
+        )
+
+    async def obtener_cita(self, cita_id: int) -> Cita:
+        cita = await self._repo.cita_por_id(cita_id)
+        if cita is None:
+            raise CitaInexistente(cita_id)
+        return cita
+
+    async def confirmar(self, cita_id: int) -> Cita:
+        """Confirma una cita pendiente (modo manual). Idempotente si ya está confirmada."""
+        cita = await self._cita_modificable(cita_id, None)
+        if cita.estado != "pendiente":
+            return cita
+        return await self._repo.cambiar_estado_cita(cita, "confirmada")
+
+    async def cancelar_negocio(self, cita_id: int) -> Cita:
+        """Cancela una cita desde el dashboard. El negocio NO está sujeto a la política de cancelación."""
+        cita = await self._cita_modificable(cita_id, None)
+        return await self._repo.cambiar_estado_cita(cita, "cancelada")
+
+    async def reagendar_negocio(self, cita_id: int, nuevo_inicio: datetime) -> Cita:
+        """Reagenda desde el dashboard: revalida el cupo (con lock) pero sin política ni teléfono."""
+        nuevo_inicio = self._a_colombia(nuevo_inicio)
+        cita = await self._cita_modificable(cita_id, None)
+        servicio = await self._servicio_activo(cita.servicio_id)
+        config = await self._cargar_config()
+        await self._repo.lock_recurso(cita.recurso_id)
+        if not await self._cupo_libre(
+            servicio, cita.recurso_id, nuevo_inicio, config, excluir_cita_id=cita.id
+        ):
+            alternativas = await self._alternativas(cita.servicio_id, cita.recurso_id, nuevo_inicio)
+            raise CupoNoDisponible(nuevo_inicio, alternativas)
+        fin = nuevo_inicio + timedelta(minutes=servicio.duracion_min)
+        return await self._repo.reprogramar_cita(cita, inicio=nuevo_inicio, fin=fin)
 
     # --- helpers de I/O ------------------------------------------------------
     async def _servicio_activo(self, servicio_id: int) -> Servicio:

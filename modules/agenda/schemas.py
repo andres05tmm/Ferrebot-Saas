@@ -181,3 +181,28 @@ class CitaLeer(BaseModel):
     notas: str | None
     idempotency_key: str | None
     creada_en: datetime
+
+
+# --- dashboard (acciones del negocio) ----------------------------------------
+class CitaManualCrear(BaseModel):
+    """Alta de cita desde el dashboard (origen=dashboard). El motor computa `fin` y valida el cupo."""
+
+    servicio_id: int
+    recurso_id: int
+    inicio: datetime
+    cliente_nombre: str = Field(min_length=1)
+    cliente_telefono: str = Field(min_length=1)
+    notas: str | None = None
+
+
+class ReagendarPayload(BaseModel):
+    """Nuevo inicio para reagendar una cita (el motor recalcula `fin` y revalida el cupo)."""
+
+    nuevo_inicio: datetime
+
+
+class SlotLeer(BaseModel):
+    """Un cupo libre ofrecible por el motor: inicio (hora Colombia) + recurso que lo prestaría."""
+
+    inicio: datetime
+    recurso_id: int

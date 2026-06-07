@@ -21,6 +21,7 @@ from apps.wa.webhook import crear_router_wa
 from apps.wa.wiring import construir_wa_deps
 from core.observability import init_sentry
 from core.tenancy.middleware import TenantMiddleware
+from modules.agenda.router import router as agenda_router
 from modules.auth.router import router as auth_router
 from modules.caja.router import gastos_router, router as caja_router
 from modules.clientes.router import router as clientes_router
@@ -133,6 +134,7 @@ def create_app(spa_dist: Path | None = None) -> FastAPI:
     app.include_router(proveedores_router, prefix="/api/v1")
     app.include_router(reportes_router, prefix="/api/v1")
     app.include_router(config_router, prefix="/api/v1")
+    app.include_router(agenda_router, prefix="/api/v1")
     # Webhook único de WhatsApp (Kapso): NO va bajo /api/ (no es por-empresa; resuelve el tenant por
     # phone_number_id). El TenantMiddleware lo deja pasar (solo /api/ es por-empresa).
     app.include_router(crear_router_wa())

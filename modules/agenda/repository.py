@@ -80,6 +80,22 @@ class AgendaRepo(Protocol):
     async def reprogramar_cita(self, cita: Cita, *, inicio: datetime, fin: datetime) -> Cita: ...
     async def cambiar_estado_cita(self, cita: Cita, estado: str) -> Cita: ...
 
+    # --- CRUD del dashboard ---
+    async def actualizar_servicio(self, servicio: Servicio, datos: ServicioCrear) -> Servicio: ...
+    async def actualizar_recurso(self, recurso: Recurso, datos: RecursoCrear) -> Recurso: ...
+    async def desactivar_servicio(self, servicio: Servicio) -> Servicio: ...
+    async def desactivar_recurso(self, recurso: Recurso) -> Recurso: ...
+    async def desasignar_servicio(self, *, recurso_id: int, servicio_id: int) -> None: ...
+    async def eliminar_disponibilidad(self, disponibilidad_id: int) -> bool: ...
+    async def listar_bloqueos(
+        self, *, desde: datetime | None = None, hasta: datetime | None = None
+    ) -> list[Bloqueo]: ...
+    async def eliminar_bloqueo(self, bloqueo_id: int) -> bool: ...
+    async def listar_citas(
+        self, *, inicio: datetime, fin: datetime, estado: str | None = None,
+        recurso_id: int | None = None,
+    ) -> list[Cita]: ...
+
 
 class SqlAgendaRepository:
     """Implementación SQL del puerto sobre la sesión del tenant (regla de multitenancy #2)."""
@@ -318,3 +334,75 @@ class SqlAgendaRepository:
         await self._s.flush()
         await publish(self._s, "cita_estado", {"cita_id": cita.id, "estado": estado})
         return cita
+
+    # --- CRUD del dashboard (catálogo/config) --------------------------------
+    async def actualizar_servicio(self, servicio: Servicio, datos: ServicioCrear) -> Servicio:
+        for campo, valor in datos.model_dump().items():
+            setattr(servicio, campo, valor)
+        await self._s.flush()
+        return servicio
+
+    async def actualizar_recurso(self, recurso: Recurso, datos: RecursoCrear) -> Recurso:
+        for campo, valor in datos.model_dump().items():
+            setattr(recurso, campo, valor)
+        await self._s.flush()
+        return recurso
+
+    async def desactivar_servicio(self, servicio: Servicio) -> Servicio:
+        """Soft-delete: `activo=False` (no se borra; las citas lo siguen referenciando)."""
+        servicio.activo = False
+        await self._s.flush()
+        return servicio
+
+    async def desactivar_recurso(self, recurso: Recurso) -> Recurso:
+        recurso.activo = False
+        await self._s.flush()
+        return recurso
+
+    async def desasignar_servicio(self, *, recurso_id: int, servicio_id: int) -> None:
+        await self._s.execute(
+            text("DELETE FROM recurso_servicio WHERE recurso_id = :r AND servicio_id = :s"),
+            {"r": recurso_id, "s": servicio_id},
+        )
+
+    async def eliminar_disponibilidad(self, disponibilidad_id: int) -> bool:
+        fila = await self._s.get(Disponibilidad, disponibilidad_id)
+        if fila is None:
+            return False
+        await self._s.delete(fila)
+        await self._s.flush()
+        return True
+
+    async def listar_bloqueos(
+        self, *, desde: datetime | None = None, hasta: datetime | None = None
+    ) -> list[Bloqueo]:
+        stmt = select(Bloqueo).order_by(Bloqueo.inicio)
+        if hasta is not None:
+            stmt = stmt.where(Bloqueo.inicio < hasta)
+        if desde is not None:
+            stmt = stmt.where(Bloqueo.fin > desde)
+        return list((await self._s.execute(stmt)).scalars().all())
+
+    async def eliminar_bloqueo(self, bloqueo_id: int) -> bool:
+        fila = await self._s.get(Bloqueo, bloqueo_id)
+        if fila is None:
+            return False
+        await self._s.delete(fila)
+        await self._s.flush()
+        return True
+
+    async def listar_citas(
+        self,
+        *,
+        inicio: datetime,
+        fin: datetime,
+        estado: str | None = None,
+        recurso_id: int | None = None,
+    ) -> list[Cita]:
+        """Citas cuyo `inicio` cae en [inicio, fin], con filtros opcionales de estado y recurso."""
+        stmt = select(Cita).where(Cita.inicio >= inicio, Cita.inicio <= fin).order_by(Cita.inicio)
+        if estado is not None:
+            stmt = stmt.where(Cita.estado == estado)
+        if recurso_id is not None:
+            stmt = stmt.where(Cita.recurso_id == recurso_id)
+        return list((await self._s.execute(stmt)).scalars().all())

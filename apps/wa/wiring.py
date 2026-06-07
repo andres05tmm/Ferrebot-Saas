@@ -22,8 +22,8 @@ log = get_logger("wa.wiring")
 
 _TTL_DEDUP = 86_400  # 24h: cubre de sobra los reintentos del webhook de Kapso
 
-# Nombre del job ARQ del eco (registrado en apps.worker.main).
-JOB_ECO = "responder_eco_wa"
+# Nombre del job ARQ del agente (registrado en apps.worker.main): el webhook encola, el worker atiende.
+JOB_AGENTE = "atender_mensaje_wa"
 
 
 class ControlWaResolver:
@@ -47,11 +47,12 @@ class RedisWaDedup:
         return bool(marcado)
 
 
-class ProcesadorEco:
-    """Procesa el mensaje encolando un eco en ARQ (no envía en el hilo del webhook).
+class ProcesadorAgente:
+    """Procesa el mensaje encolando el turno del agente en ARQ (no corre el LLM en el hilo del webhook).
 
-    Usa `ctx.cliente_telefono` (la identidad que vino del payload) y el `phone_number_id` del mensaje:
-    así el destino del eco sale del mismo Contexto del pack, nunca de otra fuente.
+    Mantiene el webhook rápido (200 inmediato); el worker resuelve el tenant por id y atiende. Pasa el
+    `cliente_telefono` DEL CONTEXTO (vino del payload) y el `phone_number_id` del mensaje — la identidad
+    del cliente nunca sale de otra fuente.
     """
 
     def __init__(self, encolar) -> None:
@@ -59,7 +60,8 @@ class ProcesadorEco:
 
     async def __call__(self, mensaje: MensajeWa, ctx: Contexto) -> None:
         await self._encolar(
-            JOB_ECO, ctx.tenant_id, mensaje.phone_number_id, ctx.cliente_telefono, mensaje.texto
+            JOB_AGENTE, ctx.tenant_id, mensaje.phone_number_id, ctx.cliente_telefono,
+            mensaje.texto, mensaje.message_id,
         )
 
 
@@ -70,7 +72,7 @@ def construir_wa_deps(arq_pool: Any) -> WaDeps:
         webhook_secret=s.kapso_webhook_secret or None,
         resolver=ControlWaResolver(),
         dedup=RedisWaDedup(url=s.redis_url),
-        procesar=ProcesadorEco(encolar=arq_pool.enqueue_job),
+        procesar=ProcesadorAgente(encolar=arq_pool.enqueue_job),
     )
 
 

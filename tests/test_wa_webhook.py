@@ -16,7 +16,7 @@ from httpx import ASGITransport
 from apps.wa.kapso import MensajeWa
 from apps.wa.ports import AccionWa, WaDeps
 from apps.wa.webhook import crear_router_wa, manejar_mensaje
-from apps.wa.wiring import JOB_ECO, ProcesadorEco
+from apps.wa.wiring import JOB_AGENTE, ProcesadorAgente
 from ai.envelope import Contexto
 from core.tenancy.context import ResolvedTenant
 
@@ -168,17 +168,17 @@ async def test_procesado_construye_contexto_con_telefono_del_payload():
     assert mensaje.texto == "Hola"
 
 
-# --- procesador de eco (encola con el teléfono del Contexto) ----------------
-async def test_procesador_eco_encola_el_envio():
+# --- procesador del agente (encola con el teléfono del Contexto) ------------
+async def test_procesador_agente_encola_el_turno():
     encolados = []
     async def fake_encolar(*args):
         encolados.append(args)
-    proc = ProcesadorEco(encolar=fake_encolar)
+    proc = ProcesadorAgente(encolar=fake_encolar)
     mensaje = MensajeWa(message_id="w1", telefono=TEL, phone_number_id=PNID, texto="hola")
     ctx = Contexto(tenant_id=7, usuario_id=0, rol="cliente", origen="whatsapp", cliente_telefono=TEL)
     await proc(mensaje, ctx)
-    # Encola el job con (tenant_id, phone_number_id, cliente_telefono del ctx, texto).
-    assert encolados == [(JOB_ECO, 7, PNID, TEL, "hola")]
+    # Encola el job con (tenant_id, phone_number_id, cliente_telefono del ctx, texto, message_id).
+    assert encolados == [(JOB_AGENTE, 7, PNID, TEL, "hola", "w1")]
 
 
 # --- ruta FastAPI -----------------------------------------------------------
@@ -213,18 +213,33 @@ async def test_ruta_webhook_rechaza_firma_invalida():
     assert r.status_code == 403
 
 
-# --- job de eco -------------------------------------------------------------
-class _FakeSender:
-    def __init__(self): self.envios = []
-    async def enviar_texto(self, *, phone_number_id, to, texto):
-        self.envios.append((phone_number_id, to, texto))
-        return {"messages": [{"id": "wamid.out"}]}
+# --- job del agente (resuelve tenant + delega en el AgenteWa) ---------------
+async def test_job_atiende_via_agente():
+    from apps.worker.jobs import atender_mensaje_wa
+
+    atendidos = []
+    tenant = _tenant(id=7)
+
+    class _FakeAgente:
+        async def atender(self, mensaje, tnt):
+            atendidos.append((mensaje, tnt))
+
+    async def _resolver(tid):
+        return tenant if tid == 7 else None
+
+    ctx = {"resolver_tenant": _resolver, "wa_agente": _FakeAgente()}
+    res = await atender_mensaje_wa(ctx, 7, PNID, TEL, "quiero una cita", "wamid.1")
+    assert res == "atendido"
+    mensaje, tnt = atendidos[0]
+    assert tnt.id == 7
+    assert mensaje.telefono == TEL and mensaje.texto == "quiero una cita"
 
 
-async def test_job_eco_responde_recibi():
-    from apps.worker.jobs import responder_eco_wa
+async def test_job_sin_tenant_no_atiende():
+    from apps.worker.jobs import atender_mensaje_wa
 
-    sender = _FakeSender()
-    res = await responder_eco_wa({"wa_sender": sender}, 7, PNID, TEL, "quiero una cita")
-    assert res == "enviado"
-    assert sender.envios == [(PNID, TEL, "recibí: quiero una cita")]
+    async def _resolver(tid):
+        return None  # tenant_id ya no mapea
+
+    res = await atender_mensaje_wa({"resolver_tenant": _resolver, "wa_agente": None}, 9, PNID, TEL, "hola", "w1")
+    assert res == "sin_tenant"

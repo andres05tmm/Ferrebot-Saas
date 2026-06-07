@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from arq import Retry
 
+from apps.wa.kapso import MensajeWa
 from core.logging import get_logger
 
 log = get_logger("worker.facturacion")
@@ -20,19 +21,23 @@ def _backoff(job_try: int, *, base: int = 30, tope: int = 3600) -> int:
     return min(base * 2 ** (job_try - 1), tope)
 
 
-async def responder_eco_wa(
-    ctx: dict, tenant_id: int, phone_number_id: str, telefono: str, texto: str
+async def atender_mensaje_wa(
+    ctx: dict, tenant_id: int, phone_number_id: str, telefono: str, texto: str, message_id: str
 ) -> str:
-    """Eco de prueba del canal WhatsApp: responde "recibí: <texto>" vía Kapso. SIN IA todavía.
+    """Atiende un mensaje de WhatsApp con el agente de agenda (encolado por el webhook).
 
-    El sender de Kapso lo inyecta `on_startup` en `ctx["wa_sender"]` (credencial de plataforma).
-    Round-trip de plomería end-to-end: confirma webhook → cola → envío. El bucle del agente lo
-    reemplazará en el siguiente entregable.
+    Seams inyectados por `on_startup`: `ctx["resolver_tenant"]` (tenant_id → ResolvedTenant) y
+    `ctx["wa_agente"]` (el `AgenteWa` que corre el bucle LLM + herramientas y responde por Kapso).
     """
-    sender = ctx["wa_sender"]
-    await sender.enviar_texto(phone_number_id=phone_number_id, to=telefono, texto=f"recibí: {texto}")
-    log.info("wa_eco_enviado", tenant_id=tenant_id)
-    return "enviado"
+    tenant = await ctx["resolver_tenant"](tenant_id)
+    if tenant is None:
+        log.warning("wa_job_sin_tenant", tenant_id=tenant_id)
+        return "sin_tenant"
+    mensaje = MensajeWa(
+        message_id=message_id, telefono=telefono, phone_number_id=phone_number_id, texto=texto
+    )
+    await ctx["wa_agente"].atender(mensaje, tenant)
+    return "atendido"
 
 
 async def emitir_documento(ctx: dict, tenant_id: int, factura_id: int) -> str:

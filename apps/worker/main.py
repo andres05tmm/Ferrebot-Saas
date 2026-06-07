@@ -12,11 +12,16 @@ from collections.abc import Callable
 
 from arq.connections import RedisSettings
 
+from apps.wa.agent import AgenteWa, MemoriaWa
 from apps.wa.kapso import KapsoSender
-from apps.worker.jobs import emitir_documento, responder_eco_wa
+from apps.worker.jobs import atender_mensaje_wa, emitir_documento
 from core.config import get_settings
 from core.db.session import control_session, tenant_session
+from core.llm.factory import PlataformaLLM, Turno, get_llm
+from core.llm.stores import ControlLLMConfigStore, ControlLLMKeyStore
 from core.observability import init_sentry
+from core.tenancy.capacidades import ControlCapacidades
+from core.tenancy.context import ResolvedTenant
 from core.tenancy.control_repo import resolve_tenant_by_id
 from modules.facturacion.config import cargar_config_matias
 from modules.facturacion.matias_client import MatiasClient, MatiasCredenciales
@@ -73,8 +78,51 @@ class _ServicioEmision:
         return decision
 
 
+class _ConfigControl:
+    """ConfigStore del factory LLM: abre una sesión de control fresca por llamada."""
+
+    async def overrides(self, empresa_id: int) -> dict[str, str]:
+        async with control_session() as s:
+            return await ControlLLMConfigStore(s).overrides(empresa_id)
+
+
+class _KeyControl:
+    """KeyStore del factory LLM: descifra la key del proveedor en una sesión de control por llamada."""
+
+    def __init__(self, master: str) -> None:
+        self._master = master
+
+    async def api_key(self, empresa_id: int, provider: str) -> str | None:
+        async with control_session() as s:
+            return await ControlLLMKeyStore(s, self._master).api_key(empresa_id, provider)
+
+
+def _construir_agente(settings) -> AgenteWa:
+    """Arma el `AgenteWa` con sus colaboradores reales (control DB, LLM por empresa, Redis, Kapso)."""
+    plataforma = PlataformaLLM.desde_settings(settings)
+    config_store, key_store = _ConfigControl(), _KeyControl(settings.secrets_master_key)
+
+    async def resolver_llm(tenant_id: int, turno: Turno):
+        return await get_llm(
+            tenant_id, turno=turno, config_store=config_store, key_store=key_store,
+            plataforma=plataforma,
+        )
+
+    async def capacidades(tenant_id: int) -> frozenset[str]:
+        async with control_session() as s:
+            return await ControlCapacidades(s).efectivas(tenant_id)
+
+    return AgenteWa(
+        abrir_tenant=tenant_session,
+        resolver_llm=resolver_llm,
+        capacidades=capacidades,
+        memoria=MemoriaWa(url=settings.redis_url),
+        sender=KapsoSender(settings.kapso_api_key, base_url=settings.kapso_api_base),
+    )
+
+
 async def on_startup(ctx: dict) -> None:
-    """Inyecta `ctx['crear_servicio']`: dado tenant_id, devuelve el adaptador de emisión por empresa.
+    """Inyecta los seams de los jobs: emisión DIAN por empresa y el agente de WhatsApp.
 
     La `_MatiasClientCache` vive en esta closure (una por runtime), por lo que se comparte entre todos
     los jobs y persiste el cliente —con su token y ciudades— entre emisiones.
@@ -87,15 +135,20 @@ async def on_startup(ctx: dict) -> None:
     async def crear_servicio(tenant_id: int) -> _ServicioEmision:
         return _ServicioEmision(tenant_id, master, cache)
 
+    async def resolver_tenant(tenant_id: int) -> ResolvedTenant | None:
+        async with control_session() as s:
+            return await resolve_tenant_by_id(s, tenant_id)
+
     ctx["crear_servicio"] = crear_servicio
-    # Sender de Kapso para el eco del canal WhatsApp (credencial de plataforma, perezoso).
-    ctx["wa_sender"] = KapsoSender(settings.kapso_api_key, base_url=settings.kapso_api_base)
+    # Canal WhatsApp: resolución de tenant por id + el agente de agenda (bucle LLM + herramientas).
+    ctx["resolver_tenant"] = resolver_tenant
+    ctx["wa_agente"] = _construir_agente(settings)
 
 
 class WorkerSettings:
     """Configuración del worker ARQ (functions, Redis, reintentos)."""
 
-    functions = [emitir_documento, responder_eco_wa]
+    functions = [emitir_documento, atender_mensaje_wa]
     redis_settings = RedisSettings.from_dsn(get_settings().redis_url)
     max_tries = MAX_INTENTOS + 1
     on_startup = on_startup

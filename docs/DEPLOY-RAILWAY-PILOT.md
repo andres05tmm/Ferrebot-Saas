@@ -174,10 +174,9 @@ tenants es un no-op, así que es seguro desde el primer deploy.
 > **Config-as-code (en el repo):** `railway.api.toml` ya trae este `preDeployCommand` + el healthcheck
 > `/health`; `railway.toml` (base) es para el **Worker** (sin pre-deploy, sin health HTTP). Asigna a
 > cada servicio su archivo en *Settings → Config-as-Code → Config Path* (API → `railway.api.toml`,
-> Worker → `railway.toml`) para que las migraciones corran en **un solo** servicio. Lee el `⚠️ CAVEAT
-> del ENTRYPOINT` en `railway.api.toml` (Riesgo #1 de §10): si Railway pasara el comando como argumentos
-> al ENTRYPOINT, se ignoraría — verifica los logs del pre-deploy o corre las migraciones por la UI /
-> `railway ssh`.
+> Worker → `railway.toml`) para que las migraciones corran en **un solo** servicio. `docker-entrypoint.sh`
+> tiene un *passthrough* (`[ "$#" -gt 0 ] && exec "$@"`), así que el `preDeployCommand` se ejecuta tal
+> cual (no lo traga el ENTRYPOINT); el arranque normal corre sin args y sigue por `SERVICE_TYPE`.
 
 ---
 

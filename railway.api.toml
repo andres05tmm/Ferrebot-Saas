@@ -12,13 +12,10 @@
 # runner aplica `upgrade head` a cada app DB; con 0 tenants es no-op, así que es seguro desde el 1er
 # deploy. Re-ejecutar no daña (alembic queda en head; el runner es idempotente).
 #
-# ⚠️ CAVEAT del ENTRYPOINT (ver "Riesgos" en docs/DEPLOY-RAILWAY-PILOT.md): docker-entrypoint.sh
-# ramifica por SERVICE_TYPE e IGNORA los argumentos. Railway corre `preDeployCommand` en un contenedor
-# one-off de la misma imagen: si tu proyecto lo ejecuta COMO el comando del contenedor (bypassando el
-# ENTRYPOINT), esto funciona tal cual. Si Railway lo pasara como ARGUMENTOS al ENTRYPOINT, el script lo
-# ignoraría (arrancaría uvicorn en vez de migrar) → en ese caso corre las migraciones por la UI
-# (Settings → Deploy → "Pre-deploy Command" con el MISMO string) o vía `railway ssh` (runbook §5).
-# Verifícalo en un deploy de prueba mirando los logs del pre-deploy.
+# ENTRYPOINT: docker-entrypoint.sh tiene un passthrough (`[ "$#" -gt 0 ] && exec "$@"`), así que el
+# preDeployCommand —y cualquier start-command override— se ejecuta tal cual, ya sea que Railway lo
+# corra como comando del contenedor o lo pase como argumentos al ENTRYPOINT. El arranque normal del
+# API corre SIN args → sigue cayendo en SERVICE_TYPE=api (uvicorn).
 
 [build]
 builder = "DOCKERFILE"

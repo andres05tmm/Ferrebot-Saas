@@ -7,6 +7,8 @@ venv/
 .env
 .env.*
 !.env.example
+# plantilla de ops (sin secretos); el .env.prod real SÍ se ignora (lo cubre .env.*)
+!.env.prod.example
 # Node / frontend
 node_modules/
 dashboard/dist/

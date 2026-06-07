@@ -38,12 +38,13 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 from dataclasses import replace
 from datetime import date
+from typing import Protocol
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ai.agent import RespuestaAgente, ejecutar_turno, texto_de_respuesta
 from ai.confirmacion import ConfirmStore, es_afirmacion, es_negacion
-from ai.dispatcher import Dispatcher, Recursos
+from ai.dispatcher import Dispatcher, Recursos, Respuesta
 from ai.envelope import Contexto
 from apps.bot.ports import ArchivosTelegram, Notificador, RecursosBot, TurnoHandler, UpdateBot
 from core.config.timezone import today_co
@@ -80,6 +81,16 @@ RecursosFactory = Callable[[AsyncSession], Recursos]
 AudioFactory = Callable[[AsyncSession], AudioLogsRepo]
 # El bucle del agente, inyectable para pruebas (default: el real).
 EjecutarTurno = Callable[..., Awaitable[RespuestaAgente]]
+
+
+# Bypass (Paso A: ventas): camino rápido sin IA. `intentar` devuelve una Respuesta del despachador
+# (Resultado/ErrorTool/Preguntar/Confirmar) o None = CaeAlModelo (el turno sigue al modelo).
+class BypassPort(Protocol):
+    async def intentar(self, texto: str, ctx: Contexto, recursos: Recursos) -> Respuesta | None: ...
+
+
+# Factory por turno: ata el catálogo (capa exacta) a la sesión del tenant; None = sin bypass.
+BypassFactory = Callable[[AsyncSession], BypassPort | None]
 
 
 def construir_system_prompt(entidades: dict[str, dict], *, hoy: date | None = None) -> str:
@@ -207,6 +218,45 @@ async def _manejar_confirmacion(
     return False                                          # comando nuevo → turno normal
 
 
+async def _resolver_por_bypass(
+    crear_bypass: BypassFactory,
+    *,
+    texto: str,
+    ctx: Contexto,
+    session: AsyncSession,
+    recursos_turno: Recursos,
+    notificador: Notificador,
+    memoria_svc: MemoriaService,
+    chat_id: int,
+) -> bool:
+    """Intenta resolver el turno por el bypass (camino rápido sin IA). True = resuelto (return).
+
+    Resiliencia: un fallo del bypass NUNCA tumba el turno (devuelve False → cae al modelo). El match
+    relaya el resultado del despachador al usuario reusando `texto_de_respuesta` (Resultado→resumen,
+    Preguntar→mensaje), persiste el turno (best-effort) y registra `bypass_resuelto`. El bypass solo
+    emite ventas (no confirmables), así que no hay confirmación pendiente que guardar.
+    """
+    try:
+        bypass = crear_bypass(session)
+        r = await bypass.intentar(texto, ctx, recursos_turno) if bypass is not None else None
+    except Exception:
+        log.warning("bypass_fallo", chat_id=chat_id, exc_info=True)
+        return False
+    if r is None:
+        return False
+    texto_r = texto_de_respuesta(r)
+    await notificador.responder(chat_id, texto_r)
+    log.info(
+        "bypass_resuelto", chat_id=chat_id,
+        evento=getattr(r, "evento", None), idempotente=getattr(r, "idempotente", None),
+    )
+    try:
+        await memoria_svc.guardar_turno(chat_id, usuario=texto or "", asistente=texto_r)
+    except Exception:
+        log.warning("turno_persistencia_fallo", chat_id=chat_id, exc_info=True)
+    return True
+
+
 def crear_turno_handler(
     *,
     dispatcher: Dispatcher,
@@ -218,6 +268,7 @@ def crear_turno_handler(
     recursos: RecursosBot | None = None,
     audios: AudioFactory | None = None,
     confirm: ConfirmStore | None = None,
+    crear_bypass: BypassFactory | None = None,
 ) -> TurnoHandler:
     """Captura el dispatcher + stores (+ voz, opcional) y devuelve el `TurnoHandler` del webhook.
 
@@ -260,6 +311,14 @@ def crear_turno_handler(
         entidades = await memoria_svc.leer_entidades(update.chat_id)          # best-effort
         system = construir_system_prompt(entidades)
         recursos_turno = crear_recursos(session)                              # fresco por turno
+
+        # Bypass (Paso A: ventas): camino rápido sin IA, ANTES del modelo. None/False = CaeAlModelo.
+        if crear_bypass is not None and texto and await _resolver_por_bypass(
+            crear_bypass, texto=texto, ctx=ctx, session=session, recursos_turno=recursos_turno,
+            notificador=notificador, memoria_svc=memoria_svc, chat_id=update.chat_id,
+        ):
+            return
+
         try:
             base = await dispatcher.seleccionar_proveedor(ctx.tenant_id, turno=turno)
             proveedor = LLMResuelto(

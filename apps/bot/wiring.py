@@ -17,11 +17,13 @@ from contextlib import AbstractAsyncContextManager, asynccontextmanager
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ai.bypass import Bypass
 from ai.confirmacion import ConfirmStore
 from ai.dispatcher import Dispatcher, Recursos
 from ai.ports import CatalogoDesdeVentas, ControlUmbralesStore
 from ai.tools import Deps
 from ai.turno import crear_turno_handler
+from apps.bot.catalogo import CatalogoBypassExacto
 from apps.bot.ports import BotDeps, DedupStore, RecursosBot, SesionTenant
 from apps.bot.recursos import Credenciales
 from apps.bot.recursos import RecursosBot as RecursosBotImpl
@@ -40,6 +42,7 @@ from modules.clientes.repository import SqlClientesRepository
 from modules.clientes.service import ClientesService
 from modules.fiados.repository import SqlFiadosRepository
 from modules.fiados.service import FiadosService
+from modules.inventario.repository import SqlInventarioRepository
 from modules.memoria.repository import SqlCostosRepository, SqlMemoriaRepository
 from modules.memoria.service import MemoriaService
 from modules.ventas.repository import SqlVentasRepository
@@ -154,6 +157,18 @@ def _crear_recursos_factory(config: ConfigControl) -> Callable[[AsyncSession], R
     return crear_recursos
 
 
+def crear_bypass_factory(dispatcher: Dispatcher) -> Callable[[AsyncSession], Bypass]:
+    """Devuelve `crear_bypass(session)` → `Bypass` cuyo catálogo (capa exacta) sale del repo de
+    inventario de ESA sesión del tenant (DB-per-tenant). Default real del seam `crear_bypass` de
+    `crear_turno_handler`; el match converge en el MISMO `dispatcher.ejecutar` que el modelo."""
+
+    def crear_bypass(session: AsyncSession) -> Bypass:
+        catalogo = CatalogoBypassExacto(SqlInventarioRepository(session), SqlVentasRepository(session))
+        return Bypass(catalogo, dispatcher)
+
+    return crear_bypass
+
+
 def construir_deps(
     settings=None,
     *,
@@ -185,6 +200,7 @@ def construir_deps(
         crear_recursos=_crear_recursos_factory(config),
         recursos=recursos,
         confirm=confirm,
+        crear_bypass=crear_bypass_factory(dispatcher),
         turno=Turno.WORKER,
     )
     return BotDeps(

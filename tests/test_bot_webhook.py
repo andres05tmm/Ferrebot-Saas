@@ -418,3 +418,12 @@ def test_ruta_webhook_body_invalido_es_400():
     assert r.status_code == 400
     # JSON válido pero no-objeto (lista) → 400
     assert client.post("/tg/puntorojo", json=[1, 2, 3], headers=headers_ok).status_code == 400
+
+
+def test_health_acepta_get_y_head():
+    # UptimeRobot (free) solo pinguea con HEAD: /health del bot debe responder 200 a ambos (no 405).
+    client = TestClient(crear_app_bot(make_deps()))
+    r_get = client.get("/health")
+    assert r_get.status_code == 200
+    assert r_get.json() == {"status": "ok"}
+    assert client.head("/health").status_code == 200

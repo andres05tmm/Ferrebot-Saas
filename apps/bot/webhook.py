@@ -188,7 +188,7 @@ def crear_app_bot(deps: BotDeps) -> FastAPI:
         res = await manejar_update(slug, secret, payload, deps, request_id=rid)
         return JSONResponse({"accion": res.accion.value}, status_code=res.status)
 
-    @app.get("/health", tags=["infra"])
+    @app.api_route("/health", methods=["GET", "HEAD"], tags=["infra"])
     async def health() -> dict:
         return {"status": "ok"}
 

@@ -130,7 +130,7 @@ def create_app(spa_dist: Path | None = None) -> FastAPI:
     app.include_router(reportes_router, prefix="/api/v1")
     app.include_router(config_router, prefix="/api/v1")
 
-    @app.get("/health", tags=["infra"])
+    @app.api_route("/health", methods=["GET", "HEAD"], tags=["infra"])
     async def health() -> dict:
         return {"status": "ok"}
 

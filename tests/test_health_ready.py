@@ -87,6 +87,14 @@ async def test_health_siempre_ok():
     assert r.json() == {"status": "ok"}
 
 
+async def test_health_acepta_head():
+    # UptimeRobot (free) solo pinguea con HEAD: /health debe responder 200 (no 405).
+    app = create_app()
+    async with _cliente(app) as c:
+        r = await c.head("/health")
+    assert r.status_code == 200
+
+
 async def test_ready_ok_200():
     app = create_app()
     app.dependency_overrides[evaluar_listo] = lambda: ResultadoListo(

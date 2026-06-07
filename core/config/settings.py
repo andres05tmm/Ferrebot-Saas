@@ -29,6 +29,10 @@ class Settings(BaseSettings):
     sentry_environment: str = "production"
     sentry_traces_sample_rate: float = 0.0   # solo errores por defecto (barato)
 
+    # Respaldo automático (tools/backup_db.py): apagado por defecto. Se controla con BACKUP_ENABLED
+    # en .env.prod (pydantic v2 acepta on/off/true/false/1/0). Ver docs/runbook.md.
+    backup_enabled: bool = False
+
     # Auth
     jwt_algorithm: str = "HS256"
     jwt_expire_minutes: int = 720

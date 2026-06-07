@@ -5,14 +5,20 @@ no escribe en el origen). Carga `.env.prod` (URLs públicas de Railway) vía `to
 
 Uso:
     python -m tools.backup_db                                  # vuelca control + tenants → backups/<ts>/
+    python -m tools.backup_db --podar 8                        # backup + borra carpetas > 8 semanas
+    python -m tools.backup_db --force                          # ignora BACKUP_ENABLED (corrida manual)
     python -m tools.backup_db --verify <archivo.dump> --scratch postgresql://.../scratch_verify
 
-Versión de pg_dump (gotcha): el servidor de Railway suele ser MÁS NUEVO que tu `pg_dump` local, y
+Respaldo automático: el flujo de backup está GATED por `BACKUP_ENABLED` (settings.backup_enabled,
+apagado por defecto). Sin `--force`, si está en off imprime un aviso y termina con éxito (return 0)
+para no alarmar al scheduler. El restore-verify (`--verify`) NO pasa por el gate.
+
+Versión de pg_dump (gotcha): el servidor de Railway (PG 18.x) es MÁS NUEVO que tu `pg_dump` local, y
 pg_dump aborta si su versión es menor que la del servidor. Apunta `PG_DUMP`/`PG_RESTORE` a una imagen
 Docker para fijar la versión (no necesita montar volúmenes: el dump viaja por stdout/stdin):
 
-    PG_DUMP="docker run --rm postgres:17 pg_dump"
-    PG_RESTORE="docker run --rm -i postgres:17 pg_restore"   # -i: lee el .dump por stdin
+    PG_DUMP="docker run --rm postgres:18 pg_dump"
+    PG_RESTORE="docker run --rm -i postgres:18 pg_restore"   # -i: lee el .dump por stdin
 
 El driver y el patrón espejan tools/migrate_tenants.py y tools/provision_tenant.py (psycopg + to_libpq).
 """
@@ -21,10 +27,11 @@ from __future__ import annotations
 import argparse
 import os
 import shlex
+import shutil
 import subprocess
 import sys
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -78,6 +85,35 @@ def nombre_db_de_url(url: str) -> str:
     return path.split("/")[0] if path else ""
 
 
+def _parsear_marca(nombre: str) -> datetime | None:
+    """Parsea un nombre de carpeta `YYYYMMDDTHHMMSSZ` → datetime UTC; None si no encaja."""
+    try:
+        return datetime.strptime(nombre, "%Y%m%dT%H%M%SZ").replace(tzinfo=timezone.utc)
+    except ValueError:
+        return None
+
+
+def podar_backups(
+    dir_backups: Path, keep_semanas: int, ahora: datetime | None = None
+) -> list[Path]:
+    """Carpetas de backup más viejas que `keep_semanas` (no borra; devuelve la lista).
+
+    Parsea el nombre (marca_tiempo `YYYYMMDDTHHMMSSZ`); ignora nombres que no parseen (p. ej. `logs/`).
+    PURO y testeable: con `ahora` y fechas fijas el resultado es determinista."""
+    ahora = ahora or datetime.now(timezone.utc)
+    limite = ahora - timedelta(weeks=keep_semanas)
+    if not dir_backups.exists():
+        return []
+    viejas: list[Path] = []
+    for hijo in sorted(dir_backups.iterdir()):
+        if not hijo.is_dir():
+            continue
+        ts = _parsear_marca(hijo.name)
+        if ts is not None and ts < limite:
+            viejas.append(hijo)
+    return viejas
+
+
 def _nombre_archivo(db_name: str) -> str:
     return f"{db_name}.dump"
 
@@ -119,9 +155,9 @@ def listar_tenant_db_names(control_url: str) -> list[str]:
 
 def _hint_docker() -> str:
     return (
-        "\nUsa Docker para fijar la versión del cliente:\n"
-        '  PG_DUMP="docker run --rm postgres:17 pg_dump"\n'
-        '  PG_RESTORE="docker run --rm -i postgres:17 pg_restore"'
+        "\nUsa Docker para fijar la versión del cliente (servidor PG 18.x):\n"
+        '  PG_DUMP="docker run --rm postgres:18 pg_dump"\n'
+        '  PG_RESTORE="docker run --rm -i postgres:18 pg_restore"'
     )
 
 
@@ -220,6 +256,27 @@ def restore_verify(
     return conteos
 
 
+def _correr_respaldo(args: argparse.Namespace) -> int:
+    """Rama de respaldo: carga `.env.prod`, aplica el gate BACKUP_ENABLED y respalda (+ poda opcional).
+
+    El gate va DESPUÉS de `cargar_env_prod()` para que `backup_enabled` salga de `.env.prod` (no del
+    `.env` local). Sin `--force`, si está apagado termina con éxito (return 0) para no alarmar al
+    scheduler. La poda (`--podar`) corre solo si el backup procedió."""
+    pg_dump = os.environ.get("PG_DUMP", _PG_DUMP_DEFAULT)
+    cargar_env_prod()   # el respaldo SÍ corre contra prod (URLs públicas de Railway + BACKUP_ENABLED)
+    if not args.force and not get_settings().backup_enabled:
+        print("backup deshabilitado (BACKUP_ENABLED=off)")
+        return 0
+    backup_all(pg_dump=pg_dump, dir_backups=Path(args.dir))
+    if args.podar is not None:
+        viejas = podar_backups(Path(args.dir), args.podar)
+        for carpeta in viejas:
+            shutil.rmtree(carpeta)
+            print(f"  ✗ podado {carpeta} (> {args.podar} semanas)")
+        print(f"Poda: {len(viejas)} carpeta(s) eliminada(s) (retención {args.podar} semanas)")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Respaldo de producción (pg_dump control+tenants) + restore probado."
@@ -227,20 +284,22 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--verify", metavar="DUMP", help="Restaura un .dump a la base scratch y cuenta tablas")
     parser.add_argument("--scratch", help="URL de la base scratch para --verify (p. ej. el Docker local)")
     parser.add_argument("--dir", default=str(_DIR_BACKUPS), help="Carpeta raíz de los backups")
+    parser.add_argument("--podar", type=int, metavar="SEMANAS",
+                        help="Tras el backup, borra las carpetas más viejas que SEMANAS")
+    parser.add_argument("--force", action="store_true",
+                        help="Ignora BACKUP_ENABLED=off (para corridas manuales)")
     args = parser.parse_args(argv)
 
-    pg_dump = os.environ.get("PG_DUMP", _PG_DUMP_DEFAULT)
     pg_restore = os.environ.get("PG_RESTORE", _PG_RESTORE_DEFAULT)
 
     try:
         if args.verify:
-            # El restore-verify va contra la scratch EXPLÍCITA (no prod): no se carga .env.prod.
+            # El restore-verify va contra la scratch EXPLÍCITA (no prod): no se carga .env.prod ni gate.
             if not args.scratch:
                 parser.error("--verify requiere --scratch <url> (base de pruebas, p. ej. Docker local)")
             restore_verify(Path(args.verify), args.scratch, pg_restore=pg_restore)
         else:
-            cargar_env_prod()   # el respaldo SÍ corre contra prod (URLs públicas de Railway)
-            backup_all(pg_dump=pg_dump, dir_backups=Path(args.dir))
+            return _correr_respaldo(args)
     except (BackupError, FileNotFoundError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 1

@@ -26,8 +26,8 @@ cp .env.prod.example .env.prod        # NO se commitea (.gitignore lo ignora)
 
 ### Hacer el backup
 ```bash
-# Fija la versión del cliente con Docker para evitar el choque pg_dump < servidor:
-export PG_DUMP="docker run --rm postgres:17 pg_dump"
+# Fija la versión del cliente con Docker para evitar el choque pg_dump < servidor (PG 18.x):
+export PG_DUMP="docker run --rm postgres:18 pg_dump"
 python -m tools.backup_db
 # → backups/<YYYYMMDDTHHMMSSZ>/railway.dump + ferrebot_<slug>.dump  (imprime tamaños)
 ```
@@ -37,7 +37,7 @@ Docker de arriba (no necesita montar volúmenes: el dump viaja por stdout).
 ### Probar la restauración (un backup no probado no es un backup)
 ```bash
 # Base scratch: un Postgres de pruebas (p. ej. el Docker local) con una DB vacía 'scratch_verify'.
-export PG_RESTORE="docker run --rm -i postgres:17 pg_restore"   # -i: lee el .dump por stdin
+export PG_RESTORE="docker run --rm -i postgres:18 pg_restore"   # -i: lee el .dump por stdin
 python -m tools.backup_db --verify backups/<ts>/ferrebot_puntorojo.dump \
   --scratch postgresql://postgres:ferrebot@localhost:5433/scratch_verify
 # Restaura y cuenta tablas clave (productos, ventas, usuarios, …). Conteos > 0 = el backup sirve.
@@ -52,6 +52,40 @@ El restore-verify NO toca prod (va contra la scratch explícita; no carga `.env.
 - Retención sugerida: diarios 7 días, semanales 4–8 semanas. Probar un restore al menos al cambiar el
   esquema.
 - No borrar histórico fiscal DIAN (retención ~5 años).
+
+### Backup automático (Windows, semanal/opcional)
+
+**Apagado por defecto.** El backup automático solo corre si lo activas explícitamente: pon
+`BACKUP_ENABLED=on` en `.env.prod`. Mientras esté en `off`, el wrapper corre pero `tools/backup_db.py`
+imprime `backup deshabilitado (BACKUP_ENABLED=off)` y termina con éxito (no alarma al scheduler).
+
+**Requisitos:** Docker Desktop corriendo · `.env.prod` en la raíz del repo (URLs públicas de Railway +
+`SECRETS_MASTER_KEY`) · el PC encendido y con sesión iniciada a la hora programada.
+
+**Wrapper:** `tools/backup_daily.ps1` (committeable, sin secretos) hace `cd` a la raíz, verifica Docker,
+fija el cliente `postgres:18` (servidor PG 18.x) y ejecuta `python -m tools.backup_db --podar 8`
+(respaldo + retención de 8 semanas). Loguea a `backups\logs\backup_<timestamp>.log` y propaga el código
+de salida.
+
+**Alta en Task Scheduler (una sola vez)** — usuario logueado, SEMANAL los domingos 20:00. Ajusta
+`C:\ruta\al\repo` a la ruta real del repo:
+
+```bat
+schtasks /Create /TN "FerreBot Backup Prod" /SC WEEKLY /D SUN /ST 20:00 ^
+  /TR "powershell -NoProfile -ExecutionPolicy Bypass -File C:\ruta\al\repo\tools\backup_daily.ps1"
+```
+
+**Verificar que corrió:**
+- Carpeta nueva `backups\<YYYYMMDDTHHMMSSZ>\` con los `.dump` (control + tenants).
+- Último `backups\logs\*.log` sin errores y con código de salida 0.
+- Restore-verify manual de algún dump (la prueba de que sirve):
+  ```bash
+  python -m tools.backup_db --verify backups\<ts>\ferrebot_puntorojo.dump ^
+    --scratch postgresql://postgres:ferrebot@localhost:5433/scratch_verify
+  ```
+
+**Nota:** el off-site (copiar los dumps a la nube) es un paso aparte, **pendiente**. Por ahora los
+respaldos quedan solo en el disco local (trátalos como secreto: ver "Retención y off-site" arriba).
 
 ### Restaurar una empresa a producción
 Restaurar `ferrebot_<slug>.dump` sobre su base (o una nueva) sin afectar a las demás (DB-per-tenant).

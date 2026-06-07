@@ -15,6 +15,8 @@ dashboard/dist/
 # Onboarding: valores REALES por empresa (secretos en claro) — nunca commitear.
 tools/onboarding/*.json
 !tools/onboarding/empresa.example.json
+# Respaldos de prod (los .dump llevan datos reales + secretos cifrados) — nunca commitear.
+backups/
 # Varios
 .DS_Store
 *.log

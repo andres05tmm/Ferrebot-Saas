@@ -5,13 +5,17 @@ nombre de DB desde una URL y el plan de backup (listado de tenants → objetivos
 de pg_dump/pg_restore es integración (se prueba a mano contra el Docker local; ver docs/runbook.md).
 """
 from datetime import datetime, timezone
+from types import SimpleNamespace
 
+import tools.backup_db as backup_db
 from tools._prodenv import _limpiar_valor, parsear_env
 from tools.backup_db import (
     Objetivo,
+    main,
     marca_tiempo,
     nombre_db_de_url,
     planear_backup,
+    podar_backups,
     tamano_humano,
 )
 
@@ -96,3 +100,62 @@ def test_tamano_humano():
     assert tamano_humano(512) == "512 B"
     assert tamano_humano(2048) == "2.0 KB"
     assert tamano_humano(5 * 1024 * 1024) == "5.0 MB"
+
+
+# --------------------------- gate BACKUP_ENABLED --------------------------
+
+def _stub_flujo(monkeypatch, tmp_path, *, backup_enabled: bool) -> list[dict]:
+    """Aísla `main` de prod: cargar_env_prod no-op, settings fijos y `backup_all` espía.
+
+    Devuelve la lista de llamadas a backup_all (vacía = no se invocó a pg_dump)."""
+    llamadas: list[dict] = []
+    monkeypatch.setattr(backup_db, "cargar_env_prod", lambda *a, **k: None)
+    monkeypatch.setattr(backup_db, "get_settings", lambda: SimpleNamespace(backup_enabled=backup_enabled))
+    monkeypatch.setattr(backup_db, "backup_all", lambda **k: (llamadas.append(k), tmp_path)[1])
+    return llamadas
+
+
+def test_backup_deshabilitado_retorna_0_sin_pg_dump(monkeypatch, tmp_path):
+    llamadas = _stub_flujo(monkeypatch, tmp_path, backup_enabled=False)
+    code = main(["--dir", str(tmp_path)])
+    assert code == 0              # éxito: no alarma al scheduler
+    assert llamadas == []         # gate cortó ANTES de backup_all/pg_dump
+
+
+def test_backup_force_procede_aunque_deshabilitado(monkeypatch, tmp_path):
+    llamadas = _stub_flujo(monkeypatch, tmp_path, backup_enabled=False)
+    code = main(["--dir", str(tmp_path), "--force"])
+    assert code == 0
+    assert len(llamadas) == 1     # --force ignora el gate y respalda
+
+
+def test_backup_habilitado_procede(monkeypatch, tmp_path):
+    llamadas = _stub_flujo(monkeypatch, tmp_path, backup_enabled=True)
+    code = main(["--dir", str(tmp_path)])
+    assert code == 0
+    assert len(llamadas) == 1
+
+
+# --------------------------- retención (podar) ----------------------------
+
+def test_podar_backups_solo_las_que_exceden_keep_semanas(tmp_path):
+    ahora = datetime(2026, 6, 7, 12, 0, 0, tzinfo=timezone.utc)
+    # keep=8 → límite = 2026-04-12 12:00 UTC; lo anterior se poda.
+    casos = {
+        "20260531T120000Z": False,   # ~1 semana → se conserva
+        "20260405T120000Z": True,    # ~9 semanas → se poda
+        "20260118T120000Z": True,    # ~20 semanas → se poda
+    }
+    for nombre in casos:
+        (tmp_path / nombre).mkdir()
+    (tmp_path / "logs").mkdir()                          # no parsea → ignorado
+    (tmp_path / "basura").mkdir()                        # no parsea → ignorado
+    (tmp_path / "20260118T120000Z.dump").write_text("x")  # archivo, no carpeta → ignorado
+
+    viejas = podar_backups(tmp_path, keep_semanas=8, ahora=ahora)
+
+    assert {p.name for p in viejas} == {n for n, poda in casos.items() if poda}
+
+
+def test_podar_backups_dir_inexistente_devuelve_vacio(tmp_path):
+    assert podar_backups(tmp_path / "no-existe", keep_semanas=8) == []

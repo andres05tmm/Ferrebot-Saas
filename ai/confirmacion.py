@@ -14,7 +14,8 @@ from __future__ import annotations
 import json
 import unicodedata
 from dataclasses import dataclass
-from typing import Protocol
+from decimal import Decimal
+from typing import Any, Protocol
 
 from core.llm.base import ToolCall
 
@@ -77,17 +78,29 @@ def es_negacion(texto: str) -> bool:
     return _normalizar(texto) in _NEGACIONES
 
 
+def _json_default(obj: Any) -> str:
+    """`default` de `json.dumps` SOLO para `Decimal` → str (las cantidades del ToolCall vienen como
+    Decimal). No es un `default=str` ciego: cualquier otro tipo no serializable re-lanza `TypeError`
+    para no enmascarar bugs. Al deserializar, la cantidad vuelve como str y el `args_model` (Pydantic)
+    de la herramienta la coacciona a Decimal al ejecutar."""
+    if isinstance(obj, Decimal):
+        return str(obj)
+    raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
+
+
 def _serializar(pendiente: Pendiente) -> str:
     """Pendiente → JSON `{id, name, arguments, key}` (lo que se guarda en Redis)."""
     tc = pendiente.tool_call
     return json.dumps(
         {"id": tc.id, "name": tc.name, "arguments": tc.arguments, "key": pendiente.idempotency_key},
         ensure_ascii=False,
+        default=_json_default,
     )
 
 
 def _deserializar(dato: str) -> Pendiente:
-    """JSON → Pendiente (round-trip exacto con `_serializar`)."""
+    """JSON → Pendiente. Las cantidades vuelven como str; el `args_model` de la herramienta las
+    coacciona a Decimal al ejecutar (round-trip por valor, no por tipo)."""
     d = json.loads(dato)
     tool_call = ToolCall(id=d["id"], name=d["name"], arguments=d.get("arguments") or {})
     return Pendiente(tool_call=tool_call, idempotency_key=d["key"])

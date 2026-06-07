@@ -99,3 +99,40 @@ Verificar primero en scratch; luego `pg_restore --clean --if-exists -d <url-del-
 
 ## Salud
 - `/health` y `/ready`; monitor de uptime externo (no self-ping).
+
+## Monitoreo de uptime (externo)
+
+Un servicio externo hace ping periódico a la **api** y al **bot**; si dejan de responder, avisa por
+email. No se hace self-ping desde la propia app (un proceso caído no puede alertar de su caída).
+
+### Qué se monitorea
+- **GET `<URL_API>/health`** — la URL pública de Railway del servicio api.
+- **GET `<URL_BOT>/health`** — la URL pública de Railway del servicio bot.
+
+`/health` es público (no exige tenant ni JWT: está en `TenantMiddleware._PUBLIC_PATHS`) y estático
+(no toca dependencias). Configuración del monitor en ambos:
+- Espera **HTTP 200** con body `{"status":"ok"}`.
+- **Keyword `ok`** en el cuerpo (no basta el 200: valida que respondió la app, no un proxy).
+- **Intervalo: 5 min.**
+
+> Para un chequeo más profundo (control DB + Redis) está **`<URL_API>/ready`** (200 si todo OK, 503 si
+> algo falla). Útil al diagnosticar una alerta; como monitor continuo se prefiere `/health` (barato y
+> sin tocar dependencias en cada ping).
+
+### El worker no tiene HTTP (gap conocido)
+El **worker** (ARQ) no expone endpoint, así que **no hay monitor de ping**. Su salud se cubre con:
+- **Sentry** — captura errores de los jobs (emisión DIAN), ver "Backups"/observabilidad.
+- **Reinicio automático de Railway** — si el proceso muere, Railway lo relanza.
+
+Limitación: un worker "vivo pero atascado" (sin crashear ni emitir errores) no dispara ninguna alarma.
+Pendiente: una señal de liveness del worker (p. ej. heartbeat a Redis vigilado por un monitor).
+
+### Proveedor sugerido
+**UptimeRobot** (plan free: 50 monitores, intervalo 5 min). Crear **2 monitores HTTP(s)** (api y bot)
+apuntando a cada `/health`, con keyword `ok` y alertas al **email del equipo**. Cualquier proveedor
+equivalente (Better Stack, Healthchecks, Pingdom) sirve igual.
+
+### Ante una alerta
+1. **Railway** — logs del servicio caído (api o bot): ¿crash, OOM, error de arranque, deploy en curso?
+2. **`<URL_API>/ready`** — chequea control DB + Redis; un 503 acota el fallo a una dependencia.
+3. **Sentry** — excepciones recientes (incluye los errores de jobs del worker).

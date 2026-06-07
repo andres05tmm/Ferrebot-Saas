@@ -60,22 +60,29 @@ describe('TabAgenda — gating de ruta', () => {
   })
 })
 
-describe('TabAgenda — Citas', () => {
-  it('lista citas y filtra por estado (query con &estado=)', async () => {
-    const { calls } = instalarFetch()
-    renderTab()
-    expect(await screen.findByText('Ana')).toBeInTheDocument()
+// Mañana en hora Colombia (YYYY-MM-DD) — espeja util.sumarDias para verificar la navegación.
+function ymdMas(n) {
+  const hoy = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
+  const d = new Date(`${hoy}T12:00:00-05:00`)
+  d.setDate(d.getDate() + n)
+  return d.toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
+}
 
-    fireEvent.change(screen.getByLabelText('Estado'), { target: { value: 'confirmada' } })
-    await waitFor(() => {
-      expect(calls.some(([u]) => u.includes('/agenda/citas') && u.includes('estado=confirmada'))).toBe(true)
-    })
+describe('TabAgenda — Calendario', () => {
+  it('pinta la grilla agrupada por recurso (columna del profesional + bloque de cita)', async () => {
+    instalarFetch()
+    renderTab()
+    // Encabezado de la columna del recurso y el bloque de la cita dentro de su columna.
+    expect(await screen.findByLabelText('Columna Dra. Pérez')).toBeInTheDocument()
+    const columna = screen.getByLabelText('Columna Dra. Pérez')
+    expect(columna).toBeInTheDocument()
+    expect(screen.getAllByText('Ana').length).toBeGreaterThan(0)
   })
 
-  it('tiempo real: un evento de cita recarga la lista', async () => {
+  it('tiempo real: un evento de cita recarga grilla y panel', async () => {
     const { calls } = instalarFetch()
     renderTab()
-    await screen.findByText('Ana')
+    await screen.findByLabelText('Columna Dra. Pérez')
     const antes = calls.filter(([u, m]) => u.includes('/agenda/citas') && m === 'GET').length
 
     act(() => { rtHandler?.('cita_agendada', { cita_id: 9 }) })  // como si el agente agendara
@@ -85,22 +92,36 @@ describe('TabAgenda — Citas', () => {
     })
   })
 
-  it('confirmar una cita pendiente hace POST .../confirmar', async () => {
+  it('navegación de fecha: "día siguiente" consulta el día siguiente', async () => {
     const { calls } = instalarFetch()
     renderTab()
-    await screen.findByText('Ana')
+    await screen.findByLabelText('Columna Dra. Pérez')
+    const manana = ymdMas(1)
 
-    fireEvent.click(screen.getByLabelText('Confirmar cita 1'))
+    fireEvent.click(screen.getByLabelText('Día siguiente'))
+    await waitFor(() => {
+      expect(calls.some(([u]) => u.includes(`/agenda/citas?desde=${manana}&hasta=${manana}`))).toBe(true)
+    })
+  })
+
+  it('panel Acción Requerida: Aprobar y Rechazar llaman al endpoint correcto', async () => {
+    const { calls } = instalarFetch()
+    renderTab()
+    fireEvent.click(await screen.findByLabelText('Aprobar cita 1'))
     await waitFor(() => {
       expect(calls.some(([u, m]) => u.includes('/agenda/citas/1/confirmar') && m === 'POST')).toBe(true)
     })
-    expect(toast.success).toHaveBeenCalled()
+
+    fireEvent.click(screen.getByLabelText('Rechazar cita 1'))
+    await waitFor(() => {
+      expect(calls.some(([u, m]) => u.includes('/agenda/citas/1/cancelar') && m === 'POST')).toBe(true)
+    })
   })
 
   it('alta manual hace POST /agenda/citas (origen dashboard)', async () => {
     const { calls } = instalarFetch()
     renderTab()
-    await screen.findByText('Ana')
+    await screen.findByLabelText('Columna Dra. Pérez')
 
     fireEvent.click(screen.getByText('Nueva cita'))
     fireEvent.change(screen.getByLabelText('Servicio'), { target: { value: '1' } })

@@ -11,13 +11,27 @@ const ESTADO_LABEL = {
   pendiente: 'Pendiente', confirmada: 'Confirmada', cumplida: 'Cumplida',
   cancelada: 'Cancelada', no_show: 'No asistió',
 }
+// Convención de color de estado (DESIGN.md): Pendiente=ámbar, Confirmada=esmeralda, Cumplida=azul,
+// Cancelada=gris, No-show=rojo — mapeada a los tokens existentes (warning/success/info/destructive).
 const ESTADO_CLASE = {
   pendiente: 'bg-warning/15 text-warning',
   confirmada: 'bg-success/15 text-success',
-  cumplida: 'bg-primary/10 text-primary',
+  cumplida: 'bg-info/15 text-info',
   cancelada: 'bg-surface-2 text-muted-foreground',
   no_show: 'bg-destructive/15 text-destructive',
 }
+
+// Acento del bloque en el calendario: borde izquierdo + fondo tenue del color de estado.
+export const ESTADO_ACCENT = {
+  pendiente: 'border-warning bg-warning/10',
+  confirmada: 'border-success bg-success/10',
+  cumplida: 'border-info bg-info/10',
+  cancelada: 'border-border bg-surface-2 text-muted-foreground',
+  no_show: 'border-destructive bg-destructive/10',
+}
+
+/** Una cita "requiere atención" (Revisar) si está pendiente de aprobación del negocio. */
+export const requiereAtencion = (cita) => cita?.estado === 'pendiente'
 
 export function EstadoBadge({ estado }) {
   return (
@@ -53,4 +67,40 @@ export function fmtFechaCO(iso) {
     timeZone: 'America/Bogota', weekday: 'short', day: '2-digit', month: '2-digit',
     hour: '2-digit', minute: '2-digit', hour12: false,
   })
+}
+
+/** Suma `n` días a una fecha YYYY-MM-DD (en Colombia) → YYYY-MM-DD. */
+export function sumarDias(ymd, n) {
+  const d = new Date(`${ymd}T12:00:00-05:00`)
+  d.setDate(d.getDate() + n)
+  return d.toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
+}
+
+/** Etiqueta del día para la barra: 'Hoy · mié, 24 jun' o 'mié, 24 jun'. */
+export function fmtDiaLabel(ymd) {
+  const s = new Date(`${ymd}T12:00:00-05:00`).toLocaleDateString('es-CO', {
+    timeZone: 'America/Bogota', weekday: 'short', day: 'numeric', month: 'short',
+  })
+  return ymd === hoyCO() ? `Hoy · ${s}` : s
+}
+
+/** El backend devuelve los instantes en UTC; aquí se leen SIEMPRE en hora Colombia. */
+export function minutosCO(iso) {
+  const hhmm = new Date(iso).toLocaleTimeString('en-GB', {
+    timeZone: 'America/Bogota', hour: '2-digit', minute: '2-digit', hour12: false,
+  })
+  const [h, m] = hhmm.split(':').map(Number)
+  return h * 60 + m
+}
+
+/** 'HH:MM' en hora Colombia. */
+export function fmtHora(iso) {
+  return new Date(iso).toLocaleTimeString('en-GB', {
+    timeZone: 'America/Bogota', hour: '2-digit', minute: '2-digit', hour12: false,
+  })
+}
+
+/** Fecha YYYY-MM-DD de un instante en hora Colombia (para saber a qué día pertenece la cita). */
+export function diaCO(iso) {
+  return new Date(iso).toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
 }

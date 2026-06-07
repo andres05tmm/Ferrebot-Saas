@@ -1,21 +1,30 @@
 /*
- * SeccionCitas — lista funcional de citas del negocio (la vista calendario llega después).
- * GET /agenda/citas con filtros (rango, estado, recurso). Tiempo real: las citas que agenda el
- * agente de WhatsApp aparecen en vivo (useRealtimeEvent). Acciones: confirmar / cancelar / reagendar
- * y alta manual (origen=dashboard). Fechas en hora Colombia.
+ * SeccionCitas — vista de CALENDARIO del día (alta fidelidad, fuente: DESIGN.md + screen.png).
+ * Columna de horas + una columna por recurso (GET /agenda/recursos); bloques de cita posicionados por
+ * inicio/fin (GET /agenda/citas?desde&hasta), coloreados por estado. Panel lateral "Acción Requerida"
+ * con los pendientes (Aprobar=confirmar / Rechazar=cancelar). Tiempo real: las citas del agente entran
+ * en vivo (useRealtimeEvent). Todo el manejo de horas es en zona Colombia. Vista DÍA (semana: luego).
  */
 import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
-import { CalendarPlus, Check, X, Clock } from 'lucide-react'
+import { CalendarPlus, ChevronLeft, ChevronRight, MessageCircle, Monitor, Check, X, AlertTriangle, BellRing } from 'lucide-react'
 import { api } from '@/lib/api.js'
 import { useFetch } from '@/components/shared.jsx'
 import { useRealtimeEvent } from '@/components/RealtimeProvider.jsx'
 import { Card } from '@/components/ui/card.jsx'
 import { Input } from '@/components/ui/input.jsx'
 import { Button } from '@/components/ui/button.jsx'
-import { ESTADOS, EstadoBadge, aISOColombia, fmtFechaCO, hoyCO, masDiasCO } from './util.jsx'
+import {
+  ESTADOS, ESTADO_ACCENT, EstadoBadge, requiereAtencion,
+  aISOColombia, fmtFechaCO, fmtHora, fmtDiaLabel, hoyCO, masDiasCO, minutosCO, sumarDias,
+} from './util.jsx'
 
-const TERMINALES = new Set(['cumplida', 'cancelada', 'no_show'])
+// Rejilla del día: 07:00–21:00, 64px por hora.
+const HORA_INICIO = 7
+const HORA_FIN = 21
+const HORA_PX = 64
+const HORAS = Array.from({ length: HORA_FIN - HORA_INICIO }, (_, i) => HORA_INICIO + i)
+const ALTO_GRILLA = (HORA_FIN - HORA_INICIO) * HORA_PX
 
 async function postAccion(path, body, okMsg, refetch) {
   try {
@@ -24,27 +33,19 @@ async function postAccion(path, body, okMsg, refetch) {
       headers: body ? { 'Content-Type': 'application/json' } : undefined,
       body: body ? JSON.stringify(body) : undefined,
     })
-    if (res.ok) {
-      toast.success(okMsg)
-      refetch()
-      return true
-    }
+    if (res.ok) { toast.success(okMsg); refetch(); return true }
     if (res.status === 409) {
       const d = await res.json().catch(() => ({}))
-      const detalle = d?.detail
-      toast.error(typeof detalle === 'object' ? 'Ese horario no está disponible' : (detalle || 'No se pudo'))
+      toast.error(typeof d?.detail === 'object' ? 'Ese horario no está disponible' : (d?.detail || 'No se pudo'))
     } else {
       toast.error('No se pudo completar la acción')
     }
-  } catch {
-    toast.error('Error de conexión')
-  }
+  } catch { toast.error('Error de conexión') }
   return false
 }
 
 export default function SeccionCitas() {
-  const [desde, setDesde] = useState(hoyCO())
-  const [hasta, setHasta] = useState(masDiasCO(7))
+  const [dia, setDia] = useState(hoyCO())
   const [estado, setEstado] = useState('')
   const [recursoId, setRecursoId] = useState('')
   const [creando, setCreando] = useState(false)
@@ -54,147 +55,237 @@ export default function SeccionCitas() {
   const recursos = Array.isArray(recursosQ.data) ? recursosQ.data : []
   const servicios = Array.isArray(serviciosQ.data) ? serviciosQ.data : []
 
-  const query = `/agenda/citas?desde=${desde}&hasta=${hasta}`
-    + (estado ? `&estado=${estado}` : '')
-    + (recursoId ? `&recurso_id=${recursoId}` : '')
-  const citasQ = useFetch(query, [desde, hasta, estado, recursoId])
-  useRealtimeEvent(['cita_agendada', 'cita_estado', 'cita_reagendada', 'reconnected'], citasQ.refetch)
+  const citasQ = useFetch(
+    `/agenda/citas?desde=${dia}&hasta=${dia}${recursoId ? `&recurso_id=${recursoId}` : ''}`,
+    [dia, recursoId],
+  )
+  const pendQ = useFetch(`/agenda/citas?estado=pendiente&desde=${hoyCO()}&hasta=${masDiasCO(30)}`)
 
-  const citas = Array.isArray(citasQ.data) ? citasQ.data : []
+  const refrescar = () => { citasQ.refetch(); pendQ.refetch() }
+  useRealtimeEvent(['cita_agendada', 'cita_estado', 'cita_reagendada', 'reconnected'], refrescar)
+
   const nombreServicio = useMemo(() => Object.fromEntries(servicios.map(s => [s.id, s.nombre])), [servicios])
-  const nombreRecurso = useMemo(() => Object.fromEntries(recursos.map(r => [r.id, r.nombre])), [recursos])
+  const citasDia = (Array.isArray(citasQ.data) ? citasQ.data : []).filter(c => !estado || c.estado === estado)
+  const pendientes = Array.isArray(pendQ.data) ? pendQ.data : []
+  const recursosVisibles = recursoId ? recursos.filter(r => String(r.id) === String(recursoId)) : recursos
 
   return (
-    <div className="space-y-3">
-      <Card className="p-3">
-        <div className="flex flex-wrap items-end gap-2">
-          <Campo label="Desde">
-            <Input type="date" value={desde} onChange={e => setDesde(e.target.value)} aria-label="Desde" className="h-9 w-40" />
-          </Campo>
-          <Campo label="Hasta">
-            <Input type="date" value={hasta} onChange={e => setHasta(e.target.value)} aria-label="Hasta" className="h-9 w-40" />
-          </Campo>
-          <Campo label="Estado">
-            <select value={estado} onChange={e => setEstado(e.target.value)} aria-label="Estado"
-              className="h-9 px-2 rounded-md border border-border bg-surface text-sm">
-              <option value="">Todos</option>
-              {ESTADOS.map(s => <option key={s} value={s}>{s}</option>)}
-            </select>
-          </Campo>
-          <Campo label="Profesional / recurso">
-            <select value={recursoId} onChange={e => setRecursoId(e.target.value)} aria-label="Recurso"
-              className="h-9 px-2 rounded-md border border-border bg-surface text-sm">
-              <option value="">Todos</option>
-              {recursos.map(r => <option key={r.id} value={r.id}>{r.nombre}</option>)}
-            </select>
-          </Campo>
-          <div className="ml-auto">
-            <Button onClick={() => setCreando(v => !v)} className="h-9">
-              <CalendarPlus className="size-4" /> Nueva cita
-            </Button>
-          </div>
-        </div>
-      </Card>
+    <div className="flex flex-col gap-3">
+      <BarraSuperior
+        dia={dia} setDia={setDia}
+        estado={estado} setEstado={setEstado}
+        recursoId={recursoId} setRecursoId={setRecursoId}
+        recursos={recursos} onNueva={() => setCreando(v => !v)}
+      />
 
       {creando && (
         <NuevaCitaForm
           servicios={servicios} recursos={recursos}
-          onClose={() => setCreando(false)} onCreada={() => { setCreando(false); citasQ.refetch() }}
+          onClose={() => setCreando(false)} onCreada={() => { setCreando(false); refrescar() }}
         />
       )}
 
-      <Card className="p-0 overflow-hidden">
-        {citasQ.loading ? (
-          <p className="py-10 text-center text-sm text-muted-foreground">Cargando…</p>
-        ) : citas.length === 0 ? (
-          <p className="py-10 text-center text-sm text-muted-foreground">No hay citas en este rango.</p>
-        ) : (
-          <table className="w-full text-sm">
-            <thead className="bg-surface-2 text-muted-foreground text-xs">
-              <tr>
-                <Th>Fecha y hora</Th><Th>Cliente</Th><Th>Servicio</Th><Th>Recurso</Th>
-                <Th>Estado</Th><Th className="text-right pr-3">Acciones</Th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border-subtle">
-              {citas.map(c => (
-                <FilaCita
-                  key={c.id} cita={c}
-                  servicio={nombreServicio[c.servicio_id]} recurso={nombreRecurso[c.recurso_id]}
-                  refetch={citasQ.refetch}
-                />
-              ))}
-            </tbody>
-          </table>
-        )}
-      </Card>
+      <div className="flex flex-col xl:flex-row gap-3 items-start">
+        <Card className="flex-1 w-full p-0 overflow-hidden">
+          <Calendario
+            loading={citasQ.loading || recursosQ.loading}
+            recursos={recursosVisibles} citas={citasDia} nombreServicio={nombreServicio} dia={dia}
+          />
+        </Card>
+        <AccionRequerida pendientes={pendientes} nombreServicio={nombreServicio} refrescar={refrescar} />
+      </div>
     </div>
   )
 }
 
-function FilaCita({ cita, servicio, recurso, refetch }) {
-  const [reagendando, setReagendando] = useState(false)
-  const [nuevo, setNuevo] = useState('')
-  const terminal = TERMINALES.has(cita.estado)
-
-  async function reagendar() {
-    const iso = aISOColombia(nuevo)
-    if (!iso) { toast.error('Elige la nueva fecha y hora'); return }
-    const ok = await postAccion(`/agenda/citas/${cita.id}/reagendar`, { nuevo_inicio: iso }, 'Cita reagendada', refetch)
-    if (ok) { setReagendando(false); setNuevo('') }
-  }
-
+// ── Barra superior: navegación de fecha + filtros ────────────────────────────
+function BarraSuperior({ dia, setDia, estado, setEstado, recursoId, setRecursoId, recursos, onNueva }) {
   return (
-    <>
-      <tr className="hover:bg-surface-2/50">
-        <td className="px-3 py-2.5 whitespace-nowrap">{fmtFechaCO(cita.inicio)}</td>
-        <td className="px-3 py-2.5">
-          <div className="font-medium">{cita.cliente_nombre}</div>
-          <div className="text-[11px] text-muted-foreground">{cita.cliente_telefono}</div>
-        </td>
-        <td className="px-3 py-2.5 text-muted-foreground">{servicio || `#${cita.servicio_id}`}</td>
-        <td className="px-3 py-2.5 text-muted-foreground">{recurso || `#${cita.recurso_id}`}</td>
-        <td className="px-3 py-2.5"><EstadoBadge estado={cita.estado} /></td>
-        <td className="px-3 py-2.5">
-          <div className="flex items-center justify-end gap-1">
-            {cita.estado === 'pendiente' && (
-              <Button size="sm" variant="outline" aria-label={`Confirmar cita ${cita.id}`}
-                onClick={() => postAccion(`/agenda/citas/${cita.id}/confirmar`, null, 'Cita confirmada', refetch)}>
-                <Check className="size-3.5" /> Confirmar
-              </Button>
-            )}
-            {!terminal && (
-              <Button size="sm" variant="ghost" aria-label={`Reagendar cita ${cita.id}`} onClick={() => setReagendando(v => !v)}>
-                <Clock className="size-3.5" /> Reagendar
-              </Button>
-            )}
-            {!terminal && (
-              <Button size="sm" variant="ghost" aria-label={`Cancelar cita ${cita.id}`}
-                className="text-destructive hover:bg-destructive/10"
-                onClick={() => postAccion(`/agenda/citas/${cita.id}/cancelar`, null, 'Cita cancelada', refetch)}>
-                <X className="size-3.5" /> Cancelar
-              </Button>
-            )}
-          </div>
-        </td>
-      </tr>
-      {reagendando && (
-        <tr className="bg-surface-2/40">
-          <td colSpan={6} className="px-3 py-2">
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-muted-foreground">Nueva fecha y hora:</span>
-              <Input type="datetime-local" value={nuevo} onChange={e => setNuevo(e.target.value)}
-                aria-label={`Nuevo horario cita ${cita.id}`} className="h-9 w-56" />
-              <Button size="sm" onClick={reagendar}>Mover</Button>
-              <Button size="sm" variant="ghost" onClick={() => setReagendando(false)}>Cancelar</Button>
-            </div>
-          </td>
-        </tr>
-      )}
-    </>
+    <Card className="p-2.5">
+      <div className="flex flex-wrap items-center gap-2">
+        <h2 className="text-sm font-semibold mr-1">Agenda</h2>
+        <div className="inline-flex items-center rounded-md border border-border overflow-hidden">
+          <button onClick={() => setDia(sumarDias(dia, -1))} aria-label="Día anterior" className="h-9 px-2 hover:bg-surface-2 text-muted-foreground">
+            <ChevronLeft className="size-4" />
+          </button>
+          <button onClick={() => setDia(hoyCO())} aria-label="Hoy" className="h-9 px-3 text-sm font-medium border-x border-border min-w-[140px] text-center capitalize">
+            {fmtDiaLabel(dia)}
+          </button>
+          <button onClick={() => setDia(sumarDias(dia, 1))} aria-label="Día siguiente" className="h-9 px-2 hover:bg-surface-2 text-muted-foreground">
+            <ChevronRight className="size-4" />
+          </button>
+        </div>
+
+        <select value={estado} onChange={e => setEstado(e.target.value)} aria-label="Estado"
+          className="h-9 px-2 rounded-md border border-border bg-surface text-sm capitalize">
+          <option value="">Estado: todos</option>
+          {ESTADOS.map(s => <option key={s} value={s}>{s}</option>)}
+        </select>
+        <select value={recursoId} onChange={e => setRecursoId(e.target.value)} aria-label="Recurso"
+          className="h-9 px-2 rounded-md border border-border bg-surface text-sm">
+          <option value="">Profesional: todos</option>
+          {recursos.map(r => <option key={r.id} value={r.id}>{r.nombre}</option>)}
+        </select>
+
+        <Button onClick={onNueva} className="ml-auto h-9">
+          <CalendarPlus className="size-4" /> Nueva cita
+        </Button>
+      </div>
+    </Card>
   )
 }
 
+// ── Calendario: columna de horas + columnas por recurso ──────────────────────
+function Calendario({ loading, recursos, citas, nombreServicio, dia }) {
+  const porRecurso = useMemo(() => {
+    const m = {}
+    for (const c of citas) (m[c.recurso_id] ||= []).push(c)
+    return m
+  }, [citas])
+
+  if (loading) return <p className="py-16 text-center text-sm text-muted-foreground">Cargando agenda…</p>
+  if (recursos.length === 0) {
+    return <p className="py-16 text-center text-sm text-muted-foreground">No hay recursos. Créalos en <span className="font-medium">Configuración</span>.</p>
+  }
+
+  const ahoraMin = minutosCO(new Date().toISOString())
+  const topAhora = ((ahoraMin - HORA_INICIO * 60) / 60) * HORA_PX
+  const mostrarAhora = dia === hoyCO() && topAhora >= 0 && topAhora <= ALTO_GRILLA
+
+  return (
+    <div className="overflow-x-auto">
+      <div className="min-w-[560px]">
+        {/* Encabezado de recursos */}
+        <div className="flex border-b border-border sticky top-0 bg-surface z-10">
+          <div className="w-14 shrink-0" />
+          {recursos.map(r => (
+            <div key={r.id} className="flex-1 min-w-[170px] px-3 py-2 border-l border-border-subtle text-center">
+              <div className="text-sm font-semibold truncate">{r.nombre}</div>
+              <div className="text-[11px] text-muted-foreground capitalize">{r.tipo}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* Cuerpo */}
+        <div className="flex relative" style={{ height: ALTO_GRILLA }}>
+          {/* Columna de horas */}
+          <div className="w-14 shrink-0 relative">
+            {HORAS.map((h, i) => (
+              <div key={h} className="absolute right-2 -translate-y-1/2 text-[11px] text-muted-foreground tabular-nums"
+                style={{ top: i * HORA_PX }}>
+                {String(h).padStart(2, '0')}:00
+              </div>
+            ))}
+          </div>
+
+          {recursos.map(r => (
+            <ColumnaRecurso
+              key={r.id} recurso={r} citas={porRecurso[r.id] || []} nombreServicio={nombreServicio}
+            />
+          ))}
+
+          {/* Indicador de "ahora" */}
+          {mostrarAhora && (
+            <div className="absolute left-14 right-0 z-20 pointer-events-none" style={{ top: topAhora }} aria-hidden="true">
+              <div className="h-px bg-primary relative">
+                <span className="absolute -left-1 -top-[3px] size-1.5 rounded-full bg-primary" />
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function ColumnaRecurso({ recurso, citas, nombreServicio }) {
+  return (
+    <div className="flex-1 min-w-[170px] relative border-l border-border-subtle" aria-label={`Columna ${recurso.nombre}`}>
+      {/* Líneas de hora */}
+      {HORAS.map((h, i) => (
+        <div key={h} className="absolute left-0 right-0 border-t border-border-subtle/60" style={{ top: i * HORA_PX }} />
+      ))}
+      {citas.map(c => <BloqueCita key={c.id} cita={c} servicio={nombreServicio[c.servicio_id]} />)}
+    </div>
+  )
+}
+
+function BloqueCita({ cita, servicio }) {
+  const ini = minutosCO(cita.inicio)
+  const fin = Math.max(minutosCO(cita.fin), ini + 15)
+  const top = Math.max(((ini - HORA_INICIO * 60) / 60) * HORA_PX, 0)
+  const alto = Math.max(((fin - ini) / 60) * HORA_PX, 42)
+  const atencion = requiereAtencion(cita)
+
+  return (
+    <div
+      className={`absolute left-1 right-1 rounded-md border-l-4 px-2 py-1 overflow-hidden shadow-xs ${ESTADO_ACCENT[cita.estado] || 'border-border bg-surface-2'} ${atencion ? 'ring-1 ring-warning/40' : ''}`}
+      style={{ top, height: alto }}
+      title={`${fmtHora(cita.inicio)}–${fmtHora(cita.fin)} · ${cita.cliente_nombre}`}
+    >
+      <div className="flex items-center justify-between gap-1">
+        <span className="text-[11px] font-medium tabular-nums text-muted-foreground">
+          {fmtHora(cita.inicio)}–{fmtHora(cita.fin)}
+        </span>
+        {atencion
+          ? <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-warning"><AlertTriangle className="size-3" /> Revisar</span>
+          : <EstadoBadge estado={cita.estado} />}
+      </div>
+      <div className="text-[13px] font-semibold leading-tight truncate flex items-center gap-1">
+        {cita.origen === 'whatsapp'
+          ? <MessageCircle className="size-3 shrink-0 text-success" aria-label="Por WhatsApp" />
+          : <Monitor className="size-3 shrink-0 text-muted-foreground" aria-label="Por dashboard" />}
+        <span className="truncate">{cita.cliente_nombre}</span>
+      </div>
+      {alto > 52 && <div className="text-[11px] text-muted-foreground truncate">{servicio || `#${cita.servicio_id}`}</div>}
+    </div>
+  )
+}
+
+// ── Panel "Acción Requerida" ─────────────────────────────────────────────────
+function AccionRequerida({ pendientes, nombreServicio, refrescar }) {
+  return (
+    <Card className="w-full xl:w-80 shrink-0 p-3">
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-sm font-semibold inline-flex items-center gap-1.5">
+          <BellRing className="size-4 text-primary" /> Acción requerida
+        </h3>
+        {pendientes.length > 0 && (
+          <span className="inline-flex items-center rounded-full bg-primary/10 text-primary px-2 py-0.5 text-xs font-semibold">
+            {pendientes.length} {pendientes.length === 1 ? 'nueva' : 'nuevas'}
+          </span>
+        )}
+      </div>
+      {pendientes.length === 0 ? (
+        <div className="py-8 text-center text-sm text-muted-foreground">
+          <Check className="size-5 mx-auto mb-2 text-success" /> Sin pendientes por revisar.
+        </div>
+      ) : (
+        <ul className="space-y-2">
+          {pendientes.map(c => (
+            <li key={c.id} className="rounded-md border border-border-subtle p-2.5">
+              <div className="font-medium text-sm truncate">{c.cliente_nombre}</div>
+              <div className="text-[11px] text-muted-foreground mb-1">{fmtFechaCO(c.inicio)}</div>
+              <div className="text-[12px] text-muted-foreground truncate mb-2">{nombreServicio[c.servicio_id] || `Servicio #${c.servicio_id}`}</div>
+              <div className="flex gap-2">
+                <Button size="sm" variant="outline" className="flex-1" aria-label={`Rechazar cita ${c.id}`}
+                  onClick={() => postAccion(`/agenda/citas/${c.id}/cancelar`, null, 'Cita rechazada', refrescar)}>
+                  <X className="size-3.5" /> Rechazar
+                </Button>
+                <Button size="sm" className="flex-1" aria-label={`Aprobar cita ${c.id}`}
+                  onClick={() => postAccion(`/agenda/citas/${c.id}/confirmar`, null, 'Cita aprobada', refrescar)}>
+                  <Check className="size-3.5" /> Aprobar
+                </Button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Card>
+  )
+}
+
+// ── Alta manual (origen=dashboard) ───────────────────────────────────────────
 function NuevaCitaForm({ servicios, recursos, onClose, onCreada }) {
   const [f, setF] = useState({ servicio_id: '', recurso_id: '', inicio: '', cliente_nombre: '', cliente_telefono: '' })
   const [enviando, setEnviando] = useState(false)
@@ -244,17 +335,4 @@ function NuevaCitaForm({ servicios, recursos, onClose, onCreada }) {
       </div>
     </Card>
   )
-}
-
-function Campo({ label, children }) {
-  return (
-    <label className="flex flex-col gap-1">
-      <span className="text-[11px] uppercase tracking-wider text-muted-foreground">{label}</span>
-      {children}
-    </label>
-  )
-}
-
-function Th({ children, className = '' }) {
-  return <th className={`px-3 py-2 text-left font-medium ${className}`}>{children}</th>
 }

@@ -13,6 +13,7 @@ export const RUTA_FEATURE = {
   '/facturas-recibidas': 'facturacion_electronica',
   '/libro-iva': 'libro_iva',
   '/compras-fiscal': 'compras_fiscal',
+  '/agenda': 'pack_agenda',
 }
 
 /** ¿La ruta está habilitada según las features efectivas? Núcleo (sin requisito) → siempre true. */

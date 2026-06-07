@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.config import get_settings
 from core.crypto import decrypt
 from core.tenancy.context import ResolvedTenant
-from core.tenancy.models import Empresa, TenantDatabase
+from core.tenancy.models import Empresa, TenantDatabase, WaNumero
 
 # Branding por defecto cuando la empresa no tiene fila en `branding` (color de marca FerreBot).
 _BRANDING_DEFAULT: dict[str, str | None] = {
@@ -47,6 +47,22 @@ async def resolve_tenant_by_id(session: AsyncSession, empresa_id: int) -> Resolv
         select(Empresa, TenantDatabase)
         .join(TenantDatabase, TenantDatabase.empresa_id == Empresa.id)
         .where(Empresa.id == empresa_id)
+    )
+    return _resolver((await session.execute(stmt)).first())
+
+
+async def resolve_tenant_by_wa_number(
+    session: AsyncSession, phone_number_id: str
+) -> ResolvedTenant | None:
+    """Resuelve la empresa por el `phone_number_id` del canal de WhatsApp (Kapso → wa_numeros).
+
+    Solo mapeos activos (`wa_numeros.estado = 'activo'`). None si el número no está mapeado.
+    """
+    stmt = (
+        select(Empresa, TenantDatabase)
+        .join(TenantDatabase, TenantDatabase.empresa_id == Empresa.id)
+        .join(WaNumero, WaNumero.empresa_id == Empresa.id)
+        .where(WaNumero.phone_number_id == phone_number_id, WaNumero.estado == "activo")
     )
     return _resolver((await session.execute(stmt)).first())
 

@@ -17,6 +17,8 @@ from core.db.engine_cache import engine_cache
 from core.db.session import _control
 from core.events import event_hub
 from core.logging import configure_logging, get_logger
+from apps.wa.webhook import crear_router_wa
+from apps.wa.wiring import construir_wa_deps
 from core.observability import init_sentry
 from core.tenancy.middleware import TenantMiddleware
 from modules.auth.router import router as auth_router
@@ -43,8 +45,10 @@ async def lifespan(app: FastAPI):
     init_sentry("api")
     configure_logging()
     log.info("api_arranque")
-    # Pool ARQ (perezoso, sobre Redis): el endpoint de facturación encola la emisión aquí.
+    # Pool ARQ (perezoso, sobre Redis): el endpoint de facturación y el canal WhatsApp encolan aquí.
     app.state.arq_pool = await create_pool(RedisSettings.from_dsn(get_settings().redis_url))
+    # Deps del webhook de WhatsApp (Kapso): resolver de control DB, dedup Redis y eco encolado.
+    app.state.wa_deps = construir_wa_deps(app.state.arq_pool)
     yield
     await app.state.arq_pool.aclose()
     await event_hub.dispose_all()
@@ -129,6 +133,9 @@ def create_app(spa_dist: Path | None = None) -> FastAPI:
     app.include_router(proveedores_router, prefix="/api/v1")
     app.include_router(reportes_router, prefix="/api/v1")
     app.include_router(config_router, prefix="/api/v1")
+    # Webhook único de WhatsApp (Kapso): NO va bajo /api/ (no es por-empresa; resuelve el tenant por
+    # phone_number_id). El TenantMiddleware lo deja pasar (solo /api/ es por-empresa).
+    app.include_router(crear_router_wa())
 
     @app.api_route("/health", methods=["GET", "HEAD"], tags=["infra"])
     async def health() -> dict:

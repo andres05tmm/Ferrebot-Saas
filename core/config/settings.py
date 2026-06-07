@@ -49,6 +49,14 @@ class Settings(BaseSettings):
     llm_model_worker: str = "gpt-4o-mini"
     llm_model_orquestador: str = "gpt-4o"
 
+    # Canal WhatsApp vía Kapso (BSP). Credenciales de PLATAFORMA: una sola cuenta Kapso atiende a
+    # todos los tenants (el tenant se resuelve por phone_number_id en el control DB, tabla wa_numeros).
+    # `kapso_webhook_secret` valida la firma HMAC de los webhooks entrantes; `kapso_api_key` autentica
+    # el envío saliente. NUNCA hardcodear: van en el entorno.
+    kapso_webhook_secret: str = ""
+    kapso_api_key: str = ""
+    kapso_api_base: str = "https://api.kapso.ai/meta/whatsapp/v24.0"
+
 
 @lru_cache
 def get_settings() -> Settings:

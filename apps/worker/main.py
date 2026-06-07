@@ -12,7 +12,8 @@ from collections.abc import Callable
 
 from arq.connections import RedisSettings
 
-from apps.worker.jobs import emitir_documento
+from apps.wa.kapso import KapsoSender
+from apps.worker.jobs import emitir_documento, responder_eco_wa
 from core.config import get_settings
 from core.db.session import control_session, tenant_session
 from core.observability import init_sentry
@@ -79,19 +80,22 @@ async def on_startup(ctx: dict) -> None:
     los jobs y persiste el cliente —con su token y ciudades— entre emisiones.
     """
     init_sentry("worker")
-    master = get_settings().secrets_master_key
+    settings = get_settings()
+    master = settings.secrets_master_key
     cache = _MatiasClientCache()
 
     async def crear_servicio(tenant_id: int) -> _ServicioEmision:
         return _ServicioEmision(tenant_id, master, cache)
 
     ctx["crear_servicio"] = crear_servicio
+    # Sender de Kapso para el eco del canal WhatsApp (credencial de plataforma, perezoso).
+    ctx["wa_sender"] = KapsoSender(settings.kapso_api_key, base_url=settings.kapso_api_base)
 
 
 class WorkerSettings:
     """Configuración del worker ARQ (functions, Redis, reintentos)."""
 
-    functions = [emitir_documento]
+    functions = [emitir_documento, responder_eco_wa]
     redis_settings = RedisSettings.from_dsn(get_settings().redis_url)
     max_tries = MAX_INTENTOS + 1
     on_startup = on_startup

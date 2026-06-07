@@ -315,6 +315,13 @@ def _copiar_offsite_seguro(destino: Path, offsite_dir: str, keep_semanas: int | 
 
 
 def main(argv: list[str] | None = None) -> int:
+    # La consola no interactiva de Task Scheduler usa cp1252: los símbolos → / ✓ revientan con
+    # UnicodeEncodeError. Forzar UTF-8 (defensivo: en consolas raras `reconfigure` puede no existir).
+    for _stream in (sys.stdout, sys.stderr):
+        try:
+            _stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError):
+            pass
     parser = argparse.ArgumentParser(
         description="Respaldo de producción (pg_dump control+tenants) + restore probado."
     )

@@ -35,6 +35,9 @@ $env:PG_DUMP    = "docker run --rm postgres:18 pg_dump"
 $env:PG_RESTORE = "docker run --rm -i postgres:18 pg_restore"
 
 Write-Log "Ejecutando tools.backup_db --podar 8 ..."
+# Refuerzo: la consola no interactiva de Task Scheduler es cp1252; PYTHONUTF8=1 hace que Python use
+# UTF-8 en stdout/stderr (los símbolos → / ✓ no revientan). backup_db.py además lo fuerza por código.
+$env:PYTHONUTF8 = "1"
 # ErrorActionPreference=Continue alrededor del .exe: en PS 5.1, fusionar stderr de un nativo con Stop
 # puede lanzar NativeCommandError espurio aunque el proceso retorne 0.
 $prev = $ErrorActionPreference

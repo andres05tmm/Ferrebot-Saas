@@ -32,6 +32,9 @@ class Settings(BaseSettings):
     # Respaldo automático (tools/backup_db.py): apagado por defecto. Se controla con BACKUP_ENABLED
     # en .env.prod (pydantic v2 acepta on/off/true/false/1/0). Ver docs/runbook.md.
     backup_enabled: bool = False
+    # Copia OFF-SITE: carpeta local sincronizada a la nube (Google Drive for Desktop). Vacío = sin
+    # off-site (solo respaldo local). Si está montada, el backup se copia ahí tras el respaldo local.
+    backup_offsite_dir: str = ""
 
     # Auth
     jwt_algorithm: str = "HS256"

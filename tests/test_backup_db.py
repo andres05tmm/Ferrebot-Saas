@@ -7,10 +7,13 @@ de pg_dump/pg_restore es integración (se prueba a mano contra el Docker local; 
 from datetime import datetime, timezone
 from types import SimpleNamespace
 
+import pytest
+
 import tools.backup_db as backup_db
 from tools._prodenv import _limpiar_valor, parsear_env
 from tools.backup_db import (
     Objetivo,
+    copiar_offsite,
     main,
     marca_tiempo,
     nombre_db_de_url,
@@ -104,13 +107,16 @@ def test_tamano_humano():
 
 # --------------------------- gate BACKUP_ENABLED --------------------------
 
-def _stub_flujo(monkeypatch, tmp_path, *, backup_enabled: bool) -> list[dict]:
+def _stub_flujo(
+    monkeypatch, tmp_path, *, backup_enabled: bool, backup_offsite_dir: str = ""
+) -> list[dict]:
     """Aísla `main` de prod: cargar_env_prod no-op, settings fijos y `backup_all` espía.
 
     Devuelve la lista de llamadas a backup_all (vacía = no se invocó a pg_dump)."""
     llamadas: list[dict] = []
+    settings = SimpleNamespace(backup_enabled=backup_enabled, backup_offsite_dir=backup_offsite_dir)
     monkeypatch.setattr(backup_db, "cargar_env_prod", lambda *a, **k: None)
-    monkeypatch.setattr(backup_db, "get_settings", lambda: SimpleNamespace(backup_enabled=backup_enabled))
+    monkeypatch.setattr(backup_db, "get_settings", lambda: settings)
     monkeypatch.setattr(backup_db, "backup_all", lambda **k: (llamadas.append(k), tmp_path)[1])
     return llamadas
 
@@ -159,3 +165,49 @@ def test_podar_backups_solo_las_que_exceden_keep_semanas(tmp_path):
 
 def test_podar_backups_dir_inexistente_devuelve_vacio(tmp_path):
     assert podar_backups(tmp_path / "no-existe", keep_semanas=8) == []
+
+
+# --------------------------- copia off-site -------------------------------
+
+def test_copiar_offsite_copia_arbol_y_poda_viejas_en_destino(tmp_path):
+    ahora = datetime(2026, 6, 7, 12, 0, 0, tzinfo=timezone.utc)
+    # Backup recién hecho (control + tenant dumps) bajo su carpeta <timestamp>.
+    src = tmp_path / "local" / "20260607T120000Z"
+    src.mkdir(parents=True)
+    (src / "railway.dump").write_bytes(b"control-dump")
+    (src / "ferrebot_puntorojo.dump").write_bytes(b"tenant-dump")
+
+    dest_root = tmp_path / "drive"
+    dest_root.mkdir()
+    (dest_root / "20260118T120000Z").mkdir()   # ~20 semanas → se poda (keep=8)
+    (dest_root / "20260531T120000Z").mkdir()   # ~1 semana → se conserva
+
+    copia = copiar_offsite(src, dest_root, keep_semanas=8, ahora=ahora)
+
+    # Árbol completo copiado a dest_root/<timestamp>.
+    assert copia == dest_root / "20260607T120000Z"
+    assert (copia / "railway.dump").read_bytes() == b"control-dump"
+    assert (copia / "ferrebot_puntorojo.dump").read_bytes() == b"tenant-dump"
+    # Poda en destino: la vieja se borró, la reciente y la recién copiada quedan.
+    nombres = {p.name for p in dest_root.iterdir()}
+    assert nombres == {"20260607T120000Z", "20260531T120000Z"}
+
+
+def test_copiar_offsite_destino_no_montado_lanza_filenotfound(tmp_path):
+    src = tmp_path / "20260607T120000Z"
+    src.mkdir()
+    with pytest.raises(FileNotFoundError):
+        copiar_offsite(src, tmp_path / "drive-no-montado", keep_semanas=8)
+
+
+def test_flujo_offsite_fallido_no_rompe_backup_local(monkeypatch, tmp_path, capsys):
+    # BACKUP_OFFSITE_DIR apunta a una carpeta inexistente (Drive no montado): el respaldo local ya
+    # está, así que el flujo debe terminar en éxito (0) y solo AVISAR del off-site omitido.
+    offsite = str(tmp_path / "drive-no-montado")
+    llamadas = _stub_flujo(monkeypatch, tmp_path, backup_enabled=True, backup_offsite_dir=offsite)
+
+    code = main(["--dir", str(tmp_path), "--podar", "8"])
+
+    assert code == 0
+    assert len(llamadas) == 1                       # el backup local sí corrió
+    assert "off-site omitido" in capsys.readouterr().out

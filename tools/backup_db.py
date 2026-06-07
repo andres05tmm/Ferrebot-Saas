@@ -57,6 +57,9 @@ _TABLAS_CLAVE = (
 
 _DIR_BACKUPS = Path("backups")
 
+# Retención por defecto de la copia off-site cuando se corre sin `--podar` (el wrapper sí pasa `--podar 8`).
+_OFFSITE_KEEP_DEFAULT = 8
+
 
 class BackupError(RuntimeError):
     """Fallo de respaldo/restauración con mensaje accionable (incluye la pista de Docker)."""
@@ -112,6 +115,23 @@ def podar_backups(
         if ts is not None and ts < limite:
             viejas.append(hijo)
     return viejas
+
+
+def copiar_offsite(
+    src_dir: Path, dest_root: Path, keep_semanas: int, ahora: datetime | None = None
+) -> Path:
+    """Copia la carpeta de backup `src_dir` a `dest_root/<nombre>` (shutil.copytree) y poda en
+    `dest_root` las copias más viejas que `keep_semanas` (reusa `podar_backups`).
+
+    Devuelve la ruta copiada. Lanza `FileNotFoundError` si `dest_root` no existe/no está montada
+    (p. ej. Google Drive for Desktop sin sincronizar): el llamador lo trata como off-site omitido."""
+    if not dest_root.is_dir():
+        raise FileNotFoundError(f"destino off-site no montado: {dest_root}")
+    destino = dest_root / src_dir.name
+    shutil.copytree(src_dir, destino, dirs_exist_ok=True)
+    for carpeta in podar_backups(dest_root, keep_semanas, ahora):
+        shutil.rmtree(carpeta)
+    return destino
 
 
 def _nombre_archivo(db_name: str) -> str:
@@ -261,20 +281,37 @@ def _correr_respaldo(args: argparse.Namespace) -> int:
 
     El gate va DESPUÉS de `cargar_env_prod()` para que `backup_enabled` salga de `.env.prod` (no del
     `.env` local). Sin `--force`, si está apagado termina con éxito (return 0) para no alarmar al
-    scheduler. La poda (`--podar`) corre solo si el backup procedió."""
+    scheduler. La poda (`--podar`) corre solo si el backup procedió. El off-site (BACKUP_OFFSITE_DIR)
+    se intenta al final: si la carpeta no está montada, avisa y sigue (el backup local ya está)."""
     pg_dump = os.environ.get("PG_DUMP", _PG_DUMP_DEFAULT)
     cargar_env_prod()   # el respaldo SÍ corre contra prod (URLs públicas de Railway + BACKUP_ENABLED)
-    if not args.force and not get_settings().backup_enabled:
+    settings = get_settings()
+    if not args.force and not settings.backup_enabled:
         print("backup deshabilitado (BACKUP_ENABLED=off)")
         return 0
-    backup_all(pg_dump=pg_dump, dir_backups=Path(args.dir))
+    destino = backup_all(pg_dump=pg_dump, dir_backups=Path(args.dir))
     if args.podar is not None:
         viejas = podar_backups(Path(args.dir), args.podar)
         for carpeta in viejas:
             shutil.rmtree(carpeta)
             print(f"  ✗ podado {carpeta} (> {args.podar} semanas)")
         print(f"Poda: {len(viejas)} carpeta(s) eliminada(s) (retención {args.podar} semanas)")
+    if settings.backup_offsite_dir:
+        _copiar_offsite_seguro(destino, settings.backup_offsite_dir, args.podar)
     return 0
+
+
+def _copiar_offsite_seguro(destino: Path, offsite_dir: str, keep_semanas: int | None) -> None:
+    """Copia `destino` a la carpeta off-site reusando la retención de `--podar` (default si es None).
+
+    NUNCA hace fallar el backup local: si el off-site lanza (Drive no montado, permisos, copia
+    parcial), imprime un AVISO y vuelve. Reusa `copiar_offsite` para la copia + poda en destino."""
+    keep = keep_semanas if keep_semanas is not None else _OFFSITE_KEEP_DEFAULT
+    try:
+        copia = copiar_offsite(destino, Path(offsite_dir), keep)
+        print(f"Off-site: copiado a {copia} (retención {keep} semanas)")
+    except (OSError, shutil.Error) as exc:
+        print(f"AVISO: off-site omitido: {exc}")
 
 
 def main(argv: list[str] | None = None) -> int:

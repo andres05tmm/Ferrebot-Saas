@@ -11,7 +11,7 @@ from datetime import datetime, time, timedelta
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from apps.wa.agent import AgenteWa, MemoriaWa, correr_bucle, construir_system
+from apps.wa.agent import AgenteWa, MemoriaWa, correr_bucle, construir_system, whatsappify
 from apps.wa.kapso import MensajeWa
 from ai.envelope import Contexto, ErrorTool, Resultado
 from core.config.timezone import COLOMBIA_TZ, today_co
@@ -74,6 +74,25 @@ def test_system_prompt_es_especializado_y_usa_persona():
     assert "citas" in base and "ÚNICO" in base               # especializado (regla de Meta)
     con_persona = construir_system("Hablas como la barbería El Navaja, relajado y costeño.")
     assert "El Navaja" in con_persona
+
+
+def test_system_prompt_incluye_la_fecha_de_hoy_colombia():
+    from core.config.timezone import now_co
+    ahora = now_co()
+    sys = construir_system(None)
+    assert "Hoy es" in sys and "hora de Colombia" in sys
+    assert f"{ahora.day} de" in sys and str(ahora.year) in sys   # ancla la fecha actual
+    assert "lo más pronto posible" in sys                        # guía las fechas relativas
+
+
+def test_whatsappify_negrita_encabezados_separadores_links():
+    entrada = "### Servicios\n**Limpieza** y ***Blanqueamiento***\n---\nVer [aquí](https://x.co)"
+    out = whatsappify(entrada)
+    assert "*Limpieza*" in out and "*Blanqueamiento*" in out
+    assert "**" not in out                 # negrita Markdown → un solo asterisco
+    assert "###" not in out and "Servicios" in out   # encabezado: se quita el marcador, queda el texto
+    assert "---" not in out                # separador eliminado
+    assert "aquí: https://x.co" in out     # link → "texto: url"
 
 
 # --- bucle con LLM mockeado -------------------------------------------------
@@ -247,6 +266,24 @@ async def test_e2e_conversacion_agenda_cita_real(tenant):
     assert fila.cliente_telefono == TEL           # del Contexto, no '570000000000'
     assert fila.cliente_nombre == "Andrés"
     assert fila.estado == "confirmada" and fila.servicio_id == serv
+
+
+async def test_envia_texto_whatsappificado(tenant):
+    await _seed(tenant.engine)
+    provider = _ScriptedProvider([LLMResponse(text="**Hola** Andrés\n### Cita\nlista", tool_calls=[])])
+    sender = _FakeSender()
+    agente = AgenteWa(
+        abrir_tenant=_abrir_factory(tenant.engine),
+        resolver_llm=lambda tid, turno: _coro(_llm(provider)),
+        capacidades=lambda tid: _coro(frozenset({"pack_agenda"})),
+        memoria=MemoriaWa(url="x", client=_FakeRedis()),
+        sender=sender,
+    )
+    await agente.atender(MensajeWa(message_id="w", telefono=TEL, phone_number_id=PNID, texto="hola"),
+                         _tenant_resuelto())
+    enviado = sender.envios[0][2]                       # el texto realmente enviado por Kapso
+    assert "*Hola*" in enviado and "**" not in enviado  # negrita Markdown → WhatsApp
+    assert "###" not in enviado and "Cita" in enviado
 
 
 async def test_e2e_usa_orquestador_y_persona_del_negocio(tenant):

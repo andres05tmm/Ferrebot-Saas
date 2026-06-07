@@ -15,6 +15,7 @@ Piezas:
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import AsyncIterator, Awaitable, Callable
 from typing import Any
 
@@ -23,6 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ai.agenda_tools import AgendaDeps, ejecutar as agenda_ejecutar, exponer_catalogo
 from ai.envelope import Contexto, ErrorTool, Resultado
 from apps.wa.kapso import KapsoSender, MensajeWa
+from core.config.timezone import now_co
 from core.llm.base import Message, ToolSpec
 from core.llm.factory import LLMResuelto, Turno
 from core.logging import get_logger
@@ -50,11 +52,54 @@ _SYSTEM_BASE = (
 )
 
 
+_DIAS = ("lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo")
+_MESES = (
+    "enero", "febrero", "marzo", "abril", "mayo", "junio",
+    "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre",
+)
+
+
+def _ancla_fecha() -> str:
+    """Ancla de fecha/hora ACTUAL de Colombia (se calcula por mensaje, no al importar el módulo).
+
+    Sin esto el modelo no resuelve fechas relativas ('hoy', 'mañana', 'el 9 de junio', 'lo más pronto
+    posible') y consultar_disponibilidad sale vacía.
+    """
+    ahora = now_co()
+    return (
+        f"Hoy es {_DIAS[ahora.weekday()]}, {ahora.day} de {_MESES[ahora.month - 1]} de {ahora.year}, "
+        f"{ahora:%H:%M} hora de Colombia. Resuelve fechas relativas (hoy, mañana, 'el 9 de junio', "
+        "'lo más pronto posible') con base en esta fecha."
+    )
+
+
 def construir_system(persona: str | None) -> str:
-    """System prompt del asistente especializado, con la persona/tono del negocio si la hay."""
+    """System prompt del asistente especializado + ancla de fecha de hoy + persona del negocio."""
+    base = f"{_SYSTEM_BASE}\n\n{_ancla_fecha()}"
     if persona:
-        return f"{_SYSTEM_BASE}\n\nTono e identidad del negocio: {persona}"
-    return _SYSTEM_BASE
+        return f"{base}\n\nTono e identidad del negocio: {persona}"
+    return base
+
+
+def whatsappify(texto: str) -> str:
+    """Adapta el Markdown del modelo a lo que WhatsApp SÍ renderiza (reimpl. de Palmarito src/bot.js).
+
+    - `[texto](url)` → "texto: url"   (WhatsApp no hace links Markdown)
+    - `***x***` / `**x**` → `*x*`      (WhatsApp usa UN asterisco para negrita)
+    - encabezados (`#`…`######`) → se quita el marcador y se conserva el texto
+    - separadores (`---` en su propia línea) → se eliminan
+    """
+    if not texto:
+        return texto
+    texto = re.sub(r"\[([^\]]+)\]\(([^)]+)\)", r"\1: \2", texto)            # links → "texto: url"
+    texto = re.sub(r"\*\*\*(.+?)\*\*\*", r"*\1*", texto, flags=re.DOTALL)   # ***bold*** → *bold*
+    texto = re.sub(r"\*\*(.+?)\*\*", r"*\1*", texto, flags=re.DOTALL)       # **bold** → *bold*
+    lineas: list[str] = []
+    for linea in texto.split("\n"):
+        if re.fullmatch(r"\s*-{3,}\s*", linea):          # separador horizontal → fuera
+            continue
+        lineas.append(re.sub(r"^\s*#{1,6}\s*", "", linea))  # encabezado → solo su texto
+    return re.sub(r"\n{3,}", "\n\n", "\n".join(lineas)).strip()
 
 
 def _envelope_json(resultado: Resultado | ErrorTool) -> str:
@@ -216,7 +261,8 @@ class AgenteWa:
     async def _enviar(self, mensaje: MensajeWa, texto: str) -> None:
         try:
             await self._sender.enviar_texto(
-                phone_number_id=mensaje.phone_number_id, to=mensaje.telefono, texto=texto
+                phone_number_id=mensaje.phone_number_id, to=mensaje.telefono,
+                texto=whatsappify(texto),   # Markdown → formato que WhatsApp renderiza
             )
         except Exception:  # noqa: BLE001 — un fallo de envío no debe tumbar el job
             log.exception("wa_envio_error", tenant_id=None)

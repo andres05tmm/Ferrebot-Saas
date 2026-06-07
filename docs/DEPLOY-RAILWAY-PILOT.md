@@ -171,6 +171,14 @@ Corre dentro de la red privada antes de arrancar la versión nueva. `migrate_ten
 empresas del control DB y aplica `upgrade head` a cada app DB (si una falla, sigue y reporta). Con 0
 tenants es un no-op, así que es seguro desde el primer deploy.
 
+> **Config-as-code (en el repo):** `railway.api.toml` ya trae este `preDeployCommand` + el healthcheck
+> `/health`; `railway.toml` (base) es para el **Worker** (sin pre-deploy, sin health HTTP). Asigna a
+> cada servicio su archivo en *Settings → Config-as-Code → Config Path* (API → `railway.api.toml`,
+> Worker → `railway.toml`) para que las migraciones corran en **un solo** servicio. Lee el `⚠️ CAVEAT
+> del ENTRYPOINT` en `railway.api.toml` (Riesgo #1 de §10): si Railway pasara el comando como argumentos
+> al ENTRYPOINT, se ignoraría — verifica los logs del pre-deploy o corre las migraciones por la UI /
+> `railway ssh`.
+
 ---
 
 ## 6. Provisionar y sembrar el tenant del piloto + flags

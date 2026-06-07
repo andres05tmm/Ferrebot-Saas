@@ -1,0 +1,33 @@
+# railway.api.toml — config del servicio API de FerreBot SaaS (alineado con docs/DEPLOY-RAILWAY-PILOT.md).
+#
+# Úsalo SOLO en el servicio API: Railway → servicio API → Settings → Config-as-Code → "Config Path" =
+# railway.api.toml. El WORKER se queda con railway.toml (sin migraciones). Así el pre-deploy de
+# migraciones corre en UN SOLO servicio → sin carreras.
+#
+# Sin secretos horneados: las URLs del control DB y de los tenants se leen de las variables de entorno
+# (CONTROL_DATABASE_URL, TENANTS_DIRECT_URL_BASE, SECRETS_MASTER_KEY) que defines en Railway.
+#
+# ── Pre-deploy: migraciones EN ORDEN, idempotentes ───────────────────────────
+# Corre antes de poner en vivo la versión nueva: 1) control DB (Alembic) → 2) tenants (runner). El
+# runner aplica `upgrade head` a cada app DB; con 0 tenants es no-op, así que es seguro desde el 1er
+# deploy. Re-ejecutar no daña (alembic queda en head; el runner es idempotente).
+#
+# ⚠️ CAVEAT del ENTRYPOINT (ver "Riesgos" en docs/DEPLOY-RAILWAY-PILOT.md): docker-entrypoint.sh
+# ramifica por SERVICE_TYPE e IGNORA los argumentos. Railway corre `preDeployCommand` en un contenedor
+# one-off de la misma imagen: si tu proyecto lo ejecuta COMO el comando del contenedor (bypassando el
+# ENTRYPOINT), esto funciona tal cual. Si Railway lo pasara como ARGUMENTOS al ENTRYPOINT, el script lo
+# ignoraría (arrancaría uvicorn en vez de migrar) → en ese caso corre las migraciones por la UI
+# (Settings → Deploy → "Pre-deploy Command" con el MISMO string) o vía `railway ssh` (runbook §5).
+# Verifícalo en un deploy de prueba mirando los logs del pre-deploy.
+
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+preDeployCommand = "alembic -c migrations/control/alembic.ini upgrade head && python -m tools.migrate_tenants"
+healthcheckPath = "/health"
+healthcheckTimeout = 300
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 10
+numReplicas = 1

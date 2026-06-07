@@ -1,0 +1,27 @@
+# railway.toml — config de deploy BASE de FerreBot SaaS (alineado con docs/DEPLOY-RAILWAY-PILOT.md).
+#
+# La MISMA imagen del repo sirve API y Worker; difieren solo por la env SERVICE_TYPE (ver
+# docker-entrypoint.sh). Sin secretos horneados: TODO se inyecta por variables de entorno en Railway.
+#
+# ── Por qué dos archivos ─────────────────────────────────────────────────────
+# Railway auto-aplica ESTE railway.toml a todos los servicios del repo por defecto. Por eso aquí va
+# solo lo COMÚN + lo seguro para el WORKER: NO lleva pre-deploy de migraciones ni healthcheck HTTP.
+# Las migraciones (pre-deploy) van en railway.api.toml, que se asigna SOLO al servicio API (ver allí).
+# Así el pre-deploy corre en UN SOLO servicio → sin carreras entre API y Worker.
+#
+#   • Servicio WORKER (SERVICE_TYPE=worker): deja este archivo por defecto (o, en Settings →
+#     Config-as-Code, "Config Path" = railway.toml). No corre migraciones ni expone health HTTP.
+#   • Servicio API  (SERVICE_TYPE=api):  en Settings → Config-as-Code, fija "Config Path" =
+#     railway.api.toml (trae el pre-deploy de migraciones + healthcheck /health).
+#
+# No fijamos startCommand: el arranque lo decide el ENTRYPOINT del Dockerfile según SERVICE_TYPE
+# (api → uvicorn · worker → arq). SERVICE_TYPE se setea como variable de entorno por servicio.
+
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 10
+numReplicas = 1

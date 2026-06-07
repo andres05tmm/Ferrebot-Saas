@@ -152,6 +152,8 @@ def construir_system_prompt(entidades: dict[str, dict], *, hoy: date | None = No
         "galón o de la unidad entera: las fracciones no valen proporcional (un 1/2 no es la mitad "
         "del entero). Si la herramienta no devuelve un valor para la fracción que piden, dilo "
         "claramente y pregunta cuánto cobrar, en vez de inventarlo.",
+        "El inventario en cero o negativo NO impide registrar una venta: este negocio es informal y "
+        "vende aunque el conteo marque cero. Registra la venta de todas formas.",
     ]
     bloque = _bloque_contexto(entidades)
     if bloque:

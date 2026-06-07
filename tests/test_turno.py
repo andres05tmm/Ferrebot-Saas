@@ -184,6 +184,16 @@ def test_system_prompt_pide_buscar_producto_por_nombre_base():
     assert "nombre base" in prompt.lower()
 
 
+def test_system_prompt_stock_en_cero_no_bloquea_venta():
+    bajo = construir_system_prompt({}).lower()
+    assert "inventario" in bajo
+    assert "cero" in bajo or "negativ" in bajo            # la regla menciona stock cero/negativo
+    assert "registr" in bajo                              # y que se registra de todas formas
+    # respeta los invariantes del prompt (sin precio ni catálogo)
+    assert "precio" not in bajo
+    assert "catálogo" not in bajo and "catalogo" not in bajo
+
+
 def test_system_prompt_prohibe_calcular_fracciones():
     prompt = construir_system_prompt({})
     bajo = prompt.lower()

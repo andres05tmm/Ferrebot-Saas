@@ -146,8 +146,10 @@ async def test_producto_unico_sin_fracciones_es_simple():
     assert isinstance(res, Resultado)
     assert res.data["id"] == 7 and res.data["nombre"] == "Martillo"
     assert res.data["unidad_medida"] == "Unidad" and res.data["fracciones"] == []
-    assert "Unidad" in res.resumen and "12000" in res.resumen and "5" in res.resumen
+    assert "Unidad" in res.resumen and "12000" in res.resumen
     assert "Fracciones" not in res.resumen          # sin fracciones → resumen simple
+    assert "Stock" not in res.resumen               # el stock es ruido en una consulta de valor
+    assert res.data["stock"] == "5"                 # pero sigue en data
 
 
 async def test_producto_unico_con_fracciones_incluye_etiqueta_precio_y_unidad():
@@ -162,7 +164,8 @@ async def test_producto_unico_con_fracciones_incluye_etiqueta_precio_y_unidad():
     # unidad + ambas fracciones (etiqueta y precio) + precio base + stock, todo en el resumen
     for fragmento in ("Thinner", "Galón", "26000", "1/2", "13000", "1/4", "7000"):
         assert fragmento in res.resumen
-    assert "Stock: 0" in res.resumen
+    assert "Stock" not in res.resumen               # el stock no va en el resumen
+    assert res.data["stock"] == "0"                 # queda en data
     assert res.data["unidad_medida"] == "Galón"
     assert res.data["fracciones"][0] == {"etiqueta": "1/2", "precio_total": "13000"}
     assert len(res.data["fracciones"]) == 2

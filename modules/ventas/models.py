@@ -8,8 +8,11 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from core.db.base import TenantBase
 
+# Refleja TODOS los valores del enum de Postgres (incl. 'datafono' de la migración 0007 y los
+# históricos tarjeta/nequi/daviplata): la columna debe poder escribir 'datafono' y leer los viejos.
+# Los métodos vigentes para ventas nuevas los acota `MetodoPago` en schemas (Pydantic), no esta capa.
 metodo_pago_enum = PgEnum(
-    "efectivo", "transferencia", "tarjeta", "nequi", "daviplata", "fiado",
+    "efectivo", "transferencia", "tarjeta", "nequi", "daviplata", "fiado", "datafono",
     name="metodo_pago", create_type=False,
 )
 venta_estado_enum = PgEnum("completada", "anulada", name="venta_estado", create_type=False)

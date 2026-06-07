@@ -88,11 +88,56 @@ def _norm_basico(texto: str) -> str:
     return " ".join(_sin_tildes(texto).split())
 
 
+# Plurales irregulares/frecuentes (bypass.py viejo `_slug`); el resto cae en la regla genérica.
+_PLURALES = {"tornillos": "tornillo", "puntillas": "puntilla", "chazos": "chazo", "plasticos": "plastico"}
+
+
+def _singularizar(texto: str) -> str:
+    """Normaliza plurales del slug (port de `_slug`): específicos + regla genérica `(es|s)$` para
+    palabras de 4+ letras. Así "galones"→"galon", "tornillos"→"tornillo", sin tocar "t1"/"blanco"."""
+    for plural, singular in _PLURALES.items():
+        texto = re.sub(rf"\b{plural}\b", singular, texto)
+    texto = re.sub(r"\b(\w{4,})es\b", r"\1", texto)
+    texto = re.sub(r"\b(\w{4,})s\b", r"\1", texto)
+    return texto
+
+
+# Unidades de empaque/medida que pueden anteceder al producto ("2 galones de thinner" → "thinner").
+# Se listan singular y plural + abreviaturas; el slug ya viene singularizado, pero se cubren ambas.
+_UNIDADES_INICIALES = frozenset({
+    "galon", "galones", "gal",
+    "kilo", "kilos", "kg",
+    "gramo", "gramos", "gr", "grm",
+    "libra", "libras", "lb",
+    "metro", "metros", "mts", "mt",
+    "centimetro", "centimetros", "cm", "cms",
+    "litro", "litros", "lt", "ml", "mlt",
+    "bolsa", "bolsas", "tarro", "tarros", "rollo", "rollos",
+    "botella", "botellas", "caja", "cajas", "bulto", "bultos",
+    "unidad", "unidades", "und",
+})
+
+
 def normalizar_slug(texto: str) -> str:
-    """Slug del producto: normaliza, lija `#120 → n120` y limpia especiales (bypass.py:111, `_slug`)."""
+    """Slug del producto: normaliza, lija `#120 → n120`, limpia especiales y singulariza plurales
+    (bypass.py:111, `_slug`)."""
     base = re.sub(r"#\s*(\d+)", r"n\1", _norm_basico(texto))
     base = re.sub(r"[^a-z0-9 ]", " ", base)
+    base = _singularizar(" ".join(base.split()))
     return " ".join(base.split())
+
+
+def quitar_unidad_inicial(texto: str) -> str:
+    """Si el slug empieza con una palabra de unidad (galón/kilo/litro/...), seguida opcionalmente de
+    "de", la quita: "galon de thinner" → "thinner". Si no empieza con unidad, lo devuelve igual (no
+    rompe productos que sí llevan esas palabras en otra posición)."""
+    palabras = texto.split()
+    if not palabras or palabras[0] not in _UNIDADES_INICIALES:
+        return texto
+    resto = palabras[1:]
+    if resto and resto[0] == "de":
+        resto = resto[1:]
+    return " ".join(resto)
 
 
 def _fraccion(numerador: str, denominador: str) -> Decimal | None:
@@ -211,6 +256,12 @@ class Bypass:
             return None                          # no-match → el turno cae al modelo
 
         prod = await self._catalogo.producto_exacto(analisis.producto)
+        if prod is None:
+            # Reintento: quitar una unidad de empaque inicial ("2 galones de thinner" → "thinner").
+            # `producto_exacto` ya exige match único (0/>1 → None), así que solo se usa si es seguro.
+            sin_unidad = quitar_unidad_inicial(analisis.producto)
+            if sin_unidad and sin_unidad != analisis.producto:
+                prod = await self._catalogo.producto_exacto(sin_unidad)
         if prod is None:
             return None                          # no exacto → al modelo (sin adivinar)
         if prod.esquema.tiene_escalonado:

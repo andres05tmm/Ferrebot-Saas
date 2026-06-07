@@ -351,7 +351,7 @@ function metodoTone(metodo) {
   const m = String(metodo || '').toLowerCase()
   if (m.includes('efectivo')) return 'bg-success/10 text-success border-success/20'
   if (m.includes('transf')) return 'bg-warning/10 text-warning border-warning/20'
-  if (m.includes('nequi')) return 'bg-info/10 text-info border-info/20'
+  // datafono = método vigente; 'tarj' se conserva para colorear ventas históricas con tarjeta.
   if (m.includes('datafono') || m.includes('tarj')) return 'bg-info/10 text-info border-info/20'
   if (m.includes('fiado') || m.includes('credito')) return 'bg-danger/10 text-danger border-danger/20'
   return 'bg-surface-2 text-muted-foreground border-border'
@@ -359,8 +359,9 @@ function metodoTone(metodo) {
 
 // ── MÉTODOS DE PAGO ───────────────────────────────────────────────────────────
 const METODO_BAR_COLORS = {
-  Efectivo: 'hsl(var(--success))', Nequi: 'hsl(var(--accent))', Transferencia: 'hsl(var(--accent))',
-  Tarjeta: 'hsl(var(--info))', Daviplata: 'hsl(var(--info))', Fiado: 'hsl(var(--warning))',
+  Efectivo: 'hsl(var(--success))', Transferencia: 'hsl(var(--accent))',
+  Datafono: 'hsl(var(--info))', Fiado: 'hsl(var(--warning))',
+  Tarjeta: 'hsl(var(--info))',   // histórico (las claves ausentes caen al color muted por defecto)
 }
 
 function MetodosPago({ items, total }) {

@@ -5,9 +5,9 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-MetodoPago = Literal[
-    "efectivo", "transferencia", "tarjeta", "nequi", "daviplata", "fiado", "datafono"
-]
+# Métodos vigentes para ventas NUEVAS (cierra #9). Las ventas históricas con tarjeta/nequi/daviplata
+# se siguen leyendo (VentaLeer.metodo_pago es str; el enum de Postgres conserva esos valores).
+MetodoPago = Literal["efectivo", "transferencia", "datafono", "fiado"]
 Origen = Literal["web", "bot", "voz", "offline"]
 
 

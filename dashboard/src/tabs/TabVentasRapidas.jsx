@@ -13,7 +13,7 @@ import { cop } from '@/components/shared.jsx'
 import { Card } from '@/components/ui/card.jsx'
 import { Input } from '@/components/ui/input.jsx'
 
-const METODOS = ['efectivo', 'transferencia', 'tarjeta', 'nequi', 'daviplata', 'fiado']
+const METODOS = ['efectivo', 'transferencia', 'datafono', 'fiado']
 
 function nuevaKey() {
   return (crypto?.randomUUID?.() || `k-${Date.now()}-${Math.random()}`)

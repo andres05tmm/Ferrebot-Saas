@@ -315,5 +315,6 @@ async def test_notificador_answer_callback():
     assert payload["callback_query_id"] == "cb-7"
 
 
-def test_metodo_pago_incluye_datafono():
-    assert "datafono" in get_args(MetodoPago)
+def test_metodo_pago_son_los_cuatro_vigentes():
+    # Cierra #9: efectivo/transferencia/datafono/fiado; se quitaron tarjeta/nequi/daviplata.
+    assert set(get_args(MetodoPago)) == {"efectivo", "transferencia", "datafono", "fiado"}

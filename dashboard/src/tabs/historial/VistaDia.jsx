@@ -17,7 +17,7 @@ import { Input } from '@/components/ui/input.jsx'
 import { Badge } from '@/components/ui/badge.jsx'
 
 const HORA_CO = { hour: '2-digit', minute: '2-digit', timeZone: 'America/Bogota' }
-const METODOS = ['efectivo', 'transferencia', 'tarjeta', 'nequi', 'daviplata', 'fiado']
+const METODOS = ['efectivo', 'transferencia', 'datafono', 'fiado']
 const fechaCO = (iso) => new Date(iso).toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
 const hoyCO = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
 

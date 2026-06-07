@@ -235,10 +235,11 @@ async def _consultar_ventas_dia(
 async def _consultar_producto(
     args: ConsultarProductoArgs, ctx: Contexto, deps: Deps
 ) -> Resultado | ErrorTool:
-    """Precio y stock de un producto por su nombre. Solo lectura (espejo de `riel_producto`):
+    """Valor de un producto por su nombre. Solo lectura (espejo de `riel_producto`):
 
     0 coincidencias → ErrorTool recuperable; varias → enumera los candidatos y pregunta cuál; una →
-    devuelve precio y stock.
+    devuelve el valor (y sus fracciones). El stock va solo en `data` (es una consulta de valor; el
+    stock en el resumen es ruido y, además, en cero no debe sugerir que no se puede vender).
     """
     matches = await deps.ventas.buscar_producto_por_nombre(args.nombre)
     if not matches:
@@ -268,7 +269,7 @@ async def _consultar_producto(
                 {"etiqueta": fr.etiqueta, "precio_total": str(fr.precio_total)} for fr in p.fracciones
             ],
         },
-        resumen=f"{p.nombre} ({p.unidad_medida}): ${p.precio}.{detalle} Stock: {p.stock}.",
+        resumen=f"{p.nombre} ({p.unidad_medida}): ${p.precio}.{detalle}",
     )
 
 

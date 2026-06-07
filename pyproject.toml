@@ -25,6 +25,7 @@ dependencies = [
     "httpx>=0.28",                 # cliente HTTP de runtime (Telegram sendMessage, MATIAS, Whisper)
     "openai>=1.0",                 # SDK del proveedor LLM por defecto (core/llm/providers/openai.py)
     "anthropic>=0.40",             # SDK del proveedor Claude (core/llm/providers/claude.py)
+    "sentry-sdk[fastapi]>=2.0",    # observabilidad de errores (api/bot ASGI + worker arq)
 ]
 
 [project.optional-dependencies]

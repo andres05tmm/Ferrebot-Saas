@@ -15,6 +15,7 @@ from arq.connections import RedisSettings
 from apps.worker.jobs import emitir_documento
 from core.config import get_settings
 from core.db.session import control_session, tenant_session
+from core.observability import init_sentry
 from core.tenancy.control_repo import resolve_tenant_by_id
 from modules.facturacion.config import cargar_config_matias
 from modules.facturacion.matias_client import MatiasClient, MatiasCredenciales
@@ -77,6 +78,7 @@ async def on_startup(ctx: dict) -> None:
     La `_MatiasClientCache` vive en esta closure (una por runtime), por lo que se comparte entre todos
     los jobs y persiste el cliente —con su token y ciudades— entre emisiones.
     """
+    init_sentry("worker")
     master = get_settings().secrets_master_key
     cache = _MatiasClientCache()
 

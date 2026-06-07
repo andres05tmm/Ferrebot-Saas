@@ -26,6 +26,8 @@ class Settings(BaseSettings):
     service_type: str = "api"
     redis_url: str = "redis://localhost:6379/0"
     sentry_dsn: str = ""
+    sentry_environment: str = "production"
+    sentry_traces_sample_rate: float = 0.0   # solo errores por defecto (barato)
 
     # Auth
     jwt_algorithm: str = "HS256"

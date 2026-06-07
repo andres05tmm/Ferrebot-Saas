@@ -9,10 +9,12 @@ from fastapi import FastAPI
 
 from apps.bot.webhook import crear_app_bot
 from apps.bot.wiring import construir_deps
+from core.observability import init_sentry
 
 
 def crear_app() -> FastAPI:
     """App ASGI del servicio bot (como `apps/api/main.py`)."""
+    init_sentry("bot")
     return crear_app_bot(construir_deps())
 
 

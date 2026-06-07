@@ -17,6 +17,7 @@ from core.db.engine_cache import engine_cache
 from core.db.session import _control
 from core.events import event_hub
 from core.logging import configure_logging, get_logger
+from core.observability import init_sentry
 from core.tenancy.middleware import TenantMiddleware
 from modules.auth.router import router as auth_router
 from modules.caja.router import gastos_router, router as caja_router
@@ -39,6 +40,7 @@ DASHBOARD_DIST = Path(__file__).resolve().parents[2] / "dashboard" / "dist"
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    init_sentry("api")
     configure_logging()
     log.info("api_arranque")
     # Pool ARQ (perezoso, sobre Redis): el endpoint de facturación encola la emisión aquí.

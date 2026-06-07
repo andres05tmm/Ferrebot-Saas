@@ -30,6 +30,10 @@ class Contexto:
     request_id: str | None = None
     capacidades: frozenset[str] = frozenset()  # features efectivas de la empresa
     confirmado: bool = False              # True si el usuario ya confirmó (riel de confirmación)
+    # Identidad del cliente en canales de cara al público (WhatsApp): la inyecta el adaptador de
+    # canal desde el número que escribe, NUNCA el modelo. Las herramientas de agenda acotan sus
+    # acciones a ESTE teléfono; el modelo no puede pasar otro ni ver citas ajenas.
+    cliente_telefono: str | None = None
 
     def tiene_capacidad(self, feature: str | None) -> bool:
         """Núcleo (`feature is None`) siempre disponible; lo demás según el set efectivo."""

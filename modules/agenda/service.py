@@ -114,6 +114,19 @@ class AgendaService:
         slots.sort(key=lambda s: (s.inicio, s.recurso_id))
         return slots
 
+    async def listar_servicios(self) -> list[Servicio]:
+        """Servicios activos del negocio (para que el agente los ofrezca)."""
+        return await self._repo.listar_servicios(solo_activos=True)
+
+    async def proximas_citas(self, telefono: str) -> list[Cita]:
+        """Citas vigentes (pendiente/confirmada) aún no pasadas del cliente, ordenadas por fecha.
+
+        Acotado al teléfono: es la identidad del cliente en WhatsApp (guardarraíl del agente).
+        """
+        ahora = now_co()
+        citas = await self._repo.citas_de_cliente(telefono)
+        return [c for c in citas if c.estado in ("pendiente", "confirmada") and c.fin >= ahora]
+
     # --- agendar -------------------------------------------------------------
     async def validar_y_agendar(
         self,

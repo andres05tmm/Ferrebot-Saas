@@ -38,15 +38,26 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 from dataclasses import replace
 from datetime import date
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
+
+if TYPE_CHECKING:
+    from ai.bypass import VentaPreparada
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ai.agent import RespuestaAgente, ejecutar_turno, texto_de_respuesta
-from ai.confirmacion import ConfirmStore, es_afirmacion, es_negacion
+from ai.confirmacion import ConfirmStore, VentaPendienteStore, es_afirmacion, es_negacion
 from ai.dispatcher import Dispatcher, Recursos, Respuesta
 from ai.envelope import Contexto
-from apps.bot.ports import ArchivosTelegram, Notificador, RecursosBot, TurnoHandler, UpdateBot
+from apps.bot.ports import (
+    ArchivosTelegram,
+    CallbackBot,
+    CallbackHandler,
+    Notificador,
+    RecursosBot,
+    TurnoHandler,
+    UpdateBot,
+)
 from core.config.timezone import today_co
 from core.llm.factory import LLMResuelto, Turno
 from core.llm.medicion import CostosStore, ProveedorMedido
@@ -73,6 +84,24 @@ MENSAJE_NO_ENTENDI = "No te entendí, ¿puedes repetirlo?"
 CAP_VENTAS_VOZ = "ventas_voz"
 # Respuesta cuando el usuario niega una mutación pendiente de confirmación.
 MENSAJE_CANCELADO = "Listo, cancelado."
+# Respuesta cuando se cancela una venta pendiente de método de pago (botón [Cancelar]).
+MENSAJE_VENTA_CANCELADA = "Venta cancelada."
+# Respuesta cuando el botón se pulsa pero ya no hay pendiente (expiró el TTL o doble-tap ya resuelto).
+MENSAJE_VENTA_EXPIRADA = "Esa venta ya no está disponible. Vuelve a escribirla, por favor."
+
+# Botonera de método de pago para una venta del bypass: fila de métodos + fila [Cancelar].
+# Cada botón es (texto visible, callback_data); el handler enruta por el callback_data.
+PREFIJO_PAGO = "pago:"                 # pago:<metodo> → fija metodo_pago y ejecuta
+CALLBACK_CANCELAR = "venta:cancelar"   # descarta el pendiente
+BOTONES_METODO_PAGO: tuple[tuple[str, str], ...] = (
+    ("Efectivo", f"{PREFIJO_PAGO}efectivo"),
+    ("Transferencia", f"{PREFIJO_PAGO}transferencia"),
+    ("Datáfono", f"{PREFIJO_PAGO}datafono"),
+)
+TECLADO_METODO_PAGO: tuple[tuple[tuple[str, str], ...], ...] = (
+    BOTONES_METODO_PAGO,
+    (("Cancelar", CALLBACK_CANCELAR),),
+)
 
 # Factories atadas a la sesión del tenant que el handler recibe en cada turno.
 MemoriaFactory = Callable[[AsyncSession], MemoriaService]
@@ -87,6 +116,10 @@ EjecutarTurno = Callable[..., Awaitable[RespuestaAgente]]
 # (Resultado/ErrorTool/Preguntar/Confirmar) o None = CaeAlModelo (el turno sigue al modelo).
 class BypassPort(Protocol):
     async def intentar(self, texto: str, ctx: Contexto, recursos: Recursos) -> Respuesta | None: ...
+    # Variante con botones: hace el match pero NO ejecuta; devuelve la venta lista o None (no-match).
+    async def preparar(
+        self, texto: str, ctx: Contexto, recursos: Recursos
+    ) -> "VentaPreparada | None": ...
 
 
 # Factory por turno: ata el catálogo (capa exacta) a la sesión del tenant; None = sin bypass.
@@ -228,14 +261,31 @@ async def _resolver_por_bypass(
     notificador: Notificador,
     memoria_svc: MemoriaService,
     chat_id: int,
+    pendientes: VentaPendienteStore | None = None,
 ) -> bool:
     """Intenta resolver el turno por el bypass (camino rápido sin IA). True = resuelto (return).
 
-    Resiliencia: un fallo del bypass NUNCA tumba el turno (devuelve False → cae al modelo). El match
-    relaya el resultado del despachador al usuario reusando `texto_de_respuesta` (Resultado→resumen,
-    Preguntar→mensaje), persiste el turno (best-effort) y registra `bypass_resuelto`. El bypass solo
-    emite ventas (no confirmables), así que no hay confirmación pendiente que guardar.
+    Resiliencia: un fallo del bypass NUNCA tumba el turno (devuelve False → cae al modelo).
+
+    Dos modos:
+      - con `pendientes` (flujo de botones): NO ejecuta la venta — `_ofrecer_metodo_pago` prepara la
+        venta, guarda el pendiente y manda el resumen + botonera de método de pago;
+      - sin `pendientes` (flujo clásico): el bypass ejecuta y se relaya el resultado del despachador
+        (`texto_de_respuesta`), persistiendo el turno (best-effort).
     """
+    if pendientes is not None:
+        try:
+            bypass = crear_bypass(session)
+        except Exception:
+            log.warning("bypass_fallo", chat_id=chat_id, exc_info=True)
+            return False
+        if bypass is None:
+            return False
+        return await _ofrecer_metodo_pago(
+            bypass, texto=texto, ctx=ctx, recursos_turno=recursos_turno,
+            notificador=notificador, pendientes=pendientes, chat_id=chat_id,
+        )
+
     try:
         bypass = crear_bypass(session)
         r = await bypass.intentar(texto, ctx, recursos_turno) if bypass is not None else None
@@ -257,6 +307,45 @@ async def _resolver_por_bypass(
     return True
 
 
+async def _ofrecer_metodo_pago(
+    bypass: BypassPort,
+    *,
+    texto: str,
+    ctx: Contexto,
+    recursos_turno: Recursos,
+    notificador: Notificador,
+    pendientes: VentaPendienteStore,
+    chat_id: int,
+) -> bool:
+    """Prepara la venta (sin registrarla), guarda el pendiente y ofrece método de pago con botones.
+
+    True = el bypass resolvió (se mostró la botonera); False = no-match (cae al modelo).
+
+    `bypass.preparar` → si hay venta: guarda el pendiente (ToolCall SIN `metodo_pago` + la
+    `ctx.idempotency_key` ESTABLE del mensaje, que el callback reusará para no duplicar) y manda el
+    resumen + `TECLADO_METODO_PAGO`. NADA se ejecuta hasta que el usuario pulse un botón.
+    """
+    try:
+        preparada = await bypass.preparar(texto, ctx, recursos_turno)
+    except Exception:
+        log.warning("bypass_fallo", chat_id=chat_id, exc_info=True)
+        return False
+    if preparada is None:
+        return False                              # no-match → el turno cae al modelo
+    try:
+        await pendientes.guardar(
+            ctx.tenant_id, chat_id,
+            tool_call=preparada.tool_call, idempotency_key=ctx.idempotency_key or "",
+        )
+    except Exception:
+        # Si no podemos guardar el pendiente, no ofrecemos botones huérfanos: cae al modelo.
+        log.warning("venta_pendiente_guardar_fallo", chat_id=chat_id, exc_info=True)
+        return False
+    await notificador.responder(chat_id, preparada.resumen, teclado=TECLADO_METODO_PAGO)
+    log.info("bypass_pendiente_pago", chat_id=chat_id)
+    return True
+
+
 def crear_turno_handler(
     *,
     dispatcher: Dispatcher,
@@ -269,6 +358,7 @@ def crear_turno_handler(
     audios: AudioFactory | None = None,
     confirm: ConfirmStore | None = None,
     crear_bypass: BypassFactory | None = None,
+    pendientes: VentaPendienteStore | None = None,
 ) -> TurnoHandler:
     """Captura el dispatcher + stores (+ voz, opcional) y devuelve el `TurnoHandler` del webhook.
 
@@ -313,9 +403,11 @@ def crear_turno_handler(
         recursos_turno = crear_recursos(session)                              # fresco por turno
 
         # Bypass (Paso A: ventas): camino rápido sin IA, ANTES del modelo. None/False = CaeAlModelo.
+        # Con `pendientes`, el bypass NO ejecuta: ofrece método de pago con botones (R3-bot).
         if crear_bypass is not None and texto and await _resolver_por_bypass(
             crear_bypass, texto=texto, ctx=ctx, session=session, recursos_turno=recursos_turno,
             notificador=notificador, memoria_svc=memoria_svc, chat_id=update.chat_id,
+            pendientes=pendientes,
         ):
             return
 
@@ -355,3 +447,91 @@ def crear_turno_handler(
             log.warning("turno_persistencia_fallo", chat_id=update.chat_id, exc_info=True)
 
     return handler
+
+
+def _con_metodo_pago(tool_call: ToolCall, metodo: str) -> ToolCall:
+    """Copia el `ToolCall` fijando `metodo_pago` (el ToolCall es inmutable; no se muta el pendiente)."""
+    return replace(tool_call, arguments={**tool_call.arguments, "metodo_pago": metodo})
+
+
+def crear_callback_handler(
+    *,
+    dispatcher: Dispatcher,
+    pendientes: VentaPendienteStore,
+    crear_recursos: RecursosFactory,
+    memoria: MemoriaFactory | None = None,
+) -> CallbackHandler:
+    """Captura el dispatcher + el store de pendientes y devuelve el `CallbackHandler` del webhook.
+
+    Según `callback.data`:
+      - `pago:<metodo>` → carga el pendiente (si no hay → avisa que expiró), fija `metodo_pago` en el
+        `ToolCall`, ejecuta vía `dispatcher.ejecutar` (MISMA `idempotency_key` del pendiente → un
+        doble-tap no duplica), responde la confirmación y limpia el pendiente;
+      - `venta:cancelar` → limpia el pendiente y responde `MENSAJE_VENTA_CANCELADA`.
+    SIEMPRE cierra con `notificador.answer_callback` (Telegram exige el ack o el botón queda "cargando").
+    """
+
+    async def handler(
+        callback: CallbackBot, ctx: Contexto, session: AsyncSession, notificador: Notificador
+    ) -> None:
+        data = callback.data or ""
+        try:
+            if data == CALLBACK_CANCELAR:
+                await pendientes.borrar(ctx.tenant_id, callback.chat_id)
+                await notificador.responder(callback.chat_id, MENSAJE_VENTA_CANCELADA)
+            elif data.startswith(PREFIJO_PAGO):
+                await _registrar_con_metodo(
+                    data[len(PREFIJO_PAGO):], callback, ctx, session, notificador,
+                    dispatcher=dispatcher, pendientes=pendientes,
+                    crear_recursos=crear_recursos, memoria=memoria,
+                )
+            else:
+                log.info("bot_callback_desconocido", data=data, chat_id=callback.chat_id)
+        finally:
+            try:
+                await notificador.answer_callback(callback.callback_id)
+            except Exception:
+                log.warning("bot_answer_callback_fallo", chat_id=callback.chat_id, exc_info=True)
+
+    return handler
+
+
+async def _registrar_con_metodo(
+    metodo: str,
+    callback: CallbackBot,
+    ctx: Contexto,
+    session: AsyncSession,
+    notificador: Notificador,
+    *,
+    dispatcher: Dispatcher,
+    pendientes: VentaPendienteStore,
+    crear_recursos: RecursosFactory,
+    memoria: MemoriaFactory | None,
+) -> None:
+    """Ejecuta la venta pendiente con el `metodo` elegido. Consume el pendiente solo si se registró.
+
+    El pendiente se borra DESPUÉS de ejecutar; un segundo tap ya no lo encuentra (no re-ejecuta), y si
+    dos taps corrieran a la par, la `idempotency_key` estable hace que el despachador dedupe el 2º.
+    """
+    pendiente = await pendientes.obtener(ctx.tenant_id, callback.chat_id)
+    if pendiente is None:
+        await notificador.responder(callback.chat_id, MENSAJE_VENTA_EXPIRADA)
+        return
+    tool_call = _con_metodo_pago(pendiente.tool_call, metodo)
+    ctx2 = replace(ctx, idempotency_key=pendiente.idempotency_key)
+    try:
+        resultado = await dispatcher.ejecutar(tool_call, ctx2, crear_recursos(session))
+    except Exception:
+        log.warning("callback_pago_fallo", chat_id=callback.chat_id, exc_info=True)
+        await notificador.responder(callback.chat_id, MENSAJE_RESPALDO)
+        return
+    respuesta = texto_de_respuesta(resultado)
+    await notificador.responder(callback.chat_id, respuesta)
+    await pendientes.borrar(ctx.tenant_id, callback.chat_id)
+    if memoria is not None:
+        try:
+            await memoria(session).guardar_turno(
+                callback.chat_id, usuario=f"{PREFIJO_PAGO}{metodo}", asistente=respuesta
+            )
+        except Exception:
+            log.warning("turno_persistencia_fallo", chat_id=callback.chat_id, exc_info=True)

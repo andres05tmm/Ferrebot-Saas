@@ -27,7 +27,11 @@ from ai.dispatcher import Dispatcher, Recursos, Respuesta
 from ai.envelope import Contexto
 from ai.ports import ProductoCatalogo
 from core.llm.base import ToolCall
-from modules.inventario.precios import EsquemaPrecio, _fraccion_que_coincide
+from modules.inventario.precios import (
+    EsquemaPrecio,
+    _fraccion_que_coincide,
+    obtener_precio_para_cantidad,
+)
 
 # --- Mapa de fracciones escritas (bypass.py:73-105) --------------------------
 _FRAC_ESCRITAS: dict[str, Decimal] = {
@@ -169,25 +173,39 @@ class CatalogoBypass(Protocol):
     async def producto_exacto(self, slug: str) -> ProductoBypass | None: ...
 
 
+@dataclass(frozen=True, slots=True)
+class VentaPreparada:
+    """Venta resuelta por el bypass, lista para ofrecer método de pago (todavía NO ejecutada).
+
+    El `tool_call` es `registrar_venta` SIN `metodo_pago` (lo fija el callback del botón); `resumen`
+    es la línea + total calculados read-only con el motor de precios (`obtener_precio_para_cantidad`).
+    """
+
+    tool_call: ToolCall
+    resumen: str
+
+
 class Bypass:
     """Convergencia: el match emite un `ToolCall` a `dispatcher.ejecutar`; nunca llama al servicio.
 
     `intentar` devuelve la `Respuesta` del despachador (Resultado/ErrorTool/Preguntar/Confirmar) o
     `None` = CaeAlModelo (no-match → el turno va al modelo por el loop del agente).
+
+    `preparar` es la variante con botones: hace el MISMO match pero NO ejecuta — devuelve la venta
+    lista (`VentaPreparada`) para que el handler guarde el pendiente y ofrezca método de pago.
     """
 
     def __init__(self, catalogo: CatalogoBypass, dispatcher: Dispatcher) -> None:
         self._catalogo = catalogo
         self._dispatcher = dispatcher
 
-    async def intentar(self, texto: str, ctx: Contexto, recursos: Recursos) -> Respuesta | None:
-        """Match → ToolCall normalizado → dispatcher.ejecutar. None = CaeAlModelo (no-match).
+    async def _resolver_match(
+        self, texto: str, recursos: Recursos
+    ) -> tuple[ProductoBypass, tuple[Decimal, ...]] | None:
+        """Match común a `intentar`/`preparar`: texto → (producto exacto, componentes) o None.
 
-        Al hacer match deposita el producto resuelto en `recursos.resueltos` (decisión #5b) para que
-        R1 no relea Postgres, y construye `ToolCall(registrar_venta, items=[{producto_id, cantidad}])`
-        sin `precio_unitario` (el catálogo es la fuente de verdad → R2 no corre). El `origen` y la
-        `idempotency_key` los toma el handler de `ctx` (la API es la misma para bypass y modelo).
-        """
+        Aplica los gates (no exacto / escalonado / fracción inexistente → None) y, al acertar,
+        deposita el producto en `recursos.resueltos` (decisión #5b) para que R1 no relea Postgres."""
         analisis = analizar(texto)
         if isinstance(analisis, CaeAlModelo):
             return None                          # no-match → el turno cae al modelo
@@ -201,19 +219,77 @@ class Bypass:
             if cantidad % 1 != 0 and _fraccion_que_coincide(prod.esquema, cantidad) is None:
                 return None                      # fracción inexistente en el catálogo → al modelo
 
-        # Decisión #5b: el producto ya está resuelto; lo pre-cargo para que R1 no relea Postgres.
         recursos.resueltos[prod.id] = ProductoCatalogo(
             id=prod.id, nombre=prod.nombre, activo=True, esquema=prod.esquema
         )
+        return prod, analisis.componentes
+
+    def _items(self, componentes: tuple[Decimal, ...], producto_id: int) -> list[dict]:
+        """Cada componente → un ítem `{producto_id, cantidad}` (sin `precio_unitario`: manda el catálogo)."""
+        return [{"producto_id": producto_id, "cantidad": cantidad} for cantidad in componentes]
+
+    async def preparar(
+        self, texto: str, ctx: Contexto, recursos: Recursos
+    ) -> VentaPreparada | None:
+        """Match → `VentaPreparada` (ToolCall SIN `metodo_pago` + resumen read-only). None = no-match.
+
+        Hace el MISMO match que `intentar` pero NO ejecuta: arma el `ToolCall` sin `metodo_pago` (lo
+        fija el botón) y calcula el resumen con `obtener_precio_para_cantidad` (read-only, sin mutar).
+        """
+        match = await self._resolver_match(texto, recursos)
+        if match is None:
+            return None
+        prod, componentes = match
         tool_call = ToolCall(
             id=f"bypass:{prod.id}",
             name="registrar_venta",
-            arguments={
-                "items": [
-                    {"producto_id": prod.id, "cantidad": cantidad}
-                    for cantidad in analisis.componentes
-                ],
-                "metodo_pago": "efectivo",
-            },
+            arguments={"items": self._items(componentes, prod.id)},   # SIN metodo_pago
+        )
+        return VentaPreparada(tool_call=tool_call, resumen=_resumen_venta(prod, componentes))
+
+    async def intentar(self, texto: str, ctx: Contexto, recursos: Recursos) -> Respuesta | None:
+        """Match → ToolCall normalizado → dispatcher.ejecutar. None = CaeAlModelo (no-match).
+
+        Al hacer match deposita el producto resuelto en `recursos.resueltos` (decisión #5b) para que
+        R1 no relea Postgres, y construye `ToolCall(registrar_venta, items=[{producto_id, cantidad}])`
+        sin `precio_unitario` (el catálogo es la fuente de verdad → R2 no corre). El `origen` y la
+        `idempotency_key` los toma el handler de `ctx` (la API es la misma para bypass y modelo).
+        """
+        match = await self._resolver_match(texto, recursos)
+        if match is None:
+            return None
+        prod, componentes = match
+        tool_call = ToolCall(
+            id=f"bypass:{prod.id}",
+            name="registrar_venta",
+            arguments={"items": self._items(componentes, prod.id), "metodo_pago": "efectivo"},
         )
         return await self._dispatcher.ejecutar(tool_call, ctx, recursos)
+
+
+def _resumen_venta(prod: ProductoBypass, componentes: tuple[Decimal, ...]) -> str:
+    """Resumen read-only (líneas + total) de una venta del bypass; texto plano para Telegram.
+
+    Usa `obtener_precio_para_cantidad` (la MISMA verdad de precios del servicio): cada componente es
+    una línea y el total es su suma. No registra nada."""
+    lineas: list[str] = []
+    total = Decimal("0")
+    for cantidad in componentes:
+        total_linea, _ = obtener_precio_para_cantidad(prod.esquema, cantidad)
+        total += total_linea
+        lineas.append(f"{_fmt_cantidad(cantidad)} {prod.nombre} = ${_fmt_money(total_linea)}")
+    lineas.append(f"Total: ${_fmt_money(total)}")
+    lineas.append("¿Con qué se paga?")
+    return "\n".join(lineas)
+
+
+def _fmt_cantidad(cantidad: Decimal) -> str:
+    """Cantidad legible: entero sin decimales, fracción como decimal normalizado (0.5, 0.25…)."""
+    return str(int(cantidad)) if cantidad % 1 == 0 else str(cantidad.normalize())
+
+
+def _fmt_money(valor: Decimal) -> str:
+    """Pesos con separador de miles '.' (estilo Colombia); sin decimales si es entero."""
+    if valor == valor.to_integral_value():
+        return f"{int(valor):,}".replace(",", ".")
+    return f"{valor:,.2f}".replace(",", "@").replace(".", ",").replace("@", ".")

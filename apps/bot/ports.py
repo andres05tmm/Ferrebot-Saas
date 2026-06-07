@@ -8,7 +8,7 @@ tenant) se verifica sin red ni Postgres. Las implementaciones reales viven en `a
 """
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Sequence
 from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass
 from enum import Enum
@@ -30,6 +30,19 @@ class UpdateBot:
     telegram_id: int                  # id del usuario de Telegram → usuarios.telegram_id
     texto: str | None = None
     voz_file_id: str | None = None     # nota de voz (se transcribe en el entregable 5)
+
+
+@dataclass(frozen=True, slots=True)
+class CallbackBot:
+    """callback_query de Telegram parseado a lo mínimo: la pulsación de un botón inline.
+
+    Las mismas validaciones que un mensaje (secret, tenant, dedup, usuario) aplican IGUAL a un
+    callback; el `callback_id` se usa luego en `answerCallbackQuery` (quita el "reloj" del botón)."""
+
+    callback_id: str                  # id para answerCallbackQuery
+    chat_id: int
+    telegram_id: int                  # id del usuario de Telegram → usuarios.telegram_id
+    data: str                         # callback_data del botón (p. ej. "pago:efectivo")
 
 
 @dataclass(frozen=True, slots=True)
@@ -95,10 +108,20 @@ class UsuariosBotRepo(Protocol):
     async def por_telegram_id(self, telegram_id: int) -> UsuarioBot | None: ...
 
 
+# Teclado inline: filas de botones, cada botón un par (texto visible, callback_data). Faked en tests.
+Teclado = Sequence[Sequence[tuple[str, str]]]
+
+
 class Notificador(Protocol):
     """Envía respuestas al chat (Bot API por empresa). Faked en tests: cero red."""
 
-    async def responder(self, chat_id: int, texto: str) -> None: ...
+    async def responder(self, chat_id: int, texto: str, *, teclado: Teclado | None = None) -> None:
+        """Envía un mensaje; con `teclado` adjunta una botonera inline (sendMessage + reply_markup)."""
+        ...
+
+    async def answer_callback(self, callback_id: str, *, texto: str | None = None) -> None:
+        """Confirma la pulsación de un botón (answerCallbackQuery): quita el "reloj" del botón."""
+        ...
 
 
 class ArchivosTelegram(Protocol):
@@ -136,6 +159,8 @@ SesionTenant = Callable[[ResolvedTenant], AbstractAsyncContextManager[AsyncSessi
 UsuariosFactory = Callable[[AsyncSession], UsuariosBotRepo]
 # Maneja un turno ya autenticado (bucle del agente; entregable 2). Aquí solo se invoca.
 TurnoHandler = Callable[[UpdateBot, Contexto, AsyncSession, Notificador], Awaitable[None]]
+# Maneja un callback (pulsación de botón) ya autenticado. Mismas validaciones que un turno.
+CallbackHandler = Callable[[CallbackBot, Contexto, AsyncSession, Notificador], Awaitable[None]]
 
 
 @dataclass(frozen=True, slots=True)
@@ -150,3 +175,5 @@ class BotDeps:
     usuarios: UsuariosFactory
     recursos: RecursosBot
     procesar: TurnoHandler
+    # Maneja callbacks (botones). Opcional: un despliegue sin botones deja el flujo de texto intacto.
+    procesar_callback: CallbackHandler | None = None

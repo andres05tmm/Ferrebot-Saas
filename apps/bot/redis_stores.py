@@ -62,6 +62,36 @@ class RedisConfirmStore:
         await cliente.delete(self._key(tenant_id, chat_id))
 
 
+class RedisVentaPendienteStore:
+    """Venta pendiente de método de pago por (tenant, chat). Satisface `ai.confirmacion.VentaPendienteStore`.
+
+    Mismo patrón que `RedisConfirmStore` (clave dedicada `venta_pendiente:{tenant}:{chat}`, TTL ~300s,
+    (de)serialización de `ai.confirmacion`). RED: esqueleto."""
+
+    def __init__(self, *, url: str, client: Any | None = None) -> None:
+        self._url = url
+        self._client = client
+
+    def _key(self, tenant_id: int, chat_id: int) -> str:
+        return f"venta_pendiente:{tenant_id}:{chat_id}"
+
+    async def guardar(
+        self, tenant_id: int, chat_id: int, *, tool_call: ToolCall, idempotency_key: str
+    ) -> None:
+        cliente = self._client or _cliente_redis(self._url)
+        dato = _serializar(Pendiente(tool_call=tool_call, idempotency_key=idempotency_key))
+        await cliente.set(self._key(tenant_id, chat_id), dato, ex=_TTL_CONFIRM)
+
+    async def obtener(self, tenant_id: int, chat_id: int) -> Pendiente | None:
+        cliente = self._client or _cliente_redis(self._url)
+        dato = await cliente.get(self._key(tenant_id, chat_id))
+        return _deserializar(dato) if dato else None
+
+    async def borrar(self, tenant_id: int, chat_id: int) -> None:
+        cliente = self._client or _cliente_redis(self._url)
+        await cliente.delete(self._key(tenant_id, chat_id))
+
+
 def _cliente_redis(url: str) -> Any:
     """Cliente Redis real (perezoso): importa `redis.asyncio` solo al invocar, no al cargar."""
     import redis.asyncio as redis

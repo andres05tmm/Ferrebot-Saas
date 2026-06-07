@@ -44,6 +44,20 @@ class ConfirmStore(Protocol):
     async def borrar(self, tenant_id: int, chat_id: int) -> None: ...
 
 
+class VentaPendienteStore(Protocol):
+    """Pendiente de método de pago por (tenant, chat): la venta lista a ejecutar salvo el `metodo_pago`.
+
+    El bypass guarda el `ToolCall(registrar_venta)` SIN `metodo_pago` y muestra botones; el callback
+    del botón completa el método y re-despacha. Mismo `Pendiente` (tool_call + idempotency_key) y el
+    mismo patrón que `ConfirmStore`; la clave en Redis difiere (`venta_pendiente:{tenant}:{chat}`)."""
+
+    async def guardar(
+        self, tenant_id: int, chat_id: int, *, tool_call: ToolCall, idempotency_key: str
+    ) -> None: ...
+    async def obtener(self, tenant_id: int, chat_id: int) -> Pendiente | None: ...
+    async def borrar(self, tenant_id: int, chat_id: int) -> None: ...
+
+
 def _normalizar(texto: str) -> str:
     """Minúsculas, sin tildes, puntuación→espacio, espacios colapsados (para match exacto)."""
     sin_tildes = "".join(

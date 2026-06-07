@@ -18,16 +18,16 @@ from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ai.bypass import Bypass
-from ai.confirmacion import ConfirmStore
+from ai.confirmacion import ConfirmStore, VentaPendienteStore
 from ai.dispatcher import Dispatcher, Recursos
 from ai.ports import CatalogoDesdeVentas, ControlUmbralesStore
 from ai.tools import Deps
-from ai.turno import crear_turno_handler
+from ai.turno import crear_callback_handler, crear_turno_handler
 from apps.bot.catalogo import CatalogoBypassExacto
 from apps.bot.ports import BotDeps, DedupStore, RecursosBot, SesionTenant
 from apps.bot.recursos import Credenciales
 from apps.bot.recursos import RecursosBot as RecursosBotImpl
-from apps.bot.redis_stores import RedisConfirmStore, RedisDedupStore
+from apps.bot.redis_stores import RedisConfirmStore, RedisDedupStore, RedisVentaPendienteStore
 from apps.bot.repos import ControlCapacidades, ControlSecretosBot, SqlUsuariosBotRepo
 from core.config import get_settings
 from core.db.session import control_session, tenant_session
@@ -176,6 +176,7 @@ def construir_deps(
     abrir_tenant: SesionTenant | None = None,
     dedup: DedupStore | None = None,
     confirm: ConfirmStore | None = None,
+    pendientes: VentaPendienteStore | None = None,
     recursos: RecursosBot | None = None,
 ) -> BotDeps:
     """Ensambla `BotDeps` desde los puertos reales; los seams en None toman su default real."""
@@ -185,6 +186,7 @@ def construir_deps(
     abrir_tenant = abrir_tenant or asynccontextmanager(tenant_session)
     dedup = dedup or RedisDedupStore(url=settings.redis_url)
     confirm = confirm or RedisConfirmStore(url=settings.redis_url)
+    pendientes = pendientes or RedisVentaPendienteStore(url=settings.redis_url)
     recursos = recursos or RecursosBotImpl(cargar=_crear_cargar(abrir_control, master))
 
     config = ConfigControl(abrir_control)
@@ -193,15 +195,23 @@ def construir_deps(
         key_store=KeyControl(abrir_control, master),
         plataforma=PlataformaLLM.desde_settings(settings),
     )
+    crear_recursos = _crear_recursos_factory(config)
     procesar = crear_turno_handler(
         dispatcher=dispatcher,
         memoria=lambda s: MemoriaService(SqlMemoriaRepository(s)),
         costos=lambda s: SqlCostosRepository(s),
-        crear_recursos=_crear_recursos_factory(config),
+        crear_recursos=crear_recursos,
         recursos=recursos,
         confirm=confirm,
         crear_bypass=crear_bypass_factory(dispatcher),
+        pendientes=pendientes,
         turno=Turno.WORKER,
+    )
+    procesar_callback = crear_callback_handler(
+        dispatcher=dispatcher,
+        pendientes=pendientes,
+        crear_recursos=crear_recursos,
+        memoria=lambda s: MemoriaService(SqlMemoriaRepository(s)),
     )
     return BotDeps(
         resolver=ResolverControl(abrir_control),
@@ -212,4 +222,5 @@ def construir_deps(
         usuarios=lambda s: SqlUsuariosBotRepo(s),
         recursos=recursos,
         procesar=procesar,
+        procesar_callback=procesar_callback,
     )

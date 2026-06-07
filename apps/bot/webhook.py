@@ -27,7 +27,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from ai.envelope import Contexto
-from apps.bot.ports import Accion, BotDeps, ResultadoWebhook, UpdateBot
+from apps.bot.ports import Accion, BotDeps, CallbackBot, ResultadoWebhook, UpdateBot
 from core.logging import get_logger, request_id_var, tenant_id_var
 
 log = get_logger("bot.webhook")
@@ -38,9 +38,11 @@ _NS_TELEGRAM = uuid.UUID("8f3b1c2a-0d4e-4a6b-9c8d-1e2f3a4b5c6d")
 _MSG_NO_AUTORIZADO = "No estás autorizado para operar este bot. Pide acceso al administrador."
 
 
-def parsear_update(payload: dict) -> UpdateBot | None:
-    """Extrae lo mínimo de un update de Telegram. None si no es un mensaje procesable
-    (sin `message`, `edited_message`, callbacks, etc.). Soporta texto y nota de voz."""
+def parsear_update(payload: dict) -> UpdateBot | CallbackBot | None:
+    """Extrae lo mínimo de un update de Telegram. None si no es procesable. Soporta texto, nota de
+    voz y `callback_query` (pulsación de botón inline)."""
+    if isinstance(payload.get("callback_query"), dict):
+        return _parsear_callback(payload["callback_query"])
     mensaje = payload.get("message")
     if not isinstance(mensaje, dict):
         return None
@@ -56,6 +58,21 @@ def parsear_update(payload: dict) -> UpdateBot | None:
     return UpdateBot(
         update_id=int(update_id), chat_id=int(chat_id), telegram_id=int(telegram_id),
         texto=texto, voz_file_id=voz_file_id,
+    )
+
+
+def _parsear_callback(cb: dict) -> CallbackBot | None:
+    """Extrae lo mínimo de un `callback_query` → `CallbackBot`. None si falta algún campo clave
+    (`id`, `from.id`, `message.chat.id`, `data`): un callback sin destino o sin acción se ignora."""
+    callback_id = cb.get("id")
+    telegram_id = (cb.get("from") or {}).get("id")
+    chat_id = ((cb.get("message") or {}).get("chat") or {}).get("id")
+    data = cb.get("data")
+    if callback_id is None or telegram_id is None or chat_id is None or data is None:
+        return None
+    return CallbackBot(
+        callback_id=str(callback_id), chat_id=int(chat_id),
+        telegram_id=int(telegram_id), data=str(data),
     )
 
 
@@ -106,18 +123,20 @@ async def manejar_update(
         # Recursos de ESTA empresa (notificador atado a su bot-token; cacheado por empresa).
         bundle = await deps.recursos.para(tenant.id)
 
-        # 3. Parsear; ignorar lo que no es un mensaje procesable.
+        # 3. Parsear (mensaje o callback); ignorar lo que no es procesable.
         update = parsear_update(payload)
         if update is None:
             log.info("bot_update_ignorado")
             return ResultadoWebhook(Accion.UPDATE_IGNORADO, 200)
 
-        # 4. Dedup por update_id (reintentos del webhook).
-        if not await deps.dedup.marcar_si_nuevo(tenant.id, update.update_id):
-            log.info("bot_update_duplicado", update_id=update.update_id)
+        # 4. Dedup por update_id (reintentos del webhook). El update_id viaja en el nivel superior;
+        #    para un mensaje coincide con `update.update_id`, para un callback se toma del payload.
+        update_id = update.update_id if isinstance(update, UpdateBot) else int(payload["update_id"])
+        if not await deps.dedup.marcar_si_nuevo(tenant.id, update_id):
+            log.info("bot_update_duplicado", update_id=update_id)
             return ResultadoWebhook(Accion.DUPLICADO, 200)
 
-        # 5. Sesión del tenant + mapeo del usuario.
+        # 5. Sesión del tenant + mapeo del usuario (idéntico para mensaje y callback).
         async with deps.abrir_sesion(tenant) as session:
             usuario = await deps.usuarios(session).por_telegram_id(update.telegram_id)
             if usuario is None or not usuario.activo:
@@ -125,18 +144,26 @@ async def manejar_update(
                 log.info("bot_no_autorizado", telegram_id=update.telegram_id)
                 return ResultadoWebhook(Accion.NO_AUTORIZADO, 200)
 
-            # 6. Contexto + delegación del turno.
+            # 6. Contexto + delegación. Un callback va a `procesar_callback`; un mensaje, al turno.
             ctx = Contexto(
                 tenant_id=tenant.id,
                 usuario_id=usuario.id,
                 rol=usuario.rol,
                 origen="bot",
-                idempotency_key=clave_idempotencia(tenant.id, update.update_id),
+                idempotency_key=clave_idempotencia(tenant.id, update_id),
                 request_id=rid,
                 capacidades=await deps.capacidades.efectivas(tenant.id),
             )
+            if isinstance(update, CallbackBot):
+                if deps.procesar_callback is None:
+                    log.info("bot_callback_sin_handler", update_id=update_id)
+                    return ResultadoWebhook(Accion.UPDATE_IGNORADO, 200)
+                await deps.procesar_callback(update, ctx, session, bundle.notificador)
+                log.info("bot_callback_procesado", usuario_id=usuario.id, update_id=update_id)
+                return ResultadoWebhook(Accion.PROCESADO, 200, ctx)
+
             await deps.procesar(update, ctx, session, bundle.notificador)
-            log.info("bot_turno_procesado", usuario_id=usuario.id, update_id=update.update_id)
+            log.info("bot_turno_procesado", usuario_id=usuario.id, update_id=update_id)
             return ResultadoWebhook(Accion.PROCESADO, 200, ctx)
     finally:
         request_id_var.reset(rid_token)

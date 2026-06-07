@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from typing import Any, Protocol
 
+from apps.bot.ports import Teclado
 from core.logging import get_logger
 
 log = get_logger("bot.telegram")
@@ -39,11 +40,33 @@ class TelegramNotificador:
         self._bot_token = bot_token
         self._client = client
 
-    async def responder(self, chat_id: int, texto: str) -> None:
+    async def responder(self, chat_id: int, texto: str, *, teclado: Teclado | None = None) -> None:
         client = self._client or _cliente_telegram(self._bot_token)
-        raw = await client.call("sendMessage", {"chat_id": chat_id, "text": texto})
+        payload: dict[str, Any] = {"chat_id": chat_id, "text": texto}
+        if teclado is not None:
+            payload["reply_markup"] = _inline_keyboard(teclado)
+        raw = await client.call("sendMessage", payload)
         if not raw.get("ok"):
             raise TelegramError(raw.get("description") or "sendMessage falló")
+
+    async def answer_callback(self, callback_id: str, *, texto: str | None = None) -> None:
+        client = self._client or _cliente_telegram(self._bot_token)
+        payload: dict[str, Any] = {"callback_query_id": callback_id}
+        if texto is not None:
+            payload["text"] = texto
+        raw = await client.call("answerCallbackQuery", payload)
+        if not raw.get("ok"):
+            raise TelegramError(raw.get("description") or "answerCallbackQuery falló")
+
+
+def _inline_keyboard(teclado: Teclado) -> dict[str, Any]:
+    """Filas de (texto, callback_data) → `reply_markup` con `inline_keyboard` de la Bot API."""
+    return {
+        "inline_keyboard": [
+            [{"text": texto, "callback_data": data} for texto, data in fila]
+            for fila in teclado
+        ]
+    }
 
 
 class TelegramArchivos:

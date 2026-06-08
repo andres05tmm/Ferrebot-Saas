@@ -1,0 +1,97 @@
+# Manifiesto de tenant — EJEMPLO (clinica-demo). Ver ADR docs/adr/0007.
+# El manifiesto con valores REALES va gitignored bajo tools/onboarding/; solo este *.example.yaml se versiona.
+# Alta = escribir este archivo + correr:  python -m tools.provision_from_manifest --from tools/onboarding/clinica-demo.yaml
+version: 1
+
+identidad:
+  slug: clinica-demo
+  nombre: "Clínica Demo"
+  nit: "900999999-9"
+
+admin:
+  nombre: "Dra. García"
+  telegram_id: null        # opcional: solo si el tenant usa el bot de Telegram (login del dashboard hoy = dev_token)
+
+# Capacidades. plan.features = tier; features_override = excepciones por empresa.
+# El núcleo (ventas, inventario, caja, gastos, clientes, proveedores, reportes) está SIEMPRE on.
+plan:
+  nombre: "Agente"
+  features: ["pack_agenda", "pack_faq", "canal_whatsapp"]
+features_override: {}
+
+branding:
+  color_primario: "#0EA5A4"
+  nombre_comercial: "Clínica Demo"
+  logo_url: null
+  dominio: null
+
+# Secretos por-tenant (CIFRADOS en control DB). Opcional: un agente por Kapso suele tener cero.
+# (Una ferretería con facturación pondría aquí matias_email/matias_password, etc.)
+secretos: {}
+config: {}
+
+# ----------------------------------------------------------------------------
+# DATOS DE PACK — lo que hoy es seed_clinica_demo bespoke, ahora declarativo.
+# El loader resuelve nombres -> ids (recurso.presta -> recurso_servicio).
+# ----------------------------------------------------------------------------
+packs:
+  agenda:
+    # -> tabla agenda_config (una sola fila, id=1). Campos omitidos toman el default del esquema.
+    config:
+      zona_horaria: "America/Bogota"
+      intervalo_slots_min: 15
+      anticipacion_minima_min: 120
+      ventana_maxima_dias: 30
+      politica_cancelacion_horas: 24
+      modo_confirmacion: "manual"          # auto | manual
+      capacidad_por_slot: 1
+      recordatorios_horas: [24, 2]
+      corte_riesgo_horas: 2
+      persona: "Eres el asistente de la Clínica Demo. Hablas con respeto y confirmas siempre el servicio, la fecha y el nombre antes de agendar."
+      google_calendar_id: null             # opcional: sync write-only con Google Calendar
+
+    # -> tabla servicios. precio en pesos (entero). buffers en minutos (default 0).
+    servicios:
+      - { nombre: "Limpieza dental", duracion_min: 40, precio: 80000,  categoria: "Odontología" }
+      - { nombre: "Blanqueamiento",  duracion_min: 60, precio: 200000, categoria: "Odontología" }
+      - { nombre: "Consulta",        duracion_min: 30, precio: 50000,  categoria: "Consulta" }
+
+    # -> tablas recursos + recurso_servicio + disponibilidad.
+    # tipo: enum recurso_tipo = profesional | sala | equipo | mesa | cancha.
+    # disponibilidad.dias: 0=lunes … 6=domingo ; franjas "HH:MM-HH:MM" (varias = mañana/tarde).
+    recursos:
+      - nombre: "Dra. García"
+        tipo: "profesional"
+        presta: ["Limpieza dental", "Blanqueamiento"]
+        disponibilidad:
+          - { dias: [0, 1, 2, 3, 4], franjas: ["08:00-12:00", "14:00-18:00"] }
+      - nombre: "Lic. Martínez"
+        tipo: "profesional"
+        presta: ["Consulta"]
+        disponibilidad:
+          - { dias: [0, 1, 2, 3, 4], franjas: ["08:00-12:00", "14:00-18:00"] }
+
+  faq:
+    # -> tabla conocimiento (titulo, contenido, orden, activo).
+    entradas:
+      - titulo: "¿Dónde están ubicados?"
+        contenido: "Estamos en el centro de la ciudad, Calle 00 #00-00. Hay parqueadero para clientes."
+        orden: 1
+      - titulo: "Formas de pago"
+        contenido: "Aceptamos efectivo, tarjeta y transferencia."
+        orden: 2
+      - titulo: "Horario de atención"
+        contenido: "Lunes a viernes, 8:00 a 12:00 y 14:00 a 18:00."
+        orden: 3
+      - titulo: "¿Atienden urgencias?"
+        contenido: "Para urgencias te pasamos con un asesor humano por este mismo chat."
+        orden: 4
+
+# ----------------------------------------------------------------------------
+# CANAL — mapeo del número de WhatsApp (Kapso) -> este tenant. -> tabla wa_numeros.
+# ----------------------------------------------------------------------------
+canal:
+  whatsapp:
+    phone_number_id: "1176767388843502"    # lo da Kapso (dashboard / payload del webhook). No es secreto.
+    numero: "+57 320 6213221"
+    waba_id: null

@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 from dataclasses import dataclass
 from datetime import datetime
 from functools import lru_cache
@@ -27,25 +28,47 @@ from core.config.timezone import to_co
 # Permiso mínimo para escribir eventos (write-only). Leer libre/ocupado pediría otro scope: es futuro.
 _SCOPES = ("https://www.googleapis.com/auth/calendar.events",)
 _TZ_GOOGLE = "America/Bogota"
+# Color fijo de los eventos creados por el asistente (paleta de Google: "9" = Blueberry, azul).
+# Consistente = todos los eventos del bot se ven igual en el calendario del negocio.
+_COLOR_ID = "9"
+# Separador visual en la descripción (em dashes), antes del pie de "agendado por el asistente".
+_SEPARADOR = "———"
+_ESTADO_LEGIBLE = {
+    "pendiente": "Pendiente",
+    "confirmada": "Confirmada",
+    "cumplida": "Cumplida",
+    "cancelada": "Cancelada",
+    "no_show": "No asistió",
+}
 
 
 @dataclass(frozen=True, slots=True)
 class EventoCalendario:
-    """Lo que se escribe en Google para una cita. `inicio`/`fin` son aware en hora Colombia."""
+    """Lo que se escribe en Google para una cita. `inicio`/`fin` son aware en hora Colombia.
+
+    `location` se incluye solo si el negocio tiene dirección configurada; `color_id` da el color
+    consistente del evento (paleta de Google).
+    """
 
     titulo: str
     descripcion: str
     inicio: datetime
     fin: datetime
+    location: str | None = None
+    color_id: str = _COLOR_ID
 
     def to_body(self) -> dict[str, Any]:
-        """Cuerpo del evento para la API de Google (fechas ISO + zona explícita Colombia)."""
-        return {
+        """Cuerpo del evento para la API de Google (fechas ISO + zona explícita Colombia + color)."""
+        body: dict[str, Any] = {
             "summary": self.titulo,
             "description": self.descripcion,
             "start": {"dateTime": self.inicio.isoformat(), "timeZone": _TZ_GOOGLE},
             "end": {"dateTime": self.fin.isoformat(), "timeZone": _TZ_GOOGLE},
+            "colorId": self.color_id,
         }
+        if self.location:
+            body["location"] = self.location
+        return body
 
 
 @runtime_checkable
@@ -67,22 +90,51 @@ class CalendarPort(Protocol):
         ...
 
 
-def evento_de_cita(cita: Any, servicio: Any, recurso: Any | None) -> EventoCalendario:
-    """Arma el evento espejo de una cita: título = servicio + cliente; descripción = recurso + teléfono.
+def _formatear_telefono(tel: str) -> tuple[str, str]:
+    """Devuelve (display legible, número para wa.me). `wa` son solo dígitos (sin +, espacios ni guiones).
 
-    Las fechas salen SIEMPRE en hora Colombia (regla no negociable #4). `recurso` puede ser None si se
-    borró tras agendar: en ese caso la descripción lo omite (best-effort, no rompe el sync).
+    Display para Colombia: `+57 300 123 4567` si trae indicativo (12 dígitos, 57…), `300 123 4567` si
+    es móvil local de 10 dígitos; cualquier otro formato se muestra tal cual lo guardó el cliente.
     """
-    titulo = f"{servicio.nombre} — {cita.cliente_nombre}"
-    lineas = []
+    digitos = re.sub(r"\D", "", tel or "")
+    if digitos.startswith("57") and len(digitos) == 12:
+        d = digitos[2:]
+        display = f"+57 {d[:3]} {d[3:6]} {d[6:]}"
+    elif len(digitos) == 10:
+        display = f"{digitos[:3]} {digitos[3:6]} {digitos[6:]}"
+    else:
+        display = tel
+    return display, digitos
+
+
+def evento_de_cita(
+    cita: Any, servicio: Any, recurso: Any | None, *, direccion: str | None = None
+) -> EventoCalendario:
+    """Arma el evento espejo de una cita con un formato profesional y útil para el negocio.
+
+    Título: `<Servicio> · <Cliente>`. Descripción estructurada con etiquetas (cliente, WhatsApp con
+    link wa.me de un toque, servicio + duración, profesional, estado) y un pie de "agendado por el
+    asistente". Las fechas salen SIEMPRE en hora Colombia (regla no negociable #4). `recurso` puede ser
+    None (se borró tras agendar): se omite la línea del profesional. `direccion` → `location` solo si el
+    negocio la tiene configurada.
+    """
+    display, wa = _formatear_telefono(cita.cliente_telefono)
+    lineas = [
+        f"Cliente: {cita.cliente_nombre}",
+        f"WhatsApp: {display} — https://wa.me/{wa}",
+        f"Servicio: {servicio.nombre} ({servicio.duracion_min} min)",
+    ]
     if recurso is not None:
-        lineas.append(f"Recurso: {recurso.nombre}")
-    lineas.append(f"Teléfono: {cita.cliente_telefono}")
+        lineas.append(f"Profesional: {recurso.nombre}")
+    lineas.append(f"Estado: {_ESTADO_LEGIBLE.get(cita.estado, str(cita.estado).capitalize())}")
+    lineas.append(_SEPARADOR)
+    lineas.append("Agendado por el asistente vía WhatsApp")
     return EventoCalendario(
-        titulo=titulo,
+        titulo=f"{servicio.nombre} · {cita.cliente_nombre}",
         descripcion="\n".join(lineas),
         inicio=to_co(cita.inicio),
         fin=to_co(cita.fin),
+        location=direccion or None,
     )
 
 

@@ -15,7 +15,7 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.config.timezone import COLOMBIA_TZ, today_co
-from modules.agenda.gcal import CalendarPort, EventoCalendario
+from modules.agenda.gcal import CalendarPort, EventoCalendario, evento_de_cita
 from modules.agenda.models import Cita
 from modules.agenda.repository import SqlAgendaRepository
 from modules.agenda.schemas import (
@@ -60,6 +60,55 @@ class FakeCalendar:
 assert isinstance(FakeCalendar(), CalendarPort)
 
 
+# --- builder del evento (puro, sin BD) --------------------------------------
+class _Cita:
+    def __init__(self, **kw):
+        self.__dict__.update(kw)
+
+
+def test_evento_de_cita_formato_profesional():
+    """El builder arma título, descripción estructurada (con link wa.me), estado, color y zona Colombia."""
+    cita = _Cita(
+        cliente_nombre="Andrés Felipe Malo", cliente_telefono="573001234567", estado="confirmada",
+        inicio=datetime(2026, 6, 12, 14, 0, tzinfo=COLOMBIA_TZ),
+        fin=datetime(2026, 6, 12, 14, 40, tzinfo=COLOMBIA_TZ),
+    )
+    servicio = _Cita(nombre="Limpieza dental", duracion_min=40)
+    recurso = _Cita(nombre="Dra. Pérez")
+
+    e = evento_de_cita(cita, servicio, recurso)
+    assert e.titulo == "Limpieza dental · Andrés Felipe Malo"
+    desc = e.descripcion
+    assert "Cliente: Andrés Felipe Malo" in desc
+    assert "WhatsApp: +57 300 123 4567 — https://wa.me/573001234567" in desc
+    assert "Servicio: Limpieza dental (40 min)" in desc
+    assert "Profesional: Dra. Pérez" in desc
+    assert "Estado: Confirmada" in desc
+    assert "Agendado por el asistente vía WhatsApp" in desc
+
+    body = e.to_body()
+    assert body["colorId"] == "9"
+    assert body["start"]["timeZone"] == "America/Bogota"
+    assert body["start"]["dateTime"].endswith("-05:00")
+    assert "location" not in body  # sin dirección configurada
+
+
+def test_evento_de_cita_pendiente_sin_recurso_y_con_direccion():
+    """Sin recurso se omite el profesional; con dirección va en location; estado pendiente legible."""
+    cita = _Cita(
+        cliente_nombre="Ana", cliente_telefono="3009998877", estado="pendiente",
+        inicio=datetime(2026, 6, 12, 9, 0, tzinfo=COLOMBIA_TZ),
+        fin=datetime(2026, 6, 12, 9, 30, tzinfo=COLOMBIA_TZ),
+    )
+    servicio = _Cita(nombre="Corte", duracion_min=30)
+
+    e = evento_de_cita(cita, servicio, None, direccion="Cra 1 # 2-3, Cartagena")
+    assert "Profesional:" not in e.descripcion
+    assert "Estado: Pendiente" in e.descripcion
+    assert "https://wa.me/3009998877" in e.descripcion           # móvil local de 10 dígitos
+    assert e.to_body()["location"] == "Cra 1 # 2-3, Cartagena"
+
+
 def _futuro(dias: int = 3, hora: int = 10, minuto: int = 0) -> datetime:
     d = today_co() + timedelta(days=dias)
     return datetime.combine(d, time(hora, minuto), tzinfo=COLOMBIA_TZ)
@@ -100,9 +149,9 @@ async def test_agendar_crea_evento_y_guarda_gcal_event_id(tenant):
         assert len(fake.creados) == 1
         calendar_id, evento = fake.creados[0]
         assert calendar_id == CAL_ID
-        assert evento.titulo == "Limpieza — Andrés"
-        assert "Recurso: Dra. Pérez" in evento.descripcion
-        assert TEL in evento.descripcion
+        assert evento.titulo == "Limpieza · Andrés"
+        assert "Profesional: Dra. Pérez" in evento.descripcion
+        assert TEL in evento.descripcion  # aparece en el link wa.me
         assert evento.inicio.utcoffset() == timedelta(hours=-5)  # hora Colombia
         assert r.cita.gcal_event_id == "gcal-evt-1"
         cita_id = r.cita.id

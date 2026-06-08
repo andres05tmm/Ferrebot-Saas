@@ -179,6 +179,26 @@ async def test_config_get_put(tenant):
         assert (await c.put("/api/v1/agenda/config", json={"intervalo_slots_min": 15})).status_code == 403
 
 
+async def test_config_put_actualiza_serializa_actualizado_en(tenant):
+    """Camino REAL del endpoint: el 2º PUT (UPDATE) debe dar 200 y serializar `actualizado_en`.
+
+    Reproduce el 500 de prod (ResponseValidationError/MissingGreenlet): en el update se sellaba
+    `actualizado_en` con `func.now()` (expresión SQL diferida) y leerlo al serializar la respuesta
+    disparaba un lazy-load async fuera del greenlet. La respuesta SÍ se serializa (vía AgendaConfigLeer),
+    por eso este camino lo atrapa y el test de solo-create no.
+    """
+    async with _cliente(_app(tenant, rol="admin")) as c:
+        creado = await c.put("/api/v1/agenda/config", json={"intervalo_slots_min": 20})
+        assert creado.status_code == 200
+        assert creado.json()["actualizado_en"] is None  # recién creada, aún sin actualizar
+
+        actualizado = await c.put("/api/v1/agenda/config", json={"intervalo_slots_min": 25})
+        assert actualizado.status_code == 200  # antes: 500
+        cuerpo = actualizado.json()
+        assert cuerpo["intervalo_slots_min"] == 25
+        assert cuerpo["actualizado_en"] is not None  # se serializa concreto, sin tocar la BD
+
+
 # --- citas: alta manual, filtros, acciones ----------------------------------
 async def test_alta_manual_y_filtros(tenant):
     serv, rec = await _seed_catalogo(tenant, modo="auto")

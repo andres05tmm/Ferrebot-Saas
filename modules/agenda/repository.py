@@ -12,9 +12,10 @@ duracion_min` (fin real); los buffers son agenda, no se muestran, y se expanden 
 from datetime import datetime, timedelta
 from typing import Protocol
 
-from sqlalchemy import func, select, text
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.config.timezone import COLOMBIA_TZ
 from core.events import publish
 from modules.agenda.models import (
     AgendaConfig,
@@ -207,7 +208,14 @@ class SqlAgendaRepository:
         return await self._s.get(AgendaConfig, 1)
 
     async def guardar_config(self, datos: AgendaConfigCrear) -> AgendaConfig:
-        """Upsert de la fila única de reglas (id=1): la crea o actualiza sus campos."""
+        """Upsert de la fila única de reglas (id=1): la crea o actualiza sus campos.
+
+        `actualizado_en` se sella con un datetime concreto en hora Colombia (no `func.now()`): una
+        expresión SQL diferida dejaría el atributo expirado tras el flush y leerlo al serializar la
+        respuesta dispararía un lazy-load async fuera del greenlet (ResponseValidationError /
+        MissingGreenlet). El `refresh` final concreta además los server_default (p. ej. `creado_en` al
+        crear), para que la respuesta no toque la BD durante la serialización.
+        """
         cfg = await self._s.get(AgendaConfig, 1)
         valores = datos.model_dump()
         if cfg is None:
@@ -216,8 +224,9 @@ class SqlAgendaRepository:
         else:
             for campo, valor in valores.items():
                 setattr(cfg, campo, valor)
-            cfg.actualizado_en = func.now()
+            cfg.actualizado_en = datetime.now(COLOMBIA_TZ)
         await self._s.flush()
+        await self._s.refresh(cfg)
         return cfg
 
     # --- citas ---------------------------------------------------------------

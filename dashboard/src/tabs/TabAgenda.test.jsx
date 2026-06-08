@@ -164,4 +164,41 @@ describe('TabAgenda — Configuración (gating admin)', () => {
       expect(JSON.parse(call[2])).toMatchObject({ nombre: 'Corte', duracion_min: 30 })
     })
   })
+
+  it('Reglas: muestra el google_calendar_id del GET y lo incluye en el PUT', async () => {
+    localStorage.setItem(USER_KEY, JSON.stringify({ rol: 'admin' }))
+    const calls = []
+    const fetchMock = vi.fn((url, opts = {}) => {
+      const u = String(url); const m = opts.method || 'GET'
+      calls.push([u, m, opts.body])
+      if (u.includes('/agenda/config') && m === 'PUT') return Promise.resolve(jsonResp({}, 200))
+      if (u.includes('/agenda/config')) return Promise.resolve(jsonResp({
+        id: 1, zona_horaria: 'America/Bogota', intervalo_slots_min: 15, anticipacion_minima_min: 120,
+        ventana_maxima_dias: 30, politica_cancelacion_horas: 24, permite_reagendar: true,
+        modo_confirmacion: 'auto', requiere_anticipo: false, anticipo_tipo: null, anticipo_valor: null,
+        capacidad_por_slot: 1, recordatorios_horas: [24, 2], persona: null,
+        google_calendar_id: 'negocio@group.calendar.google.com',
+        creado_en: '2026-06-10T10:00:00-05:00', actualizado_en: null,
+      }))
+      if (u.includes('/agenda/citas')) return Promise.resolve(jsonResp([CITA]))
+      return Promise.resolve(jsonResp([]))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    renderTab()
+    fireEvent.click(screen.getByText('Configuración'))
+    fireEvent.click(await screen.findByText('Reglas'))
+
+    // GET: el campo muestra el id guardado.
+    const input = await screen.findByLabelText('Google Calendar ID')
+    expect(input.value).toBe('negocio@group.calendar.google.com')
+
+    // PUT: el nuevo valor viaja en el cuerpo.
+    fireEvent.change(input, { target: { value: 'otro@group.calendar.google.com' } })
+    fireEvent.click(screen.getByText('Guardar reglas'))
+    await waitFor(() => {
+      const call = calls.find(([u, m]) => u.includes('/agenda/config') && m === 'PUT')
+      expect(call).toBeTruthy()
+      expect(JSON.parse(call[2]).google_calendar_id).toBe('otro@group.calendar.google.com')
+    })
+  })
 })

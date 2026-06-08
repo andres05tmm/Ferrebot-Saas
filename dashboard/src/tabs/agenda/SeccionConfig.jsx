@@ -337,7 +337,7 @@ const REGLAS_DEFAULT = {
   zona_horaria: 'America/Bogota', intervalo_slots_min: 15, anticipacion_minima_min: 120,
   ventana_maxima_dias: 30, politica_cancelacion_horas: 24, permite_reagendar: true,
   modo_confirmacion: 'auto', requiere_anticipo: false, anticipo_tipo: '', anticipo_valor: '',
-  capacidad_por_slot: 1, recordatorios_horas: '24,2', persona: '',
+  capacidad_por_slot: 1, recordatorios_horas: '24,2', persona: '', google_calendar_id: '',
 }
 
 function AreaReglas() {
@@ -350,6 +350,7 @@ function AreaReglas() {
     setF(c ? {
       ...c, anticipo_tipo: c.anticipo_tipo ?? '', anticipo_valor: c.anticipo_valor ?? '',
       persona: c.persona ?? '', recordatorios_horas: (c.recordatorios_horas || []).join(','),
+      google_calendar_id: c.google_calendar_id ?? '',
     } : { ...REGLAS_DEFAULT })
   }, [q.loading, q.data, f])
   if (!f) return <Card className="p-6 text-sm text-muted-foreground">Cargando reglas…</Card>
@@ -371,6 +372,7 @@ function AreaReglas() {
       capacidad_por_slot: Number(f.capacidad_por_slot) || 1,
       recordatorios_horas: String(f.recordatorios_horas).split(',').map(x => Number(x.trim())).filter(x => !isNaN(x)),
       persona: f.persona.trim() || null,
+      google_calendar_id: f.google_calendar_id.trim() || null,
     }
     await enviar('/agenda/config', 'PUT', body, 'Reglas guardadas', q.refetch)
   }
@@ -423,6 +425,11 @@ function AreaReglas() {
         <textarea value={f.persona} onChange={set('persona')} aria-label="Persona del agente" rows={3}
           className="w-full px-3 py-2 rounded-md border border-border bg-surface text-sm"
           placeholder="Ej: Hablas cordial y breve, tuteas al cliente." />
+      </Campo>
+      <Campo label="Google Calendar ID (opcional)" className="mt-3">
+        <Input value={f.google_calendar_id} onChange={set('google_calendar_id')} aria-label="Google Calendar ID"
+          placeholder="negocio@group.calendar.google.com" className="h-9" />
+        <span className="text-[11px] text-muted-foreground">ID del Google Calendar del negocio; vacío = sin sync.</span>
       </Campo>
       <div className="flex justify-end mt-3"><Button onClick={guardar}>Guardar reglas</Button></div>
     </Card>

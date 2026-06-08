@@ -17,12 +17,19 @@ from __future__ import annotations
 import json
 import re
 from collections.abc import AsyncIterator, Awaitable, Callable
+from dataclasses import dataclass
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ai.agenda_tools import AgendaDeps, ejecutar as agenda_ejecutar, exponer_catalogo
+from ai.agenda_tools import AgendaDeps, ejecutar as agenda_ejecutar, exponer_catalogo as exponer_agenda
 from ai.envelope import Contexto, ErrorTool, Resultado
+from ai.handoff_tools import (
+    HandoffDeps,
+    POR_NOMBRE as HANDOFF_POR_NOMBRE,
+    ejecutar as handoff_ejecutar,
+    exponer_catalogo as exponer_handoff,
+)
 from apps.wa.kapso import KapsoSender, MensajeWa
 from core.config.timezone import now_co
 from core.llm.base import Message, ToolSpec
@@ -31,6 +38,8 @@ from core.logging import get_logger
 from core.tenancy.context import ResolvedTenant
 from modules.agenda.repository import SqlAgendaRepository
 from modules.agenda.service import AgendaService
+from modules.conversaciones.repository import SqlConversacionRepository
+from modules.conversaciones.service import ConversacionService
 
 log = get_logger("wa.agent")
 
@@ -116,8 +125,30 @@ def _envelope_json(resultado: Resultado | ErrorTool) -> str:
     )
 
 
-# Firma del ejecutor de herramientas (lo satisface `ai.agenda_tools.ejecutar`).
-Ejecutar = Callable[[Any, Contexto, AgendaDeps], Awaitable[Resultado | ErrorTool]]
+@dataclass(frozen=True, slots=True)
+class RuntimeDeps:
+    """Dependencias de TODOS los packs del runtime de cara al cliente (agenda + handoff transversal)."""
+
+    agenda: AgendaDeps
+    handoff: HandoffDeps
+
+
+def exponer_runtime(ctx: Contexto) -> list[ToolSpec]:
+    """Specs que ve el modelo: pack(s) de dominio gateados por flag + handoff (núcleo, siempre)."""
+    return [*exponer_agenda(ctx), *exponer_handoff(ctx)]
+
+
+async def ejecutar_runtime(
+    tool_call: Any, ctx: Contexto, deps: RuntimeDeps
+) -> Resultado | ErrorTool:
+    """Despacha la herramienta al pack que la define (handoff transversal o agenda)."""
+    if tool_call.name in HANDOFF_POR_NOMBRE:
+        return await handoff_ejecutar(tool_call, ctx, deps.handoff)
+    return await agenda_ejecutar(tool_call, ctx, deps.agenda)
+
+
+# Firma del ejecutor de herramientas (lo satisface `ejecutar_runtime` y los fakes de test).
+Ejecutar = Callable[[Any, Contexto, Any], Awaitable[Resultado | ErrorTool]]
 
 
 async def correr_bucle(
@@ -126,10 +157,10 @@ async def correr_bucle(
     system: str,
     tools: list[ToolSpec],
     ctx: Contexto,
-    deps: AgendaDeps,
+    deps: Any,
     historial: list[Message],
     texto: str,
-    ejecutar: Ejecutar = agenda_ejecutar,
+    ejecutar: Ejecutar = ejecutar_runtime,
     max_iters: int = _MAX_ITERS,
 ) -> str:
     """Bucle agente: el modelo pide herramientas, se ejecutan y se realimentan, hasta el texto final.
@@ -197,6 +228,20 @@ class MemoriaWa:
         recortado = turnos[-(2 * self._max):]
         await cliente.set(self._key(tenant_id, telefono), json.dumps(recortado), ex=self._ttl)
 
+    async def anexar_usuario(self, tenant_id: int, telefono: str, texto: str) -> None:
+        """Guarda un mensaje entrante SIN respuesta (durante el handoff humano): preserva el hilo.
+
+        Mientras la conversación está en `humano` el agente no corre, pero el mensaje del cliente no se
+        pierde: se anexa al historial para dar contexto cuando el bot reanude (y, más adelante, para la
+        bandeja del dashboard).
+        """
+        cliente = self._client or _cliente_redis(self._url)
+        dato = await cliente.get(self._key(tenant_id, telefono))
+        turnos = json.loads(dato) if dato else []
+        turnos.append({"role": "user", "content": texto})
+        recortado = turnos[-(2 * self._max):]
+        await cliente.set(self._key(tenant_id, telefono), json.dumps(recortado), ex=self._ttl)
+
 
 # Tipos de los colaboradores inyectados en `AgenteWa` (resueltos por el composition root del worker).
 AbrirTenant = Callable[[ResolvedTenant], AsyncIterator[AsyncSession]]
@@ -230,27 +275,46 @@ class AgenteWa:
         self._turno = turno
 
     async def atender(self, mensaje: MensajeWa, tenant: ResolvedTenant) -> str:
-        """Corre el bucle del agente y responde. Devuelve el texto enviado (para observabilidad/tests)."""
+        """Corre el bucle del agente y responde. Devuelve el texto enviado (para observabilidad/tests).
+
+        Si la conversación del cliente está escalada a un humano (`estado=humano`), NO corre el agente:
+        guarda el mensaje entrante y no responde, hasta que el negocio la resuelva (devuelva al bot).
+        """
         texto = FALLBACK
+        pausado = False
         try:
             capacidades = await self._capacidades(tenant.id)
             ctx = Contexto(
                 tenant_id=tenant.id, usuario_id=0, rol="cliente", origen="whatsapp",
                 cliente_telefono=mensaje.telefono, capacidades=capacidades,
             )
-            proveedor = await self._resolver_llm(tenant.id, self._turno)
-            historial = await self._memoria.cargar(tenant.id, mensaje.telefono)
+            historial: list[Message] = []
             async for session in self._abrir_tenant(tenant):
+                conversaciones = ConversacionService(SqlConversacionRepository(session))
+                # Pausa del agente: si está en manos de un humano, no se corre el LLM (regla del runtime).
+                if await conversaciones.esta_en_humano(mensaje.telefono):
+                    pausado = True
+                    continue
                 repo = SqlAgendaRepository(session)
                 cfg = await repo.obtener_config()
-                deps = AgendaDeps(agenda=AgendaService(repo))
+                proveedor = await self._resolver_llm(tenant.id, self._turno)
+                historial = await self._memoria.cargar(tenant.id, mensaje.telefono)
+                deps = RuntimeDeps(
+                    agenda=AgendaDeps(agenda=AgendaService(repo)),
+                    handoff=HandoffDeps(conversaciones=conversaciones),
+                )
                 texto = await correr_bucle(
                     proveedor=proveedor,
                     system=construir_system(cfg.persona if cfg else None),
-                    tools=exponer_catalogo(ctx),      # gated por el flag pack_agenda
+                    tools=exponer_runtime(ctx),       # agenda (gated por flag) + handoff (núcleo)
                     ctx=ctx, deps=deps, historial=historial, texto=mensaje.texto,
                 )
-                # commit al cerrar el generador → la cita agendada queda firme.
+                # commit al cerrar el generador → la cita agendada / el escalamiento quedan firmes.
+            if pausado:
+                # No se responde mientras lo atiende un humano; el entrante se preserva en el historial.
+                await self._memoria.anexar_usuario(tenant.id, mensaje.telefono, mensaje.texto)
+                log.info("wa_conversacion_en_humano_pausada", tenant_id=tenant.id)
+                return ""
             await self._memoria.guardar(tenant.id, mensaje.telefono, historial, mensaje.texto, texto)
         except Exception:  # noqa: BLE001 — fallback elegante: nunca exponer el error interno al cliente
             log.exception("wa_agente_error", tenant_id=tenant.id)

@@ -24,6 +24,8 @@ from modules.agenda.schemas import (
     RecursoCrear,
     ServicioCrear,
 )
+from modules.conversaciones.repository import SqlConversacionRepository
+from modules.conversaciones.service import ConversacionService
 
 TEL = "573001112233"
 PNID = "123456789012345"
@@ -355,3 +357,92 @@ def _coro(valor):
     """Envuelve un valor en una corrutina (para lambdas async-like en los fakes)."""
     async def _c(): return valor
     return _c()
+
+
+# --- handoff: pausa del agente cuando la conversación está en humano --------
+def _agente(engine, provider, *, memoria=None, sender=None) -> AgenteWa:
+    return AgenteWa(
+        abrir_tenant=_abrir_factory(engine),
+        resolver_llm=lambda tid, turno: _coro(_llm(provider)),
+        capacidades=lambda tid: _coro(frozenset({"pack_agenda", "canal_whatsapp"})),
+        memoria=memoria or MemoriaWa(url="x", client=_FakeRedis()),
+        sender=sender or _FakeSender(),
+    )
+
+
+async def _escalar(engine, telefono: str) -> None:
+    async with AsyncSession(engine, expire_on_commit=False) as s:
+        await ConversacionService(SqlConversacionRepository(s)).escalar(telefono, motivo="prueba")
+        await s.commit()
+
+
+async def test_pausa_no_corre_el_agente_ni_responde_si_esta_en_humano(tenant):
+    await _seed(tenant.engine)
+    await _escalar(tenant.engine, TEL)            # la conversación quedó en manos de un humano
+
+    provider = _ScriptedProvider([])              # si se corriera el LLM, reventaría (lista vacía)
+    sender = _FakeSender()
+    redis = _FakeRedis()
+    agente = _agente(tenant.engine, provider, memoria=MemoriaWa(url="x", client=redis), sender=sender)
+
+    texto = await agente.atender(
+        MensajeWa(message_id="w", telefono=TEL, phone_number_id=PNID, texto="¿hay novedad?"),
+        _tenant_resuelto(),
+    )
+    assert texto == ""                            # no responde mientras lo atiende un humano
+    assert sender.envios == []                    # no se envió nada
+    assert provider.generaciones == []            # el LLM nunca se invocó
+    # El mensaje entrante se preservó en el historial (para el contexto al reanudar).
+    hist = await MemoriaWa(url="x", client=redis).cargar(1, TEL)
+    assert [(m.role, m.content) for m in hist] == [("user", "¿hay novedad?")]
+
+
+async def test_resolver_reanuda_el_agente(tenant):
+    await _seed(tenant.engine)
+    await _escalar(tenant.engine, TEL)
+    # El negocio resuelve la conversación (la devuelve al bot).
+    async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
+        repo = SqlConversacionRepository(s)
+        conv = await repo.por_telefono(TEL)
+        await ConversacionService(repo).resolver(conv.id)
+        await s.commit()
+
+    provider = _ScriptedProvider([LLMResponse(text="Hola de nuevo, ¿en qué te ayudo?", tool_calls=[])])
+    sender = _FakeSender()
+    agente = _agente(tenant.engine, provider, sender=sender)
+    texto = await agente.atender(
+        MensajeWa(message_id="w2", telefono=TEL, phone_number_id=PNID, texto="hola"), _tenant_resuelto()
+    )
+    assert texto == "Hola de nuevo, ¿en qué te ayudo?"   # el agente volvió a atender
+    assert sender.envios == [(PNID, TEL, texto)]
+
+
+async def test_agente_escala_a_humano_y_pausa_el_siguiente_mensaje(tenant):
+    serv, _ = await _seed(tenant.engine)
+    # 1er turno: el modelo decide escalar a un humano (queja fuera de scope).
+    provider = _ScriptedProvider([
+        LLMResponse(text=None, tool_calls=[_tc("escalar_humano", motivo="Quiere un reembolso")]),
+        LLMResponse(text="Voy a conectarte con un asesor humano. 🙌", tool_calls=[]),
+    ])
+    sender = _FakeSender()
+    agente = _agente(tenant.engine, provider, sender=sender)
+    texto = await agente.atender(
+        MensajeWa(message_id="w1", telefono=TEL, phone_number_id=PNID, texto="quiero un reembolso ya"),
+        _tenant_resuelto(),
+    )
+    assert "asesor" in texto.lower() and sender.envios == [(PNID, TEL, texto)]
+    # La conversación quedó en humano.
+    async with AsyncSession(tenant.engine) as s:
+        fila = (await s.execute(text("SELECT estado, motivo FROM conversaciones WHERE cliente_telefono=:t"),
+                                {"t": TEL})).one()
+    assert fila.estado == "humano" and fila.motivo == "Quiere un reembolso"
+
+    # 2º turno: el mismo cliente escribe de nuevo → el agente está pausado, no responde.
+    provider2 = _ScriptedProvider([])
+    sender2 = _FakeSender()
+    agente2 = _agente(tenant.engine, provider2, sender=sender2)
+    texto2 = await agente2.atender(
+        MensajeWa(message_id="w2", telefono=TEL, phone_number_id=PNID, texto="¿alguien me atiende?"),
+        _tenant_resuelto(),
+    )
+    assert texto2 == "" and sender2.envios == [] and provider2.generaciones == []

@@ -24,6 +24,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ai.agenda_tools import AgendaDeps, ejecutar as agenda_ejecutar, exponer_catalogo as exponer_agenda
 from ai.envelope import Contexto, ErrorTool, Resultado
+from ai.faq_tools import (
+    FaqDeps,
+    POR_NOMBRE as FAQ_POR_NOMBRE,
+    ejecutar as faq_ejecutar,
+    exponer_catalogo as exponer_faq,
+)
 from ai.handoff_tools import (
     HandoffDeps,
     POR_NOMBRE as HANDOFF_POR_NOMBRE,
@@ -41,6 +47,8 @@ from modules.agenda.repository import SqlAgendaRepository
 from modules.agenda.service import AgendaService
 from modules.conversaciones.repository import SqlConversacionRepository
 from modules.conversaciones.service import ConversacionService
+from modules.faq.repository import SqlConocimientoRepository
+from modules.faq.service import FaqService
 
 log = get_logger("wa.agent")
 
@@ -59,6 +67,9 @@ _SYSTEM_BASE = (
     "falten (servicio, fecha/hora, nombre) antes de agendar. Responde en español, breve y cordial; "
     "las fechas y horas son de Colombia. Si te piden algo fuera de las citas, di con amabilidad que "
     "solo puedes ayudar con la agenda.\n"
+    "Para dudas generales del negocio (ubicación, horarios, precios, formas de pago, parqueo, "
+    "políticas) usa responder_faq y responde SOLO con esa información. Si no hay información suficiente, "
+    "NO inventes: ofrece pasar a un asesor humano (escalar_humano) o di que no tienes ese dato.\n"
     "Si el cliente responde a un RECORDATORIO de su cita: si confirma que asistirá (sí, confirmo, ahí "
     "estaré, dale) usa mis_citas para hallar su próxima cita y reconfírmala con reconfirmar_cita; si "
     "dice que no podrá o quiere cancelar, cancélala con cancelar_cita. Si quiere otro horario, reagenda."
@@ -131,23 +142,26 @@ def _envelope_json(resultado: Resultado | ErrorTool) -> str:
 
 @dataclass(frozen=True, slots=True)
 class RuntimeDeps:
-    """Dependencias de TODOS los packs del runtime de cara al cliente (agenda + handoff transversal)."""
+    """Dependencias de TODOS los packs del runtime de cara al cliente (agenda + handoff + FAQ transversales)."""
 
     agenda: AgendaDeps
     handoff: HandoffDeps
+    faq: FaqDeps
 
 
 def exponer_runtime(ctx: Contexto) -> list[ToolSpec]:
-    """Specs que ve el modelo: pack(s) de dominio gateados por flag + handoff (núcleo, siempre)."""
-    return [*exponer_agenda(ctx), *exponer_handoff(ctx)]
+    """Specs que ve el modelo: pack(s) de dominio + transversales (FAQ gateada por flag, handoff núcleo)."""
+    return [*exponer_agenda(ctx), *exponer_faq(ctx), *exponer_handoff(ctx)]
 
 
 async def ejecutar_runtime(
     tool_call: Any, ctx: Contexto, deps: RuntimeDeps
 ) -> Resultado | ErrorTool:
-    """Despacha la herramienta al pack que la define (handoff transversal o agenda)."""
+    """Despacha la herramienta al pack que la define (handoff/FAQ transversales o agenda)."""
     if tool_call.name in HANDOFF_POR_NOMBRE:
         return await handoff_ejecutar(tool_call, ctx, deps.handoff)
+    if tool_call.name in FAQ_POR_NOMBRE:
+        return await faq_ejecutar(tool_call, ctx, deps.faq)
     return await agenda_ejecutar(tool_call, ctx, deps.agenda)
 
 
@@ -309,6 +323,7 @@ class AgenteWa:
                 deps = RuntimeDeps(
                     agenda=AgendaDeps(agenda=AgendaService(repo, gcal=self._gcal)),
                     handoff=HandoffDeps(conversaciones=conversaciones),
+                    faq=FaqDeps(faq=FaqService(SqlConocimientoRepository(session))),
                 )
                 texto = await correr_bucle(
                     proveedor=proveedor,

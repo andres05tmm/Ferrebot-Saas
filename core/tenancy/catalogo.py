@@ -16,7 +16,7 @@ NUCLEO: frozenset[str] = frozenset({
 OPCIONALES: frozenset[str] = frozenset({
     "facturacion_electronica", "documento_soporte", "notas_electronicas", "libro_iva",
     "compras_fiscal", "honorarios", "fiados", "mayorista", "ventas_voz", "bot_telegram",
-    "multi_vendedor", "pack_agenda", "canal_whatsapp",
+    "multi_vendedor", "pack_agenda", "pack_faq", "canal_whatsapp",
 })
 
 # feature → conjunto-requisito en modo OR: basta UNA del conjunto para satisfacer la dependencia.

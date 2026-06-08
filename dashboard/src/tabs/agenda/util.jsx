@@ -41,6 +41,24 @@ export function EstadoBadge({ estado }) {
   )
 }
 
+// Sub-estado de reconfirmación (anti-no-show), paralelo a `estado`: Esperando (neutro), Reconfirmada
+// (verde) y En riesgo (rojo) — espeja el color del evento en Google Calendar.
+const CONFIRMACION_LABEL = { esperando: 'Esperando', reconfirmada: 'Reconfirmada', en_riesgo: 'En riesgo' }
+const CONFIRMACION_CLASE = {
+  esperando: 'bg-surface-2 text-muted-foreground',
+  reconfirmada: 'bg-success/15 text-success',
+  en_riesgo: 'bg-destructive/15 text-destructive',
+}
+
+export function ConfirmacionBadge({ confirmacion }) {
+  if (!confirmacion) return null
+  return (
+    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${CONFIRMACION_CLASE[confirmacion] || 'bg-surface-2 text-muted-foreground'}`}>
+      {CONFIRMACION_LABEL[confirmacion] || confirmacion}
+    </span>
+  )
+}
+
 /** Hoy en Colombia como YYYY-MM-DD (sin ambigüedad de zona del navegador). */
 export function hoyCO() {
   return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })

@@ -114,6 +114,10 @@ class CancelarCitaArgs(BaseModel):
     cita_id: int                        # referencia de la cita (de mis_citas)
 
 
+class ReconfirmarCitaArgs(BaseModel):
+    cita_id: int                        # referencia de la cita (de mis_citas)
+
+
 # --- handlers ---------------------------------------------------------------
 async def _listar_servicios(
     args: ListarServiciosArgs, ctx: Contexto, deps: AgendaDeps
@@ -271,6 +275,26 @@ async def _cancelar_cita(
     )
 
 
+async def _reconfirmar_cita(
+    args: ReconfirmarCitaArgs, ctx: Contexto, deps: AgendaDeps
+) -> Resultado | ErrorTool:
+    telefono = _telefono(ctx)
+    if telefono is None:
+        return _SIN_TELEFONO
+    try:
+        cita = await deps.agenda.reconfirmar(args.cita_id, telefono=telefono)
+    except CitaInexistente as exc:
+        return ErrorTool("cita_no_encontrada", str(exc), recuperable=True)
+    except CitaNoModificable as exc:
+        return ErrorTool("cita_no_modificable", str(exc), recuperable=False)
+    return Resultado(
+        data={"cita_id": cita.id, "confirmacion": cita.confirmacion},
+        resumen=f"¡Listo! Tu cita #{cita.id} quedó reconfirmada ✅. Te esperamos.",
+        evento="cita_confirmacion",
+        idempotente="aplicada",
+    )
+
+
 # --- catálogo ---------------------------------------------------------------
 Handler = Callable[[BaseModel, Contexto, AgendaDeps], Awaitable[Resultado | ErrorTool]]
 
@@ -330,6 +354,14 @@ CATALOGO_AGENDA: tuple[AgendaTool, ...] = (
         nombre="cancelar_cita",
         descripcion="Cancela una cita del cliente (aplica la política de cancelación).",
         args_model=CancelarCitaArgs, handler=_cancelar_cita,
+    ),
+    AgendaTool(
+        nombre="reconfirmar_cita",
+        descripcion=(
+            "Confirma la asistencia del cliente a una cita próxima cuando responde 'sí' a un "
+            "recordatorio (sí/confirmo/ahí estaré). Usa mis_citas para hallar su próxima cita."
+        ),
+        args_model=ReconfirmarCitaArgs, handler=_reconfirmar_cita,
     ),
 )
 

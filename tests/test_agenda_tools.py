@@ -155,9 +155,10 @@ async def test_seguridad_no_cancela_ni_reagenda_cita_ajena(tenant):
         await s.commit()
         cita_id = ok.data["cita_id"]
 
-        # Otro cliente (TEL_B) intenta cancelar/reagendar la cita de A → no la ve.
+        # Otro cliente (TEL_B) intenta cancelar/reagendar/reconfirmar la cita de A → no la ve.
         for tc in (_call("cancelar_cita", cita_id=cita_id),
-                   _call("reagendar_cita", cita_id=cita_id, nuevo_inicio=_futuro(hora=12).isoformat())):
+                   _call("reagendar_cita", cita_id=cita_id, nuevo_inicio=_futuro(hora=12).isoformat()),
+                   _call("reconfirmar_cita", cita_id=cita_id)):
             err = await ejecutar(tc, _ctx(TEL_B), _deps(s))
             assert isinstance(err, ErrorTool)
             assert err.error == "cita_no_encontrada"
@@ -184,6 +185,24 @@ async def test_reagendar_y_cancelar_propias(tenant):
         await s.commit()
         assert isinstance(c, Resultado)
         assert c.data["estado"] == "cancelada"
+
+
+async def test_reconfirmar_propia(tenant):
+    """El cliente responde 'sí' al recordatorio → reconfirmar_cita marca confirmacion=reconfirmada."""
+    async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
+        serv, rec = await _seed(s)   # auto → confirmada
+        ok = await ejecutar(_call("agendar_cita", servicio_id=serv, inicio=_futuro(hora=10).isoformat(), nombre="A", recurso_id=rec), _ctx(TEL_A), _deps(s))
+        await s.commit()
+        cita_id = ok.data["cita_id"]
+
+        r = await ejecutar(_call("reconfirmar_cita", cita_id=cita_id), _ctx(TEL_A), _deps(s))
+        await s.commit()
+        assert isinstance(r, Resultado)
+        assert r.data["confirmacion"] == "reconfirmada"
+        assert r.evento == "cita_confirmacion"
+
+        fila = (await s.execute(text("SELECT confirmacion FROM citas WHERE id=:i"), {"i": cita_id})).one()
+        assert fila.confirmacion == "reconfirmada"
 
 
 async def _crear_cita_cercana(s: AsyncSession, serv: int, rec: int, telefono: str = TEL_A):

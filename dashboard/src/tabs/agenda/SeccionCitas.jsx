@@ -15,7 +15,7 @@ import { Card } from '@/components/ui/card.jsx'
 import { Input } from '@/components/ui/input.jsx'
 import { Button } from '@/components/ui/button.jsx'
 import {
-  ESTADOS, ESTADO_ACCENT, EstadoBadge, requiereAtencion,
+  ESTADOS, ESTADO_ACCENT, EstadoBadge, ConfirmacionBadge, requiereAtencion,
   aISOColombia, fmtFechaCO, fmtHora, fmtDiaLabel, hoyCO, masDiasCO, minutosCO, sumarDias,
 } from './util.jsx'
 
@@ -62,7 +62,7 @@ export default function SeccionCitas() {
   const pendQ = useFetch(`/agenda/citas?estado=pendiente&desde=${hoyCO()}&hasta=${masDiasCO(30)}`)
 
   const refrescar = () => { citasQ.refetch(); pendQ.refetch() }
-  useRealtimeEvent(['cita_agendada', 'cita_estado', 'cita_reagendada', 'reconnected'], refrescar)
+  useRealtimeEvent(['cita_agendada', 'cita_estado', 'cita_reagendada', 'cita_confirmacion', 'reconnected'], refrescar)
 
   const nombreServicio = useMemo(() => Object.fromEntries(servicios.map(s => [s.id, s.nombre])), [servicios])
   const citasDia = (Array.isArray(citasQ.data) ? citasQ.data : []).filter(c => !estado || c.estado === estado)
@@ -216,10 +216,11 @@ function BloqueCita({ cita, servicio }) {
   const top = Math.max(((ini - HORA_INICIO * 60) / 60) * HORA_PX, 0)
   const alto = Math.max(((fin - ini) / 60) * HORA_PX, 42)
   const atencion = requiereAtencion(cita)
+  const enRiesgo = cita.estado === 'confirmada' && cita.confirmacion === 'en_riesgo'
 
   return (
     <div
-      className={`absolute left-1 right-1 rounded-md border-l-4 px-2 py-1 overflow-hidden shadow-xs ${ESTADO_ACCENT[cita.estado] || 'border-border bg-surface-2'} ${atencion ? 'ring-1 ring-warning/40' : ''}`}
+      className={`absolute left-1 right-1 rounded-md border-l-4 px-2 py-1 overflow-hidden shadow-xs ${ESTADO_ACCENT[cita.estado] || 'border-border bg-surface-2'} ${atencion ? 'ring-1 ring-warning/40' : ''} ${enRiesgo ? 'ring-1 ring-destructive/50' : ''}`}
       style={{ top, height: alto }}
       title={`${fmtHora(cita.inicio)}–${fmtHora(cita.fin)} · ${cita.cliente_nombre}`}
     >
@@ -229,7 +230,9 @@ function BloqueCita({ cita, servicio }) {
         </span>
         {atencion
           ? <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-warning"><AlertTriangle className="size-3" /> Revisar</span>
-          : <EstadoBadge estado={cita.estado} />}
+          : cita.estado === 'confirmada'
+            ? <ConfirmacionBadge confirmacion={cita.confirmacion} />
+            : <EstadoBadge estado={cita.estado} />}
       </div>
       <div className="text-[13px] font-semibold leading-tight truncate flex items-center gap-1">
         {cita.origen === 'whatsapp'

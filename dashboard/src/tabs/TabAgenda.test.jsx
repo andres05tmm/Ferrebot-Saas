@@ -79,6 +79,26 @@ describe('TabAgenda — Calendario', () => {
     expect(screen.getAllByText('Ana').length).toBeGreaterThan(0)
   })
 
+  it('muestra el badge de sub-estado (En riesgo) de una cita confirmada', async () => {
+    const cita = { ...CITA, estado: 'confirmada', confirmacion: 'en_riesgo' }
+    instalarFetch({ citas: [cita] })
+    renderTab()
+    await screen.findByLabelText('Columna Dra. Pérez')
+    expect(screen.getAllByText('En riesgo').length).toBeGreaterThan(0)
+  })
+
+  it('tiempo real: un evento cita_confirmacion recarga grilla y panel', async () => {
+    const { calls } = instalarFetch()
+    renderTab()
+    await screen.findByLabelText('Columna Dra. Pérez')
+    const antes = calls.filter(([u, m]) => u.includes('/agenda/citas') && m === 'GET').length
+    act(() => { rtHandler?.('cita_confirmacion', { cita_id: 1, confirmacion: 'reconfirmada' }) })
+    await waitFor(() => {
+      const ahora = calls.filter(([u, m]) => u.includes('/agenda/citas') && m === 'GET').length
+      expect(ahora).toBeGreaterThan(antes)
+    })
+  })
+
   it('tiempo real: un evento de cita recarga grilla y panel', async () => {
     const { calls } = instalarFetch()
     renderTab()

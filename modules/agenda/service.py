@@ -257,6 +257,19 @@ class AgendaService:
         return cita
 
     # --- reconfirmación (anti-no-show) ---------------------------------------
+    async def reconfirmar(self, cita_id: int, *, telefono: str | None = None) -> Cita:
+        """Marca la cita como `reconfirmada` (el cliente respondió "sí" al recordatorio).
+
+        Acotada al teléfono del Contexto (igual que reagendar/cancelar): si se pasa `telefono`, solo
+        toca la cita de ESE cliente. No cambia `estado` (el cupo sigue igual); refleja el sub-estado en
+        Google Calendar (color verde + línea Estado) best-effort.
+        """
+        cita = await self._cita_modificable(cita_id, telefono)
+        config = await self._cargar_config()
+        cita = await self._repo.marcar_confirmacion(cita, "reconfirmada")
+        await self._gcal_sync_estado(cita, config)
+        return cita
+
     async def procesar_reconfirmaciones(
         self, *, ahora: datetime, enviar: EnviarRecordatorio
     ) -> ResumenReconfirmacion:
@@ -283,7 +296,8 @@ class AgendaService:
         for cita in await self._repo.citas_para_en_riesgo(
             ahora=ahora, corte_horas=config.corte_riesgo_horas
         ):
-            await self._repo.marcar_confirmacion(cita, "en_riesgo")
+            cita = await self._repo.marcar_confirmacion(cita, "en_riesgo")
+            await self._gcal_sync_estado(cita, config)  # color ámbar/rojo en Calendar (best-effort)
             en_riesgo += 1
         return ResumenReconfirmacion(recordatorios=enviados, en_riesgo=en_riesgo)
 
@@ -578,6 +592,16 @@ class AgendaService:
             await self._repo.fijar_gcal_event_id(cita, None)
         except Exception:  # noqa: BLE001 — best-effort
             log.exception("agenda_gcal_borrar_error", cita_id=cita.id)
+
+    async def _gcal_sync_estado(self, cita: Cita, config: _Config) -> None:
+        """Refleja el cambio de sub-estado (color + línea Estado) en el evento espejo. Best-effort.
+
+        Reusa `_gcal_actualizar` (reescribe el evento con la `confirmacion` actual). Carga el servicio sin
+        exigir que esté activo (un servicio desactivado no debe impedir actualizar el color).
+        """
+        servicio = await self._repo.servicio_por_id(cita.servicio_id)
+        if servicio is not None:
+            await self._gcal_actualizar(cita, servicio, config)
 
     @staticmethod
     def _a_colombia(dt: datetime) -> datetime:

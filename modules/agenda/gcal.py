@@ -28,18 +28,22 @@ from core.config.timezone import to_co
 # Permiso mínimo para escribir eventos (write-only). Leer libre/ocupado pediría otro scope: es futuro.
 _SCOPES = ("https://www.googleapis.com/auth/calendar.events",)
 _TZ_GOOGLE = "America/Bogota"
-# Color fijo de los eventos creados por el asistente (paleta de Google: "9" = Blueberry, azul).
-# Consistente = todos los eventos del bot se ven igual en el calendario del negocio.
-_COLOR_ID = "9"
+# Color del evento según el SUB-ESTADO de reconfirmación (anti-no-show), paleta de Google Calendar:
+# esperando = azul (Blueberry "9"), reconfirmada = verde (Basil "10"), en_riesgo = rojo/ámbar (Tomato "11").
+_COLOR_ID = "9"  # default (esperando) — también el default de EventoCalendario.color_id
+_COLOR_POR_CONFIRMACION = {
+    "esperando": "9",
+    "reconfirmada": "10",
+    "en_riesgo": "11",
+}
+# Texto de la línea "Estado" según el sub-estado (refleja la reconfirmación, no el ciclo de vida).
+_CONFIRMACION_LEGIBLE = {
+    "esperando": "Esperando confirmación",
+    "reconfirmada": "Reconfirmada ✅",
+    "en_riesgo": "En riesgo — sin confirmar ⚠️",
+}
 # Separador visual en la descripción (em dashes), antes del pie de "agendado por el asistente".
 _SEPARADOR = "———"
-_ESTADO_LEGIBLE = {
-    "pendiente": "Pendiente",
-    "confirmada": "Confirmada",
-    "cumplida": "Cumplida",
-    "cancelada": "Cancelada",
-    "no_show": "No asistió",
-}
 
 
 @dataclass(frozen=True, slots=True)
@@ -113,11 +117,13 @@ def evento_de_cita(
     """Arma el evento espejo de una cita con un formato profesional y útil para el negocio.
 
     Título: `<Servicio> · <Cliente>`. Descripción estructurada con etiquetas (cliente, WhatsApp con
-    link wa.me de un toque, servicio + duración, profesional, estado) y un pie de "agendado por el
-    asistente". Las fechas salen SIEMPRE en hora Colombia (regla no negociable #4). `recurso` puede ser
-    None (se borró tras agendar): se omite la línea del profesional. `direccion` → `location` solo si el
-    negocio la tiene configurada.
+    link wa.me de un toque, servicio + duración, profesional, estado de reconfirmación) y un pie de
+    "agendado por el asistente". El COLOR y la línea "Estado" reflejan el sub-estado de reconfirmación
+    (`confirmacion`): esperando=azul, reconfirmada=verde, en_riesgo=rojo/ámbar. Las fechas salen SIEMPRE
+    en hora Colombia (regla no negociable #4). `recurso` puede ser None (se borró tras agendar): se omite
+    la línea del profesional. `direccion` → `location` solo si el negocio la tiene configurada.
     """
+    confirmacion = getattr(cita, "confirmacion", "esperando")
     display, wa = _formatear_telefono(cita.cliente_telefono)
     lineas = [
         f"Cliente: {cita.cliente_nombre}",
@@ -126,7 +132,7 @@ def evento_de_cita(
     ]
     if recurso is not None:
         lineas.append(f"Profesional: {recurso.nombre}")
-    lineas.append(f"Estado: {_ESTADO_LEGIBLE.get(cita.estado, str(cita.estado).capitalize())}")
+    lineas.append(f"Estado: {_CONFIRMACION_LEGIBLE.get(confirmacion, 'Esperando confirmación')}")
     lineas.append(_SEPARADOR)
     lineas.append("Agendado por el asistente vía WhatsApp")
     return EventoCalendario(
@@ -135,6 +141,7 @@ def evento_de_cita(
         inicio=to_co(cita.inicio),
         fin=to_co(cita.fin),
         location=direccion or None,
+        color_id=_COLOR_POR_CONFIRMACION.get(confirmacion, _COLOR_ID),
     )
 
 

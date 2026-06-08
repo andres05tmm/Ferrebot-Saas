@@ -62,6 +62,7 @@ class _FakeRedis:
     def __init__(self): self.store = {}
     async def get(self, k): return self.store.get(k)
     async def set(self, k, v, ex=None): self.store[k] = v
+    async def delete(self, k): self.store.pop(k, None)
 
 
 class _FakeSender:
@@ -74,6 +75,7 @@ class _FakeSender:
 def test_system_prompt_es_especializado_y_usa_persona():
     base = construir_system(None)
     assert "citas" in base and "ÚNICO" in base               # especializado (regla de Meta)
+    assert "mismo turno" in base                             # disciplina: no saludar y escalar a la vez
     con_persona = construir_system("Hablas como la barbería El Navaja, relajado y costeño.")
     assert "El Navaja" in con_persona
 
@@ -414,6 +416,39 @@ async def test_resolver_reanuda_el_agente(tenant):
         MensajeWa(message_id="w2", telefono=TEL, phone_number_id=PNID, texto="hola"), _tenant_resuelto()
     )
     assert texto == "Hola de nuevo, ¿en qué te ayudo?"   # el agente volvió a atender
+    assert sender.envios == [(PNID, TEL, texto)]
+
+
+async def test_resolver_limpia_memoria_y_no_reescala_por_historial_viejo(tenant):
+    """Bug fix: al resolver se LIMPIA la memoria; el siguiente 'hola' no arrastra el contexto del handoff."""
+    await _seed(tenant.engine)
+    await _escalar(tenant.engine, TEL)
+
+    redis = _FakeRedis()
+    mem = MemoriaWa(url="x", client=redis)
+    # Memoria con el contexto VIEJO del handoff (el cliente pidió asesor y el agente escaló).
+    await mem.guardar(
+        1, TEL, [], "necesito hablar con un asesor", "Voy a conectarte con un asesor humano. 🙌"
+    )
+    assert (await mem.cargar(1, TEL)) != []
+
+    # El negocio resuelve CON la memoria inyectada (como el router) → limpia el historial.
+    async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
+        repo = SqlConversacionRepository(s)
+        conv = await repo.por_telefono(TEL)
+        await ConversacionService(repo, memoria=mem).resolver(conv.id, tenant_id=1)
+        await s.commit()
+    assert (await mem.cargar(1, TEL)) == []          # memoria limpiada
+
+    # El siguiente 'hola' llega SIN el contexto viejo: el LLM solo ve el mensaje nuevo (no re-escala).
+    provider = _ScriptedProvider([LLMResponse(text="¡Hola! ¿Te ayudo a agendar una cita?", tool_calls=[])])
+    sender = _FakeSender()
+    agente = _agente(tenant.engine, provider, memoria=mem, sender=sender)
+    texto = await agente.atender(
+        MensajeWa(message_id="w2", telefono=TEL, phone_number_id=PNID, texto="hola"), _tenant_resuelto()
+    )
+    assert texto == "¡Hola! ¿Te ayudo a agendar una cita?"
+    assert [m.content for m in provider.generaciones[0]["messages"]] == ["hola"]  # sin historial viejo
     assert sender.envios == [(PNID, TEL, texto)]
 
 

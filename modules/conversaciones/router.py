@@ -13,9 +13,12 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from apps.wa.agent import MemoriaWa
 from core.auth import Principal, require_role
 from core.auth.features import require_feature
+from core.config import get_settings
 from core.db.session import get_tenant_db
+from core.logging import tenant_id_var
 from modules.conversaciones.errors import ConversacionInexistente
 from modules.conversaciones.repository import SqlConversacionRepository
 from modules.conversaciones.schemas import ConversacionLeer
@@ -31,8 +34,14 @@ router = APIRouter(
 def get_conversacion_service(
     session: AsyncSession = Depends(get_tenant_db),
 ) -> ConversacionService:
-    """Arma el `ConversacionService` sobre la sesión del tenant (los tests lo overridean)."""
-    return ConversacionService(SqlConversacionRepository(session))
+    """Arma el `ConversacionService` sobre la sesión del tenant (los tests lo overridean).
+
+    Le inyecta la memoria del canal (Redis) para que `resolver` la LIMPIE: así el bot retoma en limpio
+    y no re-escala por el historial viejo. Cliente Redis perezoso (no conecta hasta usarlo).
+    """
+    return ConversacionService(
+        SqlConversacionRepository(session), memoria=MemoriaWa(url=get_settings().redis_url)
+    )
 
 
 @router.get("/escaladas", response_model=list[ConversacionLeer])
@@ -50,8 +59,12 @@ async def resolver_conversacion(
     service: ConversacionService = Depends(get_conversacion_service),
     _user: Principal = Depends(require_role("vendedor")),
 ) -> ConversacionLeer:
-    """Devuelve la conversación al bot (estado→bot, sella resuelta_en). El agente vuelve a atender."""
+    """Devuelve la conversación al bot (estado→bot, sella resuelta_en) y limpia su memoria de Redis.
+
+    El `tenant_id` (del contextvar que liga el `TenantMiddleware`) acota la clave de memoria del
+    cliente; al limpiarla, el agente vuelve a atender sin el historial viejo (no re-escala).
+    """
     try:
-        return await service.resolver(conversacion_id)
+        return await service.resolver(conversacion_id, tenant_id=tenant_id_var.get())
     except ConversacionInexistente as exc:
         raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc

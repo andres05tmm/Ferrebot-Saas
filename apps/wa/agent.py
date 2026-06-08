@@ -70,6 +70,9 @@ _SYSTEM_BASE = (
     "Para dudas generales del negocio (ubicación, horarios, precios, formas de pago, parqueo, "
     "políticas) usa responder_faq y responde SOLO con esa información. Si no hay información suficiente, "
     "NO inventes: ofrece pasar a un asesor humano (escalar_humano) o di que no tienes ese dato.\n"
+    "Escala a un humano (escalar_humano) SOLO si en ESTE mensaje el cliente lo pide explícitamente o "
+    "presenta una queja/tema fuera de tu alcance; nunca por algo dicho antes. Si el cliente solo saluda, "
+    "salúdalo y ofrece ayudarlo con su cita — NUNCA des la bienvenida y escales en el mismo turno.\n"
     "Si el cliente responde a un RECORDATORIO de su cita: si confirma que asistirá (sí, confirmo, ahí "
     "estaré, dale) usa mis_citas para hallar su próxima cita y reconfírmala con reconfirmar_cita; si "
     "dice que no podrá o quiere cancelar, cancélala con cancelar_cita. Si quiere otro horario, reagenda."
@@ -245,6 +248,15 @@ class MemoriaWa:
         turnos.append({"role": "assistant", "content": asistente})
         recortado = turnos[-(2 * self._max):]
         await cliente.set(self._key(tenant_id, telefono), json.dumps(recortado), ex=self._ttl)
+
+    async def limpiar(self, tenant_id: int, telefono: str) -> None:
+        """Borra el historial del cliente (al RESOLVER el handoff): el bot retoma SIN el contexto viejo.
+
+        Sin esto, al devolver la conversación al bot el LLM re-escalaría de inmediato por el historial
+        previo (el cliente había pedido asesor + se llamó a escalar_humano).
+        """
+        cliente = self._client or _cliente_redis(self._url)
+        await cliente.delete(self._key(tenant_id, telefono))
 
     async def anexar_usuario(self, tenant_id: int, telefono: str, texto: str) -> None:
         """Guarda un mensaje entrante SIN respuesta (durante el handoff humano): preserva el hilo.

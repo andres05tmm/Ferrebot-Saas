@@ -15,6 +15,7 @@ export const RUTA_FEATURE = {
   '/compras-fiscal': 'compras_fiscal',
   '/agenda': 'pack_agenda',
   '/conversaciones': 'canal_whatsapp',
+  '/conocimiento': 'pack_faq',
 }
 
 /** ¿La ruta está habilitada según las features efectivas? Núcleo (sin requisito) → siempre true. */

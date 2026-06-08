@@ -27,6 +27,7 @@ import TabComprasFiscal from './tabs/TabComprasFiscal.jsx'
 import TabLibroIVA from './tabs/TabLibroIVA.jsx'
 import TabAgenda from './tabs/TabAgenda.jsx'
 import TabConversaciones from './tabs/TabConversaciones.jsx'
+import TabConocimiento from './tabs/TabConocimiento.jsx'
 import { ROUTES } from './routes.jsx'
 
 // Tabs núcleo (E6) + reportes (S2) + facturación (S3) + compras (S4a) + proveedores (S4b) +
@@ -48,6 +49,7 @@ const TABS = {
   '/libro-iva': TabLibroIVA,
   '/agenda': TabAgenda,
   '/conversaciones': TabConversaciones,
+  '/conocimiento': TabConocimiento,
 }
 import { bootConfig } from './lib/config.js'
 import { FeaturesProvider } from './lib/features.jsx'

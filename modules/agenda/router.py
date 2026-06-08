@@ -31,6 +31,7 @@ from modules.agenda.errors import (
     RecursoNoPrestaServicio,
     ServicioInexistente,
 )
+from modules.agenda.gcal import calendar_client_por_defecto
 from modules.agenda.repository import SqlAgendaRepository
 from modules.agenda.schemas import (
     AgendaConfigCrear,
@@ -59,8 +60,12 @@ router = APIRouter(
 
 
 def get_agenda_service(session: AsyncSession = Depends(get_tenant_db)) -> AgendaService:
-    """Arma el `AgendaService` sobre la sesión del tenant (los tests lo overridean)."""
-    return AgendaService(SqlAgendaRepository(session))
+    """Arma el `AgendaService` sobre la sesión del tenant (los tests lo overridean).
+
+    Pasa el cliente de Google Calendar de plataforma (o None si no hay SA configurado): así las
+    acciones del dashboard (alta/cancelar/reagendar) también espejan al calendario, best-effort.
+    """
+    return AgendaService(SqlAgendaRepository(session), gcal=calendar_client_por_defecto())
 
 
 def _a_http(exc: AgendaError) -> HTTPException:

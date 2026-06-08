@@ -158,6 +158,9 @@ class AgendaConfig(TenantBase):
         ARRAY(Integer), nullable=False, server_default="{24,2}"
     )
     persona: Mapped[str | None] = mapped_column(Text)  # tono/saludo del agente
+    # Sync OPCIONAL con Google Calendar (write-only): id del calendario que el negocio compartió con
+    # el service account de plataforma. NULL = sync apagado (la base sigue siendo la fuente de verdad).
+    google_calendar_id: Mapped[str | None] = mapped_column(Text)
     creado_en: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
@@ -186,6 +189,8 @@ class Cita(TenantBase):
     origen: Mapped[str] = mapped_column(cita_origen, nullable=False, server_default="whatsapp")
     notas: Mapped[str | None] = mapped_column(Text)
     idempotency_key: Mapped[str | None] = mapped_column(Text, unique=True)
+    # Id del evento espejo en Google Calendar (NULL si el sync está apagado o aún no se escribió).
+    gcal_event_id: Mapped[str | None] = mapped_column(Text)
     creada_en: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

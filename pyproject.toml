@@ -26,6 +26,8 @@ dependencies = [
     "openai>=1.0",                 # SDK del proveedor LLM por defecto (core/llm/providers/openai.py)
     "anthropic>=0.40",             # SDK del proveedor Claude (core/llm/providers/claude.py)
     "sentry-sdk[fastapi]>=2.0",    # observabilidad de errores (api/bot ASGI + worker arq)
+    "google-auth>=2.35",           # service account del sync write-only con Google Calendar (pack agenda)
+    "google-api-python-client>=2.150",  # API de Google Calendar (import perezoso en modules/agenda/gcal.py)
 ]
 
 [project.optional-dependencies]

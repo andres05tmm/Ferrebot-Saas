@@ -57,6 +57,12 @@ class Settings(BaseSettings):
     kapso_api_key: str = ""
     kapso_api_base: str = "https://api.kapso.ai/meta/whatsapp/v24.0"
 
+    # Google Calendar (sync OPCIONAL del pack Agenda, write-only). Credencial de PLATAFORMA: el JSON
+    # del SERVICE ACCOUNT (no OAuth). El negocio comparte su calendario con el email del SA y guarda
+    # solo su `google_calendar_id` por tenant (en agenda_config). Vacío = sync deshabilitado en toda la
+    # plataforma. NUNCA hardcodear: va en el entorno (es un secreto). Ver docs/agenda-google-calendar.md.
+    google_service_account_json: str = ""
+
 
 @lru_cache
 def get_settings() -> Settings:

@@ -26,6 +26,7 @@ from core.tenancy.control_repo import resolve_tenant_by_id
 from modules.facturacion.config import cargar_config_matias
 from modules.facturacion.matias_client import MatiasClient, MatiasCredenciales
 from modules.facturacion.politica import Decision
+from modules.agenda.gcal import calendar_client_por_defecto
 from modules.facturacion.repository import SqlFacturacionRepository
 from modules.facturacion.service import MAX_INTENTOS, FacturacionService
 
@@ -118,6 +119,8 @@ def _construir_agente(settings) -> AgenteWa:
         capacidades=capacidades,
         memoria=MemoriaWa(url=settings.redis_url),
         sender=KapsoSender(settings.kapso_api_key, base_url=settings.kapso_api_base),
+        # Sync write-only con Google Calendar (None si no hay service account en el entorno).
+        gcal=calendar_client_por_defecto(),
     )
 
 

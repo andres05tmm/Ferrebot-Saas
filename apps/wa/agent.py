@@ -36,6 +36,7 @@ from core.llm.base import Message, ToolSpec
 from core.llm.factory import LLMResuelto, Turno
 from core.logging import get_logger
 from core.tenancy.context import ResolvedTenant
+from modules.agenda.gcal import CalendarPort
 from modules.agenda.repository import SqlAgendaRepository
 from modules.agenda.service import AgendaService
 from modules.conversaciones.repository import SqlConversacionRepository
@@ -266,6 +267,7 @@ class AgenteWa:
         memoria: MemoriaWa,
         sender: KapsoSender,
         turno: Turno = Turno.ORQUESTADOR,
+        gcal: CalendarPort | None = None,
     ) -> None:
         self._abrir_tenant = abrir_tenant
         self._resolver_llm = resolver_llm
@@ -273,6 +275,8 @@ class AgenteWa:
         self._memoria = memoria
         self._sender = sender
         self._turno = turno
+        # Sync OPCIONAL con Google Calendar (write-only): se pasa al motor por turno. None = sin sync.
+        self._gcal = gcal
 
     async def atender(self, mensaje: MensajeWa, tenant: ResolvedTenant) -> str:
         """Corre el bucle del agente y responde. Devuelve el texto enviado (para observabilidad/tests).
@@ -300,7 +304,7 @@ class AgenteWa:
                 proveedor = await self._resolver_llm(tenant.id, self._turno)
                 historial = await self._memoria.cargar(tenant.id, mensaje.telefono)
                 deps = RuntimeDeps(
-                    agenda=AgendaDeps(agenda=AgendaService(repo)),
+                    agenda=AgendaDeps(agenda=AgendaService(repo, gcal=self._gcal)),
                     handoff=HandoffDeps(conversaciones=conversaciones),
                 )
                 texto = await correr_bucle(

@@ -79,6 +79,7 @@ class AgendaRepo(Protocol):
     async def crear_cita(self, datos: CitaCrear, *, estado: str, fin: datetime) -> Cita: ...
     async def reprogramar_cita(self, cita: Cita, *, inicio: datetime, fin: datetime) -> Cita: ...
     async def cambiar_estado_cita(self, cita: Cita, estado: str) -> Cita: ...
+    async def fijar_gcal_event_id(self, cita: Cita, event_id: str | None) -> Cita: ...
 
     # --- CRUD del dashboard ---
     async def actualizar_servicio(self, servicio: Servicio, datos: ServicioCrear) -> Servicio: ...
@@ -333,6 +334,12 @@ class SqlAgendaRepository:
         cita.estado = estado
         await self._s.flush()
         await publish(self._s, "cita_estado", {"cita_id": cita.id, "estado": estado})
+        return cita
+
+    async def fijar_gcal_event_id(self, cita: Cita, event_id: str | None) -> Cita:
+        """Guarda (o limpia, con None) el id del evento espejo de Google. Sin evento SSE: detalle interno."""
+        cita.gcal_event_id = event_id
+        await self._s.flush()
         return cita
 
     # --- CRUD del dashboard (catálogo/config) --------------------------------

@@ -16,6 +16,8 @@ from datetime import date, datetime, timedelta
 from sqlalchemy.exc import IntegrityError
 
 from core.config.timezone import COLOMBIA_TZ, now_co, rango_dia_co, to_co, today_co
+from core.logging import get_logger
+from modules.agenda.gcal import CalendarPort, evento_de_cita
 from modules.agenda.errors import (
     CitaInexistente,
     CitaNoModificable,
@@ -50,6 +52,8 @@ _MAX_ALTERNATIVAS = 3
 _DIAS_ALTERNATIVAS = 2
 _ESTADOS_TERMINALES = ("cumplida", "cancelada", "no_show")
 
+log = get_logger("agenda.gcal")
+
 
 @dataclass(frozen=True, slots=True)
 class SlotDisponible:
@@ -75,11 +79,15 @@ class _Config:
     politica_cancelacion_horas: int
     permite_reagendar: bool
     modo_confirmacion: str
+    google_calendar_id: str | None  # None = sync con Google Calendar apagado para este negocio
 
 
 class AgendaService:
-    def __init__(self, repo: AgendaRepo) -> None:
+    def __init__(self, repo: AgendaRepo, *, gcal: CalendarPort | None = None) -> None:
         self._repo = repo
+        # Sync OPCIONAL con Google Calendar (write-only, best-effort). None = sin cliente de plataforma;
+        # además, por tenant solo actúa si `agenda_config.google_calendar_id` está seteado.
+        self._gcal = gcal
 
     # --- disponibilidad ------------------------------------------------------
     async def calcular_disponibilidad(
@@ -195,6 +203,7 @@ class AgendaService:
                 if previa is not None:
                     return ResultadoAgendar(previa, replay=True)
             raise
+        await self._gcal_crear(cita, servicio, config)  # espejo en Google (best-effort, si hay sync)
         return ResultadoAgendar(cita, replay=False)
 
     # --- reagendar / cancelar ------------------------------------------------
@@ -218,14 +227,18 @@ class AgendaService:
             raise CupoNoDisponible(nuevo_inicio, alternativas)
 
         fin = nuevo_inicio + timedelta(minutes=servicio.duracion_min)
-        return await self._repo.reprogramar_cita(cita, inicio=nuevo_inicio, fin=fin)
+        cita = await self._repo.reprogramar_cita(cita, inicio=nuevo_inicio, fin=fin)
+        await self._gcal_actualizar(cita, servicio, config)  # mueve el espejo en Google (best-effort)
+        return cita
 
     async def cancelar(self, cita_id: int, *, telefono: str | None = None) -> Cita:
         """Cancela la cita si la política de cancelación lo permite."""
         cita = await self._cita_modificable(cita_id, telefono)
         config = await self._cargar_config()
         self._exigir_politica(cita.inicio, config.politica_cancelacion_horas)
-        return await self._repo.cambiar_estado_cita(cita, "cancelada")
+        cita = await self._repo.cambiar_estado_cita(cita, "cancelada")
+        await self._gcal_borrar(cita, config)  # borra el espejo en Google (best-effort)
+        return cita
 
     # --- dashboard: catálogo (servicios / recursos / N:N) --------------------
     async def crear_servicio(self, datos: ServicioCrear) -> Servicio:
@@ -343,7 +356,10 @@ class AgendaService:
     async def cancelar_negocio(self, cita_id: int) -> Cita:
         """Cancela una cita desde el dashboard. El negocio NO está sujeto a la política de cancelación."""
         cita = await self._cita_modificable(cita_id, None)
-        return await self._repo.cambiar_estado_cita(cita, "cancelada")
+        config = await self._cargar_config()
+        cita = await self._repo.cambiar_estado_cita(cita, "cancelada")
+        await self._gcal_borrar(cita, config)  # borra el espejo en Google (best-effort)
+        return cita
 
     async def reagendar_negocio(self, cita_id: int, nuevo_inicio: datetime) -> Cita:
         """Reagenda desde el dashboard: revalida el cupo (con lock) pero sin política ni teléfono."""
@@ -358,7 +374,9 @@ class AgendaService:
             alternativas = await self._alternativas(cita.servicio_id, cita.recurso_id, nuevo_inicio)
             raise CupoNoDisponible(nuevo_inicio, alternativas)
         fin = nuevo_inicio + timedelta(minutes=servicio.duracion_min)
-        return await self._repo.reprogramar_cita(cita, inicio=nuevo_inicio, fin=fin)
+        cita = await self._repo.reprogramar_cita(cita, inicio=nuevo_inicio, fin=fin)
+        await self._gcal_actualizar(cita, servicio, config)  # mueve el espejo en Google (best-effort)
+        return cita
 
     # --- helpers de I/O ------------------------------------------------------
     async def _servicio_activo(self, servicio_id: int) -> Servicio:
@@ -452,6 +470,7 @@ class AgendaService:
                 politica_cancelacion_horas=24,
                 permite_reagendar=True,
                 modo_confirmacion="auto",
+                google_calendar_id=None,
             )
         return _Config(
             reglas=ReglasCupo(
@@ -463,7 +482,51 @@ class AgendaService:
             politica_cancelacion_horas=cfg.politica_cancelacion_horas,
             permite_reagendar=cfg.permite_reagendar,
             modo_confirmacion=cfg.modo_confirmacion,
+            google_calendar_id=cfg.google_calendar_id,
         )
+
+    # --- sync con Google Calendar (OPCIONAL, write-only, BEST-EFFORT) ---------
+    # Regla del pack: si Google falla, la cita NO falla. Todo aquí está envuelto en try/except: se
+    # registra el error y se sigue. El sync solo actúa si hay cliente (plataforma) y el negocio fijó
+    # su `google_calendar_id`. La base es la fuente de verdad; Google es solo una vista que se escribe.
+    def _sync_activo(self, config: _Config) -> bool:
+        return self._gcal is not None and bool(config.google_calendar_id)
+
+    async def _gcal_crear(self, cita: Cita, servicio: Servicio, config: _Config) -> None:
+        """Crea el evento espejo en Google y guarda su id en la cita (al agendar)."""
+        if not self._sync_activo(config):
+            return
+        try:
+            recurso = await self._repo.recurso_por_id(cita.recurso_id)
+            evento = evento_de_cita(cita, servicio, recurso)
+            event_id = await self._gcal.crear_evento(config.google_calendar_id, evento)
+            await self._repo.fijar_gcal_event_id(cita, event_id)
+        except Exception:  # noqa: BLE001 — best-effort: el fallo de Google nunca rompe la cita
+            log.exception("agenda_gcal_crear_error", cita_id=cita.id)
+
+    async def _gcal_actualizar(self, cita: Cita, servicio: Servicio, config: _Config) -> None:
+        """Reescribe el evento espejo en Google (al reagendar). Si no hay evento previo, lo crea."""
+        if not self._sync_activo(config):
+            return
+        if not cita.gcal_event_id:
+            await self._gcal_crear(cita, servicio, config)
+            return
+        try:
+            recurso = await self._repo.recurso_por_id(cita.recurso_id)
+            evento = evento_de_cita(cita, servicio, recurso)
+            await self._gcal.actualizar_evento(config.google_calendar_id, cita.gcal_event_id, evento)
+        except Exception:  # noqa: BLE001 — best-effort
+            log.exception("agenda_gcal_actualizar_error", cita_id=cita.id)
+
+    async def _gcal_borrar(self, cita: Cita, config: _Config) -> None:
+        """Borra el evento espejo en Google y limpia su id en la cita (al cancelar)."""
+        if not self._sync_activo(config) or not cita.gcal_event_id:
+            return
+        try:
+            await self._gcal.borrar_evento(config.google_calendar_id, cita.gcal_event_id)
+            await self._repo.fijar_gcal_event_id(cita, None)
+        except Exception:  # noqa: BLE001 — best-effort
+            log.exception("agenda_gcal_borrar_error", cita_id=cita.id)
 
     @staticmethod
     def _a_colombia(dt: datetime) -> datetime:

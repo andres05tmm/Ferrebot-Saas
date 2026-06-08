@@ -128,6 +128,8 @@ class AgendaConfigCrear(BaseModel):
     capacidad_por_slot: int = Field(default=1, gt=0)
     recordatorios_horas: list[int] = Field(default_factory=lambda: [24, 2])
     persona: str | None = None
+    # Sync opcional con Google Calendar: calendar_id compartido con el service account. None = apagado.
+    google_calendar_id: str | None = None
 
 
 class AgendaConfigLeer(BaseModel):
@@ -147,6 +149,7 @@ class AgendaConfigLeer(BaseModel):
     capacidad_por_slot: int
     recordatorios_horas: list[int]
     persona: str | None
+    google_calendar_id: str | None
     creado_en: datetime
     actualizado_en: datetime | None
 
@@ -180,6 +183,7 @@ class CitaLeer(BaseModel):
     origen: str
     notas: str | None
     idempotency_key: str | None
+    gcal_event_id: str | None
     creada_en: datetime
 
 

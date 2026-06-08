@@ -9,6 +9,7 @@
  * aquí solo marca cuándo terminó. (Mensajería dentro del dashboard: futuro, fuera de alcance.)
  */
 import { useState } from 'react'
+import { useOutletContext } from 'react-router-dom'
 import { toast } from 'sonner'
 import { Headset, Bot, Phone, Clock, MessageSquareWarning, Inbox } from 'lucide-react'
 import { api } from '@/lib/api.js'
@@ -40,11 +41,14 @@ export function haceCuanto(iso, ahora = Date.now()) {
 }
 
 export default function TabConversaciones() {
-  const escaladasQ = useFetch('/conversaciones/escaladas')
-  useRealtimeEvent(
-    ['conversacion_escalada', 'conversacion_resuelta', 'reconnected'],
-    escaladasQ.refetch,
-  )
+  // El botón "refrescar" del shell incrementa refreshKey (vía Outlet context); incluirlo en las deps
+  // del fetch hace que re-fetche esta lista (antes no estaba cableado: el botón no hacía nada aquí).
+  const { refreshKey } = useOutletContext() ?? {}
+  const escaladasQ = useFetch('/conversaciones/escaladas', [refreshKey])
+  // `refetch` es estable (useFetch) y dispara el fetch real: el evento SSE de escalada/resuelta lo
+  // re-ejecuta en vivo (mismo patrón que TabCaja/SeccionCitas).
+  const recargar = escaladasQ.refetch
+  useRealtimeEvent(['conversacion_escalada', 'conversacion_resuelta', 'reconnected'], recargar)
 
   const escaladas = Array.isArray(escaladasQ.data) ? escaladasQ.data : []
 
@@ -62,7 +66,7 @@ export default function TabConversaciones() {
       ) : (
         <ul className="space-y-2">
           {escaladas.map(c => (
-            <ConversacionItem key={c.id} conv={c} onResuelta={escaladasQ.refetch} />
+            <ConversacionItem key={c.id} conv={c} onResuelta={recargar} />
           ))}
         </ul>
       )}

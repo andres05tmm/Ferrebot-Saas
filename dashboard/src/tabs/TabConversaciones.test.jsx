@@ -1,6 +1,7 @@
+import { useState } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, Routes, Route, Outlet } from 'react-router-dom'
 
 let rtHandler = null
 vi.mock('@/components/RealtimeProvider.jsx', () => ({
@@ -36,6 +37,25 @@ function instalarFetch({ escaladas } = {}) {
 function renderTab() {
   return render(<MemoryRouter><TabConversaciones /></MemoryRouter>)
 }
+
+// Harness que replica el shell: provee refreshKey por Outlet context y un botón que lo incrementa
+// (como el botón "refrescar" de AppShell).
+function Harness() {
+  const [k, setK] = useState(0)
+  return (
+    <MemoryRouter>
+      <button onClick={() => setK(x => x + 1)}>refrescar</button>
+      <Routes>
+        <Route element={<Outlet context={{ refreshKey: k }} />}>
+          <Route index element={<TabConversaciones />} />
+        </Route>
+      </Routes>
+    </MemoryRouter>
+  )
+}
+
+const getsEscaladas = (calls) =>
+  calls.filter(([u, m]) => u.includes('/conversaciones/escaladas') && m === 'GET').length
 
 beforeEach(() => { localStorage.clear(); rtHandler = null })
 afterEach(() => { cleanup(); vi.restoreAllMocks() })
@@ -75,13 +95,20 @@ describe('TabConversaciones — bandeja', () => {
     const { calls } = instalarFetch()
     renderTab()
     await screen.findByText('573001112233')
-    const antes = calls.filter(([u, m]) => u.includes('/conversaciones/escaladas') && m === 'GET').length
+    const antes = getsEscaladas(calls)
 
     act(() => { rtHandler?.('conversacion_escalada', { conversacion_id: 9 }) })
-    await waitFor(() => {
-      const ahora = calls.filter(([u, m]) => u.includes('/conversaciones/escaladas') && m === 'GET').length
-      expect(ahora).toBeGreaterThan(antes)
-    })
+    await waitFor(() => expect(getsEscaladas(calls)).toBeGreaterThan(antes))
+  })
+
+  it('el botón refrescar del shell (refreshKey) re-fetchea la lista', async () => {
+    const { calls } = instalarFetch()
+    render(<Harness />)
+    await screen.findByText('573001112233')
+    const antes = getsEscaladas(calls)
+
+    fireEvent.click(screen.getByText('refrescar'))   // como el botón refrescar de AppShell
+    await waitFor(() => expect(getsEscaladas(calls)).toBeGreaterThan(antes))
   })
 })
 

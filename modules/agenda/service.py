@@ -10,6 +10,7 @@ al cálculo puro y persiste vía el repo. Todo en hora Colombia (`COLOMBIA_TZ`, 
   Estado según `modo_confirmacion` (auto→confirmada, manual→pendiente).
 - `reagendar` / `cancelar`: aplican `politica_cancelacion_horas` y `permite_reagendar`.
 """
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 
@@ -72,6 +73,19 @@ class ResultadoAgendar:
 
 
 @dataclass(frozen=True, slots=True)
+class ResumenReconfirmacion:
+    """Resultado de una corrida del job anti-no-show: cuántos recordatorios y cuántas marcadas en riesgo."""
+
+    recordatorios: int
+    en_riesgo: int
+
+
+# Callback que envía el recordatorio de reconfirmación de UNA cita (lo provee el worker con Kapso).
+# Devuelve True si el envío fue exitoso (solo entonces se sella el dedup). Inyectable: los tests lo falsean.
+EnviarRecordatorio = Callable[["Cita"], Awaitable[bool]]
+
+
+@dataclass(frozen=True, slots=True)
 class _Config:
     """Reglas efectivas del negocio (la fila de `agenda_config` o sus defaults si no existe)."""
 
@@ -80,6 +94,8 @@ class _Config:
     permite_reagendar: bool
     modo_confirmacion: str
     google_calendar_id: str | None  # None = sync con Google Calendar apagado para este negocio
+    recordatorios_horas: list[int]  # offsets (horas antes) del recordatorio de reconfirmación
+    corte_riesgo_horas: int         # horas antes para marcar en_riesgo sin respuesta
 
 
 class AgendaService:
@@ -239,6 +255,37 @@ class AgendaService:
         cita = await self._repo.cambiar_estado_cita(cita, "cancelada")
         await self._gcal_borrar(cita, config)  # borra el espejo en Google (best-effort)
         return cita
+
+    # --- reconfirmación (anti-no-show) ---------------------------------------
+    async def procesar_reconfirmaciones(
+        self, *, ahora: datetime, enviar: EnviarRecordatorio
+    ) -> ResumenReconfirmacion:
+        """Corrida del job anti-no-show sobre la base del tenant (la fuente de verdad). Determinista.
+
+        1) Recordatorio de reconfirmación: por cada cita confirmada, aún `esperando` y sin recordatorio
+           cuyo inicio cae en la ventana de `recordatorios_horas` (se usa el offset mayor), invoca
+           `enviar`; si tuvo éxito, sella `recordatorio_enviado_en` (dedup: no se reenvía).
+        2) Corte de riesgo: por cada cita confirmada aún `esperando` dentro de `corte_riesgo_horas`,
+           marca `confirmacion=en_riesgo`. **Nunca** cambia `estado` ni libera el cupo (solo la
+           cancelación explícita lo hace). La no-respuesta jamás cancela.
+
+        `ahora` se inyecta (hora Colombia) para que el cálculo sea determinista y testeable.
+        """
+        config = await self._cargar_config()
+        enviados = 0
+        ventana = max(config.recordatorios_horas, default=0)
+        if ventana > 0:
+            for cita in await self._repo.citas_para_recordatorio(ahora=ahora, ventana_horas=ventana):
+                if await enviar(cita):
+                    await self._repo.marcar_recordatorio_enviado(cita, cuando=ahora)
+                    enviados += 1
+        en_riesgo = 0
+        for cita in await self._repo.citas_para_en_riesgo(
+            ahora=ahora, corte_horas=config.corte_riesgo_horas
+        ):
+            await self._repo.marcar_confirmacion(cita, "en_riesgo")
+            en_riesgo += 1
+        return ResumenReconfirmacion(recordatorios=enviados, en_riesgo=en_riesgo)
 
     # --- dashboard: catálogo (servicios / recursos / N:N) --------------------
     async def crear_servicio(self, datos: ServicioCrear) -> Servicio:
@@ -471,6 +518,8 @@ class AgendaService:
                 permite_reagendar=True,
                 modo_confirmacion="auto",
                 google_calendar_id=None,
+                recordatorios_horas=[24, 2],
+                corte_riesgo_horas=2,
             )
         return _Config(
             reglas=ReglasCupo(
@@ -483,6 +532,8 @@ class AgendaService:
             permite_reagendar=cfg.permite_reagendar,
             modo_confirmacion=cfg.modo_confirmacion,
             google_calendar_id=cfg.google_calendar_id,
+            recordatorios_horas=list(cfg.recordatorios_horas or []),
+            corte_riesgo_horas=cfg.corte_riesgo_horas,
         )
 
     # --- sync con Google Calendar (OPCIONAL, write-only, BEST-EFFORT) ---------

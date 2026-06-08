@@ -67,6 +67,20 @@ async def resolve_tenant_by_wa_number(
     return _resolver((await session.execute(stmt)).first())
 
 
+async def listar_wa_numeros_activos(session: AsyncSession) -> list[tuple[int, str]]:
+    """`(empresa_id, phone_number_id)` de cada canal de WhatsApp activo (para jobs multi-tenant).
+
+    Solo las empresas con un número activo pueden recibir/enviar por WhatsApp; el job de recordatorios
+    itera sobre estas y, por tenant, verifica el flag `pack_agenda` antes de procesar.
+    """
+    stmt = (
+        select(WaNumero.empresa_id, WaNumero.phone_number_id)
+        .where(WaNumero.estado == "activo")
+        .order_by(WaNumero.empresa_id)
+    )
+    return [(int(eid), str(pn)) for eid, pn in (await session.execute(stmt)).all()]
+
+
 async def leer_branding(session: AsyncSession, empresa_id: int) -> dict[str, str | None]:
     """Branding (logo, color, nombre comercial, dominio) de la empresa; defaults si no hay fila."""
     row = (

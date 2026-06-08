@@ -120,6 +120,7 @@ class AgendaConfigCrear(BaseModel):
     anticipacion_minima_min: int = Field(default=120, ge=0)
     ventana_maxima_dias: int = Field(default=30, gt=0)
     politica_cancelacion_horas: int = Field(default=24, ge=0)
+    corte_riesgo_horas: int = Field(default=2, ge=0)  # horas antes para marcar en_riesgo sin respuesta
     permite_reagendar: bool = True
     modo_confirmacion: ModoConfirmacion = "auto"
     requiere_anticipo: bool = False
@@ -141,6 +142,7 @@ class AgendaConfigLeer(BaseModel):
     anticipacion_minima_min: int
     ventana_maxima_dias: int
     politica_cancelacion_horas: int
+    corte_riesgo_horas: int
     permite_reagendar: bool
     modo_confirmacion: str
     requiere_anticipo: bool
@@ -181,6 +183,8 @@ class CitaLeer(BaseModel):
     fin: datetime
     estado: str
     origen: str
+    confirmacion: str
+    recordatorio_enviado_en: datetime | None
     notas: str | None
     idempotency_key: str | None
     gcal_event_id: str | None

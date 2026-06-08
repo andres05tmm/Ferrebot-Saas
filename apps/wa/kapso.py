@@ -82,7 +82,6 @@ class KapsoSender:
 
     async def enviar_texto(self, *, phone_number_id: str, to: str, texto: str) -> dict[str, Any]:
         """Envía un mensaje de texto. Devuelve el JSON de Kapso (incluye `messages[0].id`)."""
-        url = f"{self._base}/{phone_number_id}/messages"
         cuerpo = {
             "messaging_product": "whatsapp",
             "recipient_type": "individual",
@@ -90,6 +89,36 @@ class KapsoSender:
             "type": "text",
             "text": {"body": texto, "preview_url": False},
         }
+        return await self._post(phone_number_id, cuerpo)
+
+    async def enviar_plantilla(
+        self,
+        *,
+        phone_number_id: str,
+        to: str,
+        nombre: str,
+        idioma: str = "es",
+        componentes: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
+        """Envía un mensaje de PLANTILLA (template) aprobada — el único tipo permitido FUERA de la
+        ventana de 24h (recordatorios proactivos del negocio). `nombre`/`idioma` identifican la plantilla
+        en la WABA; `componentes` (opcional) rellena sus variables. Devuelve el JSON de Kapso.
+        """
+        plantilla: dict[str, Any] = {"name": nombre, "language": {"code": idioma}}
+        if componentes:
+            plantilla["components"] = componentes
+        cuerpo = {
+            "messaging_product": "whatsapp",
+            "recipient_type": "individual",
+            "to": to,
+            "type": "template",
+            "template": plantilla,
+        }
+        return await self._post(phone_number_id, cuerpo)
+
+    async def _post(self, phone_number_id: str, cuerpo: dict[str, Any]) -> dict[str, Any]:
+        """POST a `{base}/{phone_number_id}/messages` con la API key de plataforma. Cliente httpx perezoso."""
+        url = f"{self._base}/{phone_number_id}/messages"
         headers = {"X-API-Key": self._api_key, "Content-Type": "application/json"}
         if self._client is not None:
             resp = await self._client.post(url, json=cuerpo, headers=headers)

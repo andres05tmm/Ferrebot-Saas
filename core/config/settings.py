@@ -56,6 +56,10 @@ class Settings(BaseSettings):
     kapso_webhook_secret: str = ""
     kapso_api_key: str = ""
     kapso_api_base: str = "https://api.kapso.ai/meta/whatsapp/v24.0"
+    # Plantilla (template) aprobada para el recordatorio de reconfirmación de citas (anti-no-show).
+    # Es el nombre registrado en la WABA; vacío = el job NO envía recordatorios (queda inactivo).
+    kapso_template_recordatorio: str = ""
+    kapso_template_recordatorio_idioma: str = "es"
 
     # Google Calendar (sync OPCIONAL del pack Agenda, write-only). Credencial de PLATAFORMA: el JSON
     # del SERVICE ACCOUNT (no OAuth). El negocio comparte su calendario con el email del SA y guarda

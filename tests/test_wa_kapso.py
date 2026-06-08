@@ -98,3 +98,23 @@ async def test_kapso_sender_arma_la_peticion():
         "to": "573001112233", "type": "text",
         "text": {"body": "recibí: hola", "preview_url": False},
     }
+
+
+async def test_kapso_sender_arma_la_plantilla():
+    """El recordatorio de reconfirmación va como template (único tipo permitido fuera de las 24h)."""
+    fake = _FakeHttpx()
+    sender = KapsoSender("api-key-123", base_url="https://api.kapso.ai/meta/whatsapp/v24.0", client=fake)
+    res = await sender.enviar_plantilla(
+        phone_number_id="123456789012345", to="573001112233",
+        nombre="recordatorio_cita", idioma="es",
+    )
+
+    assert res["messages"][0]["id"] == "wamid.out.1"
+    url, cuerpo, headers = fake.llamadas[0]
+    assert url == "https://api.kapso.ai/meta/whatsapp/v24.0/123456789012345/messages"
+    assert headers["X-API-Key"] == "api-key-123"
+    assert cuerpo == {
+        "messaging_product": "whatsapp", "recipient_type": "individual",
+        "to": "573001112233", "type": "template",
+        "template": {"name": "recordatorio_cita", "language": {"code": "es"}},
+    }

@@ -40,6 +40,8 @@ from modules.agenda.slots import Intervalo
 _LOCK_NS = 0xA6E0  # "AGENDA"
 # Estados de cita que ocupan agenda (los terminales liberan el cupo).
 _ESTADOS_ACTIVOS = ("pendiente", "confirmada")
+# Estado sobre el que aplica la reconfirmación del cliente (anti-no-show): solo citas ya en firme.
+_ESTADO_RECONFIRMABLE = "confirmada"
 
 
 class AgendaRepo(Protocol):
@@ -81,6 +83,14 @@ class AgendaRepo(Protocol):
     async def reprogramar_cita(self, cita: Cita, *, inicio: datetime, fin: datetime) -> Cita: ...
     async def cambiar_estado_cita(self, cita: Cita, estado: str) -> Cita: ...
     async def fijar_gcal_event_id(self, cita: Cita, event_id: str | None) -> Cita: ...
+
+    # --- reconfirmación (anti-no-show) ---
+    async def citas_para_recordatorio(
+        self, *, ahora: datetime, ventana_horas: int
+    ) -> list[Cita]: ...
+    async def citas_para_en_riesgo(self, *, ahora: datetime, corte_horas: int) -> list[Cita]: ...
+    async def marcar_recordatorio_enviado(self, cita: Cita, *, cuando: datetime) -> Cita: ...
+    async def marcar_confirmacion(self, cita: Cita, valor: str) -> Cita: ...
 
     # --- CRUD del dashboard ---
     async def actualizar_servicio(self, servicio: Servicio, datos: ServicioCrear) -> Servicio: ...
@@ -349,6 +359,66 @@ class SqlAgendaRepository:
         """Guarda (o limpia, con None) el id del evento espejo de Google. Sin evento SSE: detalle interno."""
         cita.gcal_event_id = event_id
         await self._s.flush()
+        return cita
+
+    # --- reconfirmación (anti-no-show) ---------------------------------------
+    async def citas_para_recordatorio(
+        self, *, ahora: datetime, ventana_horas: int
+    ) -> list[Cita]:
+        """Citas confirmadas, aún `esperando` y sin recordatorio, que entran en la ventana [ahora, ahora+H].
+
+        Solo `estado=confirmada` (la reconfirmación es del cliente sobre una cita ya en firme; las
+        `pendiente` esperan al negocio). `recordatorio_enviado_en IS NULL` es el dedup. `inicio > ahora`
+        excluye las ya pasadas.
+        """
+        limite = ahora + timedelta(hours=ventana_horas)
+        stmt = (
+            select(Cita)
+            .where(
+                Cita.estado == _ESTADO_RECONFIRMABLE,
+                Cita.confirmacion == "esperando",
+                Cita.recordatorio_enviado_en.is_(None),
+                Cita.inicio > ahora,
+                Cita.inicio <= limite,
+            )
+            .order_by(Cita.inicio)
+        )
+        return list((await self._s.execute(stmt)).scalars().all())
+
+    async def citas_para_en_riesgo(self, *, ahora: datetime, corte_horas: int) -> list[Cita]:
+        """Citas confirmadas y aún `esperando` cuyo inicio cae dentro del corte de riesgo (sin respuesta).
+
+        No mira `recordatorio_enviado_en`: al llegar el corte sin reconfirmar, la cita está en riesgo se
+        haya alcanzado o no a enviar el recordatorio. NUNCA cambia `estado` (no libera el cupo).
+        """
+        limite = ahora + timedelta(hours=corte_horas)
+        stmt = (
+            select(Cita)
+            .where(
+                Cita.estado == _ESTADO_RECONFIRMABLE,
+                Cita.confirmacion == "esperando",
+                Cita.inicio > ahora,
+                Cita.inicio <= limite,
+            )
+            .order_by(Cita.inicio)
+        )
+        return list((await self._s.execute(stmt)).scalars().all())
+
+    async def marcar_recordatorio_enviado(self, cita: Cita, *, cuando: datetime) -> Cita:
+        """Sella el envío del recordatorio (dedup). Sin evento SSE: es detalle operativo del job."""
+        cita.recordatorio_enviado_en = cuando
+        await self._s.flush()
+        return cita
+
+    async def marcar_confirmacion(self, cita: Cita, valor: str) -> Cita:
+        """Cambia el sub-estado de reconfirmación (`esperando`/`reconfirmada`/`en_riesgo`).
+
+        Paralelo a `estado`: NO toca el ciclo de vida de la cita ni libera el cupo. Emite un evento SSE
+        para que el dashboard refleje el riesgo en vivo (el color es de un corte posterior).
+        """
+        cita.confirmacion = valor
+        await self._s.flush()
+        await publish(self._s, "cita_confirmacion", {"cita_id": cita.id, "confirmacion": valor})
         return cita
 
     # --- CRUD del dashboard (catálogo/config) --------------------------------

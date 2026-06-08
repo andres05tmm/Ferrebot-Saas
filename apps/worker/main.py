@@ -11,24 +11,31 @@ import asyncio
 from collections.abc import Callable
 
 from arq.connections import RedisSettings
+from arq.cron import cron
 
 from apps.wa.agent import AgenteWa, MemoriaWa
 from apps.wa.kapso import KapsoSender
 from apps.worker.jobs import atender_mensaje_wa, emitir_documento
 from core.config import get_settings
+from core.config.timezone import now_co
 from core.db.session import control_session, tenant_session
 from core.llm.factory import PlataformaLLM, Turno, get_llm
 from core.llm.stores import ControlLLMConfigStore, ControlLLMKeyStore
+from core.logging import get_logger
 from core.observability import init_sentry
 from core.tenancy.capacidades import ControlCapacidades
 from core.tenancy.context import ResolvedTenant
-from core.tenancy.control_repo import resolve_tenant_by_id
+from core.tenancy.control_repo import listar_wa_numeros_activos, resolve_tenant_by_id
+from modules.agenda.gcal import calendar_client_por_defecto
+from modules.agenda.repository import SqlAgendaRepository
+from modules.agenda.service import AgendaService
 from modules.facturacion.config import cargar_config_matias
 from modules.facturacion.matias_client import MatiasClient, MatiasCredenciales
 from modules.facturacion.politica import Decision
-from modules.agenda.gcal import calendar_client_por_defecto
 from modules.facturacion.repository import SqlFacturacionRepository
 from modules.facturacion.service import MAX_INTENTOS, FacturacionService
+
+log = get_logger("worker.reconfirmacion")
 
 
 class _MatiasClientCache:
@@ -148,10 +155,70 @@ async def on_startup(ctx: dict) -> None:
     ctx["wa_agente"] = _construir_agente(settings)
 
 
+def _hacer_enviar_recordatorio(sender: KapsoSender, settings, phone_number_id: str):
+    """Closure `enviar(cita) -> bool` que manda la PLANTILLA de reconfirmación por el número del tenant.
+
+    Sin plantilla configurada (`kapso_template_recordatorio` vacío) → no intenta enviar (devuelve False:
+    el job no sella el dedup y reintentará cuando se configure). Un fallo de red tampoco rompe el job.
+    """
+    template = settings.kapso_template_recordatorio
+
+    async def enviar(cita) -> bool:
+        if not template:
+            return False
+        try:
+            await sender.enviar_plantilla(
+                phone_number_id=phone_number_id, to=cita.cliente_telefono,
+                nombre=template, idioma=settings.kapso_template_recordatorio_idioma,
+            )
+            return True
+        except Exception:  # noqa: BLE001 — un fallo de envío no debe tumbar el job
+            log.exception("recordatorio_envio_error", cita_id=cita.id)
+            return False
+
+    return enviar
+
+
+async def reconfirmaciones_agenda(ctx: dict) -> str:
+    """Cron anti-no-show: por cada tenant con WhatsApp activo y `pack_agenda`, corre la reconfirmación.
+
+    Smoke manual (como el resto de `apps.worker.main`): la lógica determinista vive en
+    `AgendaService.procesar_reconfirmaciones` (testeada contra base efímera). Aquí solo el barrido
+    multi-tenant: lista los números activos, filtra por capacidad y corre el job sobre la base de cada
+    empresa con un `enviar` que usa la plantilla de Kapso del número de ese tenant.
+    """
+    settings = get_settings()
+    sender = KapsoSender(settings.kapso_api_key, base_url=settings.kapso_api_base)
+    async with control_session() as cs:
+        numeros = await listar_wa_numeros_activos(cs)
+
+    procesadas = 0
+    for empresa_id, phone_number_id in numeros:
+        async with control_session() as cs:
+            capacidades = await ControlCapacidades(cs).efectivas(empresa_id)
+            if "pack_agenda" not in capacidades:
+                continue
+            tenant = await resolve_tenant_by_id(cs, empresa_id)
+        if tenant is None:
+            continue
+        enviar = _hacer_enviar_recordatorio(sender, settings, phone_number_id)
+        async for s in tenant_session(tenant):   # commit al cerrar el generador
+            servicio = AgendaService(SqlAgendaRepository(s))
+            resumen = await servicio.procesar_reconfirmaciones(ahora=now_co(), enviar=enviar)
+            procesadas += resumen.recordatorios + resumen.en_riesgo
+            log.info(
+                "reconfirmaciones_tenant", tenant_id=empresa_id,
+                recordatorios=resumen.recordatorios, en_riesgo=resumen.en_riesgo,
+            )
+    return f"procesadas={procesadas}"
+
+
 class WorkerSettings:
-    """Configuración del worker ARQ (functions, Redis, reintentos)."""
+    """Configuración del worker ARQ (functions, cron, Redis, reintentos)."""
 
     functions = [emitir_documento, atender_mensaje_wa]
+    # Cron anti-no-show: cada 15 min barre todos los tenants (recordatorios + corte de riesgo).
+    cron_jobs = [cron(reconfirmaciones_agenda, minute={0, 15, 30, 45}, run_at_startup=False)]
     redis_settings = RedisSettings.from_dsn(get_settings().redis_url)
     max_tries = MAX_INTENTOS + 1
     on_startup = on_startup

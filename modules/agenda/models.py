@@ -40,6 +40,9 @@ cita_estado = PgEnum(
     name="cita_estado", create_type=False,
 )
 cita_origen = PgEnum("whatsapp", "dashboard", name="cita_origen", create_type=False)
+cita_confirmacion = PgEnum(
+    "esperando", "reconfirmada", "en_riesgo", name="cita_confirmacion", create_type=False
+)
 modo_confirmacion = PgEnum("auto", "manual", name="modo_confirmacion", create_type=False)
 anticipo_tipo = PgEnum("porcentaje", "fijo", name="anticipo_tipo", create_type=False)
 
@@ -142,6 +145,8 @@ class AgendaConfig(TenantBase):
     politica_cancelacion_horas: Mapped[int] = mapped_column(
         Integer, nullable=False, server_default="24"
     )
+    # Horas antes de la cita para marcar `confirmacion=en_riesgo` si no hubo respuesta (anti-no-show).
+    corte_riesgo_horas: Mapped[int] = mapped_column(Integer, nullable=False, server_default="2")
     permite_reagendar: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default=func.true()
     )
@@ -187,6 +192,12 @@ class Cita(TenantBase):
     fin: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     estado: Mapped[str] = mapped_column(cita_estado, nullable=False, server_default="pendiente")
     origen: Mapped[str] = mapped_column(cita_origen, nullable=False, server_default="whatsapp")
+    # Sub-estado de reconfirmación (anti-no-show), paralelo a `estado`: NUNCA libera el cupo.
+    confirmacion: Mapped[str] = mapped_column(
+        cita_confirmacion, nullable=False, server_default="esperando"
+    )
+    # Cuándo se envió el recordatorio de reconfirmación (dedup: no reenviar).
+    recordatorio_enviado_en: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     notas: Mapped[str | None] = mapped_column(Text)
     idempotency_key: Mapped[str | None] = mapped_column(Text, unique=True)
     # Id del evento espejo en Google Calendar (NULL si el sync está apagado o aún no se escribió).

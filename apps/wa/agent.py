@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 import re
 from collections.abc import AsyncIterator, Awaitable, Callable
+from contextlib import aclosing
 from dataclasses import dataclass
 from typing import Any
 
@@ -322,28 +323,32 @@ class AgenteWa:
                 cliente_telefono=mensaje.telefono, capacidades=capacidades,
             )
             historial: list[Message] = []
-            async for session in self._abrir_tenant(tenant):
-                conversaciones = ConversacionService(SqlConversacionRepository(session))
-                # Pausa del agente: si está en manos de un humano, no se corre el LLM (regla del runtime).
-                if await conversaciones.esta_en_humano(mensaje.telefono):
-                    pausado = True
-                    continue
-                repo = SqlAgendaRepository(session)
-                cfg = await repo.obtener_config()
-                proveedor = await self._resolver_llm(tenant.id, self._turno)
-                historial = await self._memoria.cargar(tenant.id, mensaje.telefono)
-                deps = RuntimeDeps(
-                    agenda=AgendaDeps(agenda=AgendaService(repo, gcal=self._gcal)),
-                    handoff=HandoffDeps(conversaciones=conversaciones),
-                    faq=FaqDeps(faq=FaqService(SqlConocimientoRepository(session))),
-                )
-                texto = await correr_bucle(
-                    proveedor=proveedor,
-                    system=construir_system(cfg.persona if cfg else None),
-                    tools=exponer_runtime(ctx),       # agenda (gated por flag) + handoff (núcleo)
-                    ctx=ctx, deps=deps, historial=historial, texto=mensaje.texto,
-                )
-                # commit al cerrar el generador → la cita agendada / el escalamiento quedan firmes.
+            # `aclosing`: si algo lanza DENTRO del bloque (p. ej. resolver_llm), el generador de sesión
+            # se cierra YA (rollback + conexión devuelta), no queda suspendido en `yield` sosteniendo
+            # una conexión asyncpg que el GC finalizaría tarde y colgaría el cierre del event loop.
+            async with aclosing(self._abrir_tenant(tenant)) as sesiones:
+                async for session in sesiones:
+                    conversaciones = ConversacionService(SqlConversacionRepository(session))
+                    # Pausa del agente: si está en manos de un humano, no se corre el LLM (regla del runtime).
+                    if await conversaciones.esta_en_humano(mensaje.telefono):
+                        pausado = True
+                        continue
+                    repo = SqlAgendaRepository(session)
+                    cfg = await repo.obtener_config()
+                    proveedor = await self._resolver_llm(tenant.id, self._turno)
+                    historial = await self._memoria.cargar(tenant.id, mensaje.telefono)
+                    deps = RuntimeDeps(
+                        agenda=AgendaDeps(agenda=AgendaService(repo, gcal=self._gcal)),
+                        handoff=HandoffDeps(conversaciones=conversaciones),
+                        faq=FaqDeps(faq=FaqService(SqlConocimientoRepository(session))),
+                    )
+                    texto = await correr_bucle(
+                        proveedor=proveedor,
+                        system=construir_system(cfg.persona if cfg else None),
+                        tools=exponer_runtime(ctx),       # agenda (gated por flag) + handoff (núcleo)
+                        ctx=ctx, deps=deps, historial=historial, texto=mensaje.texto,
+                    )
+                    # commit al cerrar el generador → la cita agendada / el escalamiento quedan firmes.
             if pausado:
                 # No se responde mientras lo atiende un humano; el entrante se preserva en el historial.
                 await self._memoria.anexar_usuario(tenant.id, mensaje.telefono, mensaje.texto)

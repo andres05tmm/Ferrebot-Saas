@@ -25,7 +25,12 @@ _PUBLIC_PATHS = frozenset({"/health", "/ready", "/", "/docs", "/openapi.json", "
 # Auth SIN tenant resuelto (login real, ADR 0009): el login por email/contraseña ocurre sobre el link
 # compartido, ANTES de conocer la empresa (el tenant sale del usuario). No resuelve tenant aquí; el
 # endpoint lo deriva de la identidad. (El login Telegram /auth/login SÍ requiere tenant: no va aquí.)
-_AUTH_SIN_TENANT = frozenset({"/api/v1/auth/login/password"})
+_AUTH_SIN_TENANT = frozenset({
+    "/api/v1/auth/login/password",
+    "/api/v1/auth/set-password",       # set-password / reset por token (ADR 0009 A1.3): sin tenant.
+    "/api/v1/auth/reset/solicitar",
+    "/api/v1/auth/reset/confirmar",
+})
 
 
 class TenantMiddleware:

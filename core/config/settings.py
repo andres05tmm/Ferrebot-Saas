@@ -42,6 +42,8 @@ class Settings(BaseSettings):
     # Login email/contraseña (ADR 0009): lockout por email tras N fallos durante una ventana (Redis).
     login_max_intentos: int = 5
     login_lockout_segundos: int = 300
+    # Tokens de un solo uso para set-password / reset (Redis, hash del token). TTL del enlace (24 h).
+    auth_token_ttl_segundos: int = 86400
 
     # IA (plataforma)
     anthropic_api_key: str = ""

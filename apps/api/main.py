@@ -22,6 +22,7 @@ from apps.wa.wiring import construir_wa_deps
 from core.observability import init_sentry
 from core.tenancy.middleware import TenantMiddleware
 from modules.agenda.router import router as agenda_router
+from modules.auth.login_email import router as auth_email_router
 from modules.auth.router import router as auth_router
 from modules.caja.router import gastos_router, router as caja_router
 from modules.clientes.router import router as clientes_router
@@ -124,6 +125,7 @@ def create_app(spa_dist: Path | None = None) -> FastAPI:
     app = FastAPI(title="FerreBot SaaS API", version="0.1.0", lifespan=lifespan)
     app.add_middleware(TenantMiddleware)
     app.include_router(auth_router, prefix="/api/v1")
+    app.include_router(auth_email_router, prefix="/api/v1")   # login email/contraseña (ADR 0009)
     app.include_router(ventas_router, prefix="/api/v1")
     app.include_router(inventario_router, prefix="/api/v1")
     app.include_router(caja_router, prefix="/api/v1")

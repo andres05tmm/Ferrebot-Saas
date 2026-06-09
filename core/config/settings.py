@@ -39,6 +39,9 @@ class Settings(BaseSettings):
     # Auth
     jwt_algorithm: str = "HS256"
     jwt_expire_minutes: int = 720
+    # Login email/contraseña (ADR 0009): lockout por email tras N fallos durante una ventana (Redis).
+    login_max_intentos: int = 5
+    login_lockout_segundos: int = 300
 
     # IA (plataforma)
     anthropic_api_key: str = ""

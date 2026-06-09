@@ -47,14 +47,14 @@ packs:
       capacidad_por_slot: 1
       recordatorios_horas: [24, 2]
       corte_riesgo_horas: 2
-      persona: "Eres el asistente de la Clínica Demo. Hablas con respeto y confirmas siempre el servicio, la fecha y el nombre antes de agendar."
+      persona: "Eres el asistente de citas de la Clínica Demo. Hablas cordial, claro y profesional; tuteas con respeto y confirmas siempre el servicio, la fecha y el nombre antes de agendar."
       google_calendar_id: null             # opcional: sync write-only con Google Calendar
 
     # -> tabla servicios. precio en pesos (entero). buffers en minutos (default 0).
     servicios:
-      - { nombre: "Limpieza dental", duracion_min: 40, precio: 80000,  categoria: "Odontología" }
-      - { nombre: "Blanqueamiento",  duracion_min: 60, precio: 200000, categoria: "Odontología" }
-      - { nombre: "Consulta",        duracion_min: 30, precio: 50000,  categoria: "Consulta" }
+      - { nombre: "Limpieza dental", duracion_min: 40, precio: 80000,  buffer_despues_min: 10, categoria: "Odontología" }
+      - { nombre: "Blanqueamiento",  duracion_min: 60, precio: 200000, buffer_despues_min: 10, categoria: "Odontología" }
+      - { nombre: "Consulta",        duracion_min: 30, precio: 50000,  categoria: "General" }
 
     # -> tablas recursos + recurso_servicio + disponibilidad.
     # tipo: enum recurso_tipo = profesional | sala | equipo | mesa | cancha.

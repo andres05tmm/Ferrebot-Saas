@@ -1,13 +1,20 @@
-"""Siembra una CLÍNICA DEMO completa en su propio tenant de prueba (NO Punto Rojo). Idempotente.
+"""DEPRECADO (ADR 0007 §D6). Usa el manifiesto declarativo + el provisionador de un paso:
+
+    python -m tools.provision_from_manifest --from tools/onboarding/clinica-demo.manifest.example.yaml
+
+`clinica-demo.manifest.example.yaml` es ahora el manifiesto canónico de clinica-demo (mismos valores
+de agenda que este seed: la prueba `tests/test_manifest_aceptacion.py` afirma filas idénticas). Este
+módulo queda SOLO porque la prueba de aceptación reusa `seed_agenda` como referencia bespoke; no lo
+uses para dar de alta tenants nuevos.
+
+----------------------------------------------------------------------------
+Siembra una CLÍNICA DEMO completa en su propio tenant de prueba (NO Punto Rojo). Idempotente.
 
 Materializa el ejemplo de `docs/pack-agenda-citas.md`: 2 profesionales, 3 servicios con precio/buffers,
 sus asignaciones, disponibilidad L–V (mañana y tarde) y las reglas de la agenda (modo manual). Además
 enciende los flags `pack_agenda` + `canal_whatsapp` para la empresa en el control DB.
 
-    python -m tools.seed_clinica_demo
-
-Aprovisiona el tenant si no existe (DB propia `ferrebot_clinica-demo`, migrada), así el comando es
-de un solo paso. Re-ejecutar no duplica nada. Imprime el slug y el comando para mapear el número Kapso.
+Aprovisiona el tenant si no existe (DB propia `ferrebot_clinica-demo`, migrada). Re-ejecutar no duplica.
 
 NUNCA toca Punto Rojo: trabaja exclusivamente sobre el slug `clinica-demo`.
 """

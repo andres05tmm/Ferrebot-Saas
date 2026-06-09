@@ -61,7 +61,8 @@ def main(argv: list[str] | None = None) -> int:
     resuelto = _tenant(settings.control_database_url, slug, settings.secrets_master_key)
     if resuelto is None:
         print(f"ERROR: no existe la empresa con slug '{slug}' en el control DB.", file=sys.stderr)
-        print("       Corre primero: python -m tools.seed_clinica_demo", file=sys.stderr)
+        print("       Corre primero: python -m tools.provision_from_manifest "
+              "--from tools/onboarding/clinica-demo.manifest.example.yaml", file=sys.stderr)
         return 1
     tenant_url, estado = resuelto
     if estado != "activa":

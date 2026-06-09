@@ -10,6 +10,8 @@ import { Toaster } from './components/ui/sonner.jsx'
 import AppShell from './components/AppShell.jsx'
 import ProtectedRoute from './components/ProtectedRoute.jsx'
 import Login from './pages/Login.jsx'
+import SetPassword from './pages/SetPassword.jsx'
+import RecuperarPassword from './pages/RecuperarPassword.jsx'
 import TabStub from './tabs/TabStub.jsx'
 import TabHoy from './tabs/TabHoy.jsx'
 import TabVentasRapidas from './tabs/TabVentasRapidas.jsx'
@@ -123,6 +125,8 @@ export default function App() {
       <Router>
         <Routes>
           <Route path="/login" element={<Login />} />
+          <Route path="/set-password" element={<SetPassword />} />
+          <Route path="/recuperar" element={<RecuperarPassword />} />
           <Route
             element={
               <ProtectedRoute>

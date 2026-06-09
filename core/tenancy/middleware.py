@@ -22,6 +22,16 @@ from core.tenancy.resolver import resolve_slug
 # Rutas que no requieren empresa (salud, raíz, docs).
 _PUBLIC_PATHS = frozenset({"/health", "/ready", "/", "/docs", "/openapi.json", "/redoc"})
 
+# Auth SIN tenant resuelto (login real, ADR 0009): el login por email/contraseña ocurre sobre el link
+# compartido, ANTES de conocer la empresa (el tenant sale del usuario). No resuelve tenant aquí; el
+# endpoint lo deriva de la identidad. (El login Telegram /auth/login SÍ requiere tenant: no va aquí.)
+_AUTH_SIN_TENANT = frozenset({
+    "/api/v1/auth/login/password",
+    "/api/v1/auth/set-password",       # set-password / reset por token (ADR 0009 A1.3): sin tenant.
+    "/api/v1/auth/reset/solicitar",
+    "/api/v1/auth/reset/confirmar",
+})
+
 
 class TenantMiddleware:
     def __init__(self, app: ASGIApp) -> None:
@@ -36,8 +46,12 @@ class TenantMiddleware:
         rid_token = request_id_var.set(request.headers.get("x-request-id") or uuid.uuid4().hex)
         tid_token = tenant_id_var.set(None)
         try:
-            # Solo /api/ es por-empresa; el resto (SPA, infra) no resuelve tenant.
-            if request.url.path in _PUBLIC_PATHS or not request.url.path.startswith("/api/"):
+            # Solo /api/ es por-empresa; el resto (SPA, infra) y el login sin-tenant no resuelven tenant.
+            if (
+                request.url.path in _PUBLIC_PATHS
+                or request.url.path in _AUTH_SIN_TENANT
+                or not request.url.path.startswith("/api/")
+            ):
                 await self.app(scope, receive, send)
                 return
             tenant = await self._resolve(request)

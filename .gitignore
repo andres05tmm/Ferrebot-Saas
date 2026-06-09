@@ -23,6 +23,10 @@ backups/
 # Varios
 .DS_Store
 *.log
+# Logs de corridas de test y scratch local (no ensuciar el repo).
+*.out
+_scratch_verify.py
+screen.png
 # Cobertura y locks locales (uv.lock SÍ se versiona).
 .coverage
 *.lock

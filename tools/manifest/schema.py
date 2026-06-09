@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class _Base(BaseModel):
@@ -33,6 +33,19 @@ class Identidad(_Base):
 class Admin(_Base):
     nombre: str = "Admin"
     telegram_id: int | None = None
+    # Email del admin para el login real (ADR 0009): el provisionador crea su `identidad` y emite un
+    # enlace de set-password. Opcional pero RECOMENDADO. NUNCA una contraseña en el manifiesto.
+    email: str | None = None
+
+    @field_validator("email")
+    @classmethod
+    def _email_valido(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        v = v.strip()
+        if "@" not in v or "." not in v.split("@")[-1]:
+            raise ValueError("admin.email no parece un email válido")
+        return v
 
 
 class Plan(_Base):

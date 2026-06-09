@@ -39,6 +39,15 @@ class Settings(BaseSettings):
     # Auth
     jwt_algorithm: str = "HS256"
     jwt_expire_minutes: int = 720
+    # Login email/contraseña (ADR 0009): lockout por email tras N fallos durante una ventana (Redis).
+    login_max_intentos: int = 5
+    login_lockout_segundos: int = 300
+    # Tokens de un solo uso para set-password / reset (Redis, hash del token). TTL CORTO (1 h): hoy el
+    # token se LOGUEA para entrega manual (modules/auth/password_reset.py, tools/provision_tenant.py), así
+    # que un enlace de larga vida sería un riesgo. FOLLOW-UP (cuando exista envío de email real):
+    #   1) rate-limit en POST /auth/reset/solicitar (evitar spam de tokens por email/IP, como el lockout de login);
+    #   2) quitar el log del token en claro (entregarlo solo por email).
+    auth_token_ttl_segundos: int = 3600
 
     # IA (plataforma)
     anthropic_api_key: str = ""

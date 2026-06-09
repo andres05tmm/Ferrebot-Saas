@@ -5,6 +5,7 @@ Usa driver sync (psycopg); no toca el caché de engines async de la API.
 """
 import argparse
 import json
+import secrets
 import sys
 from pathlib import Path
 
@@ -14,12 +15,16 @@ from psycopg.rows import dict_row
 from core.config import get_settings
 from core.crypto import encrypt, encrypt_split
 from core.db.urls import tenant_url, to_libpq
+from core.logging import get_logger
 from core.tenancy.catalogo import (
     capacidades_completas,
     es_feature_valida,
     validar_dependencias,
 )
+from modules.auth.password_reset import clave_pwtoken
 from tools._alembic import upgrade_tenant
+
+log = get_logger("provision")
 
 # Claves CIFRADAS en secretos_empresa (las lee ControlSecretosBot / cargar_config_matias).
 _CLAVES_SECRETAS = ("telegram_token", "telegram_webhook_secret", "matias_email", "matias_password")
@@ -229,6 +234,66 @@ def _set_admin_telegram(tenant_url_: str, telegram_id: int) -> None:
         conn.commit()
 
 
+def admin_usuario_id(tenant_url_: str) -> int | None:
+    """`id` del usuario admin sembrado en la base del tenant (para ligar la identidad de login)."""
+    with psycopg.connect(to_libpq(tenant_url_), row_factory=dict_row) as conn:
+        row = conn.execute("SELECT id FROM usuarios WHERE rol='admin' ORDER BY id LIMIT 1").fetchone()
+        return row["id"] if row else None
+
+
+def crear_identidad_admin(empresa_id: int, usuario_id: int, email: str, rol: str = "admin") -> int:
+    """Crea/actualiza la identidad de login del admin en el control DB (login real, ADR 0009 A1.4).
+
+    Versión SYNC (psycopg) del upsert de `core/tenancy/identidades_repo` (async, para el API):
+    idempotente por email (`ON CONFLICT (lower(email))`); `password_hash` queda NULL —el admin la fija
+    por el enlace de set-password—. Devuelve el `identidad_id`.
+    """
+    with psycopg.connect(to_libpq(get_settings().control_database_url), row_factory=dict_row) as conn:
+        row = conn.execute(
+            "INSERT INTO identidades (email, empresa_id, usuario_id, rol) VALUES (%s,%s,%s,%s) "
+            "ON CONFLICT (lower(email)) DO UPDATE SET empresa_id=EXCLUDED.empresa_id, "
+            "usuario_id=EXCLUDED.usuario_id, rol=EXCLUDED.rol, actualizado_en=now() RETURNING id",
+            (email.strip().lower(), empresa_id, usuario_id, rol),
+        ).fetchone()
+        conn.commit()
+        return row["id"]
+
+
+def emitir_token_set_password(identidad_id: int) -> str | None:
+    """Genera un token de set-password y lo guarda en Redis (mismo formato/clave que el endpoint).
+
+    Best-effort: si Redis no está disponible, devuelve None y la identidad igual queda creada (el admin
+    puede pedir un reset). Nunca el token en claro en BD: la clave Redis es `sha256(token)`.
+    """
+    settings = get_settings()
+    token = secrets.token_urlsafe(32)
+    try:
+        import redis  # cliente SYNC (perezoso)
+
+        cliente = redis.from_url(settings.redis_url, decode_responses=True)
+        cliente.set(clave_pwtoken(token), str(identidad_id), ex=settings.auth_token_ttl_segundos)
+        cliente.close()
+    except Exception:  # noqa: BLE001 — Redis caído: no frenar el provisioning (la identidad ya existe)
+        log.warning("set_password_token_no_emitido", identidad_id=identidad_id)
+        return None
+    return token
+
+
+def _provisionar_identidad_admin(empresa_id: int, conn_url: str, email: str) -> None:
+    """Crea la identidad del admin y emite/imprime su token de set-password (para entrega manual)."""
+    usuario_id = admin_usuario_id(conn_url)
+    if usuario_id is None:
+        log.warning("identidad_admin_sin_usuario", empresa_id=empresa_id)
+        return
+    identidad_id = crear_identidad_admin(empresa_id, usuario_id, email)
+    token = emitir_token_set_password(identidad_id)
+    log.info("identidad_admin_creada", empresa_id=empresa_id, identidad_id=identidad_id)
+    if token:
+        print(f"   set-password de {email}: token={token}")
+    else:
+        print(f"   identidad de {email} creada; Redis no disponible para el token (usa reset).")
+
+
 def provision_tenant_full(datos: dict) -> int:
     """Aprovisiona desde un dict de onboarding: base + control + secretos/config/branding + admin.
 
@@ -242,10 +307,14 @@ def provision_tenant_full(datos: dict) -> int:
     )
     cargar_plan_features(empresa_id, datos)   # valida catálogo/dependencias antes de escribir
     cargar_secretos_empresa(empresa_id, datos)
+    conn_url = tenant_url(settings.tenants_direct_url_base, _db_name(datos["slug"]))
     telegram_id = admin.get("telegram_id")
     if telegram_id is not None:
-        conn_url = tenant_url(settings.tenants_direct_url_base, _db_name(datos["slug"]))
         _set_admin_telegram(conn_url, telegram_id)
+    # Login real (ADR 0009): si el manifiesto trae admin.email, crea su identidad + token set-password.
+    email = admin.get("email")
+    if email:
+        _provisionar_identidad_admin(empresa_id, conn_url, email)
     return empresa_id
 
 

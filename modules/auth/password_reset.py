@@ -37,6 +37,15 @@ def _sha(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
+def clave_pwtoken(token: str) -> str:
+    """Clave Redis de un token de set-password/reset: `sha256(token)` (nunca el token en claro).
+
+    Único lugar con el formato; lo reusa también el provisionador (que emite el token desde código
+    SYNC) para que el endpoint async lo consuma con la misma clave. Cambiarlo aquí los mantiene en sync.
+    """
+    return f"auth:pwtoken:{_sha(token)}"
+
+
 # --- Puertos inyectables (testeo sin red) -----------------------------------
 class TokenStore(Protocol):
     """Tokens de un solo uso con TTL. `consumir` los invalida (single-use atómico)."""
@@ -56,17 +65,13 @@ class _RedisTokenStore:
     def __init__(self, client: Any) -> None:
         self._c = client
 
-    @staticmethod
-    def _key(token: str) -> str:
-        return f"auth:pwtoken:{_sha(token)}"
-
     async def crear(self, identidad_id: int, ttl_segundos: int) -> str:
         token = secrets.token_urlsafe(32)
-        await self._c.set(self._key(token), str(identidad_id), ex=ttl_segundos)
+        await self._c.set(clave_pwtoken(token), str(identidad_id), ex=ttl_segundos)
         return token
 
     async def consumir(self, token: str) -> int | None:
-        valor = await self._c.getdel(self._key(token))   # atómico: leer + borrar (single-use)
+        valor = await self._c.getdel(clave_pwtoken(token))   # atómico: leer + borrar (single-use)
         return int(valor) if valor is not None else None
 
 

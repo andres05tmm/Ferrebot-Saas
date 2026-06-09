@@ -14,6 +14,7 @@ from fastapi import FastAPI
 from httpx import ASGITransport
 
 from core.auth import Principal, get_current_user
+from core.auth.features import get_capacidades
 from modules.reportes.repository import AgregadoResultados, TopProductoFila
 from modules.reportes.router import get_reportes_repo, router
 
@@ -39,6 +40,8 @@ def _app(repo: _FakeReportesRepo, *, rol: str = "admin", user_id: int = 1) -> Fa
     app.include_router(router, prefix="/api/v1")
     app.dependency_overrides[get_reportes_repo] = lambda: repo
     app.dependency_overrides[get_current_user] = lambda: Principal(user_id=user_id, tenant="pr", rol=rol)
+    # /reportes/top-productos es POS (ADR 0008); el resto de reportes es núcleo. Damos `pos` al test.
+    app.dependency_overrides[get_capacidades] = lambda: frozenset({"pos"})
     return app
 
 

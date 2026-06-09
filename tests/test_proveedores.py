@@ -14,6 +14,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.auth import Principal, get_current_user
+from core.auth.features import get_capacidades
 from core.db.session import get_tenant_db
 from modules.proveedores.router import get_cloudinary_client, router as proveedores_router
 
@@ -44,6 +45,7 @@ def _app(tenant, *, user_id: int, rol: str = "admin", cloud="DEFECTO") -> FastAP
 
     app.dependency_overrides[get_current_user] = lambda: Principal(user_id=user_id, tenant="pr", rol=rol)
     app.dependency_overrides[get_tenant_db] = _db
+    app.dependency_overrides[get_capacidades] = lambda: frozenset({"pos"})  # router POS (ADR 0008)
     if cloud != "DEFECTO":   # None = empresa sin Cloudinary (503); o un _FakeCloud
         app.dependency_overrides[get_cloudinary_client] = lambda: cloud
     return app

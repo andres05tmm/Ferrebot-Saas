@@ -14,6 +14,7 @@ from fastapi import FastAPI
 from httpx import ASGITransport
 
 from core.auth import Principal, get_current_user
+from core.auth.features import get_capacidades
 from modules.ventas.router import get_ventas_repo, router
 from modules.ventas.schemas import VentaConLineas, VentaDetalleLeer, VentaLeer
 
@@ -55,6 +56,7 @@ def _app(repo: _FakeVentasRepo, *, rol: str = "vendedor", user_id: int = 5) -> F
     app.include_router(router, prefix="/api/v1")
     app.dependency_overrides[get_ventas_repo] = lambda: repo
     app.dependency_overrides[get_current_user] = lambda: Principal(user_id=user_id, tenant="pr", rol=rol)
+    app.dependency_overrides[get_capacidades] = lambda: frozenset({"pos"})  # router POS (ADR 0008)
     return app
 
 

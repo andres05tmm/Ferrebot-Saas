@@ -15,6 +15,7 @@ from httpx import ASGITransport
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.auth import Principal, get_current_user
+from core.auth.features import get_capacidades
 from core.db.session import get_tenant_db
 from modules.caja.router import router as caja_router
 from modules.fiados.router import router as fiados_router
@@ -33,6 +34,8 @@ def _app(router, tenant) -> FastAPI:
 
     app.dependency_overrides[get_current_user] = lambda: Principal(user_id=1, tenant="pr", rol="admin")
     app.dependency_overrides[get_tenant_db] = _db
+    # POS/fiados van detrás de su capacidad (ADR 0008): el smoke opera como tenant con esos packs.
+    app.dependency_overrides[get_capacidades] = lambda: frozenset({"pos", "fiados"})
     return app
 
 

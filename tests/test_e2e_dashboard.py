@@ -57,7 +57,7 @@ async def _seed_control(master: str, db_name: str, tenant_url_base: str, bot_tok
     async with session_mod.control_session() as cs:
         pid = (await cs.execute(
             text("INSERT INTO planes (nombre, limites) VALUES ('Pro', CAST(:l AS JSONB)) RETURNING id"),
-            {"l": "{}"},
+            {"l": '{"features": ["pos"]}'},   # POS tras flag (ADR 0008): el e2e hace POST /ventas
         )).scalar_one()
         eid = (await cs.execute(
             text("INSERT INTO empresas (nombre, nit, slug, estado, plan_id) "

@@ -7,23 +7,29 @@ de negocio "no se puede activar X sin su requisito" (feature-flags.md §Catálog
 """
 from __future__ import annotations
 
-# Núcleo: siempre activo, no depende del plan (feature-flags.md §Catálogo).
+# Núcleo: siempre activo, transversal a CUALQUIER vertical (ADR 0008 §D2). El punto de venta dejó de
+# ser núcleo: vive tras el pack `pos`. Solo queda lo que sirve a todo negocio: contactos y resultados.
 NUCLEO: frozenset[str] = frozenset({
-    "ventas", "inventario", "caja", "gastos", "clientes", "proveedores", "reportes",
+    "clientes", "reportes",
 })
 
-# Opcionales: se activan por plan/override.
+# Opcionales: se activan por plan/override. `pos` (ADR 0008 §D1) agrupa el retail —ventas, inventario,
+# caja, gastos, compras, proveedores— en un solo pack grueso (se podrá partir luego sin reescribir).
 OPCIONALES: frozenset[str] = frozenset({
+    "pos",
     "facturacion_electronica", "documento_soporte", "notas_electronicas", "libro_iva",
     "compras_fiscal", "honorarios", "fiados", "mayorista", "ventas_voz", "bot_telegram",
     "multi_vendedor", "pack_agenda", "pack_faq", "canal_whatsapp",
 })
 
 # feature → conjunto-requisito en modo OR: basta UNA del conjunto para satisfacer la dependencia.
+# `fiados` (vender a crédito) y `mayorista` (precio mayorista) no existen sin el pack de ventas → `pos`.
 DEPENDENCIAS: dict[str, frozenset[str]] = {
     "notas_electronicas": frozenset({"facturacion_electronica"}),
     "libro_iva": frozenset({"facturacion_electronica", "compras_fiscal"}),
     "ventas_voz": frozenset({"bot_telegram"}),
+    "fiados": frozenset({"pos"}),
+    "mayorista": frozenset({"pos"}),
 }
 
 

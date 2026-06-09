@@ -1,7 +1,7 @@
 """Routers de caja (`/caja/*`) y gastos (`/gastos`). RBAC: vendedor (api-contract.md).
 
-La lógica vive en CajaService; aquí se valida, se resuelve permiso y se mapea a HTTP. Núcleo
-(siempre activo): sin require_feature.
+Pack `pos` (ADR 0008): caja y gastos dejaron de ser núcleo; sin la capacidad `pos`, ambos routers
+responden 404. La lógica vive en CajaService; aquí se valida, se resuelve permiso y se mapea a HTTP.
 """
 from datetime import datetime
 
@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response, 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.auth import Principal, require_role
+from core.auth.features import require_feature
 from core.db.session import get_tenant_db
 from modules.caja.errors import CajaNoAbierta
 from modules.caja.repository import SqlCajaRepository
@@ -23,8 +24,8 @@ from modules.caja.schemas import (
 )
 from modules.caja.service import CajaService
 
-router = APIRouter(tags=["caja"])
-gastos_router = APIRouter(tags=["gastos"])
+router = APIRouter(tags=["caja"], dependencies=[Depends(require_feature("pos"))])
+gastos_router = APIRouter(tags=["gastos"], dependencies=[Depends(require_feature("pos"))])
 
 
 def _service(session: AsyncSession) -> CajaService:

@@ -1,6 +1,6 @@
-"""Router de cuentas por pagar a proveedor (núcleo: 'proveedores' es capacidad núcleo → sin
-require_feature). RBAC = admin. La subida de foto se gatea a "Cloudinary configurado": si la empresa
-no lo tiene, responde 503 sin romper el resto de cuentas por pagar.
+"""Router de cuentas por pagar a proveedor. Pack `pos` (ADR 0008): proveedores dejó de ser núcleo;
+sin la capacidad `pos`, todo el router responde 404. RBAC = admin. La subida de foto se gatea a
+"Cloudinary configurado": si la empresa no lo tiene, responde 503 sin romper las cuentas por pagar.
 """
 from __future__ import annotations
 
@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, Upl
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.auth import Principal, require_role
+from core.auth.features import require_feature
 from core.config import get_settings
 from core.db.session import control_session, get_tenant_db
 from modules.proveedores.cloudinary_client import CloudinaryClient
@@ -27,7 +28,7 @@ from modules.proveedores.schemas import (
 )
 from modules.proveedores.service import ProveedoresService
 
-router = APIRouter(tags=["proveedores"])
+router = APIRouter(tags=["proveedores"], dependencies=[Depends(require_feature("pos"))])
 
 
 def _service(session: AsyncSession) -> ProveedoresService:

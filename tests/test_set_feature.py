@@ -27,7 +27,7 @@ def test_feature_desconocida_falla():
 
 def test_feature_de_nucleo_falla():
     with pytest.raises(ValueError, match="núcleo"):
-        set_feature("cualquier", "ventas", True)   # 'ventas' es núcleo: no se togglea
+        set_feature("cualquier", "clientes", True)   # 'clientes' es núcleo: no se togglea
 
 
 # --- camino feliz contra control DB efímero ---------------------------------
@@ -76,7 +76,7 @@ def test_activar_desactivar_idempotente_y_efectivas(control_db):
     efectivas = set_feature(slug, "pack_faq", True)
     assert "pack_faq" in efectivas
     assert "facturacion_electronica" in efectivas   # del plan
-    assert "ventas" in efectivas                     # núcleo
+    assert "clientes" in efectivas                   # núcleo (ADR 0008: ya no es 'ventas')
     assert _overrides(url, slug) == [("pack_faq", True)]
 
     # Idempotente: re-activar no duplica la fila.

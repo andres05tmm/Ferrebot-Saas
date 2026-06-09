@@ -76,6 +76,8 @@ def _cargar_packs(m: Manifiesto, conn_url: str, efectivas: frozenset[str]) -> No
     with psycopg.connect(to_libpq(conn_url), row_factory=dict_row) as conn:
         try:
             for pack in activos:
+                if pack.loader is None:
+                    continue  # pack estructural (p. ej. `pos`): sus tablas las crea la migración, sin datos
                 seccion = _seccion_pack(m, pack.flag)
                 if seccion is None:
                     continue  # flag activo sin datos declarados: válido, el negocio los carga luego

@@ -74,4 +74,4 @@ jobs:
       - name: Suite completa (Postgres + Redis arriba)
         # timeout por test (thread, cross-async): un cuelgue falla con el traceback del culpable en vez
         # de agotar el job. --durations expone los más lentos. -ra resume saltados/fallos.
-        run: uv run pytest -ra --timeout=180 --timeout-method=thread --durations=15
+        run: uv run pytest -v -ra --timeout=180 --timeout-method=thread --durations=15

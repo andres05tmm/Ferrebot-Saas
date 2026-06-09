@@ -33,7 +33,8 @@ export default function Login() {
     setError('')
     try {
       const res = await loginConPassword(email.trim(), password)
-      if (res.ok) navigate('/')
+      // El super-admin (identidad de plataforma, sin tenant) va a su panel; el resto, al shell del tenant.
+      if (res.ok) navigate(res.usuario?.rol === 'super_admin' ? '/admin' : '/')
       else setError(res.error)
     } catch {
       setError('Error de conexión. Intenta de nuevo.')

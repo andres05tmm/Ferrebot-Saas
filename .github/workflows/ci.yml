@@ -1,0 +1,70 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    # Réplica de los contenedores locales (ferrebot-pg / ferrebot-redis) que dejan la suite en verde.
+    # Postgres en la MISMA major que prod (18); Redis 7. Health checks para no arrancar pytest antes
+    # de que los servicios acepten conexiones.
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      # El usuario `postgres` por defecto es SUPERUSUARIO → habilita el CREATE DATABASE que hacen las
+      # fixtures de provisioning (control DB y app DB de tenant efímeras, creadas y migradas por test).
+      ADMIN_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+      # Base de CONTROL: las fixtures rutean cada test a un control DB efímero (no necesita preexistir).
+      CONTROL_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/control
+      # Base SIN /db: se compone {base}/ferrebot_<slug> y {base}/test_tenant_<rnd> por test.
+      TENANTS_DIRECT_URL_BASE: postgresql://postgres:postgres@localhost:5432
+      REDIS_URL: redis://localhost:6379/0
+      # CLAVE THROWAWAY solo-CI (NO un secreto real): las fixtures cifran/descifran con esta master key.
+      SECRETS_MASTER_KEY: ci-throwaway-master-key-not-a-secret
+      SECRET_KEY: ci-throwaway-jwt-key
+      # Claves de proveedores externos vacías: los tests fakean LLM/Kapso/red (ninguna real hace falta).
+      ANTHROPIC_API_KEY: ""
+      OPENAI_API_KEY: ""
+      KAPSO_API_KEY: ""
+      KAPSO_WEBHOOK_SECRET: ""
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Instalar uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+
+      # pytest/pytest-asyncio/anyio viven en el extra `dev` (no se instalan por defecto).
+      - name: Instalar dependencias
+        run: uv sync --extra dev
+
+      - name: Suite completa (Postgres + Redis arriba)
+        run: uv run pytest -q

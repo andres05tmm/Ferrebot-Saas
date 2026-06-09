@@ -13,10 +13,17 @@ venv/
 node_modules/
 dashboard/dist/
 # Onboarding: valores REALES por empresa (secretos en claro) — nunca commitear.
+# Solo se versionan las plantillas *.example.{json,yaml} (incl. manifiestos, ADR 0007).
 tools/onboarding/*.json
 !tools/onboarding/empresa.example.json
+tools/onboarding/*.yaml
+!tools/onboarding/*.example.yaml
 # Respaldos de prod (los .dump llevan datos reales + secretos cifrados) — nunca commitear.
 backups/
 # Varios
 .DS_Store
 *.log
+# Cobertura y locks locales (uv.lock SÍ se versiona).
+.coverage
+*.lock
+!uv.lock

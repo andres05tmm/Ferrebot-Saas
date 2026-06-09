@@ -32,6 +32,19 @@ _AUTH_SIN_TENANT = frozenset({
     "/api/v1/auth/reset/confirmar",
 })
 
+# Panel super-admin (ADR 0010 §D2): rutas de PLATAFORMA (cross-tenant), no por-empresa. Como cuelgan de
+# un prefijo con sub-rutas, se eximen por prefijo. El gate es `require_platform`.
+_ADMIN_PREFIX = "/api/v1/admin"
+
+
+def _es_ruta_plataforma(path: str) -> bool:
+    """True si `path` cae bajo /admin EN FRONTERA DE SEGMENTO: solo el prefijo exacto o seguido de '/'.
+
+    Endurecido a propósito: una ruta futura como `/api/v1/admin-reports` NO debe heredar el bypass de
+    tenant por un `startswith` ingenuo del prefijo —seguiría resolviendo empresa como cualquier /api/.
+    """
+    return path == _ADMIN_PREFIX or path.startswith(_ADMIN_PREFIX + "/")
+
 
 class TenantMiddleware:
     def __init__(self, app: ASGIApp) -> None:
@@ -50,6 +63,7 @@ class TenantMiddleware:
             if (
                 request.url.path in _PUBLIC_PATHS
                 or request.url.path in _AUTH_SIN_TENANT
+                or _es_ruta_plataforma(request.url.path)
                 or not request.url.path.startswith("/api/")
             ):
                 await self.app(scope, receive, send)

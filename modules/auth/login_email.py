@@ -24,7 +24,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy import text
 
-from core.auth import create_access_token
+from core.auth import create_access_token, create_platform_token
 from core.auth.passwords import hash_password, verify_password
 from core.config import get_settings
 from core.db.session import control_session
@@ -143,13 +143,26 @@ async def login_password(
     coincide = verify_password(datos.password, hash_real or _DUMMY_HASH)
     autenticado = bool(coincide and identidad and identidad.activo and identidad.password_hash)
 
-    # El slug (query extra al control DB) se resuelve SOLO tras confirmar la credencial: ni fuga de
-    # timing en email existente, ni query desperdiciada en los fallos. Si saliera None → fallo de auth.
-    slug = await directorio.slug_empresa(identidad.empresa_id) if autenticado else None
-
-    if not autenticado or slug is None:
+    if not autenticado:
         await lockout.registrar_fallo(clave)
         # Mensaje y status idénticos para email inexistente / clave errada / inactivo / sin clave.
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Credenciales inválidas")
+
+    # PLATAFORMA (super-admin, ADR 0010 §D2): identidad sin empresa → JWT de plataforma SIN tenant. No
+    # se resuelve ningún slug (empresa_id es NULL); opera cross-tenant sobre el control DB en /admin/*.
+    if identidad.rol == "super_admin":
+        await lockout.reset(clave)
+        token = create_platform_token(user_id=identidad.usuario_id, rol=identidad.rol)
+        log.info("login_password_ok_plataforma", usuario_id=identidad.usuario_id)
+        return LoginOut(
+            token=token, usuario=UsuarioOut(id=identidad.usuario_id, rol=identidad.rol, tenant=None)
+        )
+
+    # TENANT: el slug (query extra al control DB) se resuelve SOLO tras confirmar la credencial: ni fuga
+    # de timing en email existente, ni query desperdiciada en los fallos. Si saliera None → fallo de auth.
+    slug = await directorio.slug_empresa(identidad.empresa_id) if identidad.empresa_id else None
+    if slug is None:
+        await lockout.registrar_fallo(clave)
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Credenciales inválidas")
 
     await lockout.reset(clave)

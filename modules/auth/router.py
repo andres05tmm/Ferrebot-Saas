@@ -48,11 +48,14 @@ class TelegramLogin(BaseModel):
 
 
 class UsuarioOut(BaseModel):
-    """Identidad del usuario autenticado (la misma forma para /login y /me)."""
+    """Identidad del usuario autenticado (la misma forma para /login y /me).
+
+    `tenant` es None para una identidad de PLATAFORMA (super-admin, ADR 0010): opera cross-tenant.
+    """
 
     id: int
     rol: str
-    tenant: str
+    tenant: str | None = None
 
 
 class LoginOut(BaseModel):

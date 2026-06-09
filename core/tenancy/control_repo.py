@@ -2,11 +2,14 @@
 
 Único lugar que consulta el control DB para tenancy (no SQL suelto en middleware).
 """
+from dataclasses import dataclass
+
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.config import get_settings
 from core.crypto import decrypt
+from core.tenancy.capacidades import ControlCapacidades
 from core.tenancy.context import ResolvedTenant
 from core.tenancy.models import Empresa, TenantDatabase, WaNumero
 
@@ -79,6 +82,47 @@ async def listar_wa_numeros_activos(session: AsyncSession) -> list[tuple[int, st
         .order_by(WaNumero.empresa_id)
     )
     return [(int(eid), str(pn)) for eid, pn in (await session.execute(stmt)).all()]
+
+
+@dataclass(frozen=True, slots=True)
+class TenantResumen:
+    """Vista del panel super-admin de una empresa (ADR 0010): solo lectura del control DB."""
+
+    id: int
+    slug: str
+    nombre: str
+    estado: str
+    plan: str | None
+    features: tuple[str, ...]          # features EFECTIVAS (plan ± overrides), ordenadas
+    wa_numero: str | None              # phone_number_id del canal WhatsApp activo, si tiene
+
+
+async def listar_tenants(session: AsyncSession) -> list[TenantResumen]:
+    """Lista las empresas para el panel super-admin: slug, nombre, estado, plan, features efectivas y
+    su número de WhatsApp activo (si tiene). Lectura del CONTROL DB; el super-admin nunca abre la base
+    de un tenant (ADR 0010 §D2). Lista pequeña (un puñado de tenants) → sin paginación (performance.md)."""
+    rows = (
+        await session.execute(
+            text(
+                "SELECT e.id, e.slug, e.nombre, e.estado, p.nombre AS plan, w.phone_number_id AS wa_numero "
+                "FROM empresas e "
+                "LEFT JOIN planes p ON p.id = e.plan_id "
+                "LEFT JOIN wa_numeros w ON w.empresa_id = e.id AND w.estado = 'activo' "
+                "ORDER BY e.slug"
+            )
+        )
+    ).all()
+    capacidades = ControlCapacidades(session)
+    resumenes: list[TenantResumen] = []
+    for r in rows:
+        features = await capacidades.efectivas(r.id)
+        resumenes.append(
+            TenantResumen(
+                id=int(r.id), slug=r.slug, nombre=r.nombre, estado=r.estado, plan=r.plan,
+                features=tuple(sorted(features)), wa_numero=r.wa_numero,
+            )
+        )
+    return resumenes
 
 
 async def leer_branding(session: AsyncSession, empresa_id: int) -> dict[str, str | None]:

@@ -15,12 +15,21 @@ from tools.manifest.packs.faq import cargar_faq
 
 @dataclass(frozen=True, slots=True)
 class Pack:
-    flag: str                                  # feature del catálogo (core/tenancy/catalogo.py)
-    loader: Callable[..., dict[str, int]]      # (manifiesto.packs.<nombre>, conn) -> conteos
-    tablas: tuple[str, ...]                     # tablas que upserta (para el smoke de verificación)
+    flag: str                                          # feature del catálogo (core/tenancy/catalogo.py)
+    # (manifiesto.packs.<nombre>, conn) -> conteos. `None` = pack ESTRUCTURAL: sus tablas las crea la
+    # migración del esquema y no tiene datos declarativos por sembrar (p. ej. `pos`).
+    loader: Callable[..., dict[str, int]] | None
+    tablas: tuple[str, ...]                             # tablas del pack (para el smoke de verificación)
 
 
 PACKS: dict[str, Pack] = {
+    # `pos` (ADR 0008): pack grueso de retail. Sin loader: las tablas POS ya existen en toda app DB
+    # (principio de feature-flags.md, vacías si no se usan); no hay datos de pack que sembrar.
+    "pos": Pack(
+        flag="pos",
+        loader=None,
+        tablas=("ventas", "inventario", "caja", "gastos", "compras", "proveedores", "productos"),
+    ),
     "pack_agenda": Pack(
         flag="pack_agenda",
         loader=cargar_agenda,

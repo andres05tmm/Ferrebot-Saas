@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sse_starlette.sse import EventSourceResponse
 
 from core.auth import Principal, get_current_user, get_filtro_efectivo, require_role
+from core.auth.features import require_feature
 from core.auth.rbac import satisface
 from core.db.session import control_session, get_tenant_db
 from core.events.sse import tenant_event_stream
@@ -27,7 +28,8 @@ from modules.ventas.repository import SqlVentasRepository
 from modules.ventas.schemas import VentaConLineas, VentaCrear, VentaLeer
 from modules.ventas.service import VentaService
 
-router = APIRouter(tags=["ventas"])
+# Pack `pos` (ADR 0008): sin la capacidad, todo el router responde 404 (como los demás packs).
+router = APIRouter(tags=["ventas"], dependencies=[Depends(require_feature("pos"))])
 
 
 def get_ventas_repo(session: AsyncSession = Depends(get_tenant_db)) -> SqlVentasRepository:

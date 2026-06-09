@@ -1,7 +1,7 @@
 """Router de catálogo e inventario (api-contract.md). Lecturas: vendedor; ajuste: admin.
 
-Estos endpoints son del núcleo `inventario` (siempre activo, feature-flags.md): no llevan
-require_feature. La lógica vive en InventarioService; aquí solo se valida y se mapea a HTTP.
+Pack `pos` (ADR 0008): el inventario dejó de ser núcleo; sin la capacidad `pos`, todo el router
+responde 404. La lógica vive en InventarioService; aquí solo se valida y se mapea a HTTP.
 """
 from decimal import Decimal
 
@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response, 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.auth import Principal, get_current_user, require_role
+from core.auth.features import require_feature
 from core.db.session import get_tenant_db
 from modules.inventario.errors import (
     AjusteDejaStockNegativo,
@@ -31,7 +32,7 @@ from modules.inventario.schemas import (
 )
 from modules.inventario.service import InventarioService
 
-router = APIRouter(tags=["inventario"])
+router = APIRouter(tags=["inventario"], dependencies=[Depends(require_feature("pos"))])
 
 
 def _service(session: AsyncSession) -> InventarioService:

@@ -91,7 +91,13 @@ async def libro_iva(
     return await ReportesService(repo).libro_iva(desde=desde, hasta=hasta)
 
 
-@router.get("/reportes/top-productos", response_model=list[TopProducto])
+@router.get(
+    "/reportes/top-productos",
+    response_model=list[TopProducto],
+    # POS-específico (ranking de productos): gateado por `pos` (ADR 0008). El resto de reportes
+    # —resumen ("Hoy"), serie/totales, resultados financieros— es núcleo y degrada a ceros sin ventas.
+    dependencies=[Depends(require_feature("pos"))],
+)
 async def top_productos(
     desde: date | None = Query(default=None),
     hasta: date | None = Query(default=None),

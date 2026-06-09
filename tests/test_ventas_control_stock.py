@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.pool import NullPool
 
 from core.auth import Principal, get_current_user
+from core.auth.features import get_capacidades
 from core.config import get_settings
 from core.db.session import get_tenant_db
 from core.db.urls import tenant_url, to_async
@@ -40,6 +41,7 @@ def _app(tenant, *, user_id: int, estricto: bool) -> FastAPI:
 
     app.dependency_overrides[get_current_user] = lambda: Principal(user_id=user_id, tenant="pr", rol="vendedor")
     app.dependency_overrides[get_tenant_db] = _db
+    app.dependency_overrides[get_capacidades] = lambda: frozenset({"pos"})  # router POS (ADR 0008)
     app.dependency_overrides[get_control_stock_estricto] = lambda: estricto   # FAKE del flag de empresa
     return app
 

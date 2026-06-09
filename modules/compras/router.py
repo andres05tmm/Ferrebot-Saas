@@ -1,4 +1,5 @@
-"""Router de compras (núcleo: 'compras' no es capacidad opcional → sin require_feature).
+"""Router de compras. Pack `pos` (ADR 0008): compras dejó de ser núcleo; sin la capacidad `pos`, todo
+el router responde 404.
 
 Registrar/listar compras es solo de admin (RBAC). Lo fiscal (compras_fiscal/RADIAN) va gateado y es de
 otro slice. La lógica vive en ComprasService; aquí solo se valida y se mapea a HTTP.
@@ -9,12 +10,13 @@ from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.auth import Principal, require_role
+from core.auth.features import require_feature
 from core.db.session import get_tenant_db
 from modules.compras.repository import SqlComprasRepository
 from modules.compras.schemas import CompraCrear, CompraLeer
 from modules.compras.service import ComprasService
 
-router = APIRouter(tags=["compras"])
+router = APIRouter(tags=["compras"], dependencies=[Depends(require_feature("pos"))])
 
 
 def _service(session: AsyncSession) -> ComprasService:

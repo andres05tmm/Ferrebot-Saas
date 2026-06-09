@@ -12,6 +12,8 @@ import ProtectedRoute from './components/ProtectedRoute.jsx'
 import Login from './pages/Login.jsx'
 import SetPassword from './pages/SetPassword.jsx'
 import RecuperarPassword from './pages/RecuperarPassword.jsx'
+import AdminPanel from './pages/admin/AdminPanel.jsx'
+import PlatformRoute from './components/PlatformRoute.jsx'
 import TabStub from './tabs/TabStub.jsx'
 import TabHoy from './tabs/TabHoy.jsx'
 import TabVentasRapidas from './tabs/TabVentasRapidas.jsx'
@@ -127,6 +129,9 @@ export default function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/set-password" element={<SetPassword />} />
           <Route path="/recuperar" element={<RecuperarPassword />} />
+          {/* Panel super-admin (ADR 0010): FUERA del shell de tenant; gateado por rol super_admin. */}
+          <Route path="/admin" element={<PlatformRoute><AdminPanel /></PlatformRoute>} />
+          {/* Compat: el catch-all del shell redirige rutas desconocidas a /hoy (ver abajo). */}
           <Route
             element={
               <ProtectedRoute>

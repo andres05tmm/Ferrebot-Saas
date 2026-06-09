@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+from collections.abc import Callable
 
 import psycopg
 from psycopg.rows import dict_row
@@ -107,13 +108,18 @@ def _resumen(conn_url: str, efectivas: frozenset[str], slug: str, phone_number_i
     return f"provision_manifest: {slug} OK -> " + ", ".join(partes)
 
 
-def provision_from_manifest(path: str) -> int:
-    """Aprovisiona una empresa completa desde su manifiesto y devuelve su `empresa_id`. Idempotente.
+def provision_from_manifest_obj(
+    manifiesto: Manifiesto, *, on_resumen: Callable[[str], None] | None = None
+) -> int:
+    """Coreografía del alta (base→packs→wa_numero→verifica) sobre un manifiesto YA validado. Idempotente.
 
-    Falla cerrado: valida el manifiesto ANTES de tocar la BD; si no valida, lanza y no escribe nada.
+    Recibe el manifiesto PARSEADO (no una ruta): así el job del worker lo usa con el objeto en memoria y
+    NUNCA escribe un manifiesto con secretos a un archivo temporal en disco (ADR 0010 §Guardarraíles v1).
+    El llamador valida ANTES (`provision_from_manifest` carga+valida; el job re-parsea+re-valida).
+
+    `on_resumen`: si se pasa, recibe la línea-resumen del provisionador (la consume el job para su estado);
+    si no, se imprime (comportamiento del CLI). Devuelve el `empresa_id`.
     """
-    manifiesto = cargar_manifiesto(path)
-    validar(manifiesto)  # ErrorManifiesto → aborta sin escribir
     slug = manifiesto.identidad.slug
 
     # 2) BASE (reusa provision_tenant_full; idempotente).
@@ -140,8 +146,21 @@ def provision_from_manifest(path: str) -> int:
     # 5) VERIFICA + resumen de una línea.
     resumen = _resumen(conn_url, efectivas, slug, phone_number_id)
     log.info("manifest_provision_ok", slug=slug, empresa_id=empresa_id)
-    print(resumen)
+    if on_resumen is not None:
+        on_resumen(resumen)
+    else:
+        print(resumen)
     return empresa_id
+
+
+def provision_from_manifest(path: str) -> int:
+    """Aprovisiona una empresa completa desde su manifiesto (RUTA) y devuelve su `empresa_id`. Idempotente.
+
+    Falla cerrado: carga + valida el manifiesto ANTES de tocar la BD; si no valida, lanza y no escribe nada.
+    """
+    manifiesto = cargar_manifiesto(path)
+    validar(manifiesto)  # ErrorManifiesto → aborta sin escribir
+    return provision_from_manifest_obj(manifiesto)
 
 
 def main(argv: list[str] | None = None) -> int:

@@ -12,9 +12,21 @@ mismo valor que tendría la columna.
 """
 from __future__ import annotations
 
+import re
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+# Patrón ESTRICTO del slug (ADR 0010 §Guardarraíles v1): el slug se vuelve nombre de base
+# (`CREATE DATABASE "ferrebot_<slug>"`), así que un slug no validado es un vector de inyección de
+# identificador. minúscula inicial + [a-z0-9-], 2..41 chars. El job lo RE-valida antes de tocar la BD.
+SLUG_PATTERN = r"^[a-z][a-z0-9-]{1,40}$"
+_SLUG_RE = re.compile(SLUG_PATTERN)
+
+
+def slug_valido(slug: str) -> bool:
+    """True si `slug` cumple el patrón estricto. Defensa en profundidad del job (además del esquema)."""
+    return isinstance(slug, str) and bool(_SLUG_RE.match(slug))
 
 
 class _Base(BaseModel):
@@ -23,7 +35,8 @@ class _Base(BaseModel):
 
 
 class Identidad(_Base):
-    slug: str
+    # Patrón estricto: el slug se materializa en `CREATE DATABASE "ferrebot_<slug>"` (ver SLUG_PATTERN).
+    slug: str = Field(pattern=SLUG_PATTERN)
     nombre: str
     # Requerido: empresas.nit es NOT NULL + UNIQUE en el control DB; un NIT ausente debe fallar como
     # error de validación limpio (Fase 1), no como violación NOT NULL al insertar (Fase 3).

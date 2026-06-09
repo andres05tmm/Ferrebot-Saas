@@ -15,7 +15,7 @@ from arq.cron import cron
 
 from apps.wa.agent import AgenteWa, MemoriaWa
 from apps.wa.kapso import KapsoSender
-from apps.worker.jobs import atender_mensaje_wa, emitir_documento
+from apps.worker.jobs import atender_mensaje_wa, emitir_documento, provisionar_tenant
 from core.config import get_settings
 from core.config.timezone import now_co
 from core.db.session import control_session, tenant_session
@@ -216,7 +216,7 @@ async def reconfirmaciones_agenda(ctx: dict) -> str:
 class WorkerSettings:
     """Configuración del worker ARQ (functions, cron, Redis, reintentos)."""
 
-    functions = [emitir_documento, atender_mensaje_wa]
+    functions = [emitir_documento, atender_mensaje_wa, provisionar_tenant]
     # Cron anti-no-show: cada 15 min barre todos los tenants (recordatorios + corte de riesgo).
     cron_jobs = [cron(reconfirmaciones_agenda, minute={0, 15, 30, 45}, run_at_startup=False)]
     redis_settings = RedisSettings.from_dsn(get_settings().redis_url)

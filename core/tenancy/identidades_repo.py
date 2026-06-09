@@ -22,7 +22,7 @@ class Identidad:
     id: int
     email: str
     password_hash: str | None
-    empresa_id: int
+    empresa_id: int | None   # None para una identidad de PLATAFORMA (super_admin, ADR 0010 §D2)
     usuario_id: int
     rol: str
     activo: bool

@@ -26,7 +26,10 @@ async def test_tenant_upgrade_downgrade_limpio(tenant):
         enums = (await s.execute(text("SELECT count(*) FROM pg_type WHERE typtype='e'"))).scalar_one()
     assert tablas >= 35
     assert seqs >= 3          # ventas/fe/ds consecutivos
-    assert enums == 17        # +5 del pack Agenda/Citas + 1 del handoff (conversacion_estado)
+    # 6 del pack Agenda/Citas (recurso_tipo, cita_estado, cita_origen, modo_confirmacion,
+    # anticipo_tipo y cita_confirmacion —este último añadido por 0011_reconfirmacion—) + 1 del
+    # handoff (conversacion_estado, 0009_conversaciones). Suben el total a 18.
+    assert enums == 18
 
     await tenant.engine.dispose()
     downgrade_tenant(tenant.url, "base")

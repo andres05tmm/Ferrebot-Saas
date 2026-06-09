@@ -12,7 +12,52 @@
 
 > Para Punto Rojo (tenant #1), tras los pasos 1-3 se **copian** los datos desde FerreBot (ver `architecture.md` §17).
 
-## Provisioning automatizado (operador)
+## Dos caminos de provisioning
+
+| Camino | Cuándo | Insumo | Comando |
+|---|---|---|---|
+| **Manifiesto** (ADR 0007) — *recomendado* | Tenant-agente de **servicios** (clínica, spa, beach club): packs + canal WhatsApp + datos de agenda/FAQ declarativos | un **YAML** por empresa | `python -m tools.provision_from_manifest --from <archivo>` |
+| **JSON `provision_tenant`** | Lado **fiscal/POS** (ferretería): secretos MATIAS, Cloudinary, token de bot | un **JSON** por empresa | `python -m tools.provision_tenant --from <archivo>` |
+
+Ambos son **idempotentes** y comparten la misma maquinaria de base (el manifiesto reusa
+`provision_tenant_full` para crear la DB, registrar el control, migrar, admin, secretos/branding y
+plan/features). El manifiesto **además** carga los datos de pack (agenda/FAQ) y mapea el número de
+WhatsApp, lo que el JSON no hace.
+
+## Provisioning declarativo desde manifiesto (ADR 0007) — recomendado
+
+Un **manifiesto por empresa** (un archivo) + un **provisionador de un paso** que ejecuta toda la
+coreografía y se puede reintentar sin romper nada (la garantía es **idempotencia**, no atomicidad: tras
+un fallo parcial, re-correr el comando entero converge al mismo estado).
+
+1. **Escribir el manifiesto (NUNCA se commitea si lleva valores reales).** Partir del canónico:
+   ```bash
+   cp tools/onboarding/clinica-demo.manifest.example.yaml tools/onboarding/mi-clinica.yaml
+   # editar: identidad (slug/nombre/nit), admin, plan.features + features_override, branding,
+   # secretos/config (opcionales; un agente por Kapso suele tener cero), packs.agenda / packs.faq,
+   # canal.whatsapp.phone_number_id (lo da Kapso; no es secreto)
+   ```
+   `tools/onboarding/*.yaml` con valores reales va **gitignored**; solo se versiona el `*.example.yaml`.
+   El loader acepta **YAML y JSON** (`yaml.safe_load`).
+
+2. **Validación (falla cerrado).** Antes de tocar la BD, el provisionador valida contra
+   `core/tenancy/catalogo.py`: features desconocidas → error; dependencias del set efectivo deben
+   cumplirse; **coherencia flag↔datos** (declarar `packs.agenda` exige `pack_agenda` activa; ídem FAQ y
+   WhatsApp); franjas `"HH:MM-HH:MM"`, días 0..6, tipo de recurso del enum y `recurso.presta` → servicio
+   declarado. Si algo no valida, **no se escribe nada**.
+
+3. **Exportar el entorno** (igual que el flujo JSON: `SECRETS_MASTER_KEY`, `CONTROL_DATABASE_URL`,
+   `ADMIN_DATABASE_URL`, `TENANTS_DIRECT_URL_BASE`).
+
+4. **Provisionar:**
+   ```bash
+   python -m tools.provision_from_manifest --from tools/onboarding/mi-clinica.yaml
+   ```
+   Imprime un resumen de una línea
+   (`provision_manifest: mi-clinica OK -> 3 servicios, 2 recursos, 20 disponibilidad, 4 faq, wa:1176…`).
+   Re-ejecutar es seguro (todo UPSERT por clave natural).
+
+## Provisioning automatizado (operador) — lado fiscal/POS (JSON)
 
 `tools/provision_tenant.py` cubre los pasos 2-6 de forma **idempotente** desde un JSON de onboarding:
 crea la app DB, la registra en el control DB (URL cifrada), migra, siembra el admin, y carga

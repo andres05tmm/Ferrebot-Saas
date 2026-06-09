@@ -17,6 +17,7 @@ dependencies = [
     "python-jose[cryptography]>=3.3",  # JWT
     "passlib[bcrypt]>=1.7",            # hash de contraseñas
     "cryptography>=44.0",             # AEAD para secretos por empresa
+    "argon2-cffi>=23.1",              # hashing de contraseñas (login real, ADR 0009): argon2id
     "sse-starlette>=2.1",            # SSE acotado por empresa
     "rapidfuzz>=3.10",              # fuzzy match conservador (búsqueda de catálogo)
     "redis>=5.2",                   # cola/caché + dedup y pendiente de confirmación (asyncio)

@@ -8,6 +8,9 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    # La suite completa son ~784 tests que crean BD efímeras + migran (alembic) por test: ~12 min en
+    # local, ~15-20 en el runner. 30 min acota un cuelgue real sin matar un run legítimo.
+    timeout-minutes: 30
 
     # Réplica de los contenedores locales (ferrebot-pg / ferrebot-redis) que dejan la suite en verde.
     # Postgres en la MISMA major que prod (18); Redis 7. Health checks para no arrancar pytest antes
@@ -37,6 +40,8 @@ jobs:
           --health-retries 5
 
     env:
+      # Salida sin buffer: dots/progreso en vivo en el log de Actions (distingue cuelgue de lentitud).
+      PYTHONUNBUFFERED: "1"
       # El usuario `postgres` por defecto es SUPERUSUARIO → habilita el CREATE DATABASE que hacen las
       # fixtures de provisioning (control DB y app DB de tenant efímeras, creadas y migradas por test).
       ADMIN_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
@@ -67,4 +72,6 @@ jobs:
         run: uv sync --extra dev
 
       - name: Suite completa (Postgres + Redis arriba)
-        run: uv run pytest -q
+        # timeout por test (thread, cross-async): un cuelgue falla con el traceback del culpable en vez
+        # de agotar el job. --durations expone los más lentos. -ra resume saltados/fallos.
+        run: uv run pytest -ra --timeout=180 --timeout-method=thread --durations=15

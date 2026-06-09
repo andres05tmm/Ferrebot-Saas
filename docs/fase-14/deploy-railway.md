@@ -64,6 +64,11 @@ Railway expone `DATABASE_URL` y `REDIS_URL` de los plugins (referéncialas con `
 > **Por qué las 3 URLs en todos los servicios:** `core/config/settings.py` exige `ADMIN_DATABASE_URL`,
 > `CONTROL_DATABASE_URL` y `TENANTS_DIRECT_URL_BASE` siempre (el `Settings` falla al arrancar si falta
 > alguna). `worker`/`bot` también resuelven empresas y abren la app DB del tenant, así que las necesitan.
+>
+> **`worker` corre el job de provisioning del panel (ADR 0010 §B2):** es la pieza pesada/privilegiada
+> (`CREATE DATABASE "ferrebot_<slug>"` + cifrado de secretos por empresa). Por eso el `worker` necesita
+> sí o sí `ADMIN_DATABASE_URL` (superusuario para `CREATE DATABASE`) y `SECRETS_MASTER_KEY` (cifrar los
+> secretos del manifiesto en el control DB) en su entorno —ya listadas arriba con ✅ para `worker`.
 
 ### Variante SIN dominio propio (deploy single-tenant en el dominio de Railway)
 

@@ -48,6 +48,8 @@ class Settings(BaseSettings):
     #   1) rate-limit en POST /auth/reset/solicitar (evitar spam de tokens por email/IP, como el lockout de login);
     #   2) quitar el log del token en claro (entregarlo solo por email).
     auth_token_ttl_segundos: int = 3600
+    # Estado de los jobs de provisioning del panel (Redis, ADR 0010 §B2): cuánto vive job_id→estado.
+    provision_estado_ttl_segundos: int = 86400
 
     # IA (plataforma)
     anthropic_api_key: str = ""

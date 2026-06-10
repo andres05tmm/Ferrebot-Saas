@@ -63,10 +63,13 @@ colisiones y reconciliación de rango por nuestra cuenta — exactamente lo que 
 >    misma `resolution_number` puede servir a varios tipos de documento (FE, NC, ND, POS), y el endpoint
 >    la desambigua por prefijo: sin prefijo responde **404** *"no se encontró una resolución activa"*. Por
 >    eso `prefix_pos` es obligatorio en `pos_completa()` (fail-closed: mejor "config incompleta" que 404).
-> 2. **El éxito NO trae el número en un campo estructurado.** La respuesta `200/success:true` solo lleva
->    `response.XmlFileName` (el consecutivo va en los dígitos finales, p.ej. `…00000002`) y
->    `response.StatusMessage` (`"…DPOS2, ha sido autorizada"`). El parser saca el consecutivo LIMPIO del
->    `StatusMessage` (regex `([A-Z]+)(\d+)`), con respaldo en `XmlFileName`; el **prefijo NO se parsea como
+> 2. **El éxito NO trae el número en un campo estructurado.** La respuesta `200/success:true` lleva el
+>    consecutivo embebido en `response.StatusMessage` (`"…DPOS2, ha sido autorizada"`) y en el documento
+>    UBL mismo (`response.XmlBase64Bytes` → `<cbc:ID>DPOS2</cbc:ID>`). Como **sí conocemos el prefijo**
+>    (lo enviamos), el parser ancla la extracción a él (`<PREFIJO>0*<num>`) sobre el `StatusMessage` y, de
+>    respaldo autoritativo, sobre el `cbc:ID` del XML — así un consecutivo con ceros internos (`DPOS102`)
+>    sale **102**, no 2. (Se descartó parsear `response.XmlFileName`: concatena prefijo+NIT+resolución+
+>    consecutivo sin separador y su heurística devolvía números errados.) El **prefijo NO se parsea como
 >    verdad** —la persistencia usa `config.prefix_pos`. Además se exige `software_manufacturer`
 >    (owner/company/software_name) y `free_of_charge_indicator` por línea, o el endpoint da **422**.
 

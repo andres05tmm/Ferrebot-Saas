@@ -154,7 +154,7 @@ _RESP_EXITO_POS_SANDBOX = {
 
 
 def test_parsear_emision_pos_fixture_real_sandbox():
-    """Con el éxito real (sin campo estructurado), el número sale de response.StatusMessage ('DPOS2')."""
+    """Llamada SUELTA (sin prefijo): el número sale del regex genérico sobre StatusMessage ('DPOS2')."""
     res = _parsear_emision_pos(_RESP_EXITO_POS_SANDBOX)
     assert res.ok is True and res.categoria == "aceptada"
     assert res.cufe is not None and len(res.cufe) >= 40          # CUDE de 96 chars (FAD06 ✓)
@@ -162,11 +162,31 @@ def test_parsear_emision_pos_fixture_real_sandbox():
     assert res.prefijo == "DPOS"                                 # diagnóstico (persistencia usa config)
 
 
-def test_consecutivo_de_filename_respaldo():
-    """Respaldo desde XmlFileName cuando StatusMessage no da número (dígitos tras el último relleno)."""
-    from modules.facturacion.matias_client import _consecutivo_de_filename
-    assert _consecutivo_de_filename("de12350461190002600000002") == 2
-    assert _consecutivo_de_filename(None) is None
+def test_parsear_emision_pos_con_prefijo_esperado():
+    """Con el prefijo conocido, el número se ancla a él sobre StatusMessage → mismo 2 del fixture real."""
+    res = _parsear_emision_pos(_RESP_EXITO_POS_SANDBOX, prefijo_esperado="DPOS")
+    assert res.ok is True and res.numero == 2 and res.prefijo == "DPOS"
+
+
+def test_parsear_emision_pos_consecutivo_con_ceros_internos():
+    """Riesgo arreglado: 'DPOS102' anclado al prefijo → 102 (el heurístico viejo del filename daba 2)."""
+    data = {**_RESP_EXITO_POS_SANDBOX,
+            "response": {**_RESP_EXITO_POS_SANDBOX["response"],
+                         "StatusMessage": "La Factura electrónica DPOS102, ha sido autorizada."}}
+    res = _parsear_emision_pos(data, prefijo_esperado="DPOS")
+    assert res.ok is True and res.numero == 102 and res.prefijo == "DPOS"
+
+
+def test_parsear_emision_pos_respaldo_xml_cbc_id():
+    """Respaldo autoritativo: StatusMessage sin token, pero el cbc:ID del UBL (base64) trae 'DPOS102'."""
+    import base64
+    xml = b"<Invoice><cbc:ID>DPOS102</cbc:ID></Invoice>"
+    data = {**_RESP_EXITO_POS_SANDBOX,
+            "response": {**_RESP_EXITO_POS_SANDBOX["response"],
+                         "StatusMessage": "Procesado.",   # sin <prefijo><num>
+                         "XmlBase64Bytes": base64.b64encode(xml).decode()}}
+    res = _parsear_emision_pos(data, prefijo_esperado="DPOS")
+    assert res.ok is True and res.numero == 102 and res.prefijo == "DPOS"
 
 
 async def test_emitir_pos_client_mocktransport():

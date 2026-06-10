@@ -9,25 +9,28 @@
 
 ## Máquina de estados (`fe_estado`)
 
+MATIAS devuelve el resultado DIAN de forma **síncrona**: `emitir_documento` llama a MATIAS y persiste
+el desenlace en la misma corrida. No hay paso intermedio `enviada`.
+
 ```
-pendiente ──(job emite)──▶ enviada ──(webhook/poll)──▶ aceptada
-    │                          │
-    │                          └──▶ rechazada   (motivo DIAN; permite corregir/nota)
-    └──(error transitorio)──▶ error ──(reintento backoff)──▶ enviada
+pendiente ──(job emite, resultado síncrono de MATIAS)──┬──▶ aceptada ──(document.voided)──▶ anulada
+    │                                                  └──▶ rechazada   (motivo DIAN; permite corregir/nota)
+    └──(error transitorio)──▶ error ──(reintento backoff)──▶ pendiente/aceptada/rechazada
                                   └──(N intentos)──▶ dead-letter (alerta)
 ```
 
-- `pendiente`: creada, consecutivo reservado, aún no enviada.
-- `enviada`: aceptada por MATIAS, en proceso DIAN.
+- `pendiente`: creada, consecutivo reservado, aún no emitida.
 - `aceptada`: CUFE + PDF + XML disponibles.
 - `rechazada`: DIAN la rechaza (se notifica; puede requerir nota o corrección).
+- `anulada`: anulación confirmada por DIAN (evento `document.voided` del webhook MATIAS); terminal, llega desde `aceptada`. Emite SSE `factura_anulada`.
 - `error`/`dead-letter`: fallo técnico; reintentos con backoff exponencial; tras N intentos va a dead-letter con alerta.
+- `enviada`: **RESERVADO**. Valor del enum **no usado hoy** (la emisión es síncrona, no pasa por aquí). Previsto para un futuro modelo de *aceptación confirmada por webhook* (DIAN responde "en proceso" y confirma después); adoptarlo requeriría su propio ADR. Se conserva en el enum porque quitar un valor de un `ENUM` en Postgres es costoso (recrear el tipo + reescribir la columna).
 
 ## Jobs (ARQ)
 
-- `emitir_documento(factura_id)`: toma `pendiente`, llama a MATIAS, pasa a `enviada` o `error`. Reintentos con backoff.
-- `reconciliar_pendientes()`: job periódico que consulta el estado de las `enviada` que no recibieron webhook.
-- `POST /webhooks/matias` (firmado): actualiza a `aceptada`/`rechazada` y emite evento SSE.
+- `emitir_documento(factura_id)`: toma `pendiente`, llama a MATIAS y persiste el resultado síncrono: `aceptada` / `rechazada` / `error`. Reintentos con backoff sobre `error`.
+- `reconciliar_pendientes()`: job periódico, red de respaldo del webhook; consulta el estado de las `pendiente`/`error` estancadas.
+- `POST /webhooks/matias` (firmado): aplica `document.accepted`/`rejected`/`voided` → `aceptada`/`rechazada`/`anulada` y emite evento SSE.
 
 ## Consecutivos y resolución
 

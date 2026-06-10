@@ -199,10 +199,17 @@ async def test_evento_rejected_marca_rechazada():
     assert repo.acciones == [("rechazada", 1, "NIT inválido")]
 
 
-async def test_evento_voided_anota():
+async def test_evento_voided_anula():
     repo = _RepoEvento(por_cufe=_factura(estado="aceptada", cufe="a" * 40))
     accion, _ = await _svc(repo).aplicar_evento_dian("document.voided", {"document_key": "a" * 40})
     assert accion == "anulada" and repo.acciones == [("anulada", 1)]
+
+
+async def test_evento_voided_idempotente():
+    # Ya anulada: el evento repetido no re-anota (mismo patrón idempotente que accepted/rejected).
+    repo = _RepoEvento(por_cufe=_factura(estado="anulada", cufe="a" * 40))
+    accion, fid = await _svc(repo).aplicar_evento_dian("document.voided", {"document_key": "a" * 40})
+    assert (accion, fid) == ("anulada", 1) and repo.acciones == []
 
 
 async def test_evento_sin_factura():

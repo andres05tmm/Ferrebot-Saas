@@ -172,6 +172,32 @@ async def test_marcar_error(tenant):
     assert estado == "error" and resp == {"error": "Rechazado por DIAN"}
 
 
+async def test_anotar_anulacion(tenant):
+    """document.voided → estado='anulada' + anotación en dian_respuesta; idempotente (re-anular no rompe)."""
+    async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
+        repo = SqlFacturacionRepository(s)
+        f = await _crear_pendiente(repo, key="k-anul")
+        await s.commit()
+        await repo.marcar_aceptada(f.id, cufe="e" * 40, dian_respuesta={"cufe": "e" * 40})
+        await s.commit()
+        await repo.anotar_anulacion(f.id, dian_respuesta={"motivo": "solicitud del cliente"})
+        await s.commit()
+        out = await repo.obtener(f.id)
+        assert out is not None and out.estado == "anulada"
+        # Idempotente: re-anular deja el estado en 'anulada' (no lanza, no regresa a aceptada).
+        await repo.anotar_anulacion(f.id, dian_respuesta={"motivo": "reintento"})
+        await s.commit()
+        assert (await repo.obtener(f.id)).estado == "anulada"
+    async with AsyncSession(tenant.engine) as s:
+        estado, resp = (
+            await s.execute(
+                text("SELECT estado, dian_respuesta FROM facturas_electronicas WHERE id=:i"),
+                {"i": f.id},
+            )
+        ).one()
+    assert estado == "anulada" and resp.get("anulada") is True
+
+
 async def test_datos_para_factura(tenant, seed_producto):
     async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
         uid, pid = await seed_producto(s, precio="11900", iva=19)

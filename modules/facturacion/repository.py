@@ -304,11 +304,12 @@ class SqlFacturacionRepository:
         return FacturaLeer.model_validate(orm) if orm is not None else None
 
     async def anotar_anulacion(self, factura_id: int, *, dian_respuesta: dict) -> None:
-        """Anota la anulación (`document.voided`) en `dian_respuesta` y publica `factura_anulada`.
+        """Anula la factura (`document.voided`): estado=`anulada`, anota `dian_respuesta`, publica `factura_anulada`.
 
-        NO cambia `estado` (el enum `fe_estado` no tiene `anulada` en F2.1; la anulación se refleja como
-        anotación + evento SSE). Un estado `anulada` dedicado se decide aparte (ver informe F2.1)."""
+        `anulada` es un estado terminal (`aceptada → anulada`). Idempotente desde el servicio (no re-anota
+        si ya está `anulada`); aquí el set es de por sí estable (re-anular deja todo en `anulada`)."""
         orm = await self._cargar(factura_id)
+        orm.estado = "anulada"
         orm.dian_respuesta = {"anulada": True, **(dian_respuesta or {})}
         await self._s.flush()
         await publish(self._s, "factura_anulada", {"id": orm.id})

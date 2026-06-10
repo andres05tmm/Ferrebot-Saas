@@ -319,9 +319,9 @@ class FacturacionService:
         """Aplica un evento del webhook MATIAS (D7.1) a la factura correlacionada. Idempotente.
 
         Devuelve `(accion, factura_id)`: `accion` ∈ {aceptada, rechazada, anulada, sin_factura, ignorado}.
-        Correlaciona por CUFE y, si el evento no lo trae, por prefijo+consecutivo. accepted/rejected
-        reusan `marcar_aceptada`/`marcar_rechazada` (mismo estado + SSE que la emisión síncrona); voided
-        se ANOTA (sin estado `anulada` en F2.1). El worker encola el archivado del XML si quedó aceptada."""
+        Correlaciona por CUFE y, si el evento no lo trae, por prefijo+consecutivo. accepted/rejected/voided
+        reusan `marcar_aceptada`/`marcar_rechazada`/`anotar_anulacion` (mismo estado + SSE que la emisión
+        síncrona); cada transición es idempotente. El worker encola el archivado del XML si quedó aceptada."""
         cufe, prefijo, consecutivo = _datos_evento(payload)
         f = await self._repo.buscar_por_cufe(cufe) if cufe else None
         if f is None and consecutivo is not None:
@@ -341,7 +341,8 @@ class FacturacionService:
                 await self._repo.marcar_rechazada(f.id, error_msg=_motivo_evento(payload), dian_respuesta=dian)
             return "rechazada", f.id
         if e.endswith("voided"):
-            await self._repo.anotar_anulacion(f.id, dian_respuesta=payload)
+            if f.estado != "anulada":
+                await self._repo.anotar_anulacion(f.id, dian_respuesta=payload)
             return "anulada", f.id
         log.info("webhook_evento_ignorado", evento=evento)
         return "ignorado", f.id

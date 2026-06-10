@@ -41,7 +41,7 @@ def _firma(cuerpo: bytes, secret: str = SECRET) -> str:
 
 
 def _tenant(estado: str = "activa", id: int = 7) -> ResolvedTenant:
-    return ResolvedTenant(id=id, slug="pr", estado=estado, db_name="d", connection_url="postgresql://x/y")
+    return ResolvedTenant(id=id, slug="pr", nombre="Punto Rojo", estado=estado, db_name="d", connection_url="postgresql://x/y")
 
 
 class _FakeResolver:

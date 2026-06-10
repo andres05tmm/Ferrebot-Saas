@@ -8,6 +8,7 @@ from core.db.urls import to_async, to_sync
 class ResolvedTenant:
     id: int
     slug: str
+    nombre: str
     estado: str
     db_name: str
     connection_url: str  # base postgresql://... (descifrada en memoria, por request)

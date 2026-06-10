@@ -28,6 +28,7 @@ def _resolver(row) -> ResolvedTenant | None:
     return ResolvedTenant(
         id=empresa.id,
         slug=empresa.slug,
+        nombre=empresa.nombre,
         estado=empresa.estado,
         db_name=tdb.db_name,
         connection_url=connection_url,

@@ -142,7 +142,7 @@ class SpyProcesar:
 
 def _tenant(*, id=1, slug="puntorojo", estado="activa") -> ResolvedTenant:
     return ResolvedTenant(
-        id=id, slug=slug, estado=estado, db_name="db",
+        id=id, slug=slug, nombre="Punto Rojo", estado=estado, db_name="db",
         connection_url="postgresql://u:p@h/db",
     )
 

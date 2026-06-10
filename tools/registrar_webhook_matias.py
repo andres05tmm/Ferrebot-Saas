@@ -63,7 +63,7 @@ async def registrar(slug: str, matias_url: str, callback_base: str, name: str | 
             raise ValueError(f"empresa '{slug}' no existe")
         cred, _config = await cargar_config_matias(cs, master, tenant.id)
 
-    nombre = name or getattr(tenant, "nombre", None) or f"FerreBot {slug}"
+    nombre = name or tenant.nombre or f"FerreBot {slug}"
     token = secrets.token_urlsafe(32)
     callback_url = f"{callback_base}/webhooks/matias/{token}"
     registro_url = _registro_url(matias_url)

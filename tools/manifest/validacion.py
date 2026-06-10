@@ -21,7 +21,7 @@ from core.tenancy.catalogo import (
     validar_dependencias,
 )
 from modules.agenda.models import recurso_tipo
-from tools.manifest.schema import Manifiesto
+from tools.manifest.schema import Manifiesto, normalizar_nombre
 from tools.provision_tenant import _features_efectivas
 
 # "HH:MM-HH:MM" con horas 00..23 y minutos 00..59.
@@ -29,6 +29,9 @@ _FRANJA = re.compile(r"^([01]\d|2[0-3]):[0-5]\d-([01]\d|2[0-3]):[0-5]\d$")
 
 # Tipos válidos de recurso: misma fuente que la columna (enum recurso_tipo del esquema).
 _TIPOS_RECURSO: frozenset[str] = frozenset(recurso_tipo.enums)
+
+# IVA permitido en Colombia (ADR 0011 §D3): exento, tarifa reducida, tarifa general.
+_IVA_VALIDO: frozenset[int] = frozenset({0, 5, 19})
 
 
 class ErrorManifiesto(ValueError):
@@ -68,6 +71,9 @@ def _errores_coherencia(manifiesto: Manifiesto, efectivas: frozenset[str]) -> li
     faq = manifiesto.packs.faq
     if faq is not None and faq.entradas and "pack_faq" not in efectivas:
         errores.append("packs.faq declarado pero la feature pack_faq no está activa")
+    pos = manifiesto.packs.pos
+    if pos is not None and (pos.productos or pos.aliases) and "pos" not in efectivas:
+        errores.append("packs.pos declarado pero la feature pos no está activa")
     if manifiesto.canal.whatsapp is not None and "canal_whatsapp" not in efectivas:
         errores.append("canal.whatsapp declarado pero la feature canal_whatsapp no está activa")
     return errores
@@ -102,6 +108,79 @@ def _errores_agenda(manifiesto: Manifiesto) -> list[str]:
     return errores
 
 
+def _errores_producto_pos(p, rotulo: str) -> list[str]:
+    """Reglas de UN producto POS: precios > 0, IVA válido, fracciones/escalonado coherentes."""
+    errores: list[str] = []
+    if p.precio_venta <= 0:
+        errores.append(f"{rotulo}: precio_venta debe ser > 0 (es {p.precio_venta})")
+    if p.precio_compra is not None and p.precio_compra <= 0:
+        errores.append(f"{rotulo}: precio_compra debe ser > 0 si se declara (es {p.precio_compra})")
+    if p.iva not in _IVA_VALIDO:
+        errores.append(f"{rotulo}: iva inválido {p.iva} (esperado: 0, 5 o 19)")
+    if p.fracciones and not p.permite_fraccion:
+        errores.append(f"{rotulo}: tiene fracciones pero permite_fraccion es false")
+    for f in p.fracciones:
+        if f.precio_total <= 0:
+            errores.append(f"{rotulo}: fracción '{f.fraccion}' precio_total debe ser > 0")
+        if f.precio_unitario is not None and f.precio_unitario <= 0:
+            errores.append(f"{rotulo}: fracción '{f.fraccion}' precio_unitario debe ser > 0 si se declara")
+        if f.decimal is not None and f.decimal <= 0:
+            errores.append(f"{rotulo}: fracción '{f.fraccion}' decimal debe ser > 0 si se declara")
+        # Coherencia aritmética solo cuando ambos existan: decimal × precio_unitario ≈ precio_total
+        # (tolerancia 1 peso). Mata el dato incoherente antes de que el bot cotice mal.
+        if f.decimal is not None and f.precio_unitario is not None:
+            esperado = f.decimal * f.precio_unitario
+            if abs(esperado - f.precio_total) > 1:
+                errores.append(
+                    f"{rotulo}: fracción '{f.fraccion}' incoherente: decimal×precio_unitario="
+                    f"{esperado:g} ≠ precio_total={f.precio_total} (tolerancia 1 peso)"
+                )
+    esc = p.escalonado
+    if esc is not None:
+        if esc.umbral <= 0:
+            errores.append(f"{rotulo}: escalonado.umbral debe ser > 0 (es {esc.umbral})")
+        if esc.bajo <= 0:
+            errores.append(f"{rotulo}: escalonado.bajo debe ser > 0 (es {esc.bajo})")
+        if esc.sobre <= 0:
+            errores.append(f"{rotulo}: escalonado.sobre debe ser > 0 (es {esc.sobre})")
+    return errores
+
+
+def _errores_pos(manifiesto: Manifiesto) -> list[str]:
+    """Pack POS: reglas por producto + unicidad de clave natural (codigo/nombre) + alias→producto."""
+    pos = manifiesto.packs.pos
+    if pos is None:
+        return []
+
+    errores: list[str] = []
+    nombres_norm: dict[str, int] = {}
+    codigos: dict[str, int] = {}
+    for p in pos.productos:
+        rotulo = f"producto '{p.nombre}'"
+        errores.extend(_errores_producto_pos(p, rotulo))
+        clave = normalizar_nombre(p.nombre)
+        nombres_norm[clave] = nombres_norm.get(clave, 0) + 1
+        if p.codigo is not None:
+            codigos[p.codigo] = codigos.get(p.codigo, 0) + 1
+
+    for clave, n in nombres_norm.items():
+        if n > 1:
+            errores.append(f"nombre de producto duplicado (normalizado): '{clave}' aparece {n} veces")
+    for codigo, n in codigos.items():
+        if n > 1:
+            errores.append(f"codigo de producto duplicado: '{codigo}' aparece {n} veces")
+
+    # alias.producto → debe referir a un producto declarado (por nombre normalizado).
+    declarados = set(nombres_norm)
+    for a in pos.aliases:
+        if a.producto is not None and normalizar_nombre(a.producto) not in declarados:
+            errores.append(
+                f"alias '{a.termino}': referencia el producto '{a.producto}', "
+                f"que no está declarado en packs.pos.productos"
+            )
+    return errores
+
+
 def validar(manifiesto: Manifiesto) -> None:
     """Valida el manifiesto completo. No devuelve nada si es válido; si no, lanza `ErrorManifiesto`.
 
@@ -112,6 +191,7 @@ def validar(manifiesto: Manifiesto) -> None:
         *_errores_features(manifiesto, efectivas),
         *_errores_coherencia(manifiesto, efectivas),
         *_errores_agenda(manifiesto),
+        *_errores_pos(manifiesto),
     ]
     if errores:
         raise ErrorManifiesto(

@@ -293,7 +293,7 @@ def armar_payload_pos(p: PosInput) -> dict:
     legal_monetary_totals = armar_legal_monetary_totals(acc)
     validar_bases(lineas, tax_totals)
     total_con_iva = legal_monetary_totals["payable_amount"]
-    return {
+    payload = {
         "resolution_number": e.resolution_number,
         "type_document_id": TYPE_DOC_POS,
         "operation_type_id": OPERATION_FE,   # operación normal; el tipo de cliente define CF/normal
@@ -327,3 +327,8 @@ def armar_payload_pos(p: PosInput) -> dict:
             "sub_total": pv.sub_total,
         },
     }
+    # El prefijo desambigua la resolución (varios tipos comparten resolution_number); MATIAS
+    # autoincrementa solo el número. Sin prefijo el endpoint responde 404 (ADR 0012 D4, corregido).
+    if e.prefix is not None:
+        payload["prefix"] = e.prefix
+    return payload

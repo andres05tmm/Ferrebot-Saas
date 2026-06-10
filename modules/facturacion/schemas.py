@@ -75,8 +75,9 @@ class FacturaInput:
 
 @dataclass(frozen=True, slots=True)
 class DatosEmisionPos:
-    """Cabecera de emisión del POS electrónico (ADR 0012). SIN `prefix`/`document_number`: MATIAS los
-    asigna por autoincremento (D4); solo viaja la `resolution_number` POS + fecha/hora + forma de pago."""
+    """Cabecera de emisión del POS electrónico (ADR 0012). MATIAS autoincrementa el `document_number`
+    (D4), pero el `prefix` SÍ viaja: una misma `resolution_number` puede servir a varios tipos de
+    documento y el endpoint la desambigua por prefijo (sin él responde 404). `prefix` None = no enviarlo."""
 
     resolution_number: str
     fecha: date
@@ -84,6 +85,7 @@ class DatosEmisionPos:
     means_payment_id: int
     payment_method_id: int
     notes: str
+    prefix: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

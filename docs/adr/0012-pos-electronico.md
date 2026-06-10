@@ -48,14 +48,27 @@ dedicada). Reusa estados, idempotencia, eventos SSE, historial y detalle. El pre
 
 ### D4 — Numeración: **API de autoincremento de MATIAS** (`/auto-increment/pos-documents`)
 
-MATIAS asigna consecutivo/prefijo según la resolución configurada → desaparecen las dos fuentes de
-riesgo del audit (huecos por `nextval` no transaccional y colisiones concurrentes) y no se crea
+MATIAS autoincrementa el **consecutivo** según la resolución configurada → desaparecen las dos fuentes
+de riesgo del audit (huecos por `nextval` no transaccional y colisiones concurrentes) y no se crea
 `pos_consecutivo_seq`. Costo aceptado: el `pendiente` local no tiene número hasta la respuesta
 (segundos en el camino feliz) — el comprobante con número DIAN se entrega/reimprime al aceptarse;
 la venta como tal nunca espera. `repository.crear_pendiente` se parametriza para admitir
 prefijo/consecutivo NULL hasta la aceptación (se persisten de la respuesta).
 *Alternativa rechazada:* secuencia local + `/invoice` clásico (número inmediato, pero hereda huecos,
 colisiones y reconciliación de rango por nuestra cuenta — exactamente lo que el audit señaló).
+
+> **Corrección F2.4 (verificado contra el sandbox, 10-jun-2026).** Dos supuestos de este ADR resultaron
+> falsos al emitir contra el sandbox real:
+> 1. **El prefijo SÍ se envía** (desde `config.prefix_pos`, p.ej. `DPOS`); MATIAS NO lo deriva solo. Una
+>    misma `resolution_number` puede servir a varios tipos de documento (FE, NC, ND, POS), y el endpoint
+>    la desambigua por prefijo: sin prefijo responde **404** *"no se encontró una resolución activa"*. Por
+>    eso `prefix_pos` es obligatorio en `pos_completa()` (fail-closed: mejor "config incompleta" que 404).
+> 2. **El éxito NO trae el número en un campo estructurado.** La respuesta `200/success:true` solo lleva
+>    `response.XmlFileName` (el consecutivo va en los dígitos finales, p.ej. `…00000002`) y
+>    `response.StatusMessage` (`"…DPOS2, ha sido autorizada"`). El parser saca el consecutivo LIMPIO del
+>    `StatusMessage` (regex `([A-Z]+)(\d+)`), con respaldo en `XmlFileName`; el **prefijo NO se parsea como
+>    verdad** —la persistencia usa `config.prefix_pos`. Además se exige `software_manufacturer`
+>    (owner/company/software_name) y `free_of_charge_indicator` por línea, o el endpoint da **422**.
 
 ### D5 — Config POS por tenant en `config_empresa` (claro, no secreto)
 

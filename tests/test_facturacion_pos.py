@@ -54,7 +54,8 @@ def test_armar_payload_pos_estructura():
     pos = _construir_pos_input(_DATOS, _config(), city_id_matias="149")
     payload = ubl.armar_payload_pos(pos)
     assert payload["type_document_id"] == 20                  # id INTERNO MATIAS (ADR D4)
-    assert "prefix" not in payload and "document_number" not in payload   # autoincremento
+    assert payload["prefix"] == "POS"                         # el prefijo SÍ se envía (desambigua)
+    assert "document_number" not in payload                   # el número lo autoincrementa MATIAS
     assert payload["resolution_number"] == "POS-RES-1"
     pv = payload["point_of_sale"]
     assert pv["cashier_name"] == "Ana" and pv["terminal_number"] == "CAJA-1"
@@ -90,14 +91,24 @@ def test_armar_payload_pos_free_of_charge_por_linea():
     assert all(ln["free_of_charge_indicator"] is False for ln in payload["lines"])
 
 
-def test_pos_completa_false_si_falta_software_manufacturer():
-    """Sin alguno de los tres campos de `software_manufacturer`, no se puede emitir POS (evita 422)."""
+def test_pos_completa_false_si_falta_campo_obligatorio():
+    """Fail-closed: sin software_manufacturer (→422) o sin prefix_pos (→404) no se puede emitir POS."""
     base = _config()
     from dataclasses import replace
     assert base.pos_completa() is True
     assert replace(base, pos_software_name=None).pos_completa() is False
     assert replace(base, pos_company_name=None).pos_completa() is False
     assert replace(base, pos_owner_name=None).pos_completa() is False
+    assert replace(base, prefix_pos=None).pos_completa() is False      # sin prefijo MATIAS da 404
+
+
+def test_armar_payload_pos_omite_prefix_si_none():
+    """`prefix` None (config sin prefijo POS) → no se manda la clave (no enviar "" ni null)."""
+    from dataclasses import replace
+    pos = _construir_pos_input(_DATOS, _config(), city_id_matias="149")
+    pos = replace(pos, emision=replace(pos.emision, prefix=None))
+    payload = ubl.armar_payload_pos(pos)
+    assert "prefix" not in payload
 
 
 # --- parser del autoincremento -----------------------------------------------
@@ -113,6 +124,49 @@ def test_parsear_emision_pos_extrae_numero_prefijo():
 def test_parsear_emision_pos_rechazo():
     res = _parsear_emision_pos({"success": False, "message": "POS inválido"})
     assert res.ok is False and res.categoria == "rechazada" and res.numero is None
+
+
+# Respuesta EXITOSA real del sandbox MATIAS (10-jun-2026, DPOS2). base64/pdf/qr recortados; se conservan
+# las claves que importan: NO hay campo estructurado de número/prefijo, solo response.{XmlFileName,
+# StatusMessage}. El CUDE es de 96 chars (≥40 ✓). Confirmado en F2.4 contra el sandbox.
+_RESP_EXITO_POS_SANDBOX = {
+    "uuid": "95e61391-64aa-11f1-a6f1-d843ae899220",
+    "message": "Solicitud procesada por la DIAN.",
+    "send_to_queue": 0,
+    "XmlDocumentKey": "53f7e06996a1ae675152fd314f5b0f0d808f2bcc777bae6b9dec617044a1ee48e923d88e954dea4555252289912b9bc8",
+    "response": {
+        "IsValid": "true",
+        "StatusCode": "00",
+        "StatusDescription": "Procesado Correctamente.",
+        "StatusMessage": "La Factura electrónica DPOS2, ha sido autorizada.",
+        "XmlDocumentKey": "53f7e06996a1ae675152fd314f5b0f0d808f2bcc777bae6b9dec617044a1ee48e923d88e954dea4555252289912b9bc8",
+        "ErrorMessage": {"string": ""},
+        "XmlBase64Bytes": "<base64-recortado>",
+        "XmlFileName": "de12350461190002600000002",
+    },
+    "XmlBase64Bytes": "<base64-recortado>",
+    "AttachedDocument": None,
+    "qr": {"qrDian": "https://catalogo-vpfe-hab.dian.gov.co/document/searchqr?documentkey=53f7e069",
+           "url": "https://sandbox-api.matias-api.com/qr/675/QR.png", "path": "675/QR.png", "data": "<b64>"},
+    "pdf": {"path": "675/x.pdf", "url": "https://sandbox-api.matias-api.com/pdf/675/x.pdf", "data": "<b64>"},
+    "success": True,
+}
+
+
+def test_parsear_emision_pos_fixture_real_sandbox():
+    """Con el éxito real (sin campo estructurado), el número sale de response.StatusMessage ('DPOS2')."""
+    res = _parsear_emision_pos(_RESP_EXITO_POS_SANDBOX)
+    assert res.ok is True and res.categoria == "aceptada"
+    assert res.cufe is not None and len(res.cufe) >= 40          # CUDE de 96 chars (FAD06 ✓)
+    assert res.numero == 2                                       # consecutivo limpio del StatusMessage
+    assert res.prefijo == "DPOS"                                 # diagnóstico (persistencia usa config)
+
+
+def test_consecutivo_de_filename_respaldo():
+    """Respaldo desde XmlFileName cuando StatusMessage no da número (dígitos tras el último relleno)."""
+    from modules.facturacion.matias_client import _consecutivo_de_filename
+    assert _consecutivo_de_filename("de12350461190002600000002") == 2
+    assert _consecutivo_de_filename(None) is None
 
 
 async def test_emitir_pos_client_mocktransport():
@@ -180,6 +234,17 @@ async def test_emitir_pos_persiste_numero_y_prefijo():
     d = await FacturacionService(repo, matias, _config()).emitir(1)
     assert d.estado == "aceptada" and matias.emitir_pos_llamado is True
     assert repo.aceptada == {"cufe": _CUFE, "prefijo": "POS", "consecutivo": 1024}
+
+
+async def test_emitir_pos_prefijo_desde_config_no_de_matias():
+    """El prefijo persistido viene de config.prefix_pos, NO del parser (el éxito real no lo trae)."""
+    repo = _RepoPos(_pos_factura())
+    # MATIAS devuelve un prefijo distinto/ruido: debe ignorarse y usarse el de config ("POS").
+    matias = _MatiasPos(EmisionResultado(ok=True, cufe=_CUFE, categoria="aceptada",
+                                         raw={}, numero=2, prefijo="DPOS"))
+    d = await FacturacionService(repo, matias, _config()).emitir(1)
+    assert d.estado == "aceptada"
+    assert repo.aceptada == {"cufe": _CUFE, "prefijo": "POS", "consecutivo": 2}   # prefijo de config
 
 
 async def test_emitir_pos_config_incompleta_error_sin_red():

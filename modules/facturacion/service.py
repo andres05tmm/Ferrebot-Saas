@@ -63,13 +63,15 @@ class ConfigFiscal:
     pos_owner_name: str | None = None
 
     def pos_completa(self) -> bool:
-        """True si están los parámetros mínimos para emitir POS (resolución + datos del punto de venta).
+        """True si están los parámetros mínimos para emitir POS. Fail-closed: faltar uno → "config
+        incompleta" (error claro) en vez de un payload que MATIAS rechaza.
 
-        El prefijo POS puede ir embebido en la resolución (MATIAS lo asigna por autoincremento), por eso
-        no es obligatorio aquí; sí lo son la resolución, los tres datos fijos del `point_of_sale` y los
-        tres del `software_manufacturer` (sin ellos el endpoint POS responde 422)."""
+        Exige resolución y prefijo POS (`prefix_pos`: sin él el endpoint responde 404 al no poder
+        desambiguar la resolución, ADR 0012 D4 corregido), los tres datos fijos del `point_of_sale` y
+        los tres del `software_manufacturer` (sin ellos el endpoint responde 422)."""
         return all((
-            self.resolution_pos, self.pos_terminal, self.pos_address, self.pos_cashier_type,
+            self.resolution_pos, self.prefix_pos,
+            self.pos_terminal, self.pos_address, self.pos_cashier_type,
             self.pos_software_name, self.pos_company_name, self.pos_owner_name,
         ))
 
@@ -179,6 +181,7 @@ def _construir_pos_input(
         resolution_number=config.resolution_pos, fecha=datos.fecha.date(), hora=datos.fecha.time(),
         means_payment_id=ubl._MEDIOS_PAGO.get(datos.metodo_pago.lower(), 10),
         payment_method_id=2 if datos.es_fiado else 1, notes=config.notes,
+        prefix=config.prefix_pos,   # desambigua la resolución POS (ADR 0012 D4 corregido)
     )
     cliente, items = _cliente_e_items(datos, config, city_id_matias=city_id_matias)
     sub_total = cuantizar(sum((it.precio_unitario_con_iva * it.cantidad for it in datos.items), Decimal("0")))
@@ -286,8 +289,11 @@ class FacturacionService:
         except Exception:  # noqa: BLE001 — transporte/timeout: la política decide reintento, no propaga
             log.warning("emitir_fallo_transporte", factura_id=f.id, exc_info=True)
             return _ResEmision("error", error_msg="fallo de transporte")
+        # POS: el prefijo se persiste desde la config (fuente de verdad), NO del parser —el éxito real
+        # no trae prefijo estructurado y el de MATIAS es solo diagnóstico (ADR 0012 D4 corregido).
+        prefijo = self._config.prefix_pos if f.tipo == "pos" else res.prefijo
         return _ResEmision(res.categoria, error_msg=res.error_msg, cufe=res.cufe, raw=res.raw,
-                           numero=res.numero, prefijo=res.prefijo)
+                           numero=res.numero, prefijo=prefijo)
 
     async def _persistir(
         self, decision: Decision, factura_id: int, *,

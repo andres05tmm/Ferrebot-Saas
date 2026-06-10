@@ -13,7 +13,8 @@ Credenciales SIEMPRE por args/env (nunca control DB ni secretos en código):
 
 El bloque raíz `software_manufacturer` (exigido por el endpoint POS) se arma desde
 --software-name/--company-name/--owner-name (o env MATIAS_SMOKE_SOFTWARE_NAME/COMPANY_NAME/OWNER_NAME);
-la `resolution_number` POS activa de la cuenta va por --resolution.
+la `resolution_number` POS activa de la cuenta va por --resolution y su prefijo por --prefix (o env
+MATIAS_SMOKE_PREFIX). El prefijo es OBLIGATORIO: desambigua la resolución (sin él MATIAS da 404).
 
 Emite DOS documentos POS en el sandbox (uno por el cliente real `emitir_pos`, otro por la llamada httpx
 DIRECTA que vuelca headers/body). Es intencional y aceptable: es sandbox y es de un solo uso.
@@ -47,7 +48,10 @@ from modules.facturacion.schemas import (
 from modules.facturacion.ubl import armar_payload_pos
 
 _DEFAULT_BASE_URL = "https://sandbox-api.matias-api.com/api/ubl2.1"
-_DEFAULT_RESOLUTION = "18764110996067"
+# Resolución + prefijo POS verificados en el sandbox (10-jun): la resolución sirve a varios tipos y se
+# desambigua por el prefijo DPOS (sin prefijo → 404). Sobreescribibles por args/env.
+_DEFAULT_RESOLUTION = "18760000001"
+_DEFAULT_PREFIX = "DPOS"
 _ENDPOINT_POS = "/auto-increment/pos-documents"
 
 # `software_manufacturer` por defecto (sobreescribible por args/env): identifica al software emisor.
@@ -60,11 +64,12 @@ _MEANS_EFECTIVO = 10
 _PAYMENT_CONTADO = 1
 
 
-def _construir_pos_input(resolution: str, software: SoftwareFabricante) -> PosInput:
+def _construir_pos_input(resolution: str, software: SoftwareFabricante, prefix: str | None) -> PosInput:
     """Arma un `PosInput` representativo: consumidor final, efectivo, 2 ítems con IVA 19% incluido."""
     ahora = now_co()
     emision = DatosEmisionPos(
         resolution_number=resolution,
+        prefix=prefix,                       # desambigua la resolución (sin él MATIAS da 404)
         fecha=ahora.date(),
         hora=time_cls(ahora.hour, ahora.minute, ahora.second),
         means_payment_id=_MEANS_EFECTIVO,
@@ -196,6 +201,8 @@ def main(argv: list[str] | None = None) -> int:
                         help=f"base de la API MATIAS (default {_DEFAULT_BASE_URL})")
     parser.add_argument("--resolution", default=_DEFAULT_RESOLUTION,
                         help=f"resolution_number POS (default {_DEFAULT_RESOLUTION})")
+    parser.add_argument("--prefix", default=os.environ.get("MATIAS_SMOKE_PREFIX", _DEFAULT_PREFIX),
+                        help=f"prefijo POS que desambigua la resolución (default {_DEFAULT_PREFIX}, o env MATIAS_SMOKE_PREFIX)")
     parser.add_argument("--software-name",
                         default=os.environ.get("MATIAS_SMOKE_SOFTWARE_NAME", _DEFAULT_SOFTWARE_NAME),
                         help="software_manufacturer.software_name (o env MATIAS_SMOKE_SOFTWARE_NAME)")
@@ -222,7 +229,7 @@ def main(argv: list[str] | None = None) -> int:
     software = SoftwareFabricante(
         owner_name=args.owner_name, company_name=args.company_name, software_name=args.software_name,
     )
-    pos_input = _construir_pos_input(args.resolution, software)
+    pos_input = _construir_pos_input(args.resolution, software, args.prefix or None)
     asyncio.run(correr_con_input(cred, pos_input))
     return 0
 

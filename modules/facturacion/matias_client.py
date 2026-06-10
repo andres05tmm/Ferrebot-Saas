@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 import time
 from dataclasses import dataclass
 from datetime import datetime
@@ -192,16 +193,56 @@ def _digitos(valor) -> int | None:
     return int(d) if d else None
 
 
+# Documento legal en el texto de `response.StatusMessage` ("...DPOS2, ha sido autorizada"):
+# (prefijo en mayúsculas)(consecutivo). Fuente robusta del consecutivo a secas (ver `_doc_de_status`).
+_RE_DOC_STATUS = re.compile(r"([A-Z]+)(\d+)")
+
+
+def _doc_de_status(mensaje) -> tuple[str | None, int | None]:
+    """(prefijo, número) desde `response.StatusMessage`. PURO; None,None si no matchea.
+
+    El éxito del autoincremento NO trae el número en un campo estructurado: solo viaja embebido en el
+    texto ("La Factura electrónica DPOS2, ha sido autorizada"). Aquí está el consecutivo LIMPIO (sin el
+    relleno con ceros del nombre técnico), por eso es la fuente preferida del número."""
+    if not mensaje:
+        return None, None
+    m = _RE_DOC_STATUS.search(str(mensaje))
+    if m is None:
+        return None, None
+    return m.group(1), int(m.group(2))
+
+
+def _consecutivo_de_filename(nombre) -> int | None:
+    """Consecutivo (respaldo) desde `response.XmlFileName` (p.ej. '...00000002'). PURO.
+
+    El nombre técnico DIAN concatena prefijo+NIT+resolución+consecutivo SIN separador, así que sus
+    dígitos finales NO son el consecutivo a secas; se toma el número tras el último '0' de relleno como
+    aproximación. Solo se usa si `StatusMessage` no dio número (la fuente de verdad es StatusMessage)."""
+    if not nombre:
+        return None
+    base = str(nombre).rsplit(".", 1)[0]
+    m = re.search(r".*0(\d+)$", base)
+    return int(m.group(1)) if m else _digitos(base)
+
+
 def _parsear_emision_pos(data: dict) -> EmisionResultado:
     """Parsea la respuesta del POS por autoincremento (§/auto-increment). PURO.
 
-    Reusa el desenlace de `_parsear_emision` (success + CUDE ≥40 con FAD06) y además extrae el NÚMERO y
-    PREFIJO que MATIAS asignó (`number`/`prefix`, o anidados en `document`/`data`) para persistirlos en la
-    fila `pos`. Si el shape difiere del de `/invoice`, este es el punto único a ajustar contra el sandbox."""
+    Reusa el desenlace de `_parsear_emision` (success + CUDE ≥40 con FAD06). El número/prefijo NO vienen
+    en campo estructurado en el éxito real del sandbox: se intentan primero las claves estructuradas
+    (`number`/`prefix`, o anidadas en `document`/`data`) y, si no hay número, se extrae de
+    `response.StatusMessage` ("...DPOS2...") y, como respaldo, de `response.XmlFileName`. El PREFIJO aquí
+    es solo DIAGNÓSTICO: la persistencia usa `config.prefix_pos` (ver `service._llamar_matias`)."""
     base = _parsear_emision(data)
     cuerpo = data.get("document") or data.get("data") or data
     numero = _digitos(cuerpo.get("number") or cuerpo.get("document_number") or cuerpo.get("consecutivo"))
     prefijo = cuerpo.get("prefix") or cuerpo.get("prefijo")
+    resp = data.get("response") if isinstance(data.get("response"), dict) else {}
+    pref_msg, num_msg = _doc_de_status(resp.get("StatusMessage"))
+    if numero is None:
+        numero = num_msg if num_msg is not None else _consecutivo_de_filename(resp.get("XmlFileName"))
+    if prefijo is None:
+        prefijo = pref_msg
     return EmisionResultado(
         base.ok, cufe=base.cufe, error_msg=base.error_msg, categoria=base.categoria, raw=base.raw,
         numero=numero, prefijo=(str(prefijo) if prefijo else None),

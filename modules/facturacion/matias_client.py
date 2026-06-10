@@ -391,22 +391,33 @@ class MatiasClient:
         return _parsear_emision_pos(resp.json())
 
     async def registrar_webhook(
-        self, callback_url: str, *, events: list[str], registro_url: str | None = None
+        self, callback_url: str, *, name: str, events: list[str], registro_url: str | None = None
     ) -> str:
-        """Registra el webhook en MATIAS (`POST /webhooks`) y devuelve el SECRET de firma (D7.1).
+        """Registra el webhook en MATIAS (`POST /ubl2.1/webhooks`) y devuelve el SECRET de firma (D7.1).
 
-        `registro_url` permite una URL ABSOLUTA (p. ej. `{base}/ubl2.1/webhooks`) cuando el endpoint de
-        registro no cuelga del `base_url` del cliente; si es None usa `/webhooks` relativo. Bearer token.
-        Lo usa `tools.registrar_webhook_matias`; NO persiste (el tool guarda el secret cifrado)."""
+        `name` es OBLIGATORIO: el endpoint lo exige (responde 422 `El campo name es obligatorio.` si
+        falta, aunque la doc lo omita). `registro_url` permite una URL ABSOLUTA (p. ej.
+        `{base}/api/ubl2.1/webhooks`) cuando el endpoint de registro no cuelga del `base_url` del
+        cliente; si es None usa `/webhooks` relativo. Bearer token. Lo usa
+        `tools.registrar_webhook_matias`; NO persiste (el tool guarda el secret cifrado).
+
+        En error HTTP (status >= 300) propaga el CUERPO de la respuesta en el mensaje de la excepción
+        para que el 422 sea legible; NO incluye token ni credenciales (solo el body del error)."""
+        import httpx
+
         tok = await self._token()
         resp = await self._get_client().post(
             registro_url or "/webhooks",
-            json={"url": callback_url, "events": events},
+            json={"name": name, "url": callback_url, "events": events},
             headers={"Authorization": f"Bearer {tok}", "Accept": "application/json",
                      "Content-Type": "application/json"},
             timeout=30,
         )
-        resp.raise_for_status()
+        if resp.status_code >= 300:
+            raise httpx.HTTPStatusError(
+                f"MATIAS rechazó el registro del webhook (HTTP {resp.status_code}): {resp.text}",
+                request=resp.request, response=resp,
+            )
         return _parsear_secret_webhook(resp.json())
 
     async def obtener_xml(self, track_id: str) -> str:

@@ -234,3 +234,14 @@ async def test_pos_paridad_filas_esperadas(tenant):
 def test_pos_registrado_con_loader():
     # El registro ya NO tiene loader=None para pos: el provisionador correrá cargar_pos.
     assert PACKS["pos"].loader is cargar_pos
+
+
+def test_provisionador_rutea_la_seccion_pos():
+    # Wiring (auto-revisión): el provisionador resuelve flag 'pos' → m.packs.pos y lo activa cuando la
+    # feature está. Cierra el punto de integración entre el loader nuevo y el orquestador existente.
+    from tools.manifest.packs.registry import packs_activos
+    from tools.provision_from_manifest import _seccion_pack
+
+    manifiesto = cargar_manifiesto(_EJEMPLO)
+    assert _seccion_pack(manifiesto, "pos") is manifiesto.packs.pos
+    assert "pos" in [p.flag for p in packs_activos(frozenset({"pos"}))]

@@ -42,11 +42,19 @@ class Settings(BaseSettings):
     # Login email/contraseña (ADR 0009): lockout por email tras N fallos durante una ventana (Redis).
     login_max_intentos: int = 5
     login_lockout_segundos: int = 300
-    # Tokens de un solo uso para set-password / reset (Redis, hash del token). TTL CORTO (1 h): hoy el
-    # token se LOGUEA para entrega manual (modules/auth/password_reset.py, tools/provision_tenant.py), así
-    # que un enlace de larga vida sería un riesgo. FOLLOW-UP (cuando exista envío de email real):
-    #   1) rate-limit en POST /auth/reset/solicitar (evitar spam de tokens por email/IP, como el lockout de login);
-    #   2) quitar el log del token en claro (entregarlo solo por email).
+    # Rate-limit de POST /auth/reset/solicitar (Redis, INCR+EXPIRE). DOS cubos INDEPENDIENTES, 429 si
+    # CUALQUIERA pasa su tope; ambos cuentan SIEMPRE (exista o no el email) → no enumera. Ver login lockout.
+    #   - Cubo por EMAIL solo (clave sha(email), sin IP): protección real anti email-bombing dirigido,
+    #     inmune a la rotación de X-Forwarded-For. Apretado.
+    reset_solicitar_max_intentos: int = 3
+    reset_solicitar_ventana_segundos: int = 900
+    #   - Cubo por IP sola: best-effort (XFF es spoofeable en Railway). Más holgado para no castigar a
+    #     usuarios legítimos detrás de una IP/NAT compartida.
+    reset_solicitar_ip_max_intentos: int = 30
+    reset_solicitar_ip_ventana_segundos: int = 900
+    # Tokens de un solo uso para set-password / reset (Redis, hash del token). TTL CORTO (1 h): el enlace
+    # de larga vida sería un riesgo. El token YA NO se loguea (solo viaja al usuario); el envío de email
+    # real es un TODO aparte (hasta entonces el provisionador entrega el token por su propio canal).
     auth_token_ttl_segundos: int = 3600
     # Estado de los jobs de provisioning del panel (Redis, ADR 0010 §B2): cuánto vive job_id→estado.
     provision_estado_ttl_segundos: int = 86400

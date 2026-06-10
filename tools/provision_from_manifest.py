@@ -163,6 +163,17 @@ def provision_from_manifest(path: str) -> int:
     return provision_from_manifest_obj(manifiesto)
 
 
+def check_manifest(path: str) -> None:
+    """Carga + valida un manifiesto SIN tocar ninguna base (ADR 0011 F1b §--check).
+
+    Es el primer escalón del flujo Cowork (docs/runbook-onboarding-cowork.md): el operador escribe el
+    YAML y corre `--check` hasta que valide, antes de aplicar por el panel o `railway ssh`. Reúsa el
+    MISMO `cargar_manifiesto`+`validar` que el provisionador (un solo ground truth); lanza si no valida.
+    """
+    manifiesto = cargar_manifiesto(path)
+    validar(manifiesto)  # ErrorManifiesto agrupado → el operador corrige contra el insumo
+
+
 def main(argv: list[str] | None = None) -> int:
     # La consola de Windows usa cp1252: forzar UTF-8 para que acentos/símbolos no revienten.
     for _stream in (sys.stdout, sys.stderr):
@@ -173,7 +184,21 @@ def main(argv: list[str] | None = None) -> int:
     configure_logging()
     parser = argparse.ArgumentParser(description="Aprovisionar una empresa desde un manifiesto (ADR 0007).")
     parser.add_argument("--from", dest="archivo", required=True, help="Ruta al manifiesto (YAML o JSON)")
+    parser.add_argument(
+        "--check", action="store_true",
+        help="Solo validar el manifiesto (imprime VALIDO/errores). NO provisiona ni toca ninguna base.",
+    )
     args = parser.parse_args(argv)
+
+    # --check: validación pura (sin BD). Exit 0 = VALIDO; exit 1 = errores agrupados a stderr.
+    if args.check:
+        try:
+            check_manifest(args.archivo)
+        except Exception as exc:  # noqa: BLE001 — CLI: cualquier fallo → exit 1 con mensaje claro
+            print(f"INVALIDO: {exc}", file=sys.stderr)
+            return 1
+        print("VALIDO")
+        return 0
 
     try:
         provision_from_manifest(args.archivo)

@@ -18,7 +18,7 @@ from structlog.testing import capture_logs
 from core.auth.passwords import verify_password
 from core.tenancy.identidades_repo import Identidad
 from modules.auth.password_reset import (
-    get_rate_limiter,
+    get_rate_limiters,
     get_repo_identidades,
     get_token_store,
     router,
@@ -63,7 +63,7 @@ class _FakeRepo:
 
 
 class _FakeRateLimiter:
-    """Cuenta por clave (IP+email) y bloquea pasados `max` intentos. Por defecto permisivo (no estorba)."""
+    """Cuenta por clave y bloquea pasados `max` intentos. Por defecto permisivo (no estorba)."""
 
     def __init__(self, max_intentos: int = 100) -> None:
         self._max = max_intentos
@@ -74,12 +74,19 @@ class _FakeRateLimiter:
         return self.counts[clave] <= self._max
 
 
-def _app(store: _FakeTokenStore, repo: _FakeRepo, limiter: _FakeRateLimiter | None = None) -> FastAPI:
+def _app(
+    store: _FakeTokenStore,
+    repo: _FakeRepo,
+    rl_email: _FakeRateLimiter | None = None,
+    rl_ip: _FakeRateLimiter | None = None,
+) -> FastAPI:
     app = FastAPI()
     app.include_router(router, prefix="/api/v1")
     app.dependency_overrides[get_token_store] = lambda: store
     app.dependency_overrides[get_repo_identidades] = lambda: repo
-    app.dependency_overrides[get_rate_limiter] = lambda: limiter or _FakeRateLimiter()
+    # Dos cubos INDEPENDIENTES (email-solo / IP-sola); por defecto ambos permisivos.
+    el, il = rl_email or _FakeRateLimiter(), rl_ip or _FakeRateLimiter()
+    app.dependency_overrides[get_rate_limiters] = lambda: (el, il)
     return app
 
 
@@ -148,53 +155,63 @@ async def test_reset_solicitar_email_inexistente_200_sin_enumerar():
     assert store.tokens == {}                            # pero NO se generó ningún token
 
 
-# --- rate-limit + no fuga del token en logs ----------------------------------
+# --- rate-limit: dos cubos independientes (email-solo / IP-sola) -------------
 
-async def test_reset_solicitar_rate_limit_dispara_429_tras_n_intentos():
+async def test_reset_solicitar_email_bombing_aunque_rote_la_ip_dispara_429_por_cubo_email():
+    # CLAVE: mismo email víctima desde IPs DISTINTAS (XFF rotado). El cubo de EMAIL ignora la IP, así
+    # que el ataque de email-bombing dirigido se frena igual. (Con el cubo combinado anterior, cada
+    # (ip,email) era un cubo nuevo → este caso NO disparaba y la víctima recibía N enlaces.)
     store, repo = _FakeTokenStore(), _FakeRepo([_ident()])
-    limiter = _FakeRateLimiter(max_intentos=3)
-    app = _app(store, repo, limiter)
+    rl_email = _FakeRateLimiter(max_intentos=2)                  # cubo email apretado
+    rl_ip = _FakeRateLimiter(max_intentos=1000)                 # IP generosa: aquí no estorba
+    app = _app(store, repo, rl_email=rl_email, rl_ip=rl_ip)
     async with _cliente(app) as c:
         codes = [
-            (await c.post("/api/v1/auth/reset/solicitar", json={"email": "ana@clinica.co"})).status_code
-            for _ in range(4)
+            (await c.post(
+                "/api/v1/auth/reset/solicitar",
+                json={"email": "ana@clinica.co"},
+                headers={"x-forwarded-for": f"203.0.113.{i}"},   # IP NUEVA cada vez
+            )).status_code
+            for i in range(3)
         ]
-    assert codes == [200, 200, 200, 429]                  # 4.º intento (IP+email) → bloqueado
+    assert codes == [200, 200, 429]                             # frena por el cubo de email
+    assert len(rl_email.counts) == 1                            # un solo cubo de email (la IP no lo parte)
 
 
-async def test_reset_solicitar_rate_limit_no_enumera_mismo_429_para_email_inexistente():
-    # El contador sube exista o no el email → el límite NO revela existencia (anti-enumeración).
-    store, repo = _FakeTokenStore(), _FakeRepo([])        # nadie
-    limiter = _FakeRateLimiter(max_intentos=2)
-    app = _app(store, repo, limiter)
+async def test_reset_solicitar_abuso_por_ip_con_emails_distintos_dispara_429_por_cubo_ip():
+    # Una sola IP enumerando/spameando MUCHOS emails distintos: el cubo de email nunca acumula, pero el
+    # cubo de IP sí → se frena el abuso por IP.
+    store, repo = _FakeTokenStore(), _FakeRepo([])               # da igual si existen
+    rl_email = _FakeRateLimiter(max_intentos=1000)             # email generoso: aquí no estorba
+    rl_ip = _FakeRateLimiter(max_intentos=2)                    # cubo IP apretado
+    app = _app(store, repo, rl_email=rl_email, rl_ip=rl_ip)
     async with _cliente(app) as c:
         codes = [
-            (await c.post("/api/v1/auth/reset/solicitar", json={"email": "nadie@otra.co"})).status_code
+            (await c.post(
+                "/api/v1/auth/reset/solicitar", json={"email": f"v{i}@otra.co"}   # email NUEVO cada vez
+            )).status_code
+            for i in range(3)
+        ]
+    assert codes == [200, 200, 429]                             # frena por el cubo de IP
+    assert len(rl_ip.counts) == 1                              # una sola IP (los emails no la parten)
+
+
+async def test_reset_solicitar_429_no_enumera_mismo_resultado_exista_o_no_el_email():
+    # Ambos cubos cuentan ANTES de tocar el directorio → 200/429 idénticos exista o no el email.
+    rl_email_existe, rl_email_no = _FakeRateLimiter(max_intentos=2), _FakeRateLimiter(max_intentos=2)
+    app_existe = _app(_FakeTokenStore(), _FakeRepo([_ident()]), rl_email=rl_email_existe)
+    app_no = _app(_FakeTokenStore(), _FakeRepo([]), rl_email=rl_email_no)
+    async with _cliente(app_existe) as c:
+        existe = [
+            (await c.post("/api/v1/auth/reset/solicitar", json={"email": "ana@clinica.co"})).status_code
             for _ in range(3)
         ]
-    assert codes == [200, 200, 429]                       # mismo 429 que tendría un email existente
-
-
-async def test_reset_solicitar_rate_limit_es_por_email_y_por_ip():
-    store, repo = _FakeTokenStore(), _FakeRepo([_ident()])
-    limiter = _FakeRateLimiter(max_intentos=1)
-    app = _app(store, repo, limiter)
-    async with _cliente(app) as c:
-        a1 = await c.post("/api/v1/auth/reset/solicitar", json={"email": "ana@clinica.co"})
-        a2 = await c.post("/api/v1/auth/reset/solicitar", json={"email": "ana@clinica.co"})
-        # Otro email desde la MISMA IP → contador independiente (no arrastra el bloqueo).
-        otro = await c.post("/api/v1/auth/reset/solicitar", json={"email": "otra@clinica.co"})
-        # Misma cuenta pero desde OTRA IP (X-Forwarded-For) → contador independiente.
-        otra_ip = await c.post(
-            "/api/v1/auth/reset/solicitar",
-            json={"email": "ana@clinica.co"},
-            headers={"x-forwarded-for": "203.0.113.9"},
-        )
-    assert (a1.status_code, a2.status_code) == (200, 429)    # 2.º intento mismo (IP+email) bloqueado
-    assert otro.status_code == 200                            # distinto email, no bloqueado
-    assert otra_ip.status_code == 200                         # distinta IP, no bloqueado
-    # Tres claves distintas vieron tráfico (IP1+ana, IP1+otra, IP2+ana).
-    assert len(limiter.counts) == 3
+    async with _cliente(app_no) as c:
+        no_existe = [
+            (await c.post("/api/v1/auth/reset/solicitar", json={"email": "ana@clinica.co"})).status_code
+            for _ in range(3)
+        ]
+    assert existe == no_existe == [200, 200, 429]              # el límite no revela existencia
 
 
 async def test_reset_solicitar_no_loguea_el_token_en_claro():

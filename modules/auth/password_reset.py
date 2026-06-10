@@ -6,8 +6,9 @@ en claro: la clave es el hash, el valor es el `identidad_id`, el TTL es la expir
 atómico (GETDEL) → reuso imposible. `set-password` y `reset/confirmar` son la MISMA operación
 (token → nueva contraseña); `reset/solicitar` genera el token. El token NUNCA se loguea (es un secreto:
 solo viaja al usuario); el envío de email real es un TODO aparte. SIN enumeración en `reset/solicitar`:
-200 genérico exista o no el email, y rate-limit por IP+email (Redis INCR+EXPIRE) que sube el contador
-ANTES de tocar el directorio → el 429 tampoco revela si el email existe.
+200 genérico exista o no el email, y rate-limit en DOS cubos INDEPENDIENTES (Redis INCR+EXPIRE): por
+email solo (inmune a la rotación de IP → frena email-bombing) y por IP sola (best-effort). Ambos suben
+el contador ANTES de tocar el directorio → el 429 tampoco revela si el email existe.
 
 Rutas eximidas del TenantMiddleware (`_AUTH_SIN_TENANT`): el flujo ocurre sobre el link compartido, sin
 empresa resuelta. Token store, repo (control DB) y rate-limiter se inyectan → testeable sin red.
@@ -91,14 +92,14 @@ class _RedisRateLimiter:
     contador supera `max_intentos` → el handler responde 429.
     """
 
-    def __init__(self, client: Any, max_intentos: int, ventana_s: int) -> None:
+    def __init__(self, client: Any, max_intentos: int, ventana_s: int, cubo: str) -> None:
         self._c = client
         self._max = max_intentos
         self._ventana = ventana_s
+        self._cubo = cubo            # namespace del cubo ("email"/"ip"): cubos independientes en Redis
 
-    @staticmethod
-    def _key(clave: str) -> str:
-        return f"auth:reset:rl:{clave}"
+    def _key(self, clave: str) -> str:
+        return f"auth:reset:rl:{self._cubo}:{clave}"
 
     async def permitido(self, clave: str) -> bool:
         key = self._key(clave)
@@ -136,11 +137,20 @@ def get_repo_identidades() -> RepoIdentidades:
     return _RepoControl()
 
 
-def get_rate_limiter() -> RateLimiter:
+def get_rate_limiters() -> tuple[RateLimiter, RateLimiter]:
+    """Dos cubos INDEPENDIENTES para `reset/solicitar`: (por-email, por-IP). El handler dispara 429 si
+    CUALQUIERA pasa su tope. Separarlos cierra el bypass del cubo combinado {ip}:{email}: rotar la IP
+    (XFF spoofeable) ya no abre un cubo nuevo por intento (el de email es inmune a la IP), y una IP que
+    rota emails topa contra el cubo de IP."""
     s = get_settings()
-    return _RedisRateLimiter(
-        _cliente_redis(s.redis_url), s.reset_solicitar_max_intentos, s.reset_solicitar_ventana_segundos
+    cliente = _cliente_redis(s.redis_url)   # un cliente, dos cubos (namespaces distintos en la clave)
+    por_email = _RedisRateLimiter(
+        cliente, s.reset_solicitar_max_intentos, s.reset_solicitar_ventana_segundos, cubo="email"
     )
+    por_ip = _RedisRateLimiter(
+        cliente, s.reset_solicitar_ip_max_intentos, s.reset_solicitar_ip_ventana_segundos, cubo="ip"
+    )
+    return por_email, por_ip
 
 
 def _client_ip(request: Request) -> str:
@@ -203,16 +213,22 @@ async def reset_solicitar(
     request: Request,
     store: TokenStore = Depends(get_token_store),
     repo: RepoIdentidades = Depends(get_repo_identidades),
-    limiter: RateLimiter = Depends(get_rate_limiter),
+    limiters: tuple[RateLimiter, RateLimiter] = Depends(get_rate_limiters),
 ) -> dict:
     """Solicita un reset. Anti-abuso/anti-enumeración:
-    - Rate-limit por IP+email (Redis): el contador sube ANTES de tocar el directorio, así el 429 no
-      depende de si el email existe (no enumera). Demasiados intentos → 429 hasta que expire la ventana.
+    - Rate-limit en DOS cubos INDEPENDIENTES (Redis): por email solo (sha(email), inmune a la rotación
+      de IP → frena el email-bombing dirigido) y por IP sola (best-effort, XFF spoofeable → frena el
+      abuso de una IP rotando emails). 429 si CUALQUIERA pasa su tope. AMBOS cuentan ANTES de tocar el
+      directorio → el 429 no depende de si el email existe (no enumera).
     - SIN enumeración: 200 genérico exista o no el email. Si existe, genera el token de un solo uso.
     El token NUNCA se loguea (es un secreto); el envío por email real es un TODO aparte."""
     email = datos.email.strip().lower()
     ip = _client_ip(request)
-    if not await limiter.permitido(f"{ip}:{_sha(email)}"):   # clave IP+email (email hasheado, no en claro)
+    rl_email, rl_ip = limiters
+    # Cuenta AMBOS cubos SIEMPRE (sin cortocircuito): mismo número de operaciones exista o no el email.
+    ok_email = await rl_email.permitido(_sha(email))   # cubo email: clave sha(email), SIN IP
+    ok_ip = await rl_ip.permitido(ip)                  # cubo IP: clave IP sola
+    if not (ok_email and ok_ip):
         raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, "Demasiadas solicitudes. Intenta más tarde.")
 
     identidad = await repo.buscar_por_email(datos.email)

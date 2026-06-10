@@ -3,10 +3,12 @@
 El `set_config` real (UPSERT en control DB) reusa el molde probado de `set_feature`; aquí se cubre la
 guarda anti-secreto. El registro del webhook se prueba con `httpx.MockTransport` (cero red)."""
 import json
+from types import SimpleNamespace
 
 import httpx
 import pytest
 
+from core.tenancy.context import ResolvedTenant
 from modules.facturacion.matias_client import (
     MatiasClient,
     MatiasCredenciales,
@@ -94,3 +96,62 @@ async def test_registrar_webhook_422_propaga_cuerpo():
         )
     assert "El campo name es obligatorio." in str(exc.value)   # cuerpo legible en el error
     assert "422" in str(exc.value)
+
+
+# --- default de --name en el tool: el nombre REAL del tenant -----------------
+
+def _patch_registrar(monkeypatch, tenant: ResolvedTenant) -> dict:
+    """Aísla `registrar()` del control DB / red y devuelve el `name` que recibe el cliente MATIAS."""
+    import tools.registrar_webhook_matias as mod
+
+    capturado: dict = {}
+
+    class _FakeCS:
+        async def __aenter__(self): return object()
+        async def __aexit__(self, *a): return False
+
+    class _FakeClient:
+        def __init__(self, cred): pass
+        async def registrar_webhook(self, callback_url, *, name, events, registro_url=None):
+            capturado["name"] = name
+            return "wh-secret"
+        async def aclose(self): pass
+
+    async def _resolve(cs, slug): return tenant
+    async def _cargar(cs, master, tid): return (object(), {})
+    async def _guardar(cs, master, tid, **kw): return None
+
+    monkeypatch.setattr(mod, "get_settings",
+                        lambda: SimpleNamespace(secrets_master_key="k", base_domain="app.test"))
+    monkeypatch.setattr(mod, "control_session", lambda: _FakeCS())
+    monkeypatch.setattr(mod, "resolve_tenant_by_slug", _resolve)
+    monkeypatch.setattr(mod, "cargar_config_matias", _cargar)
+    monkeypatch.setattr(mod, "MatiasClient", _FakeClient)
+    monkeypatch.setattr(mod, "guardar_registro_webhook", _guardar)
+    return capturado
+
+
+def _tenant(nombre: str) -> ResolvedTenant:
+    return ResolvedTenant(id=1, slug="punto-rojo", nombre=nombre, estado="activa",
+                          db_name="d", connection_url="postgresql://x/y")
+
+
+async def test_default_name_usa_nombre_real_del_tenant(monkeypatch):
+    import tools.registrar_webhook_matias as mod
+    capturado = _patch_registrar(monkeypatch, _tenant("Ferretería Punto Rojo"))
+
+    callback = await mod.registrar("punto-rojo", "https://api-v2.matias-api.com/api",
+                                   "https://app.test", name=None)
+
+    assert capturado["name"] == "Ferretería Punto Rojo"          # default = nombre REAL del tenant
+    assert callback.startswith("https://app.test/webhooks/matias/")
+
+
+async def test_name_explicito_anula_el_default(monkeypatch):
+    import tools.registrar_webhook_matias as mod
+    capturado = _patch_registrar(monkeypatch, _tenant("Ferretería Punto Rojo"))
+
+    await mod.registrar("punto-rojo", "https://api-v2.matias-api.com/api",
+                        "https://app.test", name="Mi Webhook")
+
+    assert capturado["name"] == "Mi Webhook"                     # el override por --name gana

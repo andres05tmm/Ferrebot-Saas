@@ -101,7 +101,7 @@ def _resolved(tdb, *, slug) -> ResolvedTenant:
     # id único por base efímera para no chocar en el engine_cache global.
     tid = abs(hash(tdb.name)) % 2_000_000 + 1000
     return ResolvedTenant(
-        id=tid, slug=slug, estado="activa", db_name=tdb.name, connection_url=tdb.url
+        id=tid, slug=slug, nombre=slug, estado="activa", db_name=tdb.name, connection_url=tdb.url
     )
 
 

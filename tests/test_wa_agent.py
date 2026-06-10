@@ -210,7 +210,7 @@ def _abrir_factory(engine):
 
 def _tenant_resuelto():
     from core.tenancy.context import ResolvedTenant
-    return ResolvedTenant(id=1, slug="clinica", estado="activa", db_name="d",
+    return ResolvedTenant(id=1, slug="clinica", nombre="Clínica", estado="activa", db_name="d",
                           connection_url="postgresql://x/y")
 
 

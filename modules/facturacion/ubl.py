@@ -257,7 +257,9 @@ def armar_payload_factura(f: FacturaInput) -> dict:
         "operation_type_id": OPERATION_FE,
         "currency_id": CURRENCY_COP,
         "date": e.fecha.isoformat(),
-        "time": e.hora.isoformat(),
+        # MATIAS exige `time` en H:i:s estricto: `isoformat()` arrastra microsegundos del timestamp
+        # de la venta ("20:35:47.123456") y el endpoint lo rechaza. `date` (Y-m-d) sí es correcto.
+        "time": e.hora.strftime("%H:%M:%S"),
         "notes": e.notes,
         "graphic_representation": 1,
         "send_email": 0 if _correo_es_placeholder(customer["email"]) else 1,
@@ -299,7 +301,9 @@ def armar_payload_pos(p: PosInput) -> dict:
         "operation_type_id": OPERATION_FE,   # operación normal; el tipo de cliente define CF/normal
         "currency_id": CURRENCY_COP,
         "date": e.fecha.isoformat(),
-        "time": e.hora.isoformat(),
+        # MATIAS exige `time` en H:i:s estricto: `isoformat()` arrastra microsegundos del timestamp
+        # de la venta ("20:35:47.123456") y el endpoint lo rechaza. `date` (Y-m-d) sí es correcto.
+        "time": e.hora.strftime("%H:%M:%S"),
         "notes": e.notes,
         "graphic_representation": 1,
         "send_email": 0 if _correo_es_placeholder(customer["email"]) else 1,

@@ -91,6 +91,19 @@ def test_armar_payload_pos_free_of_charge_por_linea():
     assert all(ln["free_of_charge_indicator"] is False for ln in payload["lines"])
 
 
+def test_armar_payload_pos_time_sin_microsegundos():
+    """`time` en H:i:s estricto: el timestamp real de la venta arrastra microsegundos
+    (datos.fecha.time()) y MATIAS los rechaza ('debe ser una hora valida (H:i:s)'). Bug de prod."""
+    import re
+    from dataclasses import replace
+    datos = replace(_DATOS, fecha=datetime(2026, 6, 9, 20, 35, 47, 123456, tzinfo=timezone.utc))
+    pos = _construir_pos_input(datos, _config(), city_id_matias="149")
+    payload = ubl.armar_payload_pos(pos)
+    assert payload["time"] == "20:35:47"
+    assert re.fullmatch(r"\d{2}:\d{2}:\d{2}", payload["time"])    # sin punto decimal ni zona
+    assert payload["date"] == "2026-06-09"                        # date intacto (Y-m-d)
+
+
 def test_pos_completa_false_si_falta_campo_obligatorio():
     """Fail-closed: sin software_manufacturer (→422) o sin prefix_pos (→404) no se puede emitir POS."""
     base = _config()

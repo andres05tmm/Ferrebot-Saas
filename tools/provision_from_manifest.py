@@ -103,6 +103,11 @@ def _resumen(conn_url: str, efectivas: frozenset[str], slug: str, phone_number_i
             partes.append(f"{_count(conn, 'disponibilidad')} disponibilidad")
         if "pack_faq" in efectivas:
             partes.append(f"{_count(conn, 'conocimiento')} faq")
+        # Tablas fiscales/POS: base del tenant (las migraciones aplican a TODAS las empresas,
+        # tenancy.md §7), así que se cuentan siempre — verifica que el esquema fiscal quedó aplicado
+        # en el alta, aunque en un tenant recién provisionado estén en cero.
+        partes.append(f"{_count(conn, 'facturas_electronicas')} facturas_electronicas")
+        partes.append(f"{_count(conn, 'webhooks_matias_recibidos')} webhooks_matias")
     if phone_number_id:
         partes.append(f"wa:{phone_number_id}")
     return f"provision_manifest: {slug} OK -> " + ", ".join(partes)

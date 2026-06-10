@@ -7,6 +7,7 @@ NOTA: la carpeta original `bot-ventas-ferreteria/services/facturacion_service.py
 repo, así que los valores esperados de los mapas se anclan al DOC (§3/§4). El cruce VERBATIM contra
 el original (clave por clave, incluidos los alias de tipo/unidad) queda como checkpoint de GREEN.
 """
+import re
 from datetime import date, time
 from decimal import Decimal
 
@@ -227,3 +228,19 @@ def test_armar_payload_factura_sin_software_manufacturer():
     payload = ubl.armar_payload_factura(_factura())
     assert "software_manufacturer" not in payload
     assert all("free_of_charge_indicator" not in ln for ln in payload["lines"])
+
+
+def test_armar_payload_factura_time_sin_microsegundos():
+    """MATIAS exige `time` en H:i:s estricto: la hora NUNCA debe arrastrar microsegundos del
+    timestamp de la venta (bug de prod: errors.time 'debe ser una hora valida (H:i:s)')."""
+    emision = DatosEmision(
+        resolution_number="18760000001", prefix="FPR", document_number="1024",
+        fecha=date(2026, 6, 4), hora=time(20, 35, 47, 123456),   # con microsegundos
+        means_payment_id=10, payment_method_id=1, notes="Punto Rojo",
+    )
+    f = FacturaInput(emision=emision, cliente=ClienteFiscal(nombre="Cliente Mostrador"),
+                     items=[_item()])
+    payload = ubl.armar_payload_factura(f)
+    assert payload["time"] == "20:35:47"
+    assert re.fullmatch(r"\d{2}:\d{2}:\d{2}", payload["time"])    # sin punto decimal ni zona
+    assert payload["date"] == "2026-06-04"                        # date intacto (Y-m-d)

@@ -4,6 +4,7 @@ Sesión del tenant (la base es la frontera; sin `empresa_id`). El consecutivo sa
 `fe_factura_consecutivo_seq`; las transiciones de estado emiten un evento `pg_notify`. Espejo de
 `modules/ventas/repository.py` (`SqlVentasRepository`).
 """
+import json as _json
 from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
@@ -52,6 +53,29 @@ def _motivo(dian_respuesta: dict | None) -> str | None:
         if valor:
             return valor if isinstance(valor, str) else str(valor)
     return None
+
+
+@dataclass(frozen=True, slots=True)
+class WebhookRecibido:
+    """Un webhook de MATIAS ya registrado (idempotencia): evento + payload para que el worker lo aplique."""
+
+    id: int
+    webhook_id: str
+    evento: str
+    payload: dict
+
+
+@dataclass(frozen=True, slots=True)
+class DocumentoFiscal:
+    """Lo que el job de archivado (D7.3) necesita de una factura para decidir si descarga el XML.
+
+    `tiene_xml` ya resuelto (presencia de `xml_contenido`, sin traer el blob); `dian_respuesta` es la
+    respuesta MATIAS completa de la que se extraen las URLs (`urls_documento`)."""
+
+    estado: str
+    cufe: str | None
+    tiene_xml: bool
+    dian_respuesta: dict | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -209,6 +233,99 @@ class SqlFacturacionRepository:
         await self._s.flush()
         await publish(self._s, "factura_error", {"id": orm.id, "error": error_msg})
         return FacturaLeer.model_validate(orm)
+
+    async def pendientes_para_reconciliar(
+        self, *, antiguedad: datetime, limite: int
+    ) -> list[FacturaLeer]:
+        """Facturas `pendiente`/`error` creadas antes de `antiguedad` (red de respaldo del webhook, D7.2).
+
+        Las más viejas primero (id asc) y acotado por `limite` (no saturar MATIAS por tenant y corrida)."""
+        stmt = (
+            select(FacturaElectronica)
+            .where(FacturaElectronica.estado.in_(("pendiente", "error")))
+            .where(FacturaElectronica.creado_en < antiguedad)
+            .order_by(FacturaElectronica.id)
+            .limit(limite)
+        )
+        filas = (await self._s.execute(stmt)).scalars().all()
+        return [FacturaLeer.model_validate(o) for o in filas]
+
+    async def buscar_por_cufe(self, cufe: str) -> FacturaLeer | None:
+        """Factura por su CUFE/CUDE (correlación de eventos del webhook MATIAS), o None."""
+        orm = (
+            await self._s.execute(select(FacturaElectronica).where(FacturaElectronica.cufe == cufe))
+        ).scalar_one_or_none()
+        return FacturaLeer.model_validate(orm) if orm is not None else None
+
+    async def buscar_por_numero(self, prefijo: str | None, consecutivo: int) -> FacturaLeer | None:
+        """Factura por prefijo+consecutivo (fallback del webhook cuando el evento no trae CUFE)."""
+        stmt = select(FacturaElectronica).where(FacturaElectronica.consecutivo == consecutivo)
+        stmt = stmt.where(FacturaElectronica.prefijo == prefijo) if prefijo else stmt
+        orm = (await self._s.execute(stmt)).scalars().first()
+        return FacturaLeer.model_validate(orm) if orm is not None else None
+
+    async def anotar_anulacion(self, factura_id: int, *, dian_respuesta: dict) -> None:
+        """Anota la anulación (`document.voided`) en `dian_respuesta` y publica `factura_anulada`.
+
+        NO cambia `estado` (el enum `fe_estado` no tiene `anulada` en F2.1; la anulación se refleja como
+        anotación + evento SSE). Un estado `anulada` dedicado se decide aparte (ver informe F2.1)."""
+        orm = await self._cargar(factura_id)
+        orm.dian_respuesta = {"anulada": True, **(dian_respuesta or {})}
+        await self._s.flush()
+        await publish(self._s, "factura_anulada", {"id": orm.id})
+
+    async def registrar_recibido(self, webhook_id: str, evento: str, payload: dict) -> int | None:
+        """Registra el webhook (idempotencia por `webhook_id` UNIQUE). Devuelve el id, o None si duplicado."""
+        recibido_id = (
+            await self._s.execute(
+                text(
+                    "INSERT INTO webhooks_matias_recibidos (webhook_id, evento, payload) "
+                    "VALUES (:w, :e, CAST(:p AS jsonb)) ON CONFLICT (webhook_id) DO NOTHING RETURNING id"
+                ),
+                {"w": webhook_id, "e": evento, "p": _json.dumps(payload)},
+            )
+        ).scalar_one_or_none()
+        return int(recibido_id) if recibido_id is not None else None
+
+    async def leer_recibido(self, recibido_id: int) -> WebhookRecibido | None:
+        """Lee un webhook registrado (evento + payload) para que el worker lo aplique, o None."""
+        row = (
+            await self._s.execute(
+                text("SELECT id, webhook_id, evento, payload FROM webhooks_matias_recibidos WHERE id=:i"),
+                {"i": recibido_id},
+            )
+        ).one_or_none()
+        if row is None:
+            return None
+        return WebhookRecibido(id=row.id, webhook_id=row.webhook_id, evento=row.evento, payload=row.payload)
+
+    async def marcar_recibido_procesado(self, recibido_id: int) -> None:
+        """Sella `procesado_en` del webhook (auditoría; el barrido de pendientes lo usará)."""
+        await self._s.execute(
+            text("UPDATE webhooks_matias_recibidos SET procesado_en=now() WHERE id=:i"),
+            {"i": recibido_id},
+        )
+        await self._s.flush()
+
+    async def documento_para_xml(self, factura_id: int) -> DocumentoFiscal | None:
+        """Estado/cufe/dian_respuesta + si ya tiene XML archivado (sin traer el blob). None si no existe."""
+        orm = (
+            await self._s.execute(select(FacturaElectronica).where(FacturaElectronica.id == factura_id))
+        ).scalar_one_or_none()
+        if orm is None:
+            return None
+        return DocumentoFiscal(
+            estado=orm.estado, cufe=orm.cufe,
+            tiene_xml=orm.xml_contenido is not None, dian_respuesta=orm.dian_respuesta,
+        )
+
+    async def guardar_xml(
+        self, factura_id: int, *, xml: str, xml_url: str | None, pdf_url: str | None
+    ) -> None:
+        """Archiva el XML técnico + las URLs MATIAS (D7.3). Idempotente desde el servicio (no re-descarga)."""
+        orm = await self._cargar(factura_id)
+        orm.xml_contenido, orm.xml_url, orm.pdf_url = xml, xml_url, pdf_url
+        await self._s.flush()
 
     async def datos_para_factura(self, venta_id: int) -> DatosVentaFiscal | None:
         """Lee venta + ventas_detalle (LEFT JOIN productos) + clientes (LEFT JOIN); mapea a DTOs, o None."""

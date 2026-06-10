@@ -66,13 +66,27 @@ class EmisionResultado:
 
     `categoria` clasifica el desenlace para la política de reintento (E4): "aceptada" | "rechazada"
     | "error". El default "error" es un placeholder; `_parsear_emision` la fija siempre en GREEN
-    (E4b actualizará el servicio para consumirla).
+    (E4b actualizará el servicio para consumirla). `raw` lleva la respuesta MATIAS COMPLETA: la
+    persiste el servicio como histórico fiscal (D7.3 del ADR 0012; antes solo se guardaba el cufe).
     """
 
     ok: bool
     cufe: str | None = None
     error_msg: str | None = None
     categoria: str = "error"
+    raw: dict | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class EstadoConsulta:
+    """Estado DIAN consultado en MATIAS para la reconciliación (D7.2).
+
+    `categoria` ∈ {aceptada, rechazada, pendiente, desconocido}: la red de respaldo del webhook decide
+    qué transición aplicar (o dejar como está). `cufe` cuando MATIAS ya lo devuelve."""
+
+    categoria: str
+    cufe: str | None = None
+    raw: dict | None = None
 
 
 # --- parsers PUROS (sin red) -------------------------------------------------
@@ -104,15 +118,66 @@ def _parsear_emision(data: dict) -> EmisionResultado:
     cufe = (data.get("XmlDocumentKey") or data.get("document_key") or "").strip()
     if bool(data.get("success")):
         if not cufe or len(cufe) < CUFE_MIN_LEN:
-            return EmisionResultado(False, error_msg="CUFE inválido devuelto por MATIAS API", categoria="error")
-        return EmisionResultado(True, cufe=cufe, categoria="aceptada")
+            return EmisionResultado(False, error_msg="CUFE inválido devuelto por MATIAS API",
+                                    categoria="error", raw=data)
+        return EmisionResultado(True, cufe=cufe, categoria="aceptada", raw=data)
     msg = data.get("message") or ""
     errors = data.get("errors")
     if isinstance(errors, dict) and errors:
         error_msg = f"{msg} | " + " | ".join(f"{k}: {v}" for k, v in errors.items())
     else:
         error_msg = msg or str(data)
-    return EmisionResultado(False, error_msg=error_msg, categoria="rechazada")
+    return EmisionResultado(False, error_msg=error_msg, categoria="rechazada", raw=data)
+
+
+# Claves donde MATIAS suele exponer las URLs del documento (verbatim del portal + alias defensivos;
+# el nombre exacto se confirma contra el sandbox en F2.4 — `urls_documento` tolera las variantes).
+_CLAVES_XML_URL = ("urlinvoicexml", "url_xml", "xml_url", "urlxml")
+_CLAVES_PDF_URL = ("urlinvoicepdf", "url_pdf", "pdf_url", "urlpdf")
+
+
+def urls_documento(dian_respuesta: dict | None) -> tuple[str | None, str | None]:
+    """(xml_url, pdf_url) extraídas de la respuesta MATIAS guardada (D7.3). PURO; tolera claves ausentes."""
+    if not isinstance(dian_respuesta, dict):
+        return None, None
+    xml = next((dian_respuesta[k] for k in _CLAVES_XML_URL if dian_respuesta.get(k)), None)
+    pdf = next((dian_respuesta[k] for k in _CLAVES_PDF_URL if dian_respuesta.get(k)), None)
+    return xml, pdf
+
+
+def _parsear_secret_webhook(data: dict) -> str:
+    """Extrae el secret de firma de la respuesta de registro del webhook MATIAS (§webhooks). PURO.
+
+    MATIAS lo muestra UNA sola vez al registrar; se busca en claves comunes (`secret`/`signing_secret`/
+    `webhook_secret`) en la raíz o bajo `data`. Sin secret → ValueError (no se puede verificar la firma)."""
+    anidado = data.get("data") if isinstance(data.get("data"), dict) else {}
+    for clave in ("secret", "signing_secret", "webhook_secret", "key"):
+        valor = data.get(clave) or anidado.get(clave)
+        if valor:
+            return str(valor)
+    raise ValueError("Respuesta de registro de webhook MATIAS sin secret")
+
+
+def _parsear_estado(data: dict) -> EstadoConsulta:
+    """Clasifica la consulta de estado DIAN de MATIAS (§11) para la reconciliación. PURO; defensivo.
+
+    aceptada = validada (`is_valid`/`valid`/`success` truthy o `document_status==1`); rechazada = flag de
+    validez explícito en False / `document_status==2`; `document_status==0` (sin validar) = pendiente; si
+    no hay ninguna señal → desconocido (no se toca el estado). El shape exacto se confirma en sandbox (F2.4)."""
+    cufe = (data.get("XmlDocumentKey") or data.get("document_key") or data.get("cufe") or "").strip() or None
+    status = data.get("document_status")
+    validez = data.get("is_valid")
+    if validez is None:
+        validez = data.get("valid")
+    if validez is None:
+        validez = data.get("success")
+    if validez is True or status == 1:
+        return EstadoConsulta("aceptada", cufe=cufe, raw=data)
+    if validez is False or status == 2:
+        return EstadoConsulta("rechazada", cufe=cufe, raw=data)
+    if status == 0:
+        return EstadoConsulta("pendiente", cufe=cufe, raw=data)
+    return EstadoConsulta("desconocido", cufe=cufe, raw=data)
 
 
 def _parsear_evento(data: dict) -> EventoResultado:
@@ -261,6 +326,60 @@ class MatiasClient:
             timeout=30,
         )
         return _parsear_emision(resp.json())
+
+    async def consultar_estado(
+        self, *, prefijo: str | None, consecutivo: int, resolution: str | None = None
+    ) -> EstadoConsulta:
+        """GET `/status` por número+prefijo (§11): estado DIAN del documento para la reconciliación (D7.2).
+
+        Red de respaldo del webhook: NO persiste (eso es E3). Lanza en error HTTP (el servicio lo trata
+        como 'no se pudo consultar' y deja la factura como está)."""
+        tok = await self._token()
+        params = {"number": str(consecutivo)}
+        if prefijo:
+            params["prefix"] = prefijo
+        if resolution:
+            params["resolution"] = resolution
+        resp = await self._get_client().get(
+            "/status", params=params,
+            headers={"Authorization": f"Bearer {tok}", "Accept": "application/json"},
+            timeout=20,
+        )
+        resp.raise_for_status()
+        return _parsear_estado(resp.json())
+
+    async def registrar_webhook(
+        self, callback_url: str, *, events: list[str], registro_url: str | None = None
+    ) -> str:
+        """Registra el webhook en MATIAS (`POST /webhooks`) y devuelve el SECRET de firma (D7.1).
+
+        `registro_url` permite una URL ABSOLUTA (p. ej. `{base}/ubl2.1/webhooks`) cuando el endpoint de
+        registro no cuelga del `base_url` del cliente; si es None usa `/webhooks` relativo. Bearer token.
+        Lo usa `tools.registrar_webhook_matias`; NO persiste (el tool guarda el secret cifrado)."""
+        tok = await self._token()
+        resp = await self._get_client().post(
+            registro_url or "/webhooks",
+            json={"url": callback_url, "events": events},
+            headers={"Authorization": f"Bearer {tok}", "Accept": "application/json",
+                     "Content-Type": "application/json"},
+            timeout=30,
+        )
+        resp.raise_for_status()
+        return _parsear_secret_webhook(resp.json())
+
+    async def obtener_xml(self, track_id: str) -> str:
+        """GET `/documents/xml/{track_id}` (§11): XML técnico de la FE para el histórico fiscal (D7.3).
+
+        `track_id` = CUFE/CUDE del documento. Devuelve el cuerpo XML crudo; lanza en error HTTP (el
+        servicio lo traduce a reintento). NO persiste (eso es E3/repositorio)."""
+        tok = await self._token()
+        resp = await self._get_client().get(
+            f"/documents/xml/{track_id}",
+            headers={"Authorization": f"Bearer {tok}", "Accept": "application/xml"},
+            timeout=30,
+        )
+        resp.raise_for_status()
+        return resp.text
 
     async def importar_track_id(self, cufe: str) -> EventoResultado:
         """POST `/events/import-track-id` {trackId: cufe} (§14): registra en MATIAS la FE recibida.

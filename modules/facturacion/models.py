@@ -14,7 +14,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from core.db.base import TenantBase
 
 fe_tipo_enum = PgEnum(
-    "factura", "documento_soporte", "nota_credito", "nota_debito",
+    "factura", "documento_soporte", "nota_credito", "nota_debito", "pos",
     name="fe_tipo", create_type=False,
 )
 fe_estado_enum = PgEnum(
@@ -35,6 +35,8 @@ class FacturaElectronica(TenantBase):
     estado: Mapped[str] = mapped_column(fe_estado_enum, nullable=False, default="pendiente")
     xml_url: Mapped[str | None] = mapped_column(Text)
     pdf_url: Mapped[str | None] = mapped_column(Text)
+    # XML técnico archivado (histórico fiscal 5 años, D7.3): se puebla post-aceptada desde MATIAS.
+    xml_contenido: Mapped[str | None] = mapped_column(Text)
     dian_respuesta: Mapped[dict | None] = mapped_column(JSONB)
     idempotency_key: Mapped[str | None] = mapped_column(Text, unique=True)
     intentos: Mapped[int] = mapped_column(SmallInteger, nullable=False, default=0)

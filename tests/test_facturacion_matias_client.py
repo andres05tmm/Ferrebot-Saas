@@ -19,6 +19,7 @@ from modules.facturacion.matias_client import (
     _parsear_ciudades,
     _parsear_ciudades_full,
     _parsear_emision,
+    _parsear_estado,
     _parsear_paises,
 )
 
@@ -87,11 +88,12 @@ def test_parsear_ciudades_variantes():
 class _Handler:
     """Handler de MockTransport: respuestas canned por endpoint + traza de paths (sin red real)."""
 
-    def __init__(self, *, token="TKN", login=None, invoice=None, cities=None, countries=None):
+    def __init__(self, *, token="TKN", login=None, invoice=None, cities=None, countries=None, xml=None):
         self._login = login if login is not None else {"token": token, "expires_in": 3600}
         self._invoice = invoice
         self._cities = cities if cities is not None else {"data": []}
         self._countries = countries if countries is not None else {"data": []}
+        self._xml = xml
         self.paths: list[str] = []
 
     def __call__(self, request: httpx.Request) -> httpx.Response:
@@ -105,6 +107,8 @@ class _Handler:
             return httpx.Response(200, json=self._cities)
         if path.endswith("/countries"):
             return httpx.Response(200, json=self._countries)
+        if "/documents/xml/" in path:
+            return httpx.Response(200, text=self._xml or "", headers={"content-type": "application/xml"})
         return httpx.Response(404, json={})
 
 
@@ -138,6 +142,40 @@ async def test_emitir_factura_rechazo():
     handler = _Handler(invoice={"success": False, "message": "Rechazado", "errors": {"x": "y"}})
     res = await _client(handler).emitir_factura({"document_number": "1024"})
     assert res.ok is False and "Rechazado" in res.error_msg
+
+
+def test_parsear_estado_variantes():
+    aceptada = _parsear_estado({"is_valid": True, "XmlDocumentKey": "a" * 40})
+    assert aceptada.categoria == "aceptada" and aceptada.cufe == "a" * 40
+    assert _parsear_estado({"document_status": 1, "cufe": "b" * 40}).categoria == "aceptada"
+    assert _parsear_estado({"is_valid": False, "message": "rechazada"}).categoria == "rechazada"
+    assert _parsear_estado({"document_status": 0}).categoria == "pendiente"   # sin validar aún
+    assert _parsear_estado({}).categoria == "desconocido"
+
+
+async def test_consultar_estado_por_numero():
+    handler = _Handler()
+    handler._status = {"is_valid": True, "XmlDocumentKey": "a" * 40}
+
+    def _call(request):
+        handler.paths.append(request.url.path)
+        if request.url.path.endswith("/auth/login"):
+            return httpx.Response(200, json=handler._login)
+        if "/status" in request.url.path or request.url.query:
+            return httpx.Response(200, json=handler._status)
+        return httpx.Response(404, json={})
+
+    http = httpx.AsyncClient(transport=httpx.MockTransport(_call), base_url=_CRED.base_url)
+    cli = MatiasClient(_CRED, client=http)
+    res = await cli.consultar_estado(prefijo="FPR", consecutivo=1024, resolution="18760000001")
+    assert res.categoria == "aceptada" and res.cufe == "a" * 40
+
+
+async def test_obtener_xml_descarga_por_track_id():
+    handler = _Handler(xml="<Invoice>técnico</Invoice>")
+    xml = await _client(handler).obtener_xml("a" * 40)
+    assert xml == "<Invoice>técnico</Invoice>"
+    assert any("/documents/xml/" + "a" * 40 in p for p in handler.paths)
 
 
 async def test_city_id_carga_y_cachea():

@@ -9,13 +9,21 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Callable
+from datetime import timedelta
 
 from arq.connections import RedisSettings
 from arq.cron import cron
 
 from apps.wa.agent import AgenteWa, MemoriaWa
 from apps.wa.kapso import KapsoSender
-from apps.worker.jobs import atender_mensaje_wa, emitir_documento, provisionar_tenant
+from apps.worker.jobs import (
+    _encolar_descarga,
+    atender_mensaje_wa,
+    descargar_documento,
+    emitir_documento,
+    procesar_webhook_matias,
+    provisionar_tenant,
+)
 from core.config import get_settings
 from core.config.timezone import now_co
 from core.db.session import control_session, tenant_session
@@ -25,7 +33,7 @@ from core.logging import get_logger
 from core.observability import init_sentry
 from core.tenancy.capacidades import ControlCapacidades
 from core.tenancy.context import ResolvedTenant
-from core.tenancy.control_repo import listar_wa_numeros_activos, resolve_tenant_by_id
+from core.tenancy.control_repo import listar_tenants, listar_wa_numeros_activos, resolve_tenant_by_id
 from modules.agenda.gcal import calendar_client_por_defecto
 from modules.agenda.repository import SqlAgendaRepository
 from modules.agenda.service import AgendaService
@@ -33,7 +41,7 @@ from modules.facturacion.config import cargar_config_matias
 from modules.facturacion.matias_client import MatiasClient, MatiasCredenciales
 from modules.facturacion.politica import Decision
 from modules.facturacion.repository import SqlFacturacionRepository
-from modules.facturacion.service import MAX_INTENTOS, FacturacionService
+from modules.facturacion.service import MAX_INTENTOS, FacturacionService, ResumenReconciliacion
 
 log = get_logger("worker.reconfirmacion")
 
@@ -74,16 +82,54 @@ class _ServicioEmision:
         self._master = master
         self._cache = cache
 
-    async def emitir(self, factura_id: int) -> Decision:
+    async def _componer(self) -> tuple:
+        """Resuelve tenant + descifra config + cliente MATIAS cacheado (wiring común emitir/descargar)."""
         async with control_session() as cs:
             tenant = await resolve_tenant_by_id(cs, self._tid)
             cred, config = await cargar_config_matias(cs, self._master, self._tid)
         cliente = await self._cache.get_or_create(self._tid, cred)
+        return tenant, cliente, config
+
+    async def emitir(self, factura_id: int) -> Decision:
+        tenant, cliente, config = await self._componer()
         decision: Decision | None = None
         async for s in tenant_session(tenant):   # commit al cerrar el generador (no `return` dentro)
             servicio = FacturacionService(SqlFacturacionRepository(s), cliente, config)
             decision = await servicio.emitir(factura_id)
         return decision
+
+    async def descargar_documento(self, factura_id: int) -> bool:
+        """Archiva el XML de la factura aceptada sobre la base del tenant (D7.3)."""
+        tenant, cliente, config = await self._componer()
+        ok: bool = True
+        async for s in tenant_session(tenant):   # commit al cerrar el generador
+            servicio = FacturacionService(SqlFacturacionRepository(s), cliente, config)
+            ok = await servicio.descargar_documento(factura_id)
+        return ok
+
+    async def procesar_webhook(self, recibido_id: int) -> tuple[str, int | None]:
+        """Lee el webhook registrado, lo aplica a la factura y lo sella como procesado (D7.1)."""
+        tenant, cliente, config = await self._componer()
+        resultado: tuple[str, int | None] = ("sin_recibido", None)
+        async for s in tenant_session(tenant):   # commit al cerrar el generador
+            repo = SqlFacturacionRepository(s)
+            recibido = await repo.leer_recibido(recibido_id)
+            if recibido is None:
+                resultado = ("sin_recibido", None)
+                continue
+            servicio = FacturacionService(repo, cliente, config)
+            resultado = await servicio.aplicar_evento_dian(recibido.evento, recibido.payload)
+            await repo.marcar_recibido_procesado(recibido_id)
+        return resultado
+
+    async def reconciliar(self, *, antiguedad, limite: int) -> ResumenReconciliacion:
+        """Barre las facturas estancadas del tenant y consulta su estado en MATIAS (D7.2)."""
+        tenant, cliente, config = await self._componer()
+        resumen = ResumenReconciliacion()
+        async for s in tenant_session(tenant):   # commit al cerrar el generador
+            servicio = FacturacionService(SqlFacturacionRepository(s), cliente, config)
+            resumen = await servicio.reconciliar(antiguedad=antiguedad, limite=limite)
+        return resumen
 
 
 class _ConfigControl:
@@ -213,12 +259,49 @@ async def reconfirmaciones_agenda(ctx: dict) -> str:
     return f"procesadas={procesadas}"
 
 
+async def reconciliar_pendientes(ctx: dict) -> str:
+    """Cron de reconciliación (D7.2): por cada tenant con `facturacion_electronica`, consulta en MATIAS el
+    estado de las facturas estancadas y cierra el dead-letter silencioso (red de respaldo del webhook).
+
+    Smoke manual (como `reconfirmaciones_agenda`): la lógica determinista vive en
+    `FacturacionService.reconciliar` (testeada con fakes). Aquí solo el barrido multi-tenant: filtra por
+    capacidad, reusa el seam `crear_servicio` (con su caché de clientes MATIAS) y encola el archivado del
+    XML de las que pasaron a aceptada. `antiguedad`/`lote` son configurables (settings)."""
+    settings = get_settings()
+    corte = now_co() - timedelta(minutes=settings.reconciliacion_antiguedad_min_minutos)
+    async with control_session() as cs:
+        tenants = await listar_tenants(cs)
+
+    reconciliadas = 0
+    for t in tenants:
+        if "facturacion_electronica" not in t.features:
+            continue
+        servicio = await ctx["crear_servicio"](t.id)
+        resumen = await servicio.reconciliar(antiguedad=corte, limite=settings.reconciliacion_lote_max)
+        for factura_id in resumen.ids_aceptadas:
+            await _encolar_descarga(ctx, t.id, factura_id)
+        reconciliadas += resumen.aceptadas + resumen.rechazadas
+        if resumen.revisadas:
+            log.info(
+                "reconciliar_tenant", tenant_id=t.id, revisadas=resumen.revisadas,
+                aceptadas=resumen.aceptadas, rechazadas=resumen.rechazadas,
+            )
+    return f"reconciliadas={reconciliadas}"
+
+
 class WorkerSettings:
     """Configuración del worker ARQ (functions, cron, Redis, reintentos)."""
 
-    functions = [emitir_documento, atender_mensaje_wa, provisionar_tenant]
-    # Cron anti-no-show: cada 15 min barre todos los tenants (recordatorios + corte de riesgo).
-    cron_jobs = [cron(reconfirmaciones_agenda, minute={0, 15, 30, 45}, run_at_startup=False)]
+    functions = [
+        emitir_documento, descargar_documento, procesar_webhook_matias,
+        atender_mensaje_wa, provisionar_tenant,
+    ]
+    cron_jobs = [
+        # Cron anti-no-show: cada 15 min barre todos los tenants (recordatorios + corte de riesgo).
+        cron(reconfirmaciones_agenda, minute={0, 15, 30, 45}, run_at_startup=False),
+        # Reconciliación fiscal (D7.2): cada 10 min consulta el estado de las facturas estancadas.
+        cron(reconciliar_pendientes, minute=set(range(0, 60, 10)), run_at_startup=False),
+    ]
     redis_settings = RedisSettings.from_dsn(get_settings().redis_url)
     max_tries = MAX_INTENTOS + 1
     on_startup = on_startup

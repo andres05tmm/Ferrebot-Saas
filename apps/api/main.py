@@ -33,6 +33,8 @@ from modules.compras_fiscal.router import router as compras_fiscal_router
 from modules.config.router import router as config_router
 from modules.conversaciones.router import router as conversaciones_router
 from modules.facturacion.router import router as facturacion_router
+from modules.facturacion.webhook import crear_router_matias
+from modules.facturacion.webhook_wiring import construir_webhook_matias_deps
 from modules.faq.router import router as faq_router
 from modules.fiados.router import router as fiados_router
 from modules.inventario.router import router as inventario_router
@@ -55,6 +57,8 @@ async def lifespan(app: FastAPI):
     app.state.arq_pool = await create_pool(RedisSettings.from_dsn(get_settings().redis_url))
     # Deps del webhook de WhatsApp (Kapso): resolver de control DB, dedup Redis y eco encolado.
     app.state.wa_deps = construir_wa_deps(app.state.arq_pool)
+    # Deps del webhook de MATIAS (D7.1): resolver token→empresa+secret, idempotencia en tenant, encolar.
+    app.state.matias_webhook_deps = construir_webhook_matias_deps(app.state.arq_pool)
     yield
     await app.state.arq_pool.aclose()
     await event_hub.dispose_all()
@@ -148,6 +152,9 @@ def create_app(spa_dist: Path | None = None) -> FastAPI:
     # Webhook único de WhatsApp (Kapso): NO va bajo /api/ (no es por-empresa; resuelve el tenant por
     # phone_number_id). El TenantMiddleware lo deja pasar (solo /api/ es por-empresa).
     app.include_router(crear_router_wa())
+    # Webhook de MATIAS (D7.1): `/webhooks/matias/{token}`, fuera de /api/ (sin JWT; protegido por firma
+    # + token del registro). Resuelve la empresa por el token, jamás por el payload.
+    app.include_router(crear_router_matias())
 
     @app.api_route("/health", methods=["GET", "HEAD"], tags=["infra"])
     async def health() -> dict:

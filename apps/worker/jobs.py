@@ -194,4 +194,40 @@ async def emitir_documento(ctx: dict, tenant_id: int, factura_id: int) -> str:
     if decision.dead_letter:
         log.warning("emision_dead_letter", tenant_id=tenant_id, factura_id=factura_id)
         return "dead_letter"
+    if decision.estado == "aceptada":
+        await _encolar_descarga(ctx, tenant_id, factura_id)
     return decision.estado
+
+
+async def _encolar_descarga(ctx: dict, tenant_id: int, factura_id: int) -> None:
+    """Encola el archivado del XML (D7.3) si hay pool ARQ en el `ctx`.
+
+    ARQ inyecta `ctx["redis"]` (ArqRedis) en runtime; en tests/smoke sin Redis se omite (no lanza), igual
+    que el resto de seams del worker. El webhook y el reconciliador encolan este mismo job al aceptar."""
+    redis = ctx.get("redis")
+    if redis is not None:
+        await redis.enqueue_job("descargar_documento", tenant_id, factura_id)
+
+
+async def descargar_documento(ctx: dict, tenant_id: int, factura_id: int) -> str:
+    """Archiva el XML técnico de una factura aceptada (histórico fiscal 5 años, D7.3).
+
+    Reusa el seam `crear_servicio` y el backoff de la emisión: `descargar_documento` del servicio es
+    idempotente (no re-descarga si ya hay XML) y solo devuelve False en fallo de transporte → `Retry`."""
+    servicio = await ctx["crear_servicio"](tenant_id)
+    ok = await servicio.descargar_documento(factura_id)
+    if not ok:
+        raise Retry(defer=_backoff(ctx.get("job_try", 1)))
+    return "archivado"
+
+
+async def procesar_webhook_matias(ctx: dict, tenant_id: int, recibido_id: int) -> str:
+    """Aplica un webhook MATIAS ya registrado (D7.1) a la factura: estado + SSE + archivado si quedó aceptada.
+
+    El webhook (`POST /webhooks/matias/{token}`) solo registra y encola; aquí el worker corre el cambio
+    de estado sobre la base del tenant. Si la factura quedó `aceptada`, encola el archivado del XML."""
+    servicio = await ctx["crear_servicio"](tenant_id)
+    accion, factura_id = await servicio.procesar_webhook(recibido_id)
+    if accion == "aceptada" and factura_id is not None:
+        await _encolar_descarga(ctx, tenant_id, factura_id)
+    return accion

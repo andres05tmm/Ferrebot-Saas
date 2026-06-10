@@ -50,6 +50,10 @@ class Settings(BaseSettings):
     auth_token_ttl_segundos: int = 3600
     # Estado de los jobs de provisioning del panel (Redis, ADR 0010 §B2): cuánto vive job_id→estado.
     provision_estado_ttl_segundos: int = 86400
+    # Reconciliación de facturas (D7.2 del ADR 0012): el cron barre las `pendiente`/`error` con al menos
+    # `antiguedad_min` minutos sin desenlace y consulta su estado en MATIAS (red de respaldo del webhook).
+    reconciliacion_antiguedad_min_minutos: int = 30
+    reconciliacion_lote_max: int = 200   # tope de facturas por tenant y corrida (no saturar MATIAS)
 
     # IA (plataforma)
     anthropic_api_key: str = ""

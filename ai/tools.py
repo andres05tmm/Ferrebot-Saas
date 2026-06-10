@@ -12,7 +12,7 @@ errores de dominio a los códigos estables del envelope.
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import Literal
+from typing import Literal, Protocol
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -29,6 +29,13 @@ from modules.ventas.schemas import MetodoPago, VentaCrear, VentaDetalleCrear
 from modules.ventas.service import VentaService
 
 
+class CierreVentaPort(Protocol):
+    """Puerto del cierre fiscal post-venta (POS electrónico, ADR 0012 D2). Lo cumple
+    `modules.facturacion.pos_hook.CierrePos`; jamás lanza (el cierre no rompe la venta)."""
+
+    async def cerrar(self, venta_id: int, *, tenant_id: int, capacidades: frozenset[str]) -> None: ...
+
+
 # --- Dependencias del turno (servicios atados a la sesión del tenant) --------
 @dataclass(frozen=True, slots=True)
 class Deps:
@@ -36,6 +43,9 @@ class Deps:
     caja: CajaService
     fiados: FiadosService
     clientes: ClientesService
+    # Cierre fiscal de mostrador (POS electrónico). Opcional: None cuando la plataforma no lo cablea
+    # (tests, despliegues sin facturación); el handler de venta lo invoca solo si está presente.
+    cierre_pos: CierreVentaPort | None = None
 
 
 # --- Args de cada herramienta (lo único que provee el modelo) ----------------
@@ -128,6 +138,11 @@ async def _registrar_venta(args: RegistrarVentaArgs, ctx: Contexto, deps: Deps) 
     except LineaInvalida as exc:
         return ErrorTool("validacion", str(exc), recuperable=True)
     v = res.venta
+    # Cierre fiscal de mostrador (ADR 0012 D2): este handler es la convergencia de TODO el canal del bot
+    # (bypass, confirmación y modelo re-despachan aquí). Solo en venta NUEVA; idempotente y excluyente
+    # con la FE (D1). Nunca rompe la venta (el puerto se traga sus fallos). Capacidades del Contexto.
+    if not res.replay and deps.cierre_pos is not None:
+        await deps.cierre_pos.cerrar(v.id, tenant_id=ctx.tenant_id, capacidades=ctx.capacidades)
     return Resultado(
         data={
             "venta_id": v.id, "consecutivo": v.consecutivo, "subtotal": str(v.subtotal),

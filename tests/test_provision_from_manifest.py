@@ -59,7 +59,7 @@ canal:
 """
 
 
-async def test_provision_from_manifest_e2e_idempotente(tmp_path, monkeypatch):
+async def test_provision_from_manifest_e2e_idempotente(tmp_path, monkeypatch, capsys):
     # Control DB efímero (mismo patrón que test_provision_tenant).
     control_name = f"test_control_man_{uuid.uuid4().hex[:12]}"
     control_url = tenant_url(get_settings().tenants_direct_url_base, control_name)
@@ -81,6 +81,10 @@ async def test_provision_from_manifest_e2e_idempotente(tmp_path, monkeypatch):
         command.upgrade(Config("migrations/control/alembic.ini"), "head")
 
         empresa_id = provision_from_manifest(str(manifiesto))
+        # El resumen cuenta las tablas fiscales base (0 en un tenant nuevo, pero verifican el esquema).
+        resumen = capsys.readouterr().out
+        assert "0 facturas_electronicas" in resumen
+        assert "0 webhooks_matias" in resumen
         # Idempotente: re-correr el comando ENTERO no cambia el id.
         assert provision_from_manifest(str(manifiesto)) == empresa_id
 

@@ -11,6 +11,7 @@ from dataclasses import dataclass
 
 from tools.manifest.packs.agenda import cargar_agenda
 from tools.manifest.packs.faq import cargar_faq
+from tools.manifest.packs.pos import cargar_pos
 
 
 @dataclass(frozen=True, slots=True)
@@ -23,11 +24,12 @@ class Pack:
 
 
 PACKS: dict[str, Pack] = {
-    # `pos` (ADR 0008): pack grueso de retail. Sin loader: las tablas POS ya existen en toda app DB
-    # (principio de feature-flags.md, vacías si no se usan); no hay datos de pack que sembrar.
+    # `pos` (ADR 0008 + 0011 §D3): pack grueso de retail. Loader declarativo `cargar_pos` (ADR 0011):
+    # siembra catálogo (productos, fracciones, aliases) e inventario de apertura desde el manifiesto.
+    # Las tablas las crea la migración del esquema; el loader solo puebla las del catálogo declarativo.
     "pos": Pack(
         flag="pos",
-        loader=None,
+        loader=cargar_pos,
         tablas=("ventas", "inventario", "caja", "gastos", "compras", "proveedores", "productos"),
     ),
     "pack_agenda": Pack(

@@ -29,6 +29,17 @@ def slug_valido(slug: str) -> bool:
     return isinstance(slug, str) and bool(_SLUG_RE.match(slug))
 
 
+# Clave natural del pack POS (ADR 0011 §D3): dos nombres que solo difieren en mayúsculas o espacios
+# son el MISMO producto. La usan el loader (upsert) y la validación (nombres duplicados); el loader la
+# espeja en SQL (`lower(btrim(regexp_replace(nombre,'\s+',' ','g')))`) para encontrar la fila que insertó.
+_ESPACIOS_RE = re.compile(r"\s+")
+
+
+def normalizar_nombre(nombre: str) -> str:
+    """Forma canónica de un nombre de producto: minúsculas, sin espacios de borde, internos colapsados."""
+    return _ESPACIOS_RE.sub(" ", nombre).strip().lower()
+
+
 class _Base(BaseModel):
     # Falla cerrado: un campo no modelado (típico typo) es un error, no se ignora en silencio.
     model_config = ConfigDict(extra="forbid")
@@ -153,9 +164,80 @@ class PackFaq(_Base):
     entradas: list[EntradaFaq] = Field(default_factory=list)
 
 
+# ---------------------------------------------------------------------------
+# Pack POS (retail: catálogo declarativo) — ADR 0011 §D3
+# ---------------------------------------------------------------------------
+class FraccionPos(_Base):
+    """Fracción de venta -> tabla `productos_fracciones` (modules/inventario/models.py).
+
+    `decimal` es el equivalente en unidades de la fracción (p. ej. galón→1/4 = 0.25); QTY
+    Numeric(12,3). `precio_total` (entero pesos) es lo que se cobra por la fracción; `precio_unitario`
+    (entero pesos), si se da, es el precio por unidad equivalente. La coherencia aritmética
+    decimal×precio_unitario ≈ precio_total la verifica `validacion.validar` (no aquí).
+    """
+
+    fraccion: str
+    decimal: float | None = None
+    precio_total: int
+    precio_unitario: int | None = None
+
+
+class EscalonadoPos(_Base):
+    """Precio escalonado por cantidad (modelo FerreBot) -> columnas `precio_umbral`/`precio_bajo_umbral`/
+    `precio_sobre_umbral` de `productos`.
+
+    `umbral` es la CANTIDAD a partir de la cual cambia el precio (QTY Numeric(12,3)); `bajo` y `sobre`
+    (enteros pesos) son los precios por unidad por debajo y a partir del umbral. Los tres juntos o
+    ninguno (Pydantic exige los tres si la sección existe; `validacion` verifica que sean > 0).
+    """
+
+    umbral: float
+    bajo: int
+    sobre: int
+
+
+class ProductoPos(_Base):
+    """-> tabla `productos`. Precios en pesos (enteros); el loader castea a Decimal (MONEY).
+
+    Clave natural para el upsert idempotente del loader: `codigo` si está, si no `nombre` normalizado
+    (lower/trim/colapso de espacios). Tipos permisivos: las reglas ricas (precio>0, iva ∈ {0,5,19},
+    fracciones solo si `permite_fraccion`, coherencia de fracción/escalonado) van en `validacion.py`.
+    """
+
+    codigo: str | None = None
+    nombre: str
+    categoria: str | None = None
+    unidad_medida: str
+    precio_venta: int
+    iva: int = 19
+    permite_fraccion: bool = False
+    precio_compra: int | None = None
+    escalonado: EscalonadoPos | None = None
+    fracciones: list[FraccionPos] = Field(default_factory=list)
+    # Stock de apertura: el loader crea la fila de inventario CON su movimiento ENTRADA (regla 7 de
+    # CLAUDE.md: nada toca stock sin movimiento). Ausente = no se siembra inventario.
+    stock_inicial: float | None = None
+
+
+class AliasPos(_Base):
+    """-> tabla `aliases` (variante/typo → forma canónica). `producto`, si se da, es el NOMBRE de un
+    producto declarado en `productos[]`; el loader lo resuelve a `producto_id`. La existencia del
+    producto referido la valida `validacion.validar`."""
+
+    termino: str
+    reemplazo: str
+    producto: str | None = None
+
+
+class PackPos(_Base):
+    productos: list[ProductoPos] = Field(default_factory=list)
+    aliases: list[AliasPos] = Field(default_factory=list)
+
+
 class Packs(_Base):
     agenda: PackAgenda | None = None
     faq: PackFaq | None = None
+    pos: PackPos | None = None
 
 
 # ---------------------------------------------------------------------------

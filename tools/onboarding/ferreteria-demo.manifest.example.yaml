@@ -1,0 +1,79 @@
+# Manifiesto de tenant — EJEMPLO de RETAIL con pack POS (ADR 0011 §D3).
+# Paralelo a clinica-demo (agenda/faq): este muestra el pack `pos` (catálogo declarativo de ferretería).
+# El manifiesto REAL va gitignored bajo tools/onboarding/; solo este *.example.yaml se versiona.
+# Alta = escribir el archivo + correr:  python -m tools.provision_from_manifest --from tools/onboarding/<slug>.yaml
+version: 1
+
+identidad:
+  slug: ferreteria-demo
+  nombre: "Ferretería Demo"
+  nit: "901222333-4"
+
+admin:
+  nombre: "Don José"
+  telegram_id: null
+
+# El punto de venta dejó de ser núcleo (ADR 0008): vive tras el flag `pos`. Sin él, declarar
+# packs.pos es un error de coherencia (datos sin flag).
+plan:
+  nombre: "Retail"
+  features: ["pos"]
+features_override: {}
+
+branding:
+  color_primario: "#C8200E"
+  nombre_comercial: "Ferretería Demo"
+
+secretos: {}
+config: {}
+
+# ----------------------------------------------------------------------------
+# PACK POS — catálogo declarativo. Tres formas típicas de retail:
+#   1) producto simple   2) producto con fracciones   3) producto con precio escalonado
+# precios en pesos (enteros); el loader castea a Decimal (MONEY). Clave natural del upsert:
+# `codigo` si está, si no `nombre` normalizado.
+# ----------------------------------------------------------------------------
+packs:
+  pos:
+    productos:
+      # 1) Simple: sin fracción ni escalonado. stock_inicial siembra inventario + movimiento ENTRADA.
+      - codigo: "CEM-50"
+        nombre: "Cemento Gris 50kg"
+        categoria: "Construcción"
+        unidad_medida: "bulto"
+        precio_venta: 28000
+        precio_compra: 24000
+        iva: 19
+        stock_inicial: 100
+
+      # 2) Con fracciones: se vende el galón entero o fraccionado (1/4, 1/2).
+      #    coherencia: decimal × precio_unitario ≈ precio_total (la valida validacion.py).
+      - codigo: "PIN-GAL"
+        nombre: "Pintura Vinilo Galón"
+        categoria: "Pinturas"
+        unidad_medida: "galón"
+        precio_venta: 65000
+        precio_compra: 50000
+        iva: 19
+        permite_fraccion: true
+        fracciones:
+          - { fraccion: "1/4", decimal: 0.25, precio_total: 18000 }
+          - { fraccion: "1/2", decimal: 0.5,  precio_total: 34000, precio_unitario: 68000 }
+        stock_inicial: 20
+
+      # 3) Escalonado por cantidad: a partir de 100 unidades baja de 200 a 150 c/u.
+      - codigo: "TOR-14"
+        nombre: "Tornillo 1/4"
+        categoria: "Ferretería"
+        unidad_medida: "unidad"
+        precio_venta: 200
+        iva: 19
+        escalonado: { umbral: 100, bajo: 200, sobre: 150 }
+        stock_inicial: 5000
+
+    # Variantes/typos de búsqueda → forma canónica. `producto` (si se da) liga el alias a un producto
+    # declarado; sin `producto` es un alias global (corrección de término).
+    aliases:
+      - { termino: "cemento", reemplazo: "Cemento Gris 50kg", producto: "Cemento Gris 50kg" }
+      - { termino: "vinilo",  reemplazo: "Pintura Vinilo Galón", producto: "Pintura Vinilo Galón" }
+      - { termino: "tornillo de un cuarto", reemplazo: "Tornillo 1/4", producto: "Tornillo 1/4" }

@@ -91,6 +91,32 @@ respaldos quedan solo en el disco local (trátalos como secreto: ver "Retención
 Restaurar `ferrebot_<slug>.dump` sobre su base (o una nueva) sin afectar a las demás (DB-per-tenant).
 Verificar primero en scratch; luego `pg_restore --clean --if-exists -d <url-del-tenant>`.
 
+## Eval del onboarding (ADR 0011 §D7)
+
+Mide la calidad de una extracción del catálogo contra el catálogo REAL (ground truth), con umbrales
+PASS/FAIL. NO entra al CI (necesita los insumos dorados, que llevan precios reales). En v1 audita la
+extracción que hizo Cowork en sesión; en v2 medirá también costo/duración del pipeline API.
+
+### Dónde viven los insumos dorados
+Junto a los manifiestos, en `tools/onboarding/`, **gitignored** (fotos/Excel/CSV reales + reportes
+`eval-*.{md,json}`): nunca se commitean (datos del cliente). Típicamente:
+- `tools/onboarding/<slug>.yaml` — manifiesto candidato (lo que produjo la extracción).
+- `tools/onboarding/<slug>-catalogo.csv` — ground truth (export del catálogo real) **o** un YAML esperado.
+
+### Cómo correrlo
+```bash
+# Candidato YAML vs ground truth CSV (o YAML). Escribe eval-puntorojo.md + .json.
+python -m tools.eval_extractor \
+  --manifiesto tools/onboarding/puntorojo.yaml \
+  --ground-truth tools/onboarding/puntorojo-catalogo.csv \
+  --salida eval-puntorojo
+```
+- Umbrales (ADR §D7): nombre ≥98% (recall fuzzy), precio ≥99% (exacto), costo ≤USD 8, duración ≤10 min.
+- El reporte enseña los **misses concretos** (faltantes + campos discordantes) para iterar prompts.
+- `--umbral-nombre 0.9` ajusta el corte del match fuzzy; `--metricas <json>` inyecta costo/duración de
+  un pipeline (v2; sin él se reportan N/A y no reprueban). `--map-model` es el knob de costo de v2
+  (en v1 solo se anota en el reporte). Exit code: 0 = PASS global, 1 = FAIL.
+
 ## Conexiones (PgBouncer)
 - Toda conexión pasa por PgBouncer. Si aparece "too many connections": revisar tope de pool por empresa, evicción de engines inactivos y límites de PgBouncer.
 

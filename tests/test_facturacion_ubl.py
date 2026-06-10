@@ -219,3 +219,11 @@ def test_armar_payload_factura_estructura():
     assert pago["means_payment_id"] == 10
     assert pago["payment_method_id"] == 1
     assert payload["lines"]                                                # no vacío
+
+
+def test_armar_payload_factura_sin_software_manufacturer():
+    """No regresión FE (en producción): la factura NO lleva `software_manufacturer` ni
+    `free_of_charge_indicator` por línea (eso es exclusivo del POS por autoincremento)."""
+    payload = ubl.armar_payload_factura(_factura())
+    assert "software_manufacturer" not in payload
+    assert all("free_of_charge_indicator" not in ln for ln in payload["lines"])

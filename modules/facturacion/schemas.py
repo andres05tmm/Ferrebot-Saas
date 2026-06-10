@@ -75,8 +75,9 @@ class FacturaInput:
 
 @dataclass(frozen=True, slots=True)
 class DatosEmisionPos:
-    """Cabecera de emisión del POS electrónico (ADR 0012). SIN `prefix`/`document_number`: MATIAS los
-    asigna por autoincremento (D4); solo viaja la `resolution_number` POS + fecha/hora + forma de pago."""
+    """Cabecera de emisión del POS electrónico (ADR 0012). MATIAS autoincrementa el `document_number`
+    (D4), pero el `prefix` SÍ viaja: una misma `resolution_number` puede servir a varios tipos de
+    documento y el endpoint la desambigua por prefijo (sin él responde 404). `prefix` None = no enviarlo."""
 
     resolution_number: str
     fecha: date
@@ -84,6 +85,7 @@ class DatosEmisionPos:
     means_payment_id: int
     payment_method_id: int
     notes: str
+    prefix: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -102,6 +104,19 @@ class PuntoVenta:
 
 
 @dataclass(frozen=True, slots=True)
+class SoftwareFabricante:
+    """Bloque `software_manufacturer` del documento POS (exigido por `/auto-increment/pos-documents`).
+
+    Identifica al fabricante del software emisor ante MATIAS/DIAN: `owner_name` (titular), `company_name`
+    (razón social) y `software_name` (nombre del software). Datos NO secretos de la empresa (config).
+    La FE NO lo lleva (solo el POS por autoincremento)."""
+
+    owner_name: str
+    company_name: str
+    software_name: str
+
+
+@dataclass(frozen=True, slots=True)
 class PosInput:
     """Todo lo que el núcleo UBL necesita para armar el payload del documento equivalente POS."""
 
@@ -109,3 +124,4 @@ class PosInput:
     cliente: ClienteFiscal
     items: list[ItemFactura]
     punto_venta: PuntoVenta
+    software: SoftwareFabricante

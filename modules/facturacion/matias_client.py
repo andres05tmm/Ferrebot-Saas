@@ -16,7 +16,9 @@ persistencia (ventas/`facturas_electronicas`) es E3.
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
+import re
 import time
 from dataclasses import dataclass
 from datetime import datetime
@@ -192,16 +194,75 @@ def _digitos(valor) -> int | None:
     return int(d) if d else None
 
 
-def _parsear_emision_pos(data: dict) -> EmisionResultado:
+# Documento legal en el texto de `response.StatusMessage` ("...DPOS2, ha sido autorizada"):
+# (prefijo en mayúsculas)(consecutivo). Solo se usa en la rama SUELTA (sin prefijo conocido): cuando
+# conocemos el prefijo, se ancla a él (`_num_anclado`) para no capturar otros tokens del texto.
+_RE_DOC_STATUS = re.compile(r"([A-Z]+)(\d+)")
+
+
+def _doc_de_status(mensaje) -> tuple[str | None, int | None]:
+    """(prefijo, número) genéricos desde `response.StatusMessage` (regex `([A-Z]+)(\\d+)`). PURO.
+
+    Para la llamada SUELTA sin prefijo conocido (no hay con qué anclar). None,None si no matchea."""
+    if not mensaje:
+        return None, None
+    m = _RE_DOC_STATUS.search(str(mensaje))
+    if m is None:
+        return None, None
+    return m.group(1), int(m.group(2))
+
+
+def _num_anclado(texto, prefijo_esperado: str | None) -> int | None:
+    """Consecutivo LIMPIO de `texto`, anclado al prefijo CONOCIDO: `<PREFIJO>0*<num>`. PURO.
+
+    Anclar al prefijo que nosotros enviamos (no un genérico) evita capturar otros tokens del texto y, con
+    `0*`, descarta el relleno de ceros SIN tragarse dígitos del propio consecutivo: 'DPOS102' → 102 (el
+    heurístico viejo sobre el filename daba 2). None si no hay prefijo o no matchea."""
+    if not texto or not prefijo_esperado:
+        return None
+    m = re.search(re.escape(prefijo_esperado) + r"0*(\d+)", str(texto))
+    return int(m.group(1)) if m else None
+
+
+def _num_de_xml(xml_b64, prefijo_esperado: str | None) -> int | None:
+    """Consecutivo desde el `cbc:ID` del UBL en `response.XmlBase64Bytes` (base64), anclado al prefijo
+    conocido (`<cbc:ID>DPOS2</cbc:ID>`). PURO; respaldo AUTORITATIVO (es el documento mismo, no un texto
+    de estado). Tolera ausencia o base64 inválido → None (la aceptada se sostiene en el CUDE)."""
+    if not xml_b64 or not prefijo_esperado:
+        return None
+    try:
+        texto = base64.b64decode(xml_b64).decode("utf-8", "replace")
+    except (ValueError, TypeError):
+        return None
+    return _num_anclado(texto, prefijo_esperado)
+
+
+def _parsear_emision_pos(data: dict, *, prefijo_esperado: str | None = None) -> EmisionResultado:
     """Parsea la respuesta del POS por autoincremento (§/auto-increment). PURO.
 
-    Reusa el desenlace de `_parsear_emision` (success + CUDE ≥40 con FAD06) y además extrae el NÚMERO y
-    PREFIJO que MATIAS asignó (`number`/`prefix`, o anidados en `document`/`data`) para persistirlos en la
-    fila `pos`. Si el shape difiere del de `/invoice`, este es el punto único a ajustar contra el sandbox."""
+    Reusa el desenlace de `_parsear_emision` (success + CUDE ≥40 con FAD06). El número NO viene en campo
+    estructurado en el éxito real del sandbox; se extrae en este orden (primer match gana, defensivo):
+    (a) claves estructuradas (`number`/`document_number`/`consecutivo`); (b) con prefijo conocido,
+    anclado sobre `response.StatusMessage` ("...DPOS2..."); (c) respaldo autoritativo: el `cbc:ID` del UBL
+    en `response.XmlBase64Bytes`; (d) sin prefijo conocido (llamada suelta), regex genérico sobre
+    StatusMessage; (e) nada → None. El PREFIJO es solo DIAGNÓSTICO (la persistencia usa `config.prefix_pos`
+    en `service._llamar_matias`): el que enviamos si vino, si no el del regex genérico."""
     base = _parsear_emision(data)
     cuerpo = data.get("document") or data.get("data") or data
+    resp = data.get("response") if isinstance(data.get("response"), dict) else {}
+    pref_msg, num_msg = _doc_de_status(resp.get("StatusMessage"))
+    # (a) estructurado
     numero = _digitos(cuerpo.get("number") or cuerpo.get("document_number") or cuerpo.get("consecutivo"))
-    prefijo = cuerpo.get("prefix") or cuerpo.get("prefijo")
+    if numero is None and prefijo_esperado:
+        # (b) anclado al prefijo conocido sobre StatusMessage; (c) respaldo: cbc:ID del XML
+        numero = _num_anclado(resp.get("StatusMessage"), prefijo_esperado)
+        if numero is None:
+            numero = _num_de_xml(resp.get("XmlBase64Bytes") or data.get("XmlBase64Bytes"), prefijo_esperado)
+    if numero is None and not prefijo_esperado:
+        # (d) llamada suelta sin prefijo: regex genérico
+        numero = num_msg
+    # prefijo diagnóstico: estructurado > el que enviamos > group(1) genérico
+    prefijo = cuerpo.get("prefix") or cuerpo.get("prefijo") or prefijo_esperado or pref_msg
     return EmisionResultado(
         base.ok, cufe=base.cufe, error_msg=base.error_msg, categoria=base.categoria, raw=base.raw,
         numero=numero, prefijo=(str(prefijo) if prefijo else None),
@@ -388,7 +449,8 @@ class MatiasClient:
                      "Content-Type": "application/json"},
             timeout=30,
         )
-        return _parsear_emision_pos(resp.json())
+        # El prefijo lo conocemos (lo enviamos): ancla la extracción del consecutivo al prefijo real.
+        return _parsear_emision_pos(resp.json(), prefijo_esperado=payload.get("prefix"))
 
     async def registrar_webhook(
         self, callback_url: str, *, name: str, events: list[str], registro_url: str | None = None

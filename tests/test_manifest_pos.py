@@ -179,6 +179,37 @@ async def test_cargar_pos_siembra_y_es_idempotente(tenant):
         assert stock_cemento_2 == Decimal("100")  # NO se duplicó a 200
 
 
+async def test_fracciones_se_reconcilian_al_quitar_del_manifiesto(tenant):
+    """Quitar una fracción del YAML debe ELIMINARLA de la BD (no dejar la huérfana con precio viejo)."""
+    manifiesto = cargar_manifiesto(_EJEMPLO)
+    pos = manifiesto.packs.pos
+
+    with psycopg.connect(to_libpq(tenant.url), row_factory=dict_row) as conn:
+        cargar_pos(pos, conn)
+        conn.commit()
+
+        def fracciones_pin() -> list[str]:
+            return [r["fraccion"] for r in conn.execute(
+                "SELECT f.fraccion FROM productos_fracciones f JOIN productos p ON p.id = f.producto_id "
+                "WHERE p.codigo = %s ORDER BY f.fraccion", ("PIN-GAL",)
+            ).fetchall()]
+
+        assert fracciones_pin() == ["1/2", "1/4"]  # arranca con dos
+
+        # Quitar la 1/2 del manifiesto y re-sembrar: debe quedar solo la 1/4.
+        pin = next(p for p in pos.productos if p.codigo == "PIN-GAL")
+        pin.fracciones = [f for f in pin.fracciones if f.fraccion == "1/4"]
+        cargar_pos(pos, conn)
+        conn.commit()
+        assert fracciones_pin() == ["1/4"]
+
+        # Quitar TODAS y re-sembrar: no quedan fracciones del producto.
+        pin.fracciones = []
+        cargar_pos(pos, conn)
+        conn.commit()
+        assert fracciones_pin() == []
+
+
 async def test_pos_paridad_filas_esperadas(tenant):
     """PARIDAD (ADR 0011 §D6): las filas sembradas por el manifiesto coinciden con lo esperado a mano."""
     pos = cargar_manifiesto(_EJEMPLO).packs.pos

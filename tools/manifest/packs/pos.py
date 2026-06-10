@@ -17,6 +17,16 @@ Idempotencia por CLAVE NATURAL (no por id), igual que los demás loaders:
 Dinero (precio_venta, precio_compra, escalonado) va a columnas MONEY → Decimal al escribir. Cantidades
 (decimal de fracción, umbral, stock_inicial) van a columnas QTY → Decimal(str(...)) para no arrastrar
 el ruido binario del float.
+
+Edge cases ACEPTADOS de re-provisión (la clave natural es la frontera de la idempotencia):
+- **Producto sin `codigo` que luego GANA un `codigo`:** la primera siembra lo matcheó por nombre; con
+  `codigo` ya presente, la siguiente lo busca por `codigo` (no lo encuentra) y lo INSERTA de nuevo →
+  duplica. Mitigación: poner `codigo` desde el inicio (clave estable) o, si ya pasó, fusionar/editar en
+  BD. No se intenta "adivinar" el match por nombre cuando hay `codigo`: sería frágil.
+- **Renombre de un producto SIN `codigo`:** cambia su clave natural, así que se trata como producto
+  nuevo y se RE-SIEMBRA su `stock_inicial` (nuevo movimiento ENTRADA, idempotency_key distinta). Queda
+  visible y auditable en el kárdex (movimientos_inventario); no corrompe stock silenciosamente. Con
+  `codigo` estable esto no ocurre.
 """
 from __future__ import annotations
 
@@ -93,7 +103,14 @@ def _upsert_producto(conn, p: ProductoPos) -> int:
 
 
 def _cargar_fracciones(conn, producto_id: int, p: ProductoPos) -> int:
-    """UPSERT de las fracciones por (producto_id, fraccion). Devuelve cuántas se escribieron."""
+    """RECONCILIA las fracciones del producto con el manifiesto (no solo upsert). Devuelve cuántas
+    quedan declaradas.
+
+    Upserta las del manifiesto por (producto_id, fraccion) y BORRA las que ya no estén declaradas. Una
+    fracción huérfana con precio viejo es justo el dato que hace cotizar mal al bot (ADR 0011 §D6), así
+    que quitar una fracción del YAML debe quitarla de la BD: la idempotencia es "el estado converge al
+    manifiesto", no "no duplica".
+    """
     for f in p.fracciones:
         conn.execute(
             "INSERT INTO productos_fracciones (producto_id, fraccion, decimal, precio_total, "
@@ -102,6 +119,16 @@ def _cargar_fracciones(conn, producto_id: int, p: ProductoPos) -> int:
             "precio_total=EXCLUDED.precio_total, precio_unitario=EXCLUDED.precio_unitario",
             (producto_id, f.fraccion, _dec(f.decimal), _dec(f.precio_total), _dec(f.precio_unitario)),
         )
+    # Reconciliar: borrar de la BD las fracciones que el manifiesto ya no declara (incl. todas si la
+    # lista quedó vacía). `<> ALL(array)` = "no está en el conjunto declarado".
+    declaradas = [f.fraccion for f in p.fracciones]
+    if declaradas:
+        conn.execute(
+            "DELETE FROM productos_fracciones WHERE producto_id = %s AND fraccion <> ALL(%s)",
+            (producto_id, declaradas),
+        )
+    else:
+        conn.execute("DELETE FROM productos_fracciones WHERE producto_id = %s", (producto_id,))
     return len(p.fracciones)
 
 

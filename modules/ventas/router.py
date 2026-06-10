@@ -76,11 +76,12 @@ async def crear_venta(
     except LineaInvalida as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
 
-    # Cierre fiscal de mostrador (ADR 0012 D2): si la empresa tiene `pos_electronico`, encola el POS en
-    # la misma sesión del tenant (se commitea con la venta). Idempotente y excluyente con la FE (D1).
-    await encolar_cierre_pos(request, session, resultado.venta.id)
-
-    if resultado.replay:
+    # Cierre fiscal de mostrador (ADR 0012 D2): si la empresa tiene `pos_electronico`, crea el pendiente
+    # POS, lo COMMITEA y encola la emisión. Solo en venta NUEVA (en replay el cierre ya ocurrió).
+    # Idempotente y excluyente con la FE (D1); nunca rompe la venta.
+    if not resultado.replay:
+        await encolar_cierre_pos(request, session, resultado.venta.id)
+    else:
         response.status_code = status.HTTP_200_OK  # idempotencia: ya existía
     return resultado.venta
 

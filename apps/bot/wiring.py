@@ -45,6 +45,7 @@ from modules.fiados.service import FiadosService
 from modules.inventario.repository import SqlInventarioRepository
 from modules.memoria.repository import SqlCostosRepository, SqlMemoriaRepository
 from modules.memoria.service import MemoriaService
+from modules.facturacion.pos_hook import CierrePos
 from modules.ventas.repository import SqlVentasRepository
 from modules.ventas.service import VentaService
 
@@ -147,6 +148,9 @@ def _crear_recursos_factory(config: ConfigControl) -> Callable[[AsyncSession], R
             caja=CajaService(SqlCajaRepository(session)),
             fiados=FiadosService(SqlFiadosRepository(session)),
             clientes=ClientesService(SqlClientesRepository(session)),
+            # Cierre fiscal de mostrador (ADR 0012 D2): atado a la sesión del turno; encola la emisión POS
+            # tras commitear (enqueue perezoso por `redis_url`). Inerte si la empresa no tiene el flag.
+            cierre_pos=CierrePos(session),
         )
         return Recursos(
             deps=deps,

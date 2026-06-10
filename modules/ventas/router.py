@@ -24,6 +24,7 @@ from modules.ventas.errors import (
     VentaNoEncontrada,
     VentaNoEsDeHoy,
 )
+from modules.facturacion.pos_hook import encolar_cierre_pos
 from modules.ventas.repository import SqlVentasRepository
 from modules.ventas.schemas import VentaConLineas, VentaCrear, VentaLeer
 from modules.ventas.service import VentaService
@@ -53,6 +54,7 @@ async def get_control_stock_estricto(request: Request) -> bool:
 @router.post("/ventas", response_model=VentaLeer, status_code=status.HTTP_201_CREATED)
 async def crear_venta(
     payload: VentaCrear,
+    request: Request,
     response: Response,
     session: AsyncSession = Depends(get_tenant_db),
     user: Principal = Depends(require_role("vendedor")),
@@ -73,6 +75,10 @@ async def crear_venta(
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
     except LineaInvalida as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
+
+    # Cierre fiscal de mostrador (ADR 0012 D2): si la empresa tiene `pos_electronico`, encola el POS en
+    # la misma sesión del tenant (se commitea con la venta). Idempotente y excluyente con la FE (D1).
+    await encolar_cierre_pos(request, session, resultado.venta.id)
 
     if resultado.replay:
         response.status_code = status.HTTP_200_OK  # idempotencia: ya existía

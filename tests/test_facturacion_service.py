@@ -70,8 +70,13 @@ class _FakeRepo:
     async def obtener(self, factura_id):
         return self._facturas.get(factura_id)
 
-    async def marcar_aceptada(self, factura_id, *, cufe, dian_respuesta):
-        f = self._facturas[factura_id].model_copy(update={"estado": "aceptada", "cufe": cufe})
+    async def marcar_aceptada(self, factura_id, *, cufe, dian_respuesta, prefijo=None, consecutivo=None):
+        cambios = {"estado": "aceptada", "cufe": cufe}
+        if prefijo is not None:
+            cambios["prefijo"] = prefijo
+        if consecutivo is not None:
+            cambios["consecutivo"] = consecutivo
+        f = self._facturas[factura_id].model_copy(update=cambios)
         self._facturas[factura_id] = f
         return f
 
@@ -88,6 +93,9 @@ class _FakeRepo:
 
     async def datos_para_factura(self, venta_id):
         return _DATOS
+
+    async def eliminar_pos_pendiente(self, venta_id):
+        return False
 
 
 class _FakeMatias:

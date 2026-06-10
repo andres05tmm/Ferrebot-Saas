@@ -149,7 +149,7 @@ class _RepoEmitir:
     async def datos_para_factura(self, venta_id):
         return _DATOS
 
-    async def marcar_aceptada(self, factura_id, *, cufe, dian_respuesta):
+    async def marcar_aceptada(self, factura_id, *, cufe, dian_respuesta, prefijo=None, consecutivo=None):
         self.dian_respuesta = dian_respuesta
         return self._f.model_copy(update={"estado": "aceptada", "cufe": cufe})
 

@@ -14,7 +14,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from core.db.base import TenantBase
 
 fe_tipo_enum = PgEnum(
-    "factura", "documento_soporte", "nota_credito", "nota_debito",
+    "factura", "documento_soporte", "nota_credito", "nota_debito", "pos",
     name="fe_tipo", create_type=False,
 )
 fe_estado_enum = PgEnum(

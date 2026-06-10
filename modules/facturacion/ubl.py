@@ -12,7 +12,7 @@ from __future__ import annotations
 from decimal import Decimal
 
 from core.money import cuantizar
-from modules.facturacion.schemas import ClienteFiscal, FacturaInput, ItemFactura
+from modules.facturacion.schemas import ClienteFiscal, FacturaInput, ItemFactura, PosInput
 
 # --- Mapas de IDs (verbatim §3/§4) -------------------------------------------
 # §3 — tipo de documento en POST de creación (identity_document_id). .get(tipo, "1") por defecto.
@@ -41,6 +41,7 @@ _MEDIOS_PAGO: dict[str, int] = {
 CURRENCY_COP = 272      # COP
 TYPE_DOC_FE = 7         # factura electrónica
 OPERATION_FE = 1        # operación FE (el tipo de cliente define CF/normal, no esto)
+TYPE_DOC_POS = 20       # documento equivalente POS electrónico (id INTERNO MATIAS, NUNCA el code DIAN; ADR 0012 D4)
 
 # Documento de consumidor final (§8.1).
 _DOC_CONSUMIDOR_FINAL = "222222222222"
@@ -269,4 +270,49 @@ def armar_payload_factura(f: FacturaInput) -> dict:
             "means_payment_id": e.means_payment_id,
             "value_paid": total_con_iva,
         }],
+    }
+
+
+def armar_payload_pos(p: PosInput) -> dict:
+    """Ensambla el payload del documento equivalente POS electrónico (ADR 0012 D4/D5). Reusa el núcleo FE.
+
+    Diferencias clave vs factura: `type_document_id=20` (id interno MATIAS); SIN `prefix`/`document_number`
+    (MATIAS los asigna por autoincremento en `/auto-increment/pos-documents`); lleva el objeto
+    `point_of_sale` (cajero/terminal/dirección/tipo/código de venta/subtotal). Misma math de líneas, mismo
+    pre-check FAU04 y mismos totales que la FE."""
+    e = p.emision
+    pv = p.punto_venta
+    customer = armar_customer(p.cliente)
+    lineas, acc = armar_lineas(p.items)
+    tax_totals = armar_tax_totals(acc)
+    legal_monetary_totals = armar_legal_monetary_totals(acc)
+    validar_bases(lineas, tax_totals)
+    total_con_iva = legal_monetary_totals["payable_amount"]
+    return {
+        "resolution_number": e.resolution_number,
+        "type_document_id": TYPE_DOC_POS,
+        "operation_type_id": OPERATION_FE,   # operación normal; el tipo de cliente define CF/normal
+        "currency_id": CURRENCY_COP,
+        "date": e.fecha.isoformat(),
+        "time": e.hora.isoformat(),
+        "notes": e.notes,
+        "graphic_representation": 1,
+        "send_email": 0 if _correo_es_placeholder(customer["email"]) else 1,
+        "customer": customer,
+        "lines": lineas,
+        "tax_totals": tax_totals,
+        "legal_monetary_totals": legal_monetary_totals,
+        "payments": [{
+            "payment_method_id": e.payment_method_id,
+            "means_payment_id": e.means_payment_id,
+            "value_paid": total_con_iva,
+        }],
+        "point_of_sale": {
+            "cashier_name": pv.cashier_name,
+            "terminal_number": pv.terminal_number,
+            "address": pv.address,
+            "cashier_type": pv.cashier_type,
+            "sales_code": pv.sales_code,
+            "sub_total": pv.sub_total,
+        },
     }

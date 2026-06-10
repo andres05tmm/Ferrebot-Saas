@@ -18,6 +18,7 @@ NUCLEO: frozenset[str] = frozenset({
 OPCIONALES: frozenset[str] = frozenset({
     "pos",
     "facturacion_electronica", "documento_soporte", "notas_electronicas", "libro_iva",
+    "pos_electronico",
     "compras_fiscal", "honorarios", "fiados", "mayorista", "ventas_voz", "bot_telegram",
     "multi_vendedor", "pack_agenda", "pack_faq", "canal_whatsapp",
 })
@@ -27,6 +28,10 @@ OPCIONALES: frozenset[str] = frozenset({
 DEPENDENCIAS: dict[str, frozenset[str]] = {
     "notas_electronicas": frozenset({"facturacion_electronica"}),
     "libro_iva": frozenset({"facturacion_electronica", "compras_fiscal"}),
+    # POS electrónico (ADR 0012 D10): cierre fiscal de la venta de mostrador; reusa toda la capa FE.
+    # Requiere `facturacion_electronica` (el cliente MATIAS, secretos y la máquina de estados) y `pos`
+    # (la venta de mostrador que cierra). La capa fiscal sigue transversal (ADR 0008).
+    "pos_electronico": frozenset({"facturacion_electronica"}),
     "ventas_voz": frozenset({"bot_telegram"}),
     "fiados": frozenset({"pos"}),
     "mayorista": frozenset({"pos"}),

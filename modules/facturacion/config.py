@@ -66,6 +66,13 @@ async def cargar_config_matias(
         resolution_number=config["matias_resolution"], prefix=config["matias_prefix"],
         notes=config.get("matias_notes", ""), city_id_default=config.get("matias_city_id"),
         ambiente=_normalizar_ambiente(config.get("matias_ambiente")),
+        # POS electrónico (ADR 0012 D5): claves NO secretas en config_empresa (set_config). Ausentes →
+        # None; `ConfigFiscal.pos_completa` decide si se puede emitir POS (si no, error claro, sin payload).
+        resolution_pos=config.get("matias_resolution_pos"),
+        prefix_pos=config.get("matias_prefix_pos"),
+        pos_terminal=config.get("pos_terminal"),
+        pos_address=config.get("pos_address"),
+        pos_cashier_type=config.get("pos_cashier_type"),
     )
     return cred, fiscal
 

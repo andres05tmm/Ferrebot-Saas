@@ -75,6 +75,10 @@ class EmisionResultado:
     error_msg: str | None = None
     categoria: str = "error"
     raw: dict | None = None
+    # POS electrónico (ADR 0012 D4): número/prefijo que MATIAS asigna por autoincremento al emitir;
+    # el servicio los persiste en la fila `pos` (que nació con consecutivo/prefijo NULL). None en FE.
+    numero: int | None = None
+    prefijo: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -178,6 +182,30 @@ def _parsear_estado(data: dict) -> EstadoConsulta:
     if status == 0:
         return EstadoConsulta("pendiente", cufe=cufe, raw=data)
     return EstadoConsulta("desconocido", cufe=cufe, raw=data)
+
+
+def _digitos(valor) -> int | None:
+    """Entero desde un número que puede traer prefijo embebido (POS1024 → 1024). None si no hay dígitos."""
+    if valor is None:
+        return None
+    d = "".join(c for c in str(valor) if c.isdigit())
+    return int(d) if d else None
+
+
+def _parsear_emision_pos(data: dict) -> EmisionResultado:
+    """Parsea la respuesta del POS por autoincremento (§/auto-increment). PURO.
+
+    Reusa el desenlace de `_parsear_emision` (success + CUDE ≥40 con FAD06) y además extrae el NÚMERO y
+    PREFIJO que MATIAS asignó (`number`/`prefix`, o anidados en `document`/`data`) para persistirlos en la
+    fila `pos`. Si el shape difiere del de `/invoice`, este es el punto único a ajustar contra el sandbox."""
+    base = _parsear_emision(data)
+    cuerpo = data.get("document") or data.get("data") or data
+    numero = _digitos(cuerpo.get("number") or cuerpo.get("document_number") or cuerpo.get("consecutivo"))
+    prefijo = cuerpo.get("prefix") or cuerpo.get("prefijo")
+    return EmisionResultado(
+        base.ok, cufe=base.cufe, error_msg=base.error_msg, categoria=base.categoria, raw=base.raw,
+        numero=numero, prefijo=(str(prefijo) if prefijo else None),
+    )
 
 
 def _parsear_evento(data: dict) -> EventoResultado:
@@ -347,6 +375,20 @@ class MatiasClient:
         )
         resp.raise_for_status()
         return _parsear_estado(resp.json())
+
+    async def emitir_pos(self, payload: dict) -> EmisionResultado:
+        """POST `/auto-increment/pos-documents` (ADR 0012 D4): emite el POS y MATIAS asigna número/prefijo.
+
+        Bearer token; devuelve `EmisionResultado` con `numero`/`prefijo` asignados (NO persiste; eso es E3).
+        El endpoint de autoincremento elimina huecos y colisiones del consecutivo (los gestiona MATIAS)."""
+        tok = await self._token()
+        resp = await self._get_client().post(
+            "/auto-increment/pos-documents", content=_a_json(payload),
+            headers={"Authorization": f"Bearer {tok}", "Accept": "application/json",
+                     "Content-Type": "application/json"},
+            timeout=30,
+        )
+        return _parsear_emision_pos(resp.json())
 
     async def registrar_webhook(
         self, callback_url: str, *, events: list[str], registro_url: str | None = None

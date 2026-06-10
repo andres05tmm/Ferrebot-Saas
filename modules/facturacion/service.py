@@ -9,14 +9,24 @@ de composición); el servicio NUNCA consulta secretos con SQL del tenant. SQL so
 """
 from dataclasses import dataclass, field
 from datetime import datetime
+from decimal import Decimal
 from typing import Protocol
 
 from core.logging import get_logger
+from core.money import cuantizar
 from modules.facturacion import ubl
 from modules.facturacion.matias_client import MatiasClient, urls_documento
 from modules.facturacion.politica import Decision, decidir_emision
 from modules.facturacion.repository import DatosVentaFiscal, DocumentoFiscal, FacturaLeer
-from modules.facturacion.schemas import ClienteFiscal, DatosEmision, FacturaInput, ItemFactura
+from modules.facturacion.schemas import (
+    ClienteFiscal,
+    DatosEmision,
+    DatosEmisionPos,
+    FacturaInput,
+    ItemFactura,
+    PosInput,
+    PuntoVenta,
+)
 
 log = get_logger("facturacion.service")
 
@@ -39,6 +49,20 @@ class ConfigFiscal:
     notes: str
     city_id_default: str | None
     ambiente: str = "pruebas"
+    # POS electrónico (ADR 0012 D5): resolución/prefijo PROPIOS + datos fijos del punto de venta.
+    # Todos None mientras la empresa no tenga POS configurado; `pos_completa` valida antes de emitir.
+    resolution_pos: str | None = None
+    prefix_pos: str | None = None
+    pos_terminal: str | None = None
+    pos_address: str | None = None
+    pos_cashier_type: str | None = None
+
+    def pos_completa(self) -> bool:
+        """True si están los parámetros mínimos para emitir POS (resolución + datos del punto de venta).
+
+        El prefijo POS puede ir embebido en la resolución (MATIAS lo asigna por autoincremento), por eso
+        no es obligatorio aquí; sí lo son la resolución y los tres datos fijos del `point_of_sale`."""
+        return all((self.resolution_pos, self.pos_terminal, self.pos_address, self.pos_cashier_type))
 
 
 class FacturacionRepo(Protocol):
@@ -48,13 +72,18 @@ class FacturacionRepo(Protocol):
     async def siguiente_consecutivo(self) -> int: ...
     async def crear_pendiente(
         self, *, venta_id: int | None, tipo: str, prefijo: str | None,
-        consecutivo: int, idempotency_key: str,
+        consecutivo: int | None, idempotency_key: str,
     ) -> FacturaLeer: ...
     async def obtener(self, factura_id: int) -> FacturaLeer | None: ...
-    async def marcar_aceptada(self, factura_id: int, *, cufe: str, dian_respuesta: dict) -> FacturaLeer: ...
+    async def marcar_aceptada(
+        self, factura_id: int, *, cufe: str, dian_respuesta: dict,
+        prefijo: str | None = None, consecutivo: int | None = None,
+    ) -> FacturaLeer: ...
     async def marcar_rechazada(self, factura_id: int, *, error_msg: str, dian_respuesta: dict) -> FacturaLeer: ...
     async def marcar_error(self, factura_id: int, *, error_msg: str) -> FacturaLeer: ...
     async def datos_para_factura(self, venta_id: int) -> DatosVentaFiscal | None: ...
+    async def existe_documento_para_venta(self, venta_id: int) -> bool: ...
+    async def eliminar_pos_pendiente(self, venta_id: int) -> bool: ...
     async def documento_para_xml(self, factura_id: int) -> DocumentoFiscal | None: ...
     async def guardar_xml(
         self, factura_id: int, *, xml: str, xml_url: str | None, pdf_url: str | None
@@ -68,6 +97,18 @@ class FacturacionRepo(Protocol):
 
 
 @dataclass(frozen=True, slots=True)
+class _ResEmision:
+    """Desenlace de la llamada a MATIAS (FE o POS), normalizado para `_persistir`. Interno del servicio."""
+
+    categoria: str
+    error_msg: str | None = None
+    cufe: str | None = None
+    raw: dict | None = None
+    numero: int | None = None
+    prefijo: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class ResumenReconciliacion:
     """Resultado de una corrida de reconciliación sobre un tenant (D7.2)."""
 
@@ -76,6 +117,27 @@ class ResumenReconciliacion:
     rechazadas: int = 0
     sin_cambio: int = 0
     ids_aceptadas: list[int] = field(default_factory=list)
+
+
+def _cliente_e_items(
+    datos: DatosVentaFiscal, config: ConfigFiscal, *, city_id_matias: str | None,
+) -> tuple[ClienteFiscal, list[ItemFactura]]:
+    """PURO: mapea el cliente fiscal + las líneas de la venta (compartido por FE y POS)."""
+    c = datos.cliente
+    cliente = ClienteFiscal(
+        tipo_documento=c.tipo_id or "", numero=c.identificacion, dv=c.dv, nombre=c.nombre,
+        regimen_fiscal=c.regimen_fiscal, email=c.email, mobile=c.mobile, address=c.address,
+        municipio_dian=c.municipio_dian, city_id_matias=city_id_matias or config.city_id_default,
+        city_name=None,
+    )
+    items = [
+        ItemFactura(
+            producto_id=it.producto_id, descripcion=it.descripcion, cantidad=it.cantidad,
+            precio_unitario_con_iva=it.precio_unitario_con_iva, pct_iva=it.pct_iva, unidad=it.unidad,
+        )
+        for it in datos.items
+    ]
+    return cliente, items
 
 
 def _construir_factura_input(
@@ -93,21 +155,31 @@ def _construir_factura_input(
         means_payment_id=ubl._MEDIOS_PAGO.get(datos.metodo_pago.lower(), 10),
         payment_method_id=2 if datos.es_fiado else 1, notes=config.notes,
     )
-    c = datos.cliente
-    cliente = ClienteFiscal(
-        tipo_documento=c.tipo_id or "", numero=c.identificacion, dv=c.dv, nombre=c.nombre,
-        regimen_fiscal=c.regimen_fiscal, email=c.email, mobile=c.mobile, address=c.address,
-        municipio_dian=c.municipio_dian, city_id_matias=city_id_matias or config.city_id_default,
-        city_name=None,
-    )
-    items = [
-        ItemFactura(
-            producto_id=it.producto_id, descripcion=it.descripcion, cantidad=it.cantidad,
-            precio_unitario_con_iva=it.precio_unitario_con_iva, pct_iva=it.pct_iva, unidad=it.unidad,
-        )
-        for it in datos.items
-    ]
+    cliente, items = _cliente_e_items(datos, config, city_id_matias=city_id_matias)
     return FacturaInput(emision=emision, cliente=cliente, items=items)
+
+
+def _construir_pos_input(
+    datos: DatosVentaFiscal, config: ConfigFiscal, *, city_id_matias: str | None,
+) -> PosInput:
+    """PURO: mapea `DatosVentaFiscal` + `ConfigFiscal` al `PosInput` (ADR 0012 D5). SIN número/prefijo.
+
+    `point_of_sale`: cashier_name = vendedor de la venta; terminal/address/cashier_type = config POS;
+    sales_code = consecutivo INTERNO de la venta; sub_total = total CON IVA (suma de las líneas)."""
+    emision = DatosEmisionPos(
+        resolution_number=config.resolution_pos, fecha=datos.fecha.date(), hora=datos.fecha.time(),
+        means_payment_id=ubl._MEDIOS_PAGO.get(datos.metodo_pago.lower(), 10),
+        payment_method_id=2 if datos.es_fiado else 1, notes=config.notes,
+    )
+    cliente, items = _cliente_e_items(datos, config, city_id_matias=city_id_matias)
+    sub_total = cuantizar(sum((it.precio_unitario_con_iva * it.cantidad for it in datos.items), Decimal("0")))
+    punto_venta = PuntoVenta(
+        cashier_name=datos.vendedor_nombre or "CAJERO",
+        terminal_number=config.pos_terminal, address=config.pos_address,
+        cashier_type=config.pos_cashier_type, sales_code=str(datos.venta_consecutivo or ""),
+        sub_total=sub_total,
+    )
+    return PosInput(emision=emision, cliente=cliente, items=items, punto_venta=punto_venta)
 
 
 class FacturacionService:
@@ -124,24 +196,47 @@ class FacturacionService:
         self._config = config
 
     async def crear_pendiente(self, venta_id: int, idempotency_key: str) -> FacturaLeer:
-        """Reserva consecutivo y crea la fila `pendiente`; idempotente por `idempotency_key`."""
+        """Reserva consecutivo y crea la fila `pendiente` de FACTURA; idempotente por `idempotency_key`.
+
+        Exclusión POS↔FE (ADR 0012 D1): al crear una FE NUEVA se suprime un POS aún `pendiente` de la
+        misma venta (si el cliente pide factura, no se emite el POS). No toca un POS ya emitido."""
         existente = await self._repo.buscar_por_idempotency(idempotency_key)
         if existente is not None:
             return existente                          # idempotente: NO reserva consecutivo
+        await self._repo.eliminar_pos_pendiente(venta_id)   # D1: la factura suprime el POS sin emitir
         consecutivo = await self._repo.siguiente_consecutivo()
         return await self._repo.crear_pendiente(
             venta_id=venta_id, tipo="factura", prefijo=self._config.prefix,
             consecutivo=consecutivo, idempotency_key=idempotency_key,
         )
 
+    async def crear_pendiente_pos(self, venta_id: int) -> tuple[FacturaLeer | None, bool]:
+        """Crea el pendiente tipo `pos` que cierra la venta de mostrador (ADR 0012 D2). Idempotente y excluyente.
+
+        Devuelve `(factura, creada)`: el hook encola la emisión SOLO si `creada` (evita una segunda
+        emisión —y un segundo documento DIAN— al reintentar la venta).
+        - Idempotencia: clave fija `pos:{venta_id}` → `(existente, False)`.
+        - Exclusión POS↔FE (D1): si la venta YA tiene un documento → `(None, False)`, no crea otro.
+        - Número/prefijo NULL: los asigna MATIAS por autoincremento (D4), no se reserva secuencia local."""
+        key = f"pos:{venta_id}"
+        existente = await self._repo.buscar_por_idempotency(key)
+        if existente is not None:
+            return existente, False
+        if await self._repo.existe_documento_para_venta(venta_id):
+            return None, False                        # la venta ya tiene FE/POS: no se emite otro (D1)
+        f = await self._repo.crear_pendiente(
+            venta_id=venta_id, tipo="pos", prefijo=None, consecutivo=None, idempotency_key=key,
+        )
+        return f, True
+
     async def emitir(self, factura_id: int) -> Decision:
-        """Emite la factura, persiste el estado que dicta la política (E4a) y devuelve la `Decision`.
+        """Emite el documento (FE o POS según `tipo`), persiste el estado de la política y devuelve la `Decision`.
 
         La fuente única del estado es `decidir_emision`; el `try` envuelve SOLO la llamada a MATIAS.
         """
         f = await self._repo.obtener(factura_id)
         if f is None:
-            log.warning("emitir_factura_inexistente", factura_id=factura_id)
+            log.warning("emitir_documento_inexistente", factura_id=factura_id)
             return Decision("error", False, False)
         if f.estado == "aceptada":
             return Decision("aceptada", False, False)   # idempotente: sin tocar MATIAS
@@ -149,31 +244,51 @@ class FacturacionService:
         if datos is None:
             await self._repo.marcar_error(factura_id, error_msg="venta no encontrada")
             return decidir_emision("error", intentos=f.intentos + 1, max_intentos=MAX_INTENTOS)
-        city = await self._matias.city_id(datos.cliente.municipio_dian)
-        fi = _construir_factura_input(datos, self._config, consecutivo=f.consecutivo, city_id_matias=city)
-        payload = ubl.armar_payload_factura(fi)
-        cufe = error_msg = raw = None
-        try:
-            res = await self._matias.emitir_factura(payload)
-            categoria, error_msg, cufe, raw = res.categoria, res.error_msg, res.cufe, res.raw
-        except Exception:  # noqa: BLE001 — transporte/timeout: la política decide reintento, no propaga
-            log.warning("emitir_fallo_transporte", exc_info=True)
-            categoria, error_msg = "error", "fallo de transporte"
-        decision = decidir_emision(categoria, intentos=f.intentos + 1, max_intentos=MAX_INTENTOS)
-        await self._persistir(decision, factura_id, cufe=cufe, error_msg=error_msg, raw=raw)
+
+        if f.tipo == "pos" and not self._config.pos_completa():
+            # Config POS incompleta: error CLARO, nunca un payload a medias (ADR 0012 D5).
+            await self._repo.marcar_error(factura_id, error_msg="configuración POS incompleta")
+            return decidir_emision("error", intentos=f.intentos + 1, max_intentos=MAX_INTENTOS)
+
+        res = await self._llamar_matias(f, datos)
+        decision = decidir_emision(res.categoria, intentos=f.intentos + 1, max_intentos=MAX_INTENTOS)
+        await self._persistir(
+            decision, factura_id, cufe=res.cufe, error_msg=res.error_msg, raw=res.raw,
+            numero=res.numero, prefijo=res.prefijo,
+        )
         return decision
+
+    async def _llamar_matias(self, f: FacturaLeer, datos: DatosVentaFiscal) -> "_ResEmision":
+        """Arma el payload (FE o POS) y llama a MATIAS; envuelve SOLO la red. No persiste."""
+        city = await self._matias.city_id(datos.cliente.municipio_dian)
+        try:
+            if f.tipo == "pos":
+                payload = ubl.armar_payload_pos(_construir_pos_input(datos, self._config, city_id_matias=city))
+                res = await self._matias.emitir_pos(payload)
+            else:
+                fi = _construir_factura_input(datos, self._config, consecutivo=f.consecutivo, city_id_matias=city)
+                res = await self._matias.emitir_factura(ubl.armar_payload_factura(fi))
+        except Exception:  # noqa: BLE001 — transporte/timeout: la política decide reintento, no propaga
+            log.warning("emitir_fallo_transporte", factura_id=f.id, exc_info=True)
+            return _ResEmision("error", error_msg="fallo de transporte")
+        return _ResEmision(res.categoria, error_msg=res.error_msg, cufe=res.cufe, raw=res.raw,
+                           numero=res.numero, prefijo=res.prefijo)
 
     async def _persistir(
         self, decision: Decision, factura_id: int, *,
         cufe: str | None, error_msg: str | None, raw: dict | None,
+        numero: int | None = None, prefijo: str | None = None,
     ) -> None:
         """Persiste el desenlace según `decision.estado` (la fuente del estado es `decidir_emision`).
 
         `raw` = respuesta MATIAS COMPLETA (histórico fiscal D7.3): se guarda íntegra en `dian_respuesta`.
-        En rechazo se antepone la clave `rechazo` (de la que `_motivo` saca el texto legible) sin perder
-        la respuesta cruda."""
+        `numero`/`prefijo` (POS, D4) se persisten al aceptar. En rechazo se antepone la clave `rechazo`
+        (de la que `_motivo` saca el texto legible) sin perder la respuesta cruda."""
         if decision.estado == "aceptada":
-            await self._repo.marcar_aceptada(factura_id, cufe=cufe, dian_respuesta=raw or {"cufe": cufe})
+            await self._repo.marcar_aceptada(
+                factura_id, cufe=cufe, dian_respuesta=raw or {"cufe": cufe},
+                consecutivo=numero, prefijo=prefijo,   # POS: número/prefijo asignados por MATIAS (D4)
+            )
         elif decision.estado == "rechazada":
             dian = {"rechazo": error_msg, **(raw or {})}
             await self._repo.marcar_rechazada(factura_id, error_msg=error_msg or "rechazo MATIAS", dian_respuesta=dian)

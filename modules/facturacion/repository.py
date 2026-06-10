@@ -110,13 +110,18 @@ class ItemVentaDatos:
 
 @dataclass(frozen=True, slots=True)
 class DatosVentaFiscal:
-    """Todo lo que el servicio necesita de la venta para armar el `FacturaInput` de E1."""
+    """Todo lo que el servicio necesita de la venta para armar el `FacturaInput`/`PosInput`.
+
+    `vendedor_nombre` y `venta_consecutivo` solo los usa el POS (cashier_name + sales_code del
+    `point_of_sale`); para la FE son irrelevantes."""
 
     cliente: ClienteFiscalDatos
     items: list[ItemVentaDatos]
     metodo_pago: str
     es_fiado: bool
     fecha: datetime
+    vendedor_nombre: str = ""
+    venta_consecutivo: int | None = None
 
 
 class SqlFacturacionRepository:
@@ -147,9 +152,12 @@ class SqlFacturacionRepository:
 
     async def crear_pendiente(
         self, *, venta_id: int | None, tipo: str, prefijo: str | None,
-        consecutivo: int, idempotency_key: str,
+        consecutivo: int | None, idempotency_key: str,
     ) -> FacturaLeer:
-        """INSERT estado=pendiente; flush asigna id (y dispara la UNIQUE); publica `factura_pendiente`."""
+        """INSERT estado=pendiente; flush asigna id (y dispara la UNIQUE); publica `factura_pendiente`.
+
+        `consecutivo`/`prefijo` pueden ir NULL para el POS (ADR 0012 D4): MATIAS los asigna por
+        autoincremento y `marcar_aceptada` los persiste desde la respuesta."""
         orm = FacturaElectronica(
             venta_id=venta_id, tipo=tipo, prefijo=prefijo, consecutivo=consecutivo,
             idempotency_key=idempotency_key, estado="pendiente",
@@ -205,10 +213,20 @@ class SqlFacturacionRepository:
             motivo=_motivo(orm.dian_respuesta),
         )
 
-    async def marcar_aceptada(self, factura_id: int, *, cufe: str, dian_respuesta: dict) -> FacturaLeer:
-        """estado=aceptada, guarda cufe/`emitido_en`/`dian_respuesta`; publica `factura_aceptada`."""
+    async def marcar_aceptada(
+        self, factura_id: int, *, cufe: str, dian_respuesta: dict,
+        prefijo: str | None = None, consecutivo: int | None = None,
+    ) -> FacturaLeer:
+        """estado=aceptada, guarda cufe/`emitido_en`/`dian_respuesta`; publica `factura_aceptada`.
+
+        `prefijo`/`consecutivo` (POS, ADR 0012 D4): cuando llegan asignados por MATIAS se persisten en la
+        fila que nació con esos campos NULL; si son None se respeta lo que ya tuviera (FE)."""
         orm = await self._cargar(factura_id)
         orm.estado, orm.cufe, orm.emitido_en, orm.dian_respuesta = "aceptada", cufe, now_co(), dian_respuesta
+        if prefijo is not None:
+            orm.prefijo = prefijo
+        if consecutivo is not None:
+            orm.consecutivo = consecutivo
         await self._s.flush()
         await publish(self._s, "factura_aceptada", {"id": orm.id, "cufe": cufe})
         return FacturaLeer.model_validate(orm)
@@ -233,6 +251,27 @@ class SqlFacturacionRepository:
         await self._s.flush()
         await publish(self._s, "factura_error", {"id": orm.id, "error": error_msg})
         return FacturaLeer.model_validate(orm)
+
+    async def existe_documento_para_venta(self, venta_id: int) -> bool:
+        """True si la venta ya tiene un documento fiscal (FE o POS): exclusión POS↔FE (ADR 0012 D1)."""
+        return (
+            await self._s.execute(
+                select(FacturaElectronica.id).where(FacturaElectronica.venta_id == venta_id).limit(1)
+            )
+        ).scalar_one_or_none() is not None
+
+    async def eliminar_pos_pendiente(self, venta_id: int) -> bool:
+        """Elimina un POS aún `pendiente` de la venta (lo suprime cuando el cliente pide factura, D1).
+
+        Solo borra `tipo='pos'` y `estado='pendiente'`: como el número POS lo asigna MATIAS por
+        autoincremento (D4), un pendiente sin emitir no quemó consecutivo → borrarlo es limpio. NO toca
+        un POS ya aceptado (ahí la corrección sería una nota). Devuelve si borró algo."""
+        res = await self._s.execute(
+            text("DELETE FROM facturas_electronicas WHERE venta_id=:v AND tipo='pos' AND estado='pendiente'"),
+            {"v": venta_id},
+        )
+        await self._s.flush()
+        return res.rowcount > 0
 
     async def pendientes_para_reconciliar(
         self, *, antiguedad: datetime, limite: int
@@ -331,7 +370,10 @@ class SqlFacturacionRepository:
         """Lee venta + ventas_detalle (LEFT JOIN productos) + clientes (LEFT JOIN); mapea a DTOs, o None."""
         venta = (
             await self._s.execute(
-                text("SELECT metodo_pago, fecha, cliente_id FROM ventas WHERE id=:v"), {"v": venta_id}
+                text("SELECT v.metodo_pago, v.fecha, v.cliente_id, v.consecutivo, "
+                     "COALESCE(u.nombre, '') AS vendedor_nombre "
+                     "FROM ventas v LEFT JOIN usuarios u ON u.id = v.vendedor_id WHERE v.id=:v"),
+                {"v": venta_id},
             )
         ).one_or_none()
         if venta is None:
@@ -341,6 +383,7 @@ class SqlFacturacionRepository:
         return DatosVentaFiscal(
             cliente=cliente, items=items, metodo_pago=venta.metodo_pago,
             es_fiado=venta.metodo_pago.lower() == "fiado", fecha=venta.fecha,
+            vendedor_nombre=venta.vendedor_nombre, venta_consecutivo=venta.consecutivo,
         )
 
     async def _cliente_fiscal(self, cliente_id: int | None) -> ClienteFiscalDatos:

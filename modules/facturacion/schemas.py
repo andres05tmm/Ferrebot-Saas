@@ -71,3 +71,41 @@ class FacturaInput:
     emision: DatosEmision
     cliente: ClienteFiscal
     items: list[ItemFactura]
+
+
+@dataclass(frozen=True, slots=True)
+class DatosEmisionPos:
+    """Cabecera de emisión del POS electrónico (ADR 0012). SIN `prefix`/`document_number`: MATIAS los
+    asigna por autoincremento (D4); solo viaja la `resolution_number` POS + fecha/hora + forma de pago."""
+
+    resolution_number: str
+    fecha: date
+    hora: time
+    means_payment_id: int
+    payment_method_id: int
+    notes: str
+
+
+@dataclass(frozen=True, slots=True)
+class PuntoVenta:
+    """Objeto `point_of_sale` del documento POS (todos obligatorios, ADR 0012 D5).
+
+    `cashier_name` = vendedor de la venta; `terminal_number`/`address`/`cashier_type` = config de la
+    empresa; `sales_code` = consecutivo interno de la venta; `sub_total` = total CON IVA calculado."""
+
+    cashier_name: str
+    terminal_number: str
+    address: str
+    cashier_type: str
+    sales_code: str
+    sub_total: Decimal
+
+
+@dataclass(frozen=True, slots=True)
+class PosInput:
+    """Todo lo que el núcleo UBL necesita para armar el payload del documento equivalente POS."""
+
+    emision: DatosEmisionPos
+    cliente: ClienteFiscal
+    items: list[ItemFactura]
+    punto_venta: PuntoVenta

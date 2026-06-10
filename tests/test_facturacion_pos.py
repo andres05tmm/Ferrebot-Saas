@@ -31,6 +31,7 @@ def _config(*, pos=True) -> ConfigFiscal:
     extra = dict(
         resolution_pos="POS-RES-1", prefix_pos="POS", pos_terminal="CAJA-1",
         pos_address="CRA 1 # 2-3", pos_cashier_type="2",
+        pos_software_name="FerreBot", pos_company_name="FerreBot SaaS", pos_owner_name="Andrés",
     ) if pos else {}
     return ConfigFiscal(resolution_number="r", prefix="FPR", notes="PR", city_id_default="149", **extra)
 
@@ -68,6 +69,35 @@ def test_construir_pos_input_es_posinput():
     pos = _construir_pos_input(_DATOS, _config(), city_id_matias=None)
     assert isinstance(pos, PosInput) and isinstance(pos.punto_venta, PuntoVenta)
     assert isinstance(pos.emision, DatosEmisionPos)
+
+
+def test_armar_payload_pos_incluye_software_manufacturer():
+    """El endpoint POS por autoincremento exige el bloque raíz `software_manufacturer` (3 campos)."""
+    pos = _construir_pos_input(_DATOS, _config(), city_id_matias="149")
+    payload = ubl.armar_payload_pos(pos)
+    sw = payload["software_manufacturer"]
+    assert set(sw) == {"owner_name", "company_name", "software_name"}
+    assert sw["software_name"] == "FerreBot"
+    assert sw["company_name"] == "FerreBot SaaS"
+    assert sw["owner_name"] == "Andrés"
+
+
+def test_armar_payload_pos_free_of_charge_por_linea():
+    """Cada línea del POS lleva `free_of_charge_indicator` (False): mostrador no regala ítems."""
+    pos = _construir_pos_input(_DATOS, _config(), city_id_matias="149")
+    payload = ubl.armar_payload_pos(pos)
+    assert payload["lines"]                                      # no vacío
+    assert all(ln["free_of_charge_indicator"] is False for ln in payload["lines"])
+
+
+def test_pos_completa_false_si_falta_software_manufacturer():
+    """Sin alguno de los tres campos de `software_manufacturer`, no se puede emitir POS (evita 422)."""
+    base = _config()
+    from dataclasses import replace
+    assert base.pos_completa() is True
+    assert replace(base, pos_software_name=None).pos_completa() is False
+    assert replace(base, pos_company_name=None).pos_completa() is False
+    assert replace(base, pos_owner_name=None).pos_completa() is False
 
 
 # --- parser del autoincremento -----------------------------------------------

@@ -102,6 +102,19 @@ class PuntoVenta:
 
 
 @dataclass(frozen=True, slots=True)
+class SoftwareFabricante:
+    """Bloque `software_manufacturer` del documento POS (exigido por `/auto-increment/pos-documents`).
+
+    Identifica al fabricante del software emisor ante MATIAS/DIAN: `owner_name` (titular), `company_name`
+    (razón social) y `software_name` (nombre del software). Datos NO secretos de la empresa (config).
+    La FE NO lo lleva (solo el POS por autoincremento)."""
+
+    owner_name: str
+    company_name: str
+    software_name: str
+
+
+@dataclass(frozen=True, slots=True)
 class PosInput:
     """Todo lo que el núcleo UBL necesita para armar el payload del documento equivalente POS."""
 
@@ -109,3 +122,4 @@ class PosInput:
     cliente: ClienteFiscal
     items: list[ItemFactura]
     punto_venta: PuntoVenta
+    software: SoftwareFabricante

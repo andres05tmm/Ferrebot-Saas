@@ -282,8 +282,13 @@ def armar_payload_pos(p: PosInput) -> dict:
     pre-check FAU04 y mismos totales que la FE."""
     e = p.emision
     pv = p.punto_venta
+    sw = p.software
     customer = armar_customer(p.cliente)
     lineas, acc = armar_lineas(p.items)
+    # El endpoint POS exige `free_of_charge_indicator` por línea (la FE no): se añade SOLO aquí, sin
+    # tocar `armar_lineas` (compartido con la FE, en producción). Mostrador nunca regala ítems → False.
+    for ln in lineas:
+        ln["free_of_charge_indicator"] = False
     tax_totals = armar_tax_totals(acc)
     legal_monetary_totals = armar_legal_monetary_totals(acc)
     validar_bases(lineas, tax_totals)
@@ -298,6 +303,12 @@ def armar_payload_pos(p: PosInput) -> dict:
         "notes": e.notes,
         "graphic_representation": 1,
         "send_email": 0 if _correo_es_placeholder(customer["email"]) else 1,
+        # `software_manufacturer` lo exige el endpoint POS por autoincremento (la FE no lo lleva).
+        "software_manufacturer": {
+            "owner_name": sw.owner_name,
+            "company_name": sw.company_name,
+            "software_name": sw.software_name,
+        },
         "customer": customer,
         "lines": lineas,
         "tax_totals": tax_totals,

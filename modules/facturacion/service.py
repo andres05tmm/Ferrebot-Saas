@@ -26,6 +26,7 @@ from modules.facturacion.schemas import (
     ItemFactura,
     PosInput,
     PuntoVenta,
+    SoftwareFabricante,
 )
 
 log = get_logger("facturacion.service")
@@ -56,13 +57,21 @@ class ConfigFiscal:
     pos_terminal: str | None = None
     pos_address: str | None = None
     pos_cashier_type: str | None = None
+    # Identidad del software emisor (bloque `software_manufacturer`, exigido por el endpoint POS).
+    pos_software_name: str | None = None
+    pos_company_name: str | None = None
+    pos_owner_name: str | None = None
 
     def pos_completa(self) -> bool:
         """True si están los parámetros mínimos para emitir POS (resolución + datos del punto de venta).
 
         El prefijo POS puede ir embebido en la resolución (MATIAS lo asigna por autoincremento), por eso
-        no es obligatorio aquí; sí lo son la resolución y los tres datos fijos del `point_of_sale`."""
-        return all((self.resolution_pos, self.pos_terminal, self.pos_address, self.pos_cashier_type))
+        no es obligatorio aquí; sí lo son la resolución, los tres datos fijos del `point_of_sale` y los
+        tres del `software_manufacturer` (sin ellos el endpoint POS responde 422)."""
+        return all((
+            self.resolution_pos, self.pos_terminal, self.pos_address, self.pos_cashier_type,
+            self.pos_software_name, self.pos_company_name, self.pos_owner_name,
+        ))
 
 
 class FacturacionRepo(Protocol):
@@ -179,7 +188,13 @@ def _construir_pos_input(
         cashier_type=config.pos_cashier_type, sales_code=str(datos.venta_consecutivo or ""),
         sub_total=sub_total,
     )
-    return PosInput(emision=emision, cliente=cliente, items=items, punto_venta=punto_venta)
+    software = SoftwareFabricante(
+        owner_name=config.pos_owner_name, company_name=config.pos_company_name,
+        software_name=config.pos_software_name,
+    )
+    return PosInput(
+        emision=emision, cliente=cliente, items=items, punto_venta=punto_venta, software=software,
+    )
 
 
 class FacturacionService:

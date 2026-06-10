@@ -73,6 +73,10 @@ async def cargar_config_matias(
         pos_terminal=config.get("pos_terminal"),
         pos_address=config.get("pos_address"),
         pos_cashier_type=config.get("pos_cashier_type"),
+        # Bloque `software_manufacturer` (el endpoint POS lo exige; ausentes → None → `pos_completa` False).
+        pos_software_name=config.get("pos_software_name"),
+        pos_company_name=config.get("pos_company_name"),
+        pos_owner_name=config.get("pos_owner_name"),
     )
     return cred, fiscal
 

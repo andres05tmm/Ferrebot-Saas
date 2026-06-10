@@ -2,6 +2,8 @@
 
 El `set_config` real (UPSERT en control DB) reusa el molde probado de `set_feature`; aquí se cubre la
 guarda anti-secreto. El registro del webhook se prueba con `httpx.MockTransport` (cero red)."""
+import json
+
 import httpx
 import pytest
 
@@ -43,14 +45,16 @@ def test_parsear_secret_webhook_variantes():
 
 # --- registrar_webhook del cliente (MockTransport) ---------------------------
 
-async def test_registrar_webhook_devuelve_secret():
+async def test_registrar_webhook_envia_name_y_devuelve_secret():
     paths: list[str] = []
+    cuerpos: list[dict] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
         paths.append(request.url.path)
         if request.url.path.endswith("/auth/login"):
             return httpx.Response(200, json={"token": "TKN", "expires_in": 3600})
         if request.url.path.endswith("/ubl2.1/webhooks"):
+            cuerpos.append(json.loads(request.content))
             return httpx.Response(200, json={"secret": "wh-secret-xyz"})
         return httpx.Response(404, json={})
 
@@ -58,8 +62,35 @@ async def test_registrar_webhook_devuelve_secret():
     cli = MatiasClient(_CRED, client=http)
     secret = await cli.registrar_webhook(
         "https://app/webhooks/matias/tok",
+        name="FerreBot punto-rojo",
         events=["document.accepted"],
-        registro_url="https://matias.test/ubl2.1/webhooks",
+        registro_url="https://matias.test/api/ubl2.1/webhooks",
     )
     assert secret == "wh-secret-xyz"
     assert any(p.endswith("/ubl2.1/webhooks") for p in paths)
+    assert cuerpos and cuerpos[0]["name"]                       # `name` presente y NO vacío (MATIAS lo exige)
+    assert cuerpos[0]["name"] == "FerreBot punto-rojo"
+    assert cuerpos[0]["url"] == "https://app/webhooks/matias/tok"
+
+
+async def test_registrar_webhook_422_propaga_cuerpo():
+    """Un 422 de MATIAS (p. ej. `name` obligatorio) propaga el CUERPO legible, no un raise pelado."""
+    cuerpo = {"message": "El campo name es obligatorio.",
+              "errors": {"name": ["El campo name es obligatorio."]}}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/auth/login"):
+            return httpx.Response(200, json={"token": "TKN", "expires_in": 3600})
+        return httpx.Response(422, json=cuerpo)
+
+    http = httpx.AsyncClient(transport=httpx.MockTransport(handler), base_url=_CRED.base_url)
+    cli = MatiasClient(_CRED, client=http)
+    with pytest.raises(httpx.HTTPStatusError) as exc:
+        await cli.registrar_webhook(
+            "https://app/webhooks/matias/tok",
+            name="FerreBot punto-rojo",
+            events=["document.accepted"],
+            registro_url="https://matias.test/api/ubl2.1/webhooks",
+        )
+    assert "El campo name es obligatorio." in str(exc.value)   # cuerpo legible en el error
+    assert "422" in str(exc.value)

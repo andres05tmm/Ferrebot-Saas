@@ -18,6 +18,17 @@ tools/onboarding/*.json
 !tools/onboarding/empresa.example.json
 tools/onboarding/*.yaml
 !tools/onboarding/*.example.yaml
+# Insumos dorados del eval (ADR 0011 §D7): fotos/Excel/CSV REALES del catálogo + reportes de corrida.
+# Llevan datos reales del cliente (precios) — nunca commitear; viven junto a los manifiestos.
+tools/onboarding/*.csv
+tools/onboarding/*.xlsx
+tools/onboarding/*.jpg
+tools/onboarding/*.jpeg
+tools/onboarding/*.png
+tools/onboarding/*.webp
+tools/onboarding/*.pdf
+eval-*.md
+eval-*.json
 # Respaldos de prod (los .dump llevan datos reales + secretos cifrados) — nunca commitear.
 backups/
 # Varios

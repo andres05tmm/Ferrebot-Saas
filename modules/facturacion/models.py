@@ -18,7 +18,9 @@ fe_tipo_enum = PgEnum(
     name="fe_tipo", create_type=False,
 )
 fe_estado_enum = PgEnum(
-    "pendiente", "enviada", "aceptada", "rechazada", "error",
+    # `enviada` queda RESERVADO (la emisión es síncrona: pendiente → aceptada|rechazada|error); previsto
+    # para un futuro modelo de aceptación confirmada por webhook (ver docs/facturacion-dian.md).
+    "pendiente", "enviada", "aceptada", "rechazada", "error", "anulada",
     name="fe_estado", create_type=False,
 )
 

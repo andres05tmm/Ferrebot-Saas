@@ -42,11 +42,13 @@ class Settings(BaseSettings):
     # Login email/contraseña (ADR 0009): lockout por email tras N fallos durante una ventana (Redis).
     login_max_intentos: int = 5
     login_lockout_segundos: int = 300
-    # Tokens de un solo uso para set-password / reset (Redis, hash del token). TTL CORTO (1 h): hoy el
-    # token se LOGUEA para entrega manual (modules/auth/password_reset.py, tools/provision_tenant.py), así
-    # que un enlace de larga vida sería un riesgo. FOLLOW-UP (cuando exista envío de email real):
-    #   1) rate-limit en POST /auth/reset/solicitar (evitar spam de tokens por email/IP, como el lockout de login);
-    #   2) quitar el log del token en claro (entregarlo solo por email).
+    # Rate-limit de POST /auth/reset/solicitar (Redis, INCR+EXPIRE por IP+email): anti-abuso/anti-spam de
+    # tokens. Ventana corta; el contador sube SIEMPRE (exista o no el email) → no enumera. Ver login lockout.
+    reset_solicitar_max_intentos: int = 3
+    reset_solicitar_ventana_segundos: int = 900
+    # Tokens de un solo uso para set-password / reset (Redis, hash del token). TTL CORTO (1 h): el enlace
+    # de larga vida sería un riesgo. El token YA NO se loguea (solo viaja al usuario); el envío de email
+    # real es un TODO aparte (hasta entonces el provisionador entrega el token por su propio canal).
     auth_token_ttl_segundos: int = 3600
     # Estado de los jobs de provisioning del panel (Redis, ADR 0010 §B2): cuánto vive job_id→estado.
     provision_estado_ttl_segundos: int = 86400

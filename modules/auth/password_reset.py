@@ -4,11 +4,13 @@ Las identidades se crean SIN contraseña (`password_hash` NULL); el usuario la e
 con token. Tokens de UN SOLO USO con expiración, guardados en Redis bajo `sha256(token)` (NUNCA el token
 en claro: la clave es el hash, el valor es el `identidad_id`, el TTL es la expiración). Consumir es
 atómico (GETDEL) → reuso imposible. `set-password` y `reset/confirmar` son la MISMA operación
-(token → nueva contraseña); `reset/solicitar` genera el token y lo loguea para entrega manual (el envío
-de email real es un TODO aparte). SIN enumeración en `reset/solicitar`: 200 genérico exista o no el email.
+(token → nueva contraseña); `reset/solicitar` genera el token. El token NUNCA se loguea (es un secreto:
+solo viaja al usuario); el envío de email real es un TODO aparte. SIN enumeración en `reset/solicitar`:
+200 genérico exista o no el email, y rate-limit por IP+email (Redis INCR+EXPIRE) que sube el contador
+ANTES de tocar el directorio → el 429 tampoco revela si el email existe.
 
 Rutas eximidas del TenantMiddleware (`_AUTH_SIN_TENANT`): el flujo ocurre sobre el link compartido, sin
-empresa resuelta. Token store y repo (control DB) se inyectan → testeable sin red.
+empresa resuelta. Token store, repo (control DB) y rate-limiter se inyectan → testeable sin red.
 """
 from __future__ import annotations
 
@@ -16,7 +18,7 @@ import hashlib
 import secrets
 from typing import Any, Protocol
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field
 
 from core.auth.passwords import hash_password
@@ -59,6 +61,12 @@ class RepoIdentidades(Protocol):
     async def set_password_hash(self, identidad_id: int, password_hash: str) -> None: ...
 
 
+class RateLimiter(Protocol):
+    """Rate-limit por clave (IP+email). `permitido` cuenta el intento y dice si sigue bajo el tope."""
+
+    async def permitido(self, clave: str) -> bool: ...
+
+
 class _RedisTokenStore:
     """Guarda `sha256(token) → identidad_id` con TTL; `consumir` = GETDEL (un solo uso)."""
 
@@ -73,6 +81,31 @@ class _RedisTokenStore:
     async def consumir(self, token: str) -> int | None:
         valor = await self._c.getdel(clave_pwtoken(token))   # atómico: leer + borrar (single-use)
         return int(valor) if valor is not None else None
+
+
+class _RedisRateLimiter:
+    """Contador por clave con TTL = ventana (INCR+EXPIRE); bloquea cuando el contador pasa el tope.
+
+    Espeja el lockout de login (`modules/auth/login_email._RedisLockout`): el primer intento de la
+    ventana fija el EXPIRE; los siguientes solo incrementan. `permitido` devuelve False cuando el
+    contador supera `max_intentos` → el handler responde 429.
+    """
+
+    def __init__(self, client: Any, max_intentos: int, ventana_s: int) -> None:
+        self._c = client
+        self._max = max_intentos
+        self._ventana = ventana_s
+
+    @staticmethod
+    def _key(clave: str) -> str:
+        return f"auth:reset:rl:{clave}"
+
+    async def permitido(self, clave: str) -> bool:
+        key = self._key(clave)
+        n = await self._c.incr(key)
+        if n == 1:                       # primer intento de la ventana → fija el TTL de expiración
+            await self._c.expire(key, self._ventana)
+        return n <= self._max
 
 
 class _RepoControl:
@@ -101,6 +134,23 @@ def get_token_store() -> TokenStore:
 
 def get_repo_identidades() -> RepoIdentidades:
     return _RepoControl()
+
+
+def get_rate_limiter() -> RateLimiter:
+    s = get_settings()
+    return _RedisRateLimiter(
+        _cliente_redis(s.redis_url), s.reset_solicitar_max_intentos, s.reset_solicitar_ventana_segundos
+    )
+
+
+def _client_ip(request: Request) -> str:
+    """IP del cliente para el rate-limit. Tras un proxy (Railway) la real va en X-Forwarded-For (primer
+    salto); si no hay header, cae al peer de la conexión. Solo identifica una clave de rate-limit, no
+    autoriza nada, así que un XFF manipulado solo afecta el cubo del propio atacante."""
+    xff = request.headers.get("x-forwarded-for")
+    if xff:
+        return xff.split(",")[0].strip()
+    return request.client.host if request.client else "desconocida"
 
 
 # --- Schemas ----------------------------------------------------------------
@@ -150,14 +200,24 @@ async def reset_confirmar(
 @router.post("/auth/reset/solicitar")
 async def reset_solicitar(
     datos: SolicitarReset,
+    request: Request,
     store: TokenStore = Depends(get_token_store),
     repo: RepoIdentidades = Depends(get_repo_identidades),
+    limiter: RateLimiter = Depends(get_rate_limiter),
 ) -> dict:
-    """Solicita un reset. SIN enumeración: 200 genérico exista o no el email. Si existe, genera el token
-    y lo LOGUEA para entrega manual (interim; el envío de email real es un TODO aparte)."""
+    """Solicita un reset. Anti-abuso/anti-enumeración:
+    - Rate-limit por IP+email (Redis): el contador sube ANTES de tocar el directorio, así el 429 no
+      depende de si el email existe (no enumera). Demasiados intentos → 429 hasta que expire la ventana.
+    - SIN enumeración: 200 genérico exista o no el email. Si existe, genera el token de un solo uso.
+    El token NUNCA se loguea (es un secreto); el envío por email real es un TODO aparte."""
+    email = datos.email.strip().lower()
+    ip = _client_ip(request)
+    if not await limiter.permitido(f"{ip}:{_sha(email)}"):   # clave IP+email (email hasheado, no en claro)
+        raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, "Demasiadas solicitudes. Intenta más tarde.")
+
     identidad = await repo.buscar_por_email(datos.email)
     if identidad is not None:
         token = await store.crear(identidad.id, get_settings().auth_token_ttl_segundos)
-        # INTERIM: token al log para que el operador lo entregue a mano. TODO: enviar por email real.
-        log.info("reset_token_generado", identidad_id=identidad.id, token=token)
+        # Solo una referencia NO reversible (prefijo del hash) para trazar la emisión; jamás el token.
+        log.info("reset_token_generado", identidad_id=identidad.id, token_ref=_sha(token)[:12])
     return {"detail": "Si el email existe, te enviaremos un enlace para restablecer la contraseña."}

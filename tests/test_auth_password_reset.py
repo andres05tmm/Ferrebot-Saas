@@ -1,9 +1,10 @@
 """Set-password + reset por token (modules/auth/password_reset, ADR 0009 A1.3). Sin red ni BD.
 
-App mínima + ASGITransport + dependency_overrides: token store y repo se inyectan como fakes. Cubre:
-set-password con token válido fija una clave verificable; token usado/expirado → 400; reset/solicitar
-genera token (email existe) y permite cambiar la clave; reset de email inexistente → 200 genérico SIN
-enumeración; política mínima de contraseña (422) sin consumir el token.
+App mínima + ASGITransport + dependency_overrides: token store, repo y rate-limiter se inyectan como
+fakes. Cubre: set-password con token válido fija una clave verificable; token usado/expirado → 400;
+reset/solicitar genera token (email existe) y permite cambiar la clave; reset de email inexistente →
+200 genérico SIN enumeración; política mínima de contraseña (422) sin consumir el token; rate-limit por
+IP+email (429 tras N intentos, independiente por email y por IP); el token NUNCA aparece en los logs.
 """
 from __future__ import annotations
 
@@ -12,10 +13,12 @@ import secrets
 import httpx
 from fastapi import FastAPI
 from httpx import ASGITransport
+from structlog.testing import capture_logs
 
 from core.auth.passwords import verify_password
 from core.tenancy.identidades_repo import Identidad
 from modules.auth.password_reset import (
+    get_rate_limiter,
     get_repo_identidades,
     get_token_store,
     router,
@@ -59,11 +62,24 @@ class _FakeRepo:
         self.hashes[identidad_id] = password_hash
 
 
-def _app(store: _FakeTokenStore, repo: _FakeRepo) -> FastAPI:
+class _FakeRateLimiter:
+    """Cuenta por clave (IP+email) y bloquea pasados `max` intentos. Por defecto permisivo (no estorba)."""
+
+    def __init__(self, max_intentos: int = 100) -> None:
+        self._max = max_intentos
+        self.counts: dict[str, int] = {}
+
+    async def permitido(self, clave: str) -> bool:
+        self.counts[clave] = self.counts.get(clave, 0) + 1   # sube SIEMPRE: no depende de si el email existe
+        return self.counts[clave] <= self._max
+
+
+def _app(store: _FakeTokenStore, repo: _FakeRepo, limiter: _FakeRateLimiter | None = None) -> FastAPI:
     app = FastAPI()
     app.include_router(router, prefix="/api/v1")
     app.dependency_overrides[get_token_store] = lambda: store
     app.dependency_overrides[get_repo_identidades] = lambda: repo
+    app.dependency_overrides[get_rate_limiter] = lambda: limiter or _FakeRateLimiter()
     return app
 
 
@@ -130,3 +146,65 @@ async def test_reset_solicitar_email_inexistente_200_sin_enumerar():
         r = await c.post("/api/v1/auth/reset/solicitar", json={"email": "nadie@otra.co"})
     assert r.status_code == 200                          # mismo 200 genérico que si existiera
     assert store.tokens == {}                            # pero NO se generó ningún token
+
+
+# --- rate-limit + no fuga del token en logs ----------------------------------
+
+async def test_reset_solicitar_rate_limit_dispara_429_tras_n_intentos():
+    store, repo = _FakeTokenStore(), _FakeRepo([_ident()])
+    limiter = _FakeRateLimiter(max_intentos=3)
+    app = _app(store, repo, limiter)
+    async with _cliente(app) as c:
+        codes = [
+            (await c.post("/api/v1/auth/reset/solicitar", json={"email": "ana@clinica.co"})).status_code
+            for _ in range(4)
+        ]
+    assert codes == [200, 200, 200, 429]                  # 4.º intento (IP+email) → bloqueado
+
+
+async def test_reset_solicitar_rate_limit_no_enumera_mismo_429_para_email_inexistente():
+    # El contador sube exista o no el email → el límite NO revela existencia (anti-enumeración).
+    store, repo = _FakeTokenStore(), _FakeRepo([])        # nadie
+    limiter = _FakeRateLimiter(max_intentos=2)
+    app = _app(store, repo, limiter)
+    async with _cliente(app) as c:
+        codes = [
+            (await c.post("/api/v1/auth/reset/solicitar", json={"email": "nadie@otra.co"})).status_code
+            for _ in range(3)
+        ]
+    assert codes == [200, 200, 429]                       # mismo 429 que tendría un email existente
+
+
+async def test_reset_solicitar_rate_limit_es_por_email_y_por_ip():
+    store, repo = _FakeTokenStore(), _FakeRepo([_ident()])
+    limiter = _FakeRateLimiter(max_intentos=1)
+    app = _app(store, repo, limiter)
+    async with _cliente(app) as c:
+        a1 = await c.post("/api/v1/auth/reset/solicitar", json={"email": "ana@clinica.co"})
+        a2 = await c.post("/api/v1/auth/reset/solicitar", json={"email": "ana@clinica.co"})
+        # Otro email desde la MISMA IP → contador independiente (no arrastra el bloqueo).
+        otro = await c.post("/api/v1/auth/reset/solicitar", json={"email": "otra@clinica.co"})
+        # Misma cuenta pero desde OTRA IP (X-Forwarded-For) → contador independiente.
+        otra_ip = await c.post(
+            "/api/v1/auth/reset/solicitar",
+            json={"email": "ana@clinica.co"},
+            headers={"x-forwarded-for": "203.0.113.9"},
+        )
+    assert (a1.status_code, a2.status_code) == (200, 429)    # 2.º intento mismo (IP+email) bloqueado
+    assert otro.status_code == 200                            # distinto email, no bloqueado
+    assert otra_ip.status_code == 200                         # distinta IP, no bloqueado
+    # Tres claves distintas vieron tráfico (IP1+ana, IP1+otra, IP2+ana).
+    assert len(limiter.counts) == 3
+
+
+async def test_reset_solicitar_no_loguea_el_token_en_claro():
+    store, repo = _FakeTokenStore(), _FakeRepo([_ident()])
+    app = _app(store, repo)
+    with capture_logs() as logs:
+        async with _cliente(app) as c:
+            r = await c.post("/api/v1/auth/reset/solicitar", json={"email": "ana@clinica.co"})
+    assert r.status_code == 200
+    secreto = next(iter(store.tokens))                        # el token realmente generado
+    # El secreto no aparece en NINGÚN campo de NINGÚN log, ni en un campo llamado "token".
+    assert all(e.get("token") is None for e in logs)
+    assert not any(secreto in str(v) for e in logs for v in e.values())

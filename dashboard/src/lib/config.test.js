@@ -4,6 +4,7 @@ import { applyTheming, bootConfig, COLOR_PRIMARY_DEFAULT } from './config.js'
 afterEach(() => {
   vi.restoreAllMocks()
   document.documentElement.style.removeProperty('--color-primary')
+  document.documentElement.removeAttribute('data-tema')
 })
 
 describe('boot theming', () => {
@@ -29,5 +30,19 @@ describe('boot theming', () => {
   it('applyTheming usa el default cuando no hay branding', () => {
     applyTheming(null)
     expect(document.documentElement.style.getPropertyValue('--color-primary')).toBe(COLOR_PRIMARY_DEFAULT)
+    expect(document.documentElement.hasAttribute('data-tema')).toBe(false)
+  })
+
+  it('applyTheming setea data-tema desde branding.tema (white-label)', () => {
+    applyTheming({ color_primario: '#0EA5A4', tema: 'aurora' })
+    expect(document.documentElement.getAttribute('data-tema')).toBe('aurora')
+  })
+
+  it('applyTheming no setea data-tema sin tema (o "base") → tema base rojo', () => {
+    document.documentElement.setAttribute('data-tema', 'aurora')  // estado previo
+    applyTheming({ color_primario: '#C8200E', tema: 'base' })
+    expect(document.documentElement.hasAttribute('data-tema')).toBe(false)
+    applyTheming({ color_primario: '#C8200E' })                   // tema ausente
+    expect(document.documentElement.hasAttribute('data-tema')).toBe(false)
   })
 })

@@ -13,6 +13,19 @@
   :root {
     /* Marca white-label: el boot la sobreescribe con branding.color_primario (GET /config). */
     --color-primary: #C8200E;
+
+    /* ── Forma / sombra / tipografía base (temables, agnósticas de light/dark) ──────────
+       Estos defaults espejan los valores fijos previos → el tema base queda PIXEL-IDÉNTICO.
+       Un tema con nombre (p. ej. [data-tema="aurora"]) los sobreescribe sin tocar el base. */
+    --radius-sm: 6px;
+    --radius-md: 10px;
+    --radius-lg: 12px;
+    --radius-xl: 16px;
+    --shadow-xs: 0 1px 2px rgba(0,0,0,0.04);
+    --shadow-sm: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+    --shadow-md: 0 4px 8px rgba(0,0,0,0.06), 0 2px 4px rgba(0,0,0,0.04);
+    /* Familia de títulos: base = Inter (mismo stack que el cuerpo → sin cambio visual). */
+    --font-display: 'Inter', ui-sans-serif, system-ui, sans-serif;
   }
 
   :root,
@@ -144,12 +157,146 @@
     }
   }
 
+  /* ════════════════════════════════════════════════════════════════════════════
+     TEMA "aurora" — white-label clínica (propuesta design-propuestas/propuesta-aurora-clinica.html).
+     Se activa con [data-tema="aurora"] en <html> (lo setea applyTheming desde branding.tema), combinable
+     con data-theme light/dark. Mapea los tokens Aurora (brand teal, ink, line, ok/warn/bad) a las MISMAS
+     vars semánticas que usa todo el dashboard → cambia paleta + tipografía + forma sin tocar componentes.
+     El bloque dark compuesto ([data-tema][data-theme="dark"]) gana sobre el [data-theme="dark"] base por
+     especificidad (0,2,0) y orden. El tema base (sin data-tema) queda intacto.
+     ════════════════════════════════════════════════════════════════════════════ */
+  [data-tema="aurora"] {
+    /* ── Forma + tipografía (igual en light y dark) ──────────────────────────── */
+    --radius-sm: 8px;
+    --radius-md: 10px;     /* botones / inputs */
+    --radius-lg: 16px;     /* cards */
+    --radius-xl: 16px;
+    --font-display: 'Nunito', 'Inter', ui-sans-serif, system-ui, sans-serif;
+
+    /* ── Paleta LIGHT (default del tema) — Aurora tokens → vars semánticas ────── */
+    --bg-body:        180 20% 97%;  /* surface  #f6f9f9 */
+    --bg-body-strong: 174 50% 96%;  /* brand-softer #f0faf9 (hover/elevation) */
+    --bg-surface:     0 0% 100%;    /* card #ffffff */
+    --bg-surface-2:   174 50% 96%;  /* brand-softer */
+    --bg-sidebar:     0 0% 100%;    /* card */
+
+    --border-subtle:  174 22% 91%;  /* line #e3edec */
+    --border:         174 22% 91%;  /* line */
+    --border-strong:  174 10% 41%;  /* ink-soft */
+    --input:          174 22% 91%;
+    --ring:           178 81% 29%;  /* brand #0e8784 */
+
+    --text-primary:   176 18% 15%;  /* ink #1f2d2c */
+    --text-secondary: 175 16% 30%;  /* ink-soft, +contraste */
+    --text-muted:     174 10% 41%;  /* ink-soft #5f7472 */
+    --text-disabled:  174 12% 65%;
+
+    --accent:         178 81% 29%;  /* brand */
+    --accent-hover:   178 82% 21%;  /* brand-dark #0a6361 */
+    --accent-soft:    177 41% 91%;  /* brand-soft #e0f2f1 */
+    --accent-on:      0 0% 100%;
+
+    --accent-yellow:  36 77% 57%;   /* warn #e6a23c */
+    --accent-blue:    214 62% 56%;  /* #4a86d4 */
+    --accent-green:   153 55% 40%;  /* ok #2e9e6b */
+    --accent-orange:  24 70% 50%;
+
+    --success:        153 55% 40%;  /* ok */
+    --warning:        36 77% 57%;   /* warn */
+    --danger:         2 65% 58%;    /* bad #d9534f */
+    --info:           214 62% 56%;
+
+    --chart-1:        178 81% 29%;
+    --chart-2:        153 55% 40%;
+    --chart-3:        214 62% 56%;
+    --chart-4:        36 77% 57%;
+    --chart-5:        262 71% 56%;
+    --chart-6:        174 10% 41%;
+
+    /* Sombra suave teñida de teal (Aurora --shadow). */
+    --shadow-xs: 0 1px 2px rgba(20,60,58,.06);
+    --shadow-sm: 0 1px 3px rgba(20,60,58,.06), 0 8px 24px rgba(20,60,58,.05);
+    --shadow-md: 0 4px 12px rgba(20,60,58,.08), 0 12px 32px rgba(20,60,58,.06);
+  }
+
+  /* Aurora — variante DARK (teal-charcoal). El compuesto gana al [data-theme="dark"] base (0,2,0+orden).
+     Mismo patrón que el base: light es el default del tema; dark aplica con data-theme="dark" explícito
+     o, vía la media query de abajo, con el SO en oscuro y sin override manual. */
+  [data-tema="aurora"][data-theme="dark"] {
+    --bg-body:        185 30% 9%;
+    --bg-body-strong: 185 26% 12%;
+    --bg-surface:     186 22% 12%;
+    --bg-surface-2:   185 18% 18%;
+    --bg-sidebar:     185 30% 9%;
+
+    --border-subtle:  185 16% 16%;
+    --border:         185 14% 22%;
+    --border-strong:  185 10% 40%;
+    --input:          185 14% 22%;
+    --ring:           175 55% 50%;
+
+    --text-primary:   170 25% 95%;
+    --text-secondary: 174 14% 80%;
+    --text-muted:     174 10% 60%;
+    --text-disabled:  185 10% 34%;
+
+    --accent:         177 58% 37%;
+    --accent-hover:   177 52% 47%;
+    --accent-soft:    177 58% 37%;  /* usar con alpha (/10..15) */
+    --accent-on:      0 0% 100%;
+
+    --accent-yellow:  36 80% 60%;
+    --accent-blue:    214 70% 64%;
+    --accent-green:   153 55% 50%;
+    --accent-orange:  24 72% 56%;
+
+    --success:        153 55% 50%;
+    --warning:        36 80% 58%;
+    --danger:         2 70% 62%;
+    --info:           214 70% 64%;
+
+    --chart-1:        175 55% 50%;
+    --chart-2:        153 55% 50%;
+    --chart-3:        214 70% 64%;
+    --chart-4:        36 80% 58%;
+    --chart-5:        262 83% 70%;
+    --chart-6:        174 10% 60%;
+
+    --shadow-xs: 0 1px 2px rgba(0,0,0,0.4);
+    --shadow-sm: 0 1px 3px rgba(0,0,0,0.5), 0 8px 24px rgba(0,0,0,0.35);
+    --shadow-md: 0 4px 12px rgba(0,0,0,0.5), 0 12px 32px rgba(0,0,0,0.4);
+  }
+  @media (prefers-color-scheme: dark) {
+    [data-tema="aurora"]:not([data-theme]) {
+      --bg-body: 185 30% 9%; --bg-body-strong: 185 26% 12%; --bg-surface: 186 22% 12%;
+      --bg-surface-2: 185 18% 18%; --bg-sidebar: 185 30% 9%;
+      --border-subtle: 185 16% 16%; --border: 185 14% 22%; --border-strong: 185 10% 40%;
+      --input: 185 14% 22%; --ring: 175 55% 50%;
+      --text-primary: 170 25% 95%; --text-secondary: 174 14% 80%; --text-muted: 174 10% 60%;
+      --text-disabled: 185 10% 34%;
+      --accent: 177 58% 37%; --accent-hover: 177 52% 47%; --accent-soft: 177 58% 37%; --accent-on: 0 0% 100%;
+      --accent-yellow: 36 80% 60%; --accent-blue: 214 70% 64%; --accent-green: 153 55% 50%; --accent-orange: 24 72% 56%;
+      --success: 153 55% 50%; --warning: 36 80% 58%; --danger: 2 70% 62%; --info: 214 70% 64%;
+      --chart-1: 175 55% 50%; --chart-2: 153 55% 50%; --chart-3: 214 70% 64%;
+      --chart-4: 36 80% 58%; --chart-5: 262 83% 70%; --chart-6: 174 10% 60%;
+      --shadow-xs: 0 1px 2px rgba(0,0,0,0.4);
+      --shadow-sm: 0 1px 3px rgba(0,0,0,0.5), 0 8px 24px rgba(0,0,0,0.35);
+      --shadow-md: 0 4px 12px rgba(0,0,0,0.5), 0 12px 32px rgba(0,0,0,0.4);
+    }
+  }
+
   html, body {
     background-color: hsl(var(--bg-body));
     color: hsl(var(--text-primary));
     font-family: 'Inter', ui-sans-serif, system-ui, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Títulos con la familia temable: base = Inter (idéntico a hoy, mismo stack que el cuerpo);
+     aurora la cambia a Nunito. Una utilidad explícita (font-mono, etc.) siempre gana sobre esto. */
+  h1, h2, h3 {
+    font-family: var(--font-display);
   }
 
   /* ── Scrollbar fino brand-tinted con fade en hover ──────────────────────

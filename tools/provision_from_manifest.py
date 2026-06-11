@@ -54,6 +54,7 @@ def _datos_base(m: Manifiesto) -> dict:
             "nombre_comercial": m.branding.nombre_comercial,
             "logo_url": m.branding.logo_url,
             "dominio": m.branding.dominio,
+            "tema": m.branding.tema,
         },
     }
 

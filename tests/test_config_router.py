@@ -36,7 +36,8 @@ def _cliente(app: FastAPI) -> httpx.AsyncClient:
 
 async def test_config_con_features_y_branding():
     branding = Branding(
-        logo_url="http://x/logo.png", color_primario="#000000", nombre_comercial="PR", dominio="pr.co"
+        logo_url="http://x/logo.png", color_primario="#000000", nombre_comercial="PR",
+        dominio="pr.co", tema="aurora",
     )
     app = _app(frozenset({"facturacion_electronica"}), branding)
     async with _cliente(app) as c:
@@ -50,6 +51,7 @@ async def test_config_con_features_y_branding():
     assert body["usuario"]["tenant"] == "pr"
     assert body["branding"]["color_primario"] == "#000000"
     assert body["branding"]["logo_url"] == "http://x/logo.png"
+    assert body["branding"]["tema"] == "aurora"                # tema de UI con nombre (white-label)
 
 
 async def test_config_sin_branding_defaults_y_solo_nucleo():
@@ -64,3 +66,4 @@ async def test_config_sin_branding_defaults_y_solo_nucleo():
     assert body["branding"]["logo_url"] is None
     assert body["branding"]["nombre_comercial"] is None
     assert body["branding"]["dominio"] is None
+    assert body["branding"]["tema"] is None                    # sin tema → el front cae al base rojo

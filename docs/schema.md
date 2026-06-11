@@ -94,6 +94,7 @@
 | color_primario | TEXT | DEFAULT '#C8200E' |
 | nombre_comercial | TEXT | |
 | dominio | TEXT | dominio propio opcional |
+| tema | TEXT | tema de UI con nombre (p. ej. 'aurora'); NULL → tema base. Lo aplica el dashboard como `data-tema` |
 
 ### empresa_features
 | Columna | Tipo | Restricciones / nota |

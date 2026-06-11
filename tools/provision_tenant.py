@@ -157,12 +157,12 @@ def cargar_secretos_empresa(empresa_id: int, datos: dict) -> None:
             _upsert_config(conn, "cloudinary_cloud_name", cloudinary["cloud_name"])
         if branding:
             conn.execute(
-                "INSERT INTO branding (empresa_id, logo_url, color_primario, nombre_comercial, dominio) "
-                "VALUES (%s,%s,%s,%s,%s) ON CONFLICT (empresa_id) DO UPDATE "
+                "INSERT INTO branding (empresa_id, logo_url, color_primario, nombre_comercial, dominio, tema) "
+                "VALUES (%s,%s,%s,%s,%s,%s) ON CONFLICT (empresa_id) DO UPDATE "
                 "SET logo_url=EXCLUDED.logo_url, color_primario=EXCLUDED.color_primario, "
-                "nombre_comercial=EXCLUDED.nombre_comercial, dominio=EXCLUDED.dominio",
+                "nombre_comercial=EXCLUDED.nombre_comercial, dominio=EXCLUDED.dominio, tema=EXCLUDED.tema",
                 (empresa_id, branding.get("logo_url"), branding.get("color_primario") or "#C8200E",
-                 branding.get("nombre_comercial"), branding.get("dominio")),
+                 branding.get("nombre_comercial"), branding.get("dominio"), branding.get("tema")),
             )
         conn.commit()
 

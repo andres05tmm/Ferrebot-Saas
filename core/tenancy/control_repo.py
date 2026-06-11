@@ -14,8 +14,10 @@ from core.tenancy.context import ResolvedTenant
 from core.tenancy.models import Empresa, TenantDatabase, WaNumero
 
 # Branding por defecto cuando la empresa no tiene fila en `branding` (color de marca FerreBot).
+# `tema` None → el dashboard usa el tema base (rojo); un tenant lo declara explícito (p. ej. "aurora").
 _BRANDING_DEFAULT: dict[str, str | None] = {
-    "logo_url": None, "color_primario": "#C8200E", "nombre_comercial": None, "dominio": None,
+    "logo_url": None, "color_primario": "#C8200E", "nombre_comercial": None,
+    "dominio": None, "tema": None,
 }
 
 
@@ -131,7 +133,7 @@ async def leer_branding(session: AsyncSession, empresa_id: int) -> dict[str, str
     row = (
         await session.execute(
             text(
-                "SELECT logo_url, color_primario, nombre_comercial, dominio "
+                "SELECT logo_url, color_primario, nombre_comercial, dominio, tema "
                 "FROM branding WHERE empresa_id = :e"
             ),
             {"e": empresa_id},
@@ -144,4 +146,5 @@ async def leer_branding(session: AsyncSession, empresa_id: int) -> dict[str, str
         "color_primario": row[1] or _BRANDING_DEFAULT["color_primario"],
         "nombre_comercial": row[2],
         "dominio": row[3],
+        "tema": row[4],
     }

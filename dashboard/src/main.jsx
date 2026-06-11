@@ -5,6 +5,10 @@ import '@fontsource/inter/400.css'
 import '@fontsource/inter/500.css'
 import '@fontsource/inter/600.css'
 import '@fontsource/inter/700.css'
+// Nunito (títulos del tema "aurora") — self-host, sin CDN. El tema base no usa Nunito.
+import '@fontsource/nunito/600.css'
+import '@fontsource/nunito/700.css'
+import '@fontsource/nunito/800.css'
 import App from './App.jsx'
 import './index.css'
 

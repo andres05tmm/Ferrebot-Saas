@@ -100,14 +100,18 @@ export default {
           900: '#3A0903',
         },
       },
+      // Radio temable: la capa semantic (src/index.css) define --radius-* con los valores base de
+      // siempre; un tema con nombre (p. ej. aurora) los sube (cards 16px). El base queda idéntico.
       borderRadius: {
-        sm: '6px',
-        md: '10px',
-        lg: '12px',
-        xl: '16px',
+        sm: 'var(--radius-sm)',
+        md: 'var(--radius-md)',
+        lg: 'var(--radius-lg)',
+        xl: 'var(--radius-xl)',
       },
       fontFamily: {
         sans: ['Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+        // Familia de títulos temable: base = Inter (idéntico a hoy); aurora la cambia a Nunito.
+        display: ['var(--font-display)'],
         mono: ['"JetBrains Mono"', 'ui-monospace', 'monospace'],
       },
       fontSize: {
@@ -127,10 +131,12 @@ export default {
         wide:   '0.06em',
         wider:  '0.12em',
       },
+      // Sombra temable: --shadow-* en la capa semantic. Base = sombras neutras de siempre; aurora usa
+      // la sombra suave teñida de teal de la propuesta. El base queda idéntico.
       boxShadow: {
-        xs: '0 1px 2px rgba(0,0,0,0.04)',
-        sm: '0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04)',
-        md: '0 4px 8px rgba(0,0,0,0.06), 0 2px 4px rgba(0,0,0,0.04)',
+        xs: 'var(--shadow-xs)',
+        sm: 'var(--shadow-sm)',
+        md: 'var(--shadow-md)',
       },
       transitionTimingFunction: {
         'out-quad': 'cubic-bezier(0.25, 0.46, 0.45, 0.94)',

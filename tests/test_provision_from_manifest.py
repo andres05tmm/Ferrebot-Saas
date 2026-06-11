@@ -36,6 +36,7 @@ plan:
   features: ["pack_agenda", "pack_faq", "canal_whatsapp"]
 branding:
   color_primario: "#123456"
+  tema: "aurora"
 packs:
   agenda:
     config:
@@ -99,6 +100,11 @@ async def test_provision_from_manifest_e2e_idempotente(tmp_path, monkeypatch, ca
                 "SELECT limites FROM planes WHERE id = %s", (empresa["plan_id"],)
             ).fetchone()["limites"]
             assert set(limites["features"]) == {"pack_agenda", "pack_faq", "canal_whatsapp"}
+            # branding.tema viaja del manifiesto al control DB (white-label de UI con nombre).
+            brand = cc.execute(
+                "SELECT color_primario, tema FROM branding WHERE empresa_id = %s", (empresa_id,)
+            ).fetchone()
+            assert brand["color_primario"] == "#123456" and brand["tema"] == "aurora"
             wa = cc.execute(
                 "SELECT empresa_id, numero FROM wa_numeros WHERE phone_number_id = %s", (phone,)
             ).fetchall()

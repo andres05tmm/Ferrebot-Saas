@@ -43,7 +43,7 @@ def _datos(slug: str) -> dict:
         },
         "branding": {
             "color_primario": "#0d6efd", "logo_url": "http://x/logo.png",
-            "nombre_comercial": "Prueba", "dominio": "prueba.test",
+            "nombre_comercial": "Prueba", "dominio": "prueba.test", "tema": "aurora",
         },
         "plan": {"nombre": "Pro", "features": ["facturacion_electronica", "fiados"]},
         "features_override": {"fiados": False},   # quita 'fiados' del plan para esta empresa
@@ -92,6 +92,7 @@ async def test_provision_full_carga_secretos_config_branding_admin(monkeypatch):
             brand = await leer_branding(cs, empresa_id)
             assert brand["color_primario"] == "#0d6efd"
             assert brand["nombre_comercial"] == "Prueba"
+            assert brand["tema"] == "aurora"
             # idempotencia: una sola fila por (empresa, clave).
             n_sec = (await cs.execute(
                 text("SELECT count(*) FROM secretos_empresa WHERE empresa_id=:e"), {"e": empresa_id})).scalar_one()

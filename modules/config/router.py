@@ -25,6 +25,9 @@ class Branding(BaseModel):
     color_primario: str
     nombre_comercial: str | None = None
     dominio: str | None = None
+    # Tema de UI con nombre (p. ej. "aurora"); None → el dashboard usa el tema base. El front lo aplica
+    # como `data-tema` en <html> (bloque de CSS vars), combinable con light/dark.
+    tema: str | None = None
 
 
 class Usuario(BaseModel):

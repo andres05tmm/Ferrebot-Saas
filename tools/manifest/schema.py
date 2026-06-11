@@ -82,6 +82,8 @@ class Branding(_Base):
     nombre_comercial: str | None = None
     logo_url: str | None = None
     dominio: str | None = None
+    # Tema de UI con nombre (p. ej. "aurora"); None → el dashboard usa el tema base (rojo de siempre).
+    tema: str | None = None
 
 
 # ---------------------------------------------------------------------------

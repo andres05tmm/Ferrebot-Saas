@@ -2,3 +2,6 @@ node_modules
 dist
 *.local
 .env
+# Artefactos generados del harness de verificación visual (proof.html se versiona; estos no).
+visual-harness/proof.css
+visual-harness/shots/

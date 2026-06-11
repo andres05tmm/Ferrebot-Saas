@@ -4,7 +4,7 @@
  * El gating por empresa lo decide `isRouteEnabled(path, features)` con las features de GET /config.
  */
 import {
-  LayoutDashboard, ShoppingCart, Wallet, Package,
+  LayoutDashboard, Home, ShoppingCart, Wallet, Package,
   Users, Truck, Building2, Receipt,
   History, TrendingUp, Trophy, BookOpen,
   FileText, FileCheck, Calculator, FileCog,
@@ -13,7 +13,9 @@ import {
 import { isRouteEnabled } from './lib/features.jsx'
 
 export const ROUTES = [
-  // Hoy — top-level, sin grupo
+  // Portadas — top-level, sin grupo. Mutuamente excluyentes: `/inicio` (agente de servicios) y `/hoy`
+  // (cockpit POS). El gating (isRouteEnabled/resolveHomePath) deja visible solo la del tenant.
+  { path: '/inicio',              label: 'Inicio',              icon: Home,            group: 'top' },
   { path: '/hoy',                 label: 'Hoy',                 icon: LayoutDashboard, group: 'top' },
 
   // Operación

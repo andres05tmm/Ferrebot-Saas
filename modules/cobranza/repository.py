@@ -12,7 +12,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.events import publish
 from modules.clientes.models import Cliente
-from modules.cobranza.models import CobranzaCliente, CobranzaConfig, PagoReportado, PromesaPago
+from modules.cobranza.models import (
+    CobranzaCliente,
+    CobranzaConfig,
+    CobranzaRecordatorio,
+    PagoReportado,
+    PromesaPago,
+)
 from modules.cobranza.schemas import CobranzaConfigActualizar
 
 
@@ -82,13 +88,43 @@ class SqlCobranzaRepository:
         await publish(self._s, "cobranza_opt_out", {"cliente_id": cliente_id, "opt_out": valor})
         return estado
 
-    async def sellar_recordatorio(self, cliente_id: int, *, cuando: datetime) -> CobranzaCliente:
-        """Dedup + tope: sella el envío SOLO tras un envío exitoso (lo decide el motor)."""
+    async def sellar_recordatorio(
+        self, cliente_id: int, *, cuando: datetime, telefono: str = "", saldo: Decimal | None = None
+    ) -> CobranzaCliente:
+        """Dedup + tope: sella el envío SOLO tras un envío exitoso (lo decide el motor).
+
+        Además deja la fila en el log append-only `cobranza_recordatorios` (misma transacción):
+        el estado vivo se resetea al cerrar el ciclo, el log nunca — es la base de "recuperado".
+        """
         estado = await self.estado_cliente(cliente_id)
         estado.ultimo_recordatorio_en = cuando
         estado.recordatorios_enviados += 1
+        self._s.add(CobranzaRecordatorio(
+            cliente_id=cliente_id, telefono=telefono,
+            saldo=saldo if saldo is not None else Decimal("0"), enviado_en=cuando,
+        ))
         await self._s.flush()
         return estado
+
+    async def recuperado(self, *, desde: datetime, ventana_dias: int = 30) -> Decimal:
+        """Pesos recuperados por la gestión del agente: abonos de fiados desde `desde` hechos por
+        clientes que recibieron un recordatorio en los `ventana_dias` previos al abono (atribución
+        simple y honesta: el abono siguió a la gestión)."""
+        total = (
+            await self._s.execute(
+                text(
+                    "SELECT COALESCE(SUM(fm.monto), 0) FROM fiados_movimientos fm "
+                    "JOIN fiados f ON f.id = fm.fiado_id "
+                    "WHERE fm.tipo = 'abono' AND fm.creado_en >= :desde "
+                    "AND EXISTS (SELECT 1 FROM cobranza_recordatorios r "
+                    "            WHERE r.cliente_id = f.cliente_id "
+                    "            AND r.enviado_en <= fm.creado_en "
+                    "            AND r.enviado_en >= fm.creado_en - make_interval(days => :ventana))"
+                ),
+                {"desde": desde, "ventana": ventana_dias},
+            )
+        ).scalar_one()
+        return Decimal(total)
 
     async def cerrar_al_dia(self) -> int:
         """Cierra el ciclo de quien ya pagó: contador a 0 y su promesa vigente → `cumplida`.

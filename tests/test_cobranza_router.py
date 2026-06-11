@@ -101,6 +101,15 @@ async def test_deudores_y_opt_out(tenant):
         assert fila["opt_out"] is True
 
 
+async def test_recuperado_endpoint(tenant):
+    async with _cliente(_app(tenant)) as c:
+        r = await c.get("/api/v1/cobranza/recuperado?dias=30")
+        assert r.status_code == 200
+        assert r.json() == {"total": "0", "dias": 30}
+
+        assert (await c.get("/api/v1/cobranza/recuperado?dias=0")).status_code == 422
+
+
 async def test_verificar_pago_reportado(tenant):
     cliente_id = await _seed_deudor(tenant)
     async with AsyncSession(tenant.engine) as s:

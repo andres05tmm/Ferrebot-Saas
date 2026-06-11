@@ -213,6 +213,59 @@ async def test_cierre_de_ciclo_al_pagar(tenant):
     assert promesa.estado == "cumplida"
 
 
+async def test_recuperado_atribuye_abonos_posteriores_al_recordatorio(tenant):
+    """La métrica cuenta SOLO los abonos que siguieron a un recordatorio (ventana de atribución).
+
+    El log `cobranza_recordatorios` es append-only: sobrevive al cierre de ciclo (que resetea el
+    estado vivo), por eso "recuperado" no se pierde cuando el cliente queda al día.
+    """
+    async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
+        recordado = await _seed_cliente(s, nombre="Recordada", telefono="3001110000")
+        directo = await _seed_cliente(s, nombre="Directo", telefono="3002220000")
+        await _config(s)
+        repo = SqlCobranzaRepository(s)
+        svc = CobranzaService(repo)
+
+        # Solo "Recordada" recibe recordatorio (a "Directo" lo saltamos con opt_out).
+        await repo.marcar_opt_out(directo, True)
+        await s.commit()
+        r = await svc.procesar_recordatorios(ahora=_ahora(), enviar=_fake_enviar([]))
+        assert r.recordatorios == 1
+
+        # Ambos abonan DESPUÉS del recordatorio (creado_en explícito: el server default usaría la
+        # hora real, que puede caer antes del `ahora` inyectado): solo el abono de "Recordada" es
+        # atribuible al agente.
+        despues = _ahora() + timedelta(hours=2)
+        for cliente, monto in ((recordado, "60000"), (directo, "40000")):
+            fiado_id = (
+                await s.execute(
+                    text(
+                        "INSERT INTO fiados (cliente_id, monto, saldo) "
+                        "VALUES (:c, 150000, 150000) RETURNING id"
+                    ),
+                    {"c": cliente},
+                )
+            ).scalar_one()
+            await s.execute(
+                text(
+                    "INSERT INTO fiados_movimientos (fiado_id, tipo, monto, creado_en) "
+                    "VALUES (:f, 'abono', :m, :cuando)"
+                ),
+                {"f": fiado_id, "m": monto, "cuando": despues},
+            )
+        await s.commit()
+
+        total = await repo.recuperado(desde=_ahora() - timedelta(days=30))
+        # El cierre de ciclo (pago total) NO borra el log: la métrica sobrevive.
+        await s.execute(text("UPDATE clientes SET saldo_fiado = 0"))
+        await s.commit()
+        await svc.procesar_recordatorios(ahora=_ahora(11), enviar=_fake_enviar([]))
+        total_tras_cierre = await repo.recuperado(desde=_ahora() - timedelta(days=30))
+
+    assert total == Decimal("60000.00")
+    assert total_tras_cierre == Decimal("60000.00")
+
+
 async def test_saldo_minimo_filtra_deudas_chicas(tenant):
     async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
         await _seed_cliente(s, nombre="Chica", telefono="3001110000", saldo="4000")

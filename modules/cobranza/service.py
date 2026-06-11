@@ -154,7 +154,10 @@ class CobranzaService:
                 telefono=fila["telefono"], saldo=fila["saldo"],
             )
             if await enviar(deudor):
-                await self._repo.sellar_recordatorio(deudor.cliente_id, cuando=ahora)
+                await self._repo.sellar_recordatorio(
+                    deudor.cliente_id, cuando=ahora,
+                    telefono=deudor.telefono, saldo=deudor.saldo,
+                )
                 enviados += 1
         return ResumenCobranza(
             recordatorios=enviados, promesas_incumplidas=incumplidas, al_dia=al_dia
@@ -187,3 +190,7 @@ class CobranzaService:
 
     async def fijar_opt_out(self, cliente_id: int, valor: bool) -> None:
         await self._repo.marcar_opt_out(cliente_id, valor)
+
+    async def recuperado(self, *, dias: int, ahora: datetime) -> Decimal:
+        """Pesos recuperados en los últimos `dias` (abonos atribuibles a un recordatorio previo)."""
+        return await self._repo.recuperado(desde=ahora - timedelta(days=dias))

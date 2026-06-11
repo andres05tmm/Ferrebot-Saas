@@ -41,6 +41,7 @@ function instalarFetch() {
     if (u.includes('/cobranza/pagos-reportados')) return Promise.resolve(jsonResp(PAGOS))
     if (u.includes('/cobranza/promesas')) return Promise.resolve(jsonResp(PROMESAS))
     if (u.includes('/cobranza/config')) return Promise.resolve(jsonResp(CONFIG))
+    if (u.includes('/cobranza/recuperado')) return Promise.resolve(jsonResp({ total: '85000.00', dias: 30 }))
     if (u.includes('/opt-out')) return Promise.resolve(jsonResp(null, 204))
     return Promise.resolve(jsonResp([]))
   })
@@ -68,6 +69,7 @@ describe('TabCartera', () => {
     render(<MemoryRouter><TabCartera /></MemoryRouter>)
 
     expect(await screen.findByText('$249.000')).toBeInTheDocument()   // total en cartera (150k + 99k)
+    expect(await screen.findByText('$85.000')).toBeInTheDocument()    // recuperado (30 días)
     expect(screen.getByText('Ana Pérez')).toBeInTheDocument()
     expect(screen.getByText(/promete pagar el 2026-06-15/)).toBeInTheDocument()
     expect(screen.getByText('Bruno Díaz')).toBeInTheDocument()

@@ -247,6 +247,21 @@ class FacturacionService:
         )
         return f, True
 
+    async def crear_pendiente_fe(self, venta_id: int) -> tuple[FacturaLeer, bool]:
+        """Cierre FE automático por venta (ADR 0014): FE como documento del tenant FE-only y FE a pedido
+        sobre una venta POS. Idempotente por clave fija `fe:{venta_id}`; devuelve `(factura, creada)`
+        como el POS, para que el hook encole la emisión SOLO en venta nueva (no un segundo documento).
+
+        Delega en `crear_pendiente`, que reserva el consecutivo y SUPRIME el POS pendiente de la venta
+        (exclusión POS↔FE, ADR 0012 D1). El cliente es opcional: sin datos se emite a consumidor final
+        (`222222222222`, resuelto en el payload UBL al emitir)."""
+        key = f"fe:{venta_id}"
+        existente = await self._repo.buscar_por_idempotency(key)
+        if existente is not None:
+            return existente, False
+        f = await self.crear_pendiente(venta_id, key)
+        return f, True
+
     async def emitir(self, factura_id: int) -> Decision:
         """Emite el documento (FE o POS según `tipo`), persiste el estado de la política y devuelve la `Decision`.
 

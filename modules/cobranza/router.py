@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.auth import Principal, require_role
 from core.auth.features import require_feature
+from core.config.timezone import now_co
 from core.db.session import get_tenant_db
 from modules.cobranza.errors import PagoReportadoInexistente
 from modules.cobranza.repository import SqlCobranzaRepository
@@ -59,6 +60,17 @@ async def actualizar_config(
     _user: Principal = Depends(require_role("admin")),
 ) -> CobranzaConfigLeer:
     return await service.guardar_config(payload)
+
+
+@router.get("/recuperado")
+async def recuperado(
+    dias: int = Query(default=30, ge=1, le=365),
+    service: CobranzaService = Depends(get_cobranza_service),
+    _user: Principal = Depends(require_role("admin")),
+) -> dict:
+    """Pesos recuperados por la gestión del agente en los últimos `dias` (métrica M-agente del plan)."""
+    total = await service.recuperado(dias=dias, ahora=now_co())
+    return {"total": str(total), "dias": dias}
 
 
 @router.get("/promesas", response_model=list[PromesaLeer])

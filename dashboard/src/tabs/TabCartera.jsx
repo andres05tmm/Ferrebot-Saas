@@ -198,9 +198,10 @@ function CarteraAdmin() {
   const pagosQ = useFetch('/cobranza/pagos-reportados')
   const promesasQ = useFetch('/cobranza/promesas?estado=vigente')
   const configQ = useFetch('/cobranza/config')
+  const recuperadoQ = useFetch('/cobranza/recuperado?dias=30')
 
   useRealtimeEvent(EVENTOS, () => {
-    deudoresQ.refetch(); pagosQ.refetch(); promesasQ.refetch()
+    deudoresQ.refetch(); pagosQ.refetch(); promesasQ.refetch(); recuperadoQ.refetch()
   })
 
   const deudores = arr(deudoresQ.data)
@@ -228,8 +229,10 @@ function CarteraAdmin() {
         <HandCoins className="size-4.5 text-primary" /> Cartera
       </h1>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
         <Kpi label="En cartera" value={deudoresQ.loading ? '…' : cop(total)} />
+        <Kpi label="Recuperado" value={recuperadoQ.loading ? '…' : cop(recuperadoQ.data?.total)}
+          hint="últimos 30 días, tras recordatorio" />
         <Kpi label="Deudores" value={deudoresQ.loading ? '…' : deudores.length} />
         <Kpi label="Promesas vigentes" value={promesasQ.loading ? '…' : promesas.length} />
         <Kpi label="Pagos por verificar" value={pagosQ.loading ? '…' : pagos.length} />

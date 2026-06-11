@@ -46,6 +46,24 @@ class CobranzaCliente(TenantBase):
     )
 
 
+class CobranzaRecordatorio(TenantBase):
+    """Log append-only: una fila por recordatorio ENVIADO (base de la métrica "pesos recuperados").
+
+    A diferencia de `cobranza_clientes` (estado vivo, se resetea al cerrar el ciclo), este log
+    nunca se borra: permite atribuir abonos posteriores a la gestión del agente.
+    """
+
+    __tablename__ = "cobranza_recordatorios"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    cliente_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    telefono: Mapped[str] = mapped_column(Text, nullable=False)
+    saldo: Mapped[Decimal] = mapped_column(MONEY, nullable=False)
+    enviado_en: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
 class PromesaPago(TenantBase):
     __tablename__ = "promesas_pago"
 

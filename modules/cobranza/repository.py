@@ -10,6 +10,7 @@ from decimal import Decimal
 from sqlalchemy import select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.events import publish
 from modules.clientes.models import Cliente
 from modules.cobranza.models import CobranzaCliente, CobranzaConfig, PagoReportado, PromesaPago
 from modules.cobranza.schemas import CobranzaConfigActualizar
@@ -78,6 +79,7 @@ class SqlCobranzaRepository:
         estado = await self.estado_cliente(cliente_id)
         estado.opt_out = valor
         await self._s.flush()
+        await publish(self._s, "cobranza_opt_out", {"cliente_id": cliente_id, "opt_out": valor})
         return estado
 
     async def sellar_recordatorio(self, cliente_id: int, *, cuando: datetime) -> CobranzaCliente:
@@ -142,6 +144,9 @@ class SqlCobranzaRepository:
         promesa = PromesaPago(cliente_id=cliente_id, telefono=telefono, fecha_promesa=fecha)
         self._s.add(promesa)
         await self._s.flush()
+        await publish(self._s, "promesa_registrada", {
+            "promesa_id": promesa.id, "cliente_id": cliente_id, "fecha": str(fecha),
+        })
         return promesa
 
     async def marcar_promesa(self, promesa: PromesaPago, estado: str) -> PromesaPago:
@@ -162,10 +167,19 @@ class SqlCobranzaRepository:
         pago = PagoReportado(cliente_id=cliente_id, telefono=telefono, nota=nota)
         self._s.add(pago)
         await self._s.flush()
+        await publish(self._s, "pago_reportado", {"pago_id": pago.id, "cliente_id": cliente_id})
         return pago
 
     async def pago_reportado_por_id(self, pago_id: int) -> PagoReportado | None:
         return await self._s.get(PagoReportado, pago_id)
+
+    async def marcar_pago_verificado(self, pago: PagoReportado) -> PagoReportado:
+        pago.verificado = True
+        await self._s.flush()
+        await publish(self._s, "pago_verificado", {
+            "pago_id": pago.id, "cliente_id": pago.cliente_id,
+        })
+        return pago
 
     async def listar_pagos_reportados(self, *, solo_pendientes: bool = True) -> list[PagoReportado]:
         consulta = select(PagoReportado).order_by(PagoReportado.creado_en.desc())

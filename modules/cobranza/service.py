@@ -183,8 +183,7 @@ class CobranzaService:
         pago = await self._repo.pago_reportado_por_id(pago_id)
         if pago is None:
             raise PagoReportadoInexistente(str(pago_id))
-        pago.verificado = True
-        return pago
+        return await self._repo.marcar_pago_verificado(pago)
 
     async def fijar_opt_out(self, cliente_id: int, valor: bool) -> None:
         await self._repo.marcar_opt_out(cliente_id, valor)

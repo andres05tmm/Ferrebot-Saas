@@ -43,6 +43,8 @@ from modules.cobranza.repository import SqlCobranzaRepository
 from modules.cobranza.service import CobranzaService, DeudorRecordatorio
 from modules.pagos.repository import SqlPagosRepository
 from modules.pagos.service import PagosService
+from modules.postventa.repository import SqlPostventaRepository
+from modules.postventa.service import PostventaService, SeguimientoPendiente
 from modules.facturacion.config import cargar_config_matias
 from modules.facturacion.matias_client import MatiasClient, MatiasCredenciales
 from modules.facturacion.politica import Decision
@@ -329,6 +331,59 @@ async def recordatorios_cobranza(ctx: dict) -> str:
     return f"enviados={enviados}"
 
 
+def _hacer_enviar_postventa(sender: KapsoSender, settings, phone_number_id: str):
+    """Closure `enviar(seguimiento) -> bool` que manda la PLANTILLA de postventa por el número del tenant.
+
+    Sin plantilla configurada (`kapso_template_postventa` vacío) → False (el motor no sella el dedup
+    y reintenta cuando se configure). Un fallo de red tampoco rompe el job.
+    """
+    template = settings.kapso_template_postventa
+
+    async def enviar(seguimiento: SeguimientoPendiente) -> bool:
+        if not template:
+            return False
+        try:
+            await sender.enviar_plantilla(
+                phone_number_id=phone_number_id, to=seguimiento.telefono,
+                nombre=template, idioma=settings.kapso_template_postventa_idioma,
+            )
+            return True
+        except Exception:  # noqa: BLE001 — un fallo de envío no debe tumbar el job
+            log.exception("postventa_envio_error", origen=seguimiento.origen,
+                          origen_id=seguimiento.origen_id)
+            return False
+
+    return enviar
+
+
+async def seguimientos_postventa(ctx: dict) -> str:
+    """Cron de postventa (plan §2.6): por cada tenant con WhatsApp activo y `pack_postventa`, corre
+    el barrido de citas cumplidas / pedidos entregados (el motor aplica dedup y la espera tras el evento).
+    """
+    settings = get_settings()
+    sender = KapsoSender(settings.kapso_api_key, base_url=settings.kapso_api_base)
+    async with control_session() as cs:
+        numeros = await listar_wa_numeros_activos(cs)
+
+    enviados = 0
+    for empresa_id, phone_number_id in numeros:
+        async with control_session() as cs:
+            capacidades = await ControlCapacidades(cs).efectivas(empresa_id)
+            if "pack_postventa" not in capacidades:
+                continue
+            tenant = await resolve_tenant_by_id(cs, empresa_id)
+        if tenant is None:
+            continue
+        enviar = _hacer_enviar_postventa(sender, settings, phone_number_id)
+        async for s in tenant_session(tenant):   # commit al cerrar el generador
+            servicio = PostventaService(SqlPostventaRepository(s))
+            resumen = await servicio.procesar_seguimientos(ahora=now_co(), enviar=enviar)
+            enviados += resumen.enviados
+            if resumen.enviados:
+                log.info("postventa_tenant", tenant_id=empresa_id, enviados=resumen.enviados)
+    return f"enviados={enviados}"
+
+
 async def conciliar_cobros(ctx: dict) -> str:
     """Cron del frente de pagos (ADR 0013): por cada tenant con `pagos_online` y llave Bold, consulta
     el estado de sus cobros pendientes (polling; el webhook de Bold llega en v1.1 con su spec real).
@@ -408,6 +463,8 @@ class WorkerSettings:
         cron(recordatorios_cobranza, minute={5, 35}, run_at_startup=False),
         # Pagos (ADR 0013): conciliación por polling cada 5 min (links pagados → estado + SSE).
         cron(conciliar_cobros, minute=set(range(2, 60, 5)), run_at_startup=False),
+        # Postventa (plan §2.6): cada hora; la espera tras el evento y el dedup los aplica el motor.
+        cron(seguimientos_postventa, minute={50}, run_at_startup=False),
     ]
     redis_settings = RedisSettings.from_dsn(get_settings().redis_url)
     max_tries = MAX_INTENTOS + 1

@@ -55,6 +55,12 @@ from ai.pedidos_tools import (
     ejecutar as pedidos_ejecutar,
     exponer_catalogo as exponer_pedidos,
 )
+from ai.postventa_tools import (
+    PostventaDeps,
+    POR_NOMBRE as POSTVENTA_POR_NOMBRE,
+    ejecutar as postventa_ejecutar,
+    exponer_catalogo as exponer_postventa,
+)
 from ai.reservas_tools import (
     ReservasDeps,
     POR_NOMBRE as RESERVAS_POR_NOMBRE,
@@ -83,6 +89,8 @@ from modules.pagos.repository import SqlPagosRepository
 from modules.pagos.service import PagosService
 from modules.pedidos.repository import SqlPedidosRepository
 from modules.pedidos.service import PedidosService
+from modules.postventa.repository import SqlPostventaRepository
+from modules.postventa.service import PostventaService
 from modules.reservas.service import ReservasService
 
 log = get_logger("wa.agent")
@@ -139,6 +147,14 @@ _SECCION_PEDIDOS = (
     "rearmarlo si cambia de opinión); pide dirección, barrio y método de pago, y SOLO entonces usa "
     "confirmar_pedido. Si pregunta por su pedido, usa estado_mi_pedido. Si un producto no aparece, "
     "ofrece las sugerencias de la herramienta o escala a un humano; jamás prometas algo fuera del menú."
+)
+
+# Sección de postventa (solo con `pack_postventa`, plan §2.6): la encuesta de seguimiento.
+_SECCION_POSTVENTA = (
+    "Si el cliente responde a la encuesta de seguimiento (un número del 1 al 5, 'excelente', "
+    "'mala'…): registra su calificación con calificar_atencion (traduce palabras a 1-5; confirma "
+    "si es ambiguo). Si la herramienta te da un link de reseña, invítalo con calidez a dejarla; "
+    "si la calificación es baja, discúlpate y ofrece pasar con un humano."
 )
 
 # Sección de reservas (solo con `pack_reservas`, plan §2.7): noches sobre el motor de agenda.
@@ -212,6 +228,8 @@ def construir_system(persona: str | None, capacidades: frozenset[str] | None = N
         partes.append(_SECCION_COTIZACIONES)
     if "pack_cobranza" in capacidades:
         partes.append(_SECCION_COBRANZA)
+    if "pack_postventa" in capacidades:
+        partes.append(_SECCION_POSTVENTA)
     if "pack_faq" in capacidades:
         partes.append(_SECCION_FAQ)
     partes.append(_SECCION_HANDOFF)
@@ -269,14 +287,15 @@ class RuntimeDeps:
     pedidos: PedidosDeps
     cotizaciones: CotizacionesDeps
     reservas: ReservasDeps
+    postventa: PostventaDeps
 
 
 def exponer_runtime(ctx: Contexto) -> list[ToolSpec]:
     """Specs que ve el modelo: packs de dominio (gateados por flag) + transversales (handoff núcleo)."""
     return [
         *exponer_agenda(ctx), *exponer_reservas(ctx), *exponer_pedidos(ctx),
-        *exponer_cotizaciones(ctx), *exponer_cobranza(ctx), *exponer_faq(ctx),
-        *exponer_handoff(ctx),
+        *exponer_cotizaciones(ctx), *exponer_cobranza(ctx), *exponer_postventa(ctx),
+        *exponer_faq(ctx), *exponer_handoff(ctx),
     ]
 
 
@@ -296,6 +315,8 @@ async def ejecutar_runtime(
         return await cotizaciones_ejecutar(tool_call, ctx, deps.cotizaciones)
     if tool_call.name in COBRANZA_POR_NOMBRE:
         return await cobranza_ejecutar(tool_call, ctx, deps.cobranza)
+    if tool_call.name in POSTVENTA_POR_NOMBRE:
+        return await postventa_ejecutar(tool_call, ctx, deps.postventa)
     return await agenda_ejecutar(tool_call, ctx, deps.agenda)
 
 
@@ -490,6 +511,9 @@ class AgenteWa:
                         reservas=ReservasDeps(
                             reservas=ReservasService(repo),
                             pagos=await self._pagos(tenant, session, capacidades),
+                        ),
+                        postventa=PostventaDeps(
+                            postventa=PostventaService(SqlPostventaRepository(session)),
                         ),
                     )
                     texto = await correr_bucle(

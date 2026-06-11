@@ -30,10 +30,16 @@ from modules.ventas.service import VentaService
 
 
 class CierreVentaPort(Protocol):
-    """Puerto del cierre fiscal post-venta (POS electrónico, ADR 0012 D2). Lo cumple
-    `modules.facturacion.pos_hook.CierrePos`; jamás lanza (el cierre no rompe la venta)."""
+    """Puerto del cierre fiscal post-venta (POS/FE según capacidad + intención, ADR 0014). Lo cumple
+    `modules.facturacion.pos_hook.CierrePos`; jamás lanza (el cierre no rompe la venta).
 
-    async def cerrar(self, venta_id: int, *, tenant_id: int, capacidades: frozenset[str]) -> None: ...
+    `intencion` ('pos'|'fe'|None) es la intención de documento por venta; None → default por capacidad.
+    Hoy el handler no la pasa (default None); elegirla/persistirla en la UI es una fase posterior."""
+
+    async def cerrar(
+        self, venta_id: int, *, tenant_id: int, capacidades: frozenset[str],
+        intencion: str | None = None,
+    ) -> None: ...
 
 
 # --- Dependencias del turno (servicios atados a la sesión del tenant) --------

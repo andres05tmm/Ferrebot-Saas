@@ -23,6 +23,11 @@
 | `honorarios` | Cuentas de cobro | — |
 | `fiados` | Crédito a clientes y abonos | — |
 | `pack_cobranza` | Agente de cobranza por WhatsApp: recordatorios de cartera, promesas de pago, página Cartera (ADR 0015) | `fiados` |
+| `pack_pedidos` | Pedidos y domicilios por WhatsApp + kanban Pedidos (ADR 0016) | `pos` |
+| `pack_ventas` | Cotizaciones y carrito por WhatsApp con el catálogo real (ADR 0017) | `pos` |
+| `pack_reservas` | Reservas por noches (hotel) sobre el motor de agenda | `pack_agenda` |
+| `pack_postventa` | Encuesta 1-5, reseñas y seguimiento tras cita/pedido | — |
+| `pagos_online` | Link/QR de cobro (Bre-B vía Bold) + conciliación (ADR 0013) | — |
 | `mayorista` | Precio mayorista por producto | — |
 | `ventas_voz` | Ventas por audio (Whisper) en el bot | `bot_telegram` |
 | `bot_telegram` | Agente en Telegram | — |

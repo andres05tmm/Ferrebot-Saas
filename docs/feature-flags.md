@@ -22,6 +22,7 @@
 | `compras_fiscal` | Compras con soporte tributario, tab Compras fiscal | — |
 | `honorarios` | Cuentas de cobro | — |
 | `fiados` | Crédito a clientes y abonos | — |
+| `pack_cobranza` | Agente de cobranza por WhatsApp: recordatorios de cartera, promesas de pago, página Cartera (ADR 0015) | `fiados` |
 | `mayorista` | Precio mayorista por producto | — |
 | `ventas_voz` | Ventas por audio (Whisper) en el bot | `bot_telegram` |
 | `bot_telegram` | Agente en Telegram | — |

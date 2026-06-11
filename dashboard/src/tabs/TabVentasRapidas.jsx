@@ -10,6 +10,7 @@ import { toast } from 'sonner'
 import { Plus, Search, Trash2, X } from 'lucide-react'
 import { api, apiJson } from '@/lib/api.js'
 import { cop } from '@/components/shared.jsx'
+import { useFeatures } from '@/lib/features.jsx'
 import { Card } from '@/components/ui/card.jsx'
 import { Input } from '@/components/ui/input.jsx'
 
@@ -27,11 +28,20 @@ function precioEfectivo(it) {
 }
 
 export default function TabVentasRapidas() {
+  const features = useFeatures()
+  // Documento fiscal por venta (ADR 0014): la intención la rutea el cierre fiscal en el backend.
+  // Selector solo si el tenant tiene capacidad fiscal; con ambas elige, con una sola es estado fijo.
+  const puedePos = features.includes('pos_electronico')
+  const puedeFe = features.includes('facturacion_electronica')
+  const mostrarDocumento = puedePos || puedeFe
+  const documentoDefault = puedePos ? 'pos' : 'fe'   // default por capacidad: POS si hay POS, si no FE
+
   const [q, setQ] = useState('')
   const [resultados, setResultados] = useState([])
   const [carrito, setCarrito] = useState([])
   const [metodoPago, setMetodoPago] = useState('efectivo')
   const [cliente, setCliente] = useState(null)
+  const [documento, setDocumento] = useState(documentoDefault)
   const [enviando, setEnviando] = useState(false)
 
   // Búsqueda de producto (GET /productos?q). Sin q → sin resultados.
@@ -97,6 +107,8 @@ export default function TabVentasRapidas() {
     })
     const payload = { metodo_pago: metodoPago, origen: 'web', lineas }
     if (cliente?.id) payload.cliente_id = cliente.id
+    // Solo si el selector está visible (hay capacidad fiscal); sin ella, el backend decide por defecto.
+    if (mostrarDocumento) payload.documento = documento
 
     setEnviando(true)
     try {
@@ -106,7 +118,7 @@ export default function TabVentasRapidas() {
         body: JSON.stringify(payload),
       })
       if (res.ok) {
-        setCarrito([]); setCliente(null); setMetodoPago('efectivo')
+        setCarrito([]); setCliente(null); setMetodoPago('efectivo'); setDocumento(documentoDefault)
         toast.success('Venta registrada')
       } else {
         toast.error('No se pudo registrar la venta')
@@ -183,6 +195,11 @@ export default function TabVentasRapidas() {
         )}
 
         <ClientePicker cliente={cliente} onSelect={setCliente} />
+        {mostrarDocumento && documento === 'fe' && (
+          <p className="mt-1.5 text-[11px] text-muted-foreground">
+            Con cliente → factura a su nombre; sin cliente → consumidor final.
+          </p>
+        )}
 
         <label className="text-[10px] uppercase tracking-wider text-muted-foreground mt-3 mb-1">Método de pago</label>
         <select value={metodoPago} onChange={(e) => setMetodoPago(e.target.value)}
@@ -190,6 +207,24 @@ export default function TabVentasRapidas() {
           className="text-sm h-9 px-2 rounded-md border border-border bg-surface text-foreground capitalize">
           {METODOS.map(m => <option key={m} value={m}>{m}</option>)}
         </select>
+
+        {mostrarDocumento && (
+          <>
+            <label className="text-[10px] uppercase tracking-wider text-muted-foreground mt-3 mb-1">Documento</label>
+            {puedePos && puedeFe ? (
+              <div className="flex items-center gap-1" role="group" aria-label="Documento fiscal">
+                <PrecioOpcion activo={documento === 'pos'} onClick={() => setDocumento('pos')}
+                  aria-label="Documento POS">POS</PrecioOpcion>
+                <PrecioOpcion activo={documento === 'fe'} onClick={() => setDocumento('fe')}
+                  aria-label="Documento factura electrónica">Factura</PrecioOpcion>
+              </div>
+            ) : (
+              <div className="text-[12px] text-muted-foreground" aria-label="Documento fiscal">
+                {puedePos ? 'POS' : 'Factura electrónica'}
+              </div>
+            )}
+          </>
+        )}
 
         <div className="flex items-center justify-between mt-3 mb-2">
           <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Total</span>

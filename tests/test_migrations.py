@@ -29,8 +29,8 @@ async def test_tenant_upgrade_downgrade_limpio(tenant):
     # 6 del pack Agenda/Citas (recurso_tipo, cita_estado, cita_origen, modo_confirmacion,
     # anticipo_tipo y cita_confirmacion —este último añadido por 0011_reconfirmacion—) + 1 del
     # handoff (conversacion_estado, 0009_conversaciones) + 1 del pack cobranza
-    # (promesa_estado, 0017_cobranza). Suben el total a 19.
-    assert enums == 19
+    # (promesa_estado, 0017_cobranza) + 1 del pack pedidos (pedido_estado, 0019). Total: 20.
+    assert enums == 20
 
     await tenant.engine.dispose()
     downgrade_tenant(tenant.url, "base")

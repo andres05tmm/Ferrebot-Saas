@@ -21,7 +21,7 @@ OPCIONALES: frozenset[str] = frozenset({
     "pos_electronico",
     "compras_fiscal", "honorarios", "fiados", "mayorista", "ventas_voz", "bot_telegram",
     "multi_vendedor", "pack_agenda", "pack_faq", "pack_cobranza", "pack_pedidos", "pack_ventas",
-    "pack_reservas", "canal_whatsapp", "pagos_online",
+    "pack_reservas", "pack_postventa", "canal_whatsapp", "pagos_online",
 })
 
 # feature → conjunto-requisito en modo OR: basta UNA del conjunto para satisfacer la dependencia.

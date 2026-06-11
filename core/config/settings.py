@@ -88,6 +88,10 @@ class Settings(BaseSettings):
     # Vacío = el cron de cobranza NO envía (queda inactivo hasta aprobar la plantilla en la WABA).
     kapso_template_cobranza: str = ""
     kapso_template_cobranza_idioma: str = "es"
+    # Plantilla aprobada del seguimiento postventa ("¿cómo te fue? califícanos 1-5"). Vacío = el
+    # cron de postventa NO envía (queda inactivo hasta aprobar la plantilla en la WABA).
+    kapso_template_postventa: str = ""
+    kapso_template_postventa_idioma: str = "es"
 
     # Google Calendar (sync OPCIONAL del pack Agenda, write-only). Credencial de PLATAFORMA: el JSON
     # del SERVICE ACCOUNT (no OAuth). El negocio comparte su calendario con el email del SA y guarda

@@ -33,6 +33,7 @@ import TabAgenda from './tabs/TabAgenda.jsx'
 import TabConversaciones from './tabs/TabConversaciones.jsx'
 import TabConocimiento from './tabs/TabConocimiento.jsx'
 import TabCartera from './tabs/TabCartera.jsx'
+import TabPedidos from './tabs/TabPedidos.jsx'
 import { ROUTES } from './routes.jsx'
 
 // Tabs núcleo (E6) + reportes (S2) + facturación (S3) + compras (S4a) + proveedores (S4b) +
@@ -56,6 +57,7 @@ const TABS = {
   '/conversaciones': TabConversaciones,
   '/conocimiento': TabConocimiento,
   '/cartera': TabCartera,
+  '/pedidos': TabPedidos,
 }
 import { bootConfig } from './lib/config.js'
 import { FeaturesProvider } from './lib/features.jsx'

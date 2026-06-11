@@ -43,6 +43,12 @@ from ai.handoff_tools import (
     ejecutar as handoff_ejecutar,
     exponer_catalogo as exponer_handoff,
 )
+from ai.pedidos_tools import (
+    PedidosDeps,
+    POR_NOMBRE as PEDIDOS_POR_NOMBRE,
+    ejecutar as pedidos_ejecutar,
+    exponer_catalogo as exponer_pedidos,
+)
 from apps.wa.kapso import KapsoSender, MensajeWa
 from core.config.timezone import now_co
 from core.llm.base import Message, ToolSpec
@@ -58,6 +64,8 @@ from modules.conversaciones.repository import SqlConversacionRepository
 from modules.conversaciones.service import ConversacionService
 from modules.faq.repository import SqlConocimientoRepository
 from modules.faq.service import FaqService
+from modules.pedidos.repository import SqlPedidosRepository
+from modules.pedidos.service import PedidosService
 
 log = get_logger("wa.agent")
 
@@ -106,6 +114,15 @@ _SECCION_RECORDATORIO_CITA = (
     "dice que no podrá o quiere cancelar, cancélala con cancelar_cita. Si quiere otro horario, reagenda."
 )
 
+# Sección de pedidos (solo con `pack_pedidos`, ADR 0016): el flujo armar → datos de entrega → confirmar.
+_SECCION_PEDIDOS = (
+    "Si el cliente quiere pedir comida/productos a domicilio: consulta SIEMPRE el catálogo con "
+    "ver_menu (nunca inventes productos ni precios); arma el pedido con armar_pedido (puedes "
+    "rearmarlo si cambia de opinión); pide dirección, barrio y método de pago, y SOLO entonces usa "
+    "confirmar_pedido. Si pregunta por su pedido, usa estado_mi_pedido. Si un producto no aparece, "
+    "ofrece las sugerencias de la herramienta o escala a un humano; jamás prometas algo fuera del menú."
+)
+
 # Sección de cobranza (solo con `pack_cobranza`). El tono respetuoso es FIJO del sistema (ADR 0015):
 # la `persona` del negocio no puede volverlo agresivo (esta sección manda sobre cualquier persona).
 _SECCION_COBRANZA = (
@@ -150,6 +167,8 @@ def construir_system(persona: str | None, capacidades: frozenset[str] | None = N
     if capacidades is None:
         capacidades = frozenset({"pack_agenda", "pack_faq"})
     partes = [_INTRO_AGENDA if "pack_agenda" in capacidades else _INTRO_GENERICA]
+    if "pack_pedidos" in capacidades:
+        partes.append(_SECCION_PEDIDOS)
     if "pack_cobranza" in capacidades:
         partes.append(_SECCION_COBRANZA)
     if "pack_faq" in capacidades:
@@ -206,21 +225,27 @@ class RuntimeDeps:
     handoff: HandoffDeps
     faq: FaqDeps
     cobranza: CobranzaDeps
+    pedidos: PedidosDeps
 
 
 def exponer_runtime(ctx: Contexto) -> list[ToolSpec]:
     """Specs que ve el modelo: packs de dominio (gateados por flag) + transversales (handoff núcleo)."""
-    return [*exponer_agenda(ctx), *exponer_cobranza(ctx), *exponer_faq(ctx), *exponer_handoff(ctx)]
+    return [
+        *exponer_agenda(ctx), *exponer_pedidos(ctx), *exponer_cobranza(ctx),
+        *exponer_faq(ctx), *exponer_handoff(ctx),
+    ]
 
 
 async def ejecutar_runtime(
     tool_call: Any, ctx: Contexto, deps: RuntimeDeps
 ) -> Resultado | ErrorTool:
-    """Despacha la herramienta al pack que la define (transversales, cobranza o agenda)."""
+    """Despacha la herramienta al pack que la define (transversales, pedidos, cobranza o agenda)."""
     if tool_call.name in HANDOFF_POR_NOMBRE:
         return await handoff_ejecutar(tool_call, ctx, deps.handoff)
     if tool_call.name in FAQ_POR_NOMBRE:
         return await faq_ejecutar(tool_call, ctx, deps.faq)
+    if tool_call.name in PEDIDOS_POR_NOMBRE:
+        return await pedidos_ejecutar(tool_call, ctx, deps.pedidos)
     if tool_call.name in COBRANZA_POR_NOMBRE:
         return await cobranza_ejecutar(tool_call, ctx, deps.cobranza)
     return await agenda_ejecutar(tool_call, ctx, deps.agenda)
@@ -402,6 +427,7 @@ class AgenteWa:
                             cobranza=CobranzaService(SqlCobranzaRepository(session)),
                             conversaciones=conversaciones,
                         ),
+                        pedidos=PedidosDeps(pedidos=PedidosService(SqlPedidosRepository(session))),
                     )
                     texto = await correr_bucle(
                         proveedor=proveedor,

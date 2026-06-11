@@ -8,7 +8,7 @@ import {
   Users, Truck, Building2, Receipt,
   History, TrendingUp, Trophy, BookOpen,
   FileText, FileCheck, Calculator, FileCog,
-  CalendarDays, Headset, BookText, HandCoins,
+  CalendarDays, Headset, BookText, HandCoins, ChefHat,
 } from 'lucide-react'
 import { isRouteEnabled } from './lib/features.jsx'
 
@@ -21,6 +21,7 @@ export const ROUTES = [
   { path: '/caja',                label: 'Caja',                icon: Wallet,          group: 'operacion' },
   { path: '/inventario',          label: 'Inventario',          icon: Package,         group: 'operacion' },
   { path: '/agenda',              label: 'Agenda',              icon: CalendarDays,    group: 'operacion' },
+  { path: '/pedidos',             label: 'Pedidos',             icon: ChefHat,         group: 'operacion' },
   { path: '/conversaciones',      label: 'Conversaciones',      icon: Headset,         group: 'operacion' },
   { path: '/conocimiento',        label: 'Conocimiento',        icon: BookText,        group: 'operacion' },
 

@@ -34,6 +34,7 @@ export const RUTA_FEATURE = {
   '/conversaciones': 'canal_whatsapp',
   '/conocimiento': 'pack_faq',
   '/cartera': 'pack_cobranza',
+  '/pedidos': 'pack_pedidos',
 }
 
 /** ¿La ruta está habilitada según las features efectivas? Núcleo (sin requisito) → siempre true. */

@@ -2,11 +2,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 
-// El stream lo controla RealtimeProvider; aquí capturamos el handler para disparar el re-fetch.
+// El stream lo controla RealtimeProvider; aquí capturamos el handler (re-fetch) y la lista de eventos.
 let rtHandler = null
+let rtEventos = null
 vi.mock('@/components/RealtimeProvider.jsx', () => ({
   RealtimeProvider: ({ children }) => children,
-  useRealtimeEvent: (_tipos, handler) => { rtHandler = handler },
+  useRealtimeEvent: (tipos, handler) => { rtEventos = tipos; rtHandler = handler },
 }))
 
 import TabHoy from './TabHoy.jsx'
@@ -43,7 +44,7 @@ function instalarFetch() {
   return fetchMock
 }
 
-beforeEach(() => { localStorage.clear(); rtHandler = null })
+beforeEach(() => { localStorage.clear(); rtHandler = null; rtEventos = null })
 afterEach(() => { cleanup(); vi.restoreAllMocks() })
 
 describe('TabHoy — paridad', () => {
@@ -71,5 +72,38 @@ describe('TabHoy — paridad', () => {
     const antes = resumenCalls()
     await act(async () => { rtHandler('venta_registrada', {}) })
     expect(resumenCalls()).toBeGreaterThan(antes)
+  })
+})
+
+describe('TabHoy — estado fiscal', () => {
+  const VENTA_FISCAL = {
+    id: 2, consecutivo: 6, fecha: '2026-06-05T16:00:00+00:00', total: '50000.00', metodo_pago: 'efectivo',
+    fiscal: { tipo: 'pos', estado: 'aceptada', cufe: 'CUDE-9', numero: 7, prefijo: 'DPOS' },
+  }
+
+  it('pinta el badge fiscal en las últimas ventas y se suscribe a los eventos fiscales', async () => {
+    const fetchMock = vi.fn((url) => {
+      const u = String(url)
+      if (u.includes('/reportes/resumen')) return Promise.resolve(jsonResp(RESUMEN))
+      if (u.includes('/ventas')) return Promise.resolve(jsonResp([VENTA_FISCAL]))
+      return Promise.resolve(jsonResp([]))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    render(<MemoryRouter><TabHoy /></MemoryRouter>)
+
+    const badge = await screen.findByText(/POS · aceptada/i)
+    expect(badge).toHaveClass('text-success')                       // aceptada → variante verde
+    expect(rtEventos).toEqual(expect.arrayContaining(['factura_aceptada', 'factura_rechazada', 'factura_anulada']))
+  })
+
+  it("un evento 'factura_aceptada' dispara re-fetch de las ventas", async () => {
+    const fetchMock = instalarFetch()
+    render(<MemoryRouter><TabHoy /></MemoryRouter>)
+    await screen.findByText('$10.000')
+
+    const ventasCalls = () => fetchMock.mock.calls.filter(c => /\/ventas\b/.test(String(c[0]))).length
+    const antes = ventasCalls()
+    await act(async () => { rtHandler('factura_aceptada', {}) })
+    expect(ventasCalls()).toBeGreaterThan(antes)
   })
 })

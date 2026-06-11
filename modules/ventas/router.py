@@ -10,10 +10,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sse_starlette.sse import EventSourceResponse
 
 from core.auth import Principal, get_current_user, get_filtro_efectivo, require_role
-from core.auth.features import require_feature
+from core.auth.features import get_capacidades, require_feature
 from core.auth.rbac import satisface
 from core.db.session import control_session, get_tenant_db
 from core.events.sse import tenant_event_stream
+from modules.facturacion.repository import SqlFacturacionRepository
 from modules.ventas.config import cargar_control_stock_estricto
 from modules.ventas.errors import (
     LineaInvalida,
@@ -36,6 +37,29 @@ router = APIRouter(tags=["ventas"], dependencies=[Depends(require_feature("pos")
 def get_ventas_repo(session: AsyncSession = Depends(get_tenant_db)) -> SqlVentasRepository:
     """Repo de ventas sobre la sesión del tenant para las lecturas (overridable en test)."""
     return SqlVentasRepository(session)
+
+
+def get_facturacion_lectura(session: AsyncSession = Depends(get_tenant_db)) -> SqlFacturacionRepository:
+    """Repo de facturación (misma sesión del tenant) solo para componer el badge fiscal (overridable)."""
+    return SqlFacturacionRepository(session)
+
+
+# Capacidades que habilitan el estado fiscal de una venta (sin alguna → no se consulta la tabla).
+FEATURES_FISCAL = ("pos_electronico", "facturacion_electronica")
+
+
+async def _componer_fiscal(
+    ventas: list[VentaLeer], fact_repo: SqlFacturacionRepository, capacidades: frozenset[str],
+) -> list[VentaLeer]:
+    """Adjunta el estado fiscal (badge) a cada venta en UN solo batch (sin N+1), sobre el resultado del repo.
+
+    Sin capacidad fiscal NO consulta `facturas_electronicas` y deja `fiscal=None`; con capacidad, lee los
+    estados de TODA la lista en una query y devuelve copias con `fiscal` poblado (las ventas sin documento
+    quedan en None). El SQL vive en el repo: el router solo compone."""
+    if not ventas or not any(f in capacidades for f in FEATURES_FISCAL):
+        return ventas
+    estados = await fact_repo.estados_por_ventas([v.id for v in ventas])
+    return [v.model_copy(update={"fiscal": estados.get(v.id)}) for v in ventas]
 
 
 async def get_control_stock_estricto(request: Request) -> bool:
@@ -91,26 +115,35 @@ async def listar_ventas(
     desde: date | None = Query(default=None),
     hasta: date | None = Query(default=None),
     repo: SqlVentasRepository = Depends(get_ventas_repo),
+    fact_repo: SqlFacturacionRepository = Depends(get_facturacion_lectura),
+    capacidades: frozenset[str] = Depends(get_capacidades),
     _user: Principal = Depends(require_role("vendedor")),
     filtro: int | None = Depends(get_filtro_efectivo),
 ) -> list[VentaLeer]:
-    """Historial del rango (default = hoy Colombia); el vendedor efectivo lo decide el filtro RBAC."""
-    return await repo.listar(desde=desde, hasta=hasta, vendedor_id=filtro)
+    """Historial del rango (default = hoy Colombia); el vendedor efectivo lo decide el filtro RBAC.
+
+    Compone el estado fiscal (badge) de toda la lista en un solo batch si el tenant tiene capacidad fiscal."""
+    ventas = await repo.listar(desde=desde, hasta=hasta, vendedor_id=filtro)
+    return await _componer_fiscal(ventas, fact_repo, capacidades)
 
 
 @router.get("/ventas/{venta_id}", response_model=VentaConLineas)
 async def obtener_venta(
     venta_id: int,
     repo: SqlVentasRepository = Depends(get_ventas_repo),
+    fact_repo: SqlFacturacionRepository = Depends(get_facturacion_lectura),
+    capacidades: frozenset[str] = Depends(get_capacidades),
     _user: Principal = Depends(require_role("vendedor")),
     filtro: int | None = Depends(get_filtro_efectivo),
 ) -> VentaConLineas:
     """Detalle de una venta con sus líneas, acotado al vendedor efectivo: si no existe o no es suya
-    → 404 (mismo mensaje, para no revelar la existencia de ventas de otro vendedor)."""
+    → 404 (mismo mensaje, para no revelar la existencia de ventas de otro vendedor). Lleva el estado
+    fiscal (badge + CUDE/CUFE) si el tenant tiene capacidad fiscal."""
     venta = await repo.obtener(venta_id)
     if venta is None or (filtro is not None and venta.vendedor_id != filtro):
         raise HTTPException(status.HTTP_404_NOT_FOUND, f"Venta {venta_id} no existe")
-    return venta
+    (compuesta,) = await _componer_fiscal([venta], fact_repo, capacidades)
+    return compuesta
 
 
 @router.put("/ventas/{venta_id}", response_model=VentaConLineas)

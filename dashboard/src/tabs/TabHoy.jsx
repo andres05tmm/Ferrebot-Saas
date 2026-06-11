@@ -19,6 +19,7 @@ import { useFetch, cop, num, rangoHoyCO, ProductThumb } from '@/components/share
 import { useRealtimeEvent } from '@/components/RealtimeProvider.jsx'
 import { Card } from '@/components/ui/card.jsx'
 import { Badge } from '@/components/ui/badge.jsx'
+import BadgeFiscal from '@/components/BadgeFiscal.jsx'
 import KpiCard from '@/components/KpiCard.jsx'
 import { cn } from '@/lib/utils'
 
@@ -26,6 +27,8 @@ const HORA_CO = { hour: '2-digit', minute: '2-digit', timeZone: 'America/Bogota'
 const EVENTOS = [
   'venta_registrada', 'venta_anulada', 'venta_editada', 'caja_abierta', 'caja_cerrada',
   'caja_movimiento', 'gasto_registrado', 'inventario_actualizado', 'reconnected',
+  // Estado fiscal en vivo: al emitir/aceptar/rechazar/anular un documento, refrescar las ventas (badge).
+  'factura_pendiente', 'factura_aceptada', 'factura_rechazada', 'factura_error', 'factura_anulada',
 ]
 
 export default function TabHoy() {
@@ -321,6 +324,7 @@ function FeedLive({ ventas, productos = [], loading, onMore }) {
                   </div>
                   <div className="text-[11px] text-muted-foreground truncate mt-0.5">N.º {v.consecutivo}</div>
                 </div>
+                <BadgeFiscal fiscal={v.fiscal} className="text-[10px] h-5 px-1.5 shrink-0" />
                 <Badge variant="outline" className={cn('text-[10px] h-5 px-1.5 shrink-0 capitalize', metodoTone(v.metodo_pago))}>
                   {v.metodo_pago || '—'}
                 </Badge>

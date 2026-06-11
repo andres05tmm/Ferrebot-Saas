@@ -15,9 +15,16 @@ import { useAuth } from '@/hooks/useAuth.js'
 import { Card } from '@/components/ui/card.jsx'
 import { Input } from '@/components/ui/input.jsx'
 import { Badge } from '@/components/ui/badge.jsx'
+import BadgeFiscal, { etiquetaIdentificador } from '@/components/BadgeFiscal.jsx'
 
 const HORA_CO = { hour: '2-digit', minute: '2-digit', timeZone: 'America/Bogota' }
 const METODOS = ['efectivo', 'transferencia', 'datafono', 'fiado']
+// Eventos que refrescan la lista: ventas + ciclo de vida fiscal (el badge se actualiza al aceptar/rechazar).
+const EVENTOS = [
+  'venta_registrada', 'venta_anulada', 'venta_editada',
+  'factura_pendiente', 'factura_aceptada', 'factura_rechazada', 'factura_error', 'factura_anulada',
+  'reconnected',
+]
 const fechaCO = (iso) => new Date(iso).toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
 const hoyCO = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
 
@@ -32,7 +39,7 @@ export default function VistaDia() {
   const [editando, setEditando] = useState(null)   // id de la venta en edición, o null
 
   const ventasQ = useFetch(`/ventas?desde=${desde}&hasta=${hasta}`, [refreshKey])
-  useRealtimeEvent(['venta_registrada', 'venta_anulada', 'venta_editada', 'reconnected'], ventasQ.refetch)
+  useRealtimeEvent(EVENTOS, ventasQ.refetch)
 
   const ventas = Array.isArray(ventasQ.data) ? ventasQ.data : []
   const total = ventas.reduce((a, v) => a + Number(v.total), 0)
@@ -90,6 +97,7 @@ export default function VistaDia() {
                     </span>
                     <span className="text-[13px] shrink-0">N.º {v.consecutivo}</span>
                     <Badge variant="outline" className="text-[10px] h-5 px-1.5 capitalize shrink-0">{v.metodo_pago}</Badge>
+                    <BadgeFiscal fiscal={v.fiscal} className="text-[10px] h-5 px-1.5 shrink-0" />
                     {v.estado === 'anulada' && (
                       <Badge variant="outline" className="text-[10px] h-5 px-1.5 bg-destructive/10 text-destructive border-destructive/20 shrink-0">anulada</Badge>
                     )}
@@ -239,6 +247,27 @@ function DetalleVenta({ ventaId }) {
           </li>
         ))}
       </ul>
+      {data.fiscal && <DetalleFiscal fiscal={data.fiscal} />}
+    </div>
+  )
+}
+
+// Bloque fiscal del detalle: badge + número (prefijo-consecutivo) + CUDE/CUFE.
+function DetalleFiscal({ fiscal }) {
+  const tieneNumero = fiscal.numero != null || fiscal.prefijo
+  return (
+    <div className="mt-2 pt-2 border-t border-border-subtle space-y-1 text-[11px] text-muted-foreground">
+      <div className="flex items-center gap-2 flex-wrap">
+        <BadgeFiscal fiscal={fiscal} className="text-[10px] h-5 px-1.5" />
+        {tieneNumero && (
+          <span className="tabular">N.º {fiscal.prefijo ? `${fiscal.prefijo}-` : ''}{fiscal.numero ?? '—'}</span>
+        )}
+      </div>
+      {fiscal.cufe && (
+        <div className="break-all">
+          <span className="uppercase tracking-wider">{etiquetaIdentificador(fiscal.tipo)}:</span> {fiscal.cufe}
+        </div>
+      )}
     </div>
   )
 }

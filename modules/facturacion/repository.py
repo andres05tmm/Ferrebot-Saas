@@ -44,6 +44,25 @@ class FacturaDetalle(FacturaLeer):
     motivo: str | None      # por qué se rechazó / falló (extraído de dian_respuesta), si aplica
 
 
+class EstadoFiscalVenta(BaseModel):
+    """Estado fiscal resumido de una venta para el badge del dashboard (lectura, sin secretos).
+
+    Una venta tiene a lo sumo un documento (exclusión POS↔FE, ADR 0012 D1). `numero` (= consecutivo)
+    y `prefijo` pueden venir None en un POS aún `pendiente`: MATIAS los asigna al aceptar (D4)."""
+
+    tipo: str               # enum fe_tipo: 'pos' | 'factura' | 'nota_credito' | …
+    estado: str             # enum fe_estado: pendiente | aceptada | rechazada | error | anulada
+    cufe: str | None = None
+    numero: int | None = None
+    prefijo: str | None = None
+
+
+def _prioridad_doc(orm: FacturaElectronica) -> tuple[int, int]:
+    """Orden para elegir el documento representativo de una venta (mayor gana): no-anulado primero,
+    luego el más reciente (`id` desc). Solo importa cuando un histórico dejó varios para una venta."""
+    return (0 if orm.estado == "anulada" else 1, orm.id)
+
+
 def _motivo(dian_respuesta: dict | None) -> str | None:
     """Extrae el motivo legible de `dian_respuesta` (rechazo/error). None si no hay o no aplica."""
     if not isinstance(dian_respuesta, dict):
@@ -259,6 +278,36 @@ class SqlFacturacionRepository:
                 select(FacturaElectronica.id).where(FacturaElectronica.venta_id == venta_id).limit(1)
             )
         ).scalar_one_or_none() is not None
+
+    async def estados_por_ventas(self, venta_ids: list[int]) -> dict[int, EstadoFiscalVenta]:
+        """Estado fiscal de varias ventas en UNA sola query (sin N+1): `WHERE venta_id IN (...)`.
+
+        A lo sumo un documento por venta (exclusión D1); si un histórico dejó varios para la misma venta
+        elige el representativo con `_prioridad_doc` (no-anulado, luego el más reciente). Las ventas sin
+        documento NO aparecen en el dict → el llamador las deja con `fiscal=None`. Lista vacía → `{}`
+        sin tocar la BD."""
+        if not venta_ids:
+            return {}
+        filas = (
+            await self._s.execute(
+                select(FacturaElectronica).where(FacturaElectronica.venta_id.in_(venta_ids))
+            )
+        ).scalars().all()
+        elegido: dict[int, FacturaElectronica] = {}
+        for orm in filas:
+            vid = orm.venta_id
+            if vid is None:
+                continue
+            actual = elegido.get(vid)
+            if actual is None or _prioridad_doc(orm) > _prioridad_doc(actual):
+                elegido[vid] = orm
+        return {
+            vid: EstadoFiscalVenta(
+                tipo=orm.tipo, estado=orm.estado, cufe=orm.cufe,
+                numero=orm.consecutivo, prefijo=orm.prefijo,
+            )
+            for vid, orm in elegido.items()
+        }
 
     async def eliminar_pos_pendiente(self, venta_id: int) -> bool:
         """Elimina un POS aún `pendiente` de la venta (lo suprime cuando el cliente pide factura, D1).

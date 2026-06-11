@@ -3,9 +3,10 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { MemoryRouter } from 'react-router-dom'
 
 let rtHandler = null
+let rtEventos = null
 vi.mock('@/components/RealtimeProvider.jsx', () => ({
   RealtimeProvider: ({ children }) => children,
-  useRealtimeEvent: (_t, handler) => { rtHandler = handler },
+  useRealtimeEvent: (tipos, handler) => { rtEventos = tipos; rtHandler = handler },
 }))
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 
@@ -47,7 +48,7 @@ function instalarFetch(ventas = VENTAS, { deleteStatus = 200, putStatus = 200 } 
   return fetchMock
 }
 
-beforeEach(() => { localStorage.clear(); rtHandler = null })
+beforeEach(() => { localStorage.clear(); rtHandler = null; rtEventos = null })
 afterEach(() => { cleanup(); vi.restoreAllMocks() })
 
 describe('VistaDia (historial)', () => {
@@ -179,5 +180,51 @@ describe('VistaDia — editar venta', () => {
     await waitFor(() => {
       expect(toast.error).toHaveBeenCalledWith('Tiene factura electrónica, no se puede editar')
     })
+  })
+})
+
+describe('VistaDia — estado fiscal', () => {
+  const ventaFiscal = (over = {}) => ({
+    id: 1, consecutivo: 11, vendedor_id: 5, fecha: ahoraISO(), total: '100', metodo_pago: 'efectivo',
+    estado: 'completada', fiscal: { tipo: 'factura', estado: 'rechazada', cufe: null, numero: 3, prefijo: 'FPR' }, ...over,
+  })
+
+  it('pinta el badge fiscal por venta; la venta sin fiscal no añade badge', async () => {
+    instalarFetch([ventaFiscal(), ventaVieja()])             // ventaVieja no trae `fiscal`
+    render(<MemoryRouter><VistaDia /></MemoryRouter>)
+    await screen.findByText('N.º 11')
+
+    const badge = screen.getByText(/Factura · rechazada/i)
+    expect(badge).toHaveClass('text-destructive')            // rechazada → variante roja
+    expect(screen.queryAllByText(/· rechazada/i)).toHaveLength(1)  // solo la venta con fiscal
+  })
+
+  it('el detalle expandible muestra el CUDE/CUFE y el número (prefijo-consecutivo)', async () => {
+    const detalleFiscal = { ...DETALLE, fiscal: { tipo: 'pos', estado: 'aceptada', cufe: 'CUDE-ABC', numero: 7, prefijo: 'DPOS' } }
+    const fetchMock = vi.fn((url) => {
+      const u = String(url)
+      if (/\/ventas\/\d+/.test(u)) return Promise.resolve(jsonResp(detalleFiscal))    // detalle (GET)
+      if (u.includes('/ventas')) return Promise.resolve(jsonResp([ventaFiscal({ fiscal: detalleFiscal.fiscal })]))
+      return Promise.resolve(jsonResp([]))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    render(<MemoryRouter><VistaDia /></MemoryRouter>)
+
+    fireEvent.click(await screen.findByText('N.º 11'))       // expandir
+    expect(await screen.findByText(/CUDE-ABC/)).toBeInTheDocument()
+    expect(screen.getByText(/CUDE:/)).toBeInTheDocument()    // POS → etiqueta CUDE (no CUFE)
+    expect(screen.getByText(/DPOS-7/)).toBeInTheDocument()   // número = prefijo-consecutivo
+  })
+
+  it("un evento 'factura_aceptada' dispara re-fetch y la vista se suscribe a eventos fiscales", async () => {
+    const fetchMock = instalarFetch([ventaFiscal()])
+    render(<MemoryRouter><VistaDia /></MemoryRouter>)
+    await screen.findByText('N.º 11')
+
+    expect(rtEventos).toEqual(expect.arrayContaining(['factura_aceptada', 'factura_anulada']))
+    const listaCalls = () => fetchMock.mock.calls.filter(c => /\/ventas\?/.test(String(c[0]))).length
+    const antes = listaCalls()
+    await act(async () => { rtHandler('factura_aceptada') })
+    expect(listaCalls()).toBeGreaterThan(antes)
   })
 })

@@ -70,8 +70,11 @@ from modules.conversaciones.repository import SqlConversacionRepository
 from modules.conversaciones.service import ConversacionService
 from modules.cotizaciones.repository import SqlCotizacionesRepository
 from modules.cotizaciones.service import CotizacionesService
+from core.pagos.ports import PagosPort
 from modules.faq.repository import SqlConocimientoRepository
 from modules.faq.service import FaqService
+from modules.pagos.repository import SqlPagosRepository
+from modules.pagos.service import PagosService
 from modules.pedidos.repository import SqlPedidosRepository
 from modules.pedidos.service import PedidosService
 
@@ -383,6 +386,8 @@ class MemoriaWa:
 AbrirTenant = Callable[[ResolvedTenant], AsyncIterator[AsyncSession]]
 ResolverLLM = Callable[[int, Turno], Awaitable[LLMResuelto]]
 Capacidades = Callable[[int], Awaitable[frozenset[str]]]
+# PSP del frente de pagos (ADR 0013) por tenant: None = sin PSP (modo manual). Opcional.
+ResolverPsp = Callable[[int], Awaitable[PagosPort | None]]
 
 
 class AgenteWa:
@@ -403,6 +408,7 @@ class AgenteWa:
         sender: KapsoSender,
         turno: Turno = Turno.ORQUESTADOR,
         gcal: CalendarPort | None = None,
+        resolver_psp: ResolverPsp | None = None,
     ) -> None:
         self._abrir_tenant = abrir_tenant
         self._resolver_llm = resolver_llm
@@ -412,6 +418,8 @@ class AgenteWa:
         self._turno = turno
         # Sync OPCIONAL con Google Calendar (write-only): se pasa al motor por turno. None = sin sync.
         self._gcal = gcal
+        # PSP OPCIONAL por tenant (ADR 0013): habilita el link de cobro al confirmar un pedido.
+        self._resolver_psp = resolver_psp
 
     async def atender(self, mensaje: MensajeWa, tenant: ResolvedTenant) -> str:
         """Corre el bucle del agente y responde. Devuelve el texto enviado (para observabilidad/tests).
@@ -450,7 +458,10 @@ class AgenteWa:
                             cobranza=CobranzaService(SqlCobranzaRepository(session)),
                             conversaciones=conversaciones,
                         ),
-                        pedidos=PedidosDeps(pedidos=PedidosService(SqlPedidosRepository(session))),
+                        pedidos=PedidosDeps(
+                            pedidos=PedidosService(SqlPedidosRepository(session)),
+                            pagos=await self._pagos(tenant, session, capacidades),
+                        ),
                         cotizaciones=CotizacionesDeps(
                             cotizaciones=CotizacionesService(SqlCotizacionesRepository(session)),
                         ),
@@ -473,6 +484,19 @@ class AgenteWa:
             texto = FALLBACK
         await self._enviar(mensaje, texto)
         return texto
+
+    async def _pagos(
+        self, tenant: ResolvedTenant, session: AsyncSession, capacidades: frozenset[str]
+    ) -> PagosService | None:
+        """`PagosService` del turno SOLO si el tenant tiene `pagos_online` (con su PSP si hay llave).
+
+        Sin la capacidad, None: las herramientas no crean cobros. El resolver de PSP es opcional
+        (tests/entornos sin pagos); sin él, el servicio nace en modo manual (cobro sin link).
+        """
+        if "pagos_online" not in capacidades:
+            return None
+        psp = await self._resolver_psp(tenant.id) if self._resolver_psp is not None else None
+        return PagosService(SqlPagosRepository(session), psp=psp)
 
     async def _enviar(self, mensaje: MensajeWa, texto: str) -> None:
         try:

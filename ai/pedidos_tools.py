@@ -19,6 +19,7 @@ from pydantic import BaseModel, Field, ValidationError
 from ai.envelope import Contexto, ErrorTool, Resultado
 from core.config.timezone import now_co
 from core.llm.base import ToolCall, ToolSpec
+from modules.pagos.service import PagosService
 from modules.pedidos.errors import (
     CocinaCerrada,
     PedidoMuyChico,
@@ -31,9 +32,15 @@ from modules.pedidos.service import ItemPedido, PedidosService
 
 @dataclass(frozen=True, slots=True)
 class PedidosDeps:
-    """Dependencias del turno: el motor de pedidos atado a la sesión del tenant."""
+    """Dependencias del turno: el motor de pedidos (+ pagos OPCIONAL) atados a la sesión del tenant.
+
+    `pagos=None` = sin frente de pagos: el pedido se confirma igual (cobro contraentrega/manual).
+    Con `pagos` y la capacidad `pagos_online`, al confirmar se crea la solicitud de cobro (ADR 0013):
+    con PSP del tenant trae link/QR real; sin PSP queda `manual` (etiqueta "pendiente de pago").
+    """
 
     pedidos: PedidosService
+    pagos: PagosService | None = None
 
 
 # --- helpers ----------------------------------------------------------------
@@ -184,12 +191,24 @@ async def _confirmar_pedido(
             f"El pedido mínimo es {_pesos(exc.minimo)}. Ofrece agregar algo más.",
             recuperable=True,
         )
+    resumen = (
+        f"¡Pedido #{pedido.id} confirmado! ✅ Total {_pesos(pedido.total)} "
+        f"(domicilio {_pesos(pedido.costo_domicilio)}). Tiempo estimado ~{estimado} min."
+    )
+    data = _data_pedido(pedido) | {"tiempo_estimado_min": estimado}
+    # Frente de pagos (ADR 0013): con la capacidad y el servicio inyectado, se crea la solicitud de
+    # cobro del pedido (idempotente por origen). Con PSP trae link real → se le manda al cliente.
+    if deps.pagos is not None and ctx.tiene_capacidad("pagos_online"):
+        cobro = await deps.pagos.crear_cobro(
+            origen="pedido", origen_id=pedido.id, monto=pedido.total,
+            descripcion=f"Pedido #{pedido.id}", cliente_telefono=telefono,
+        )
+        data["cobro"] = {"cobro_id": cobro.id, "url": cobro.url, "estado": cobro.estado}
+        if cobro.url:
+            resumen += f" Puede pagar de una vez aquí: {cobro.url}"
     return Resultado(
-        data=_data_pedido(pedido) | {"tiempo_estimado_min": estimado},
-        resumen=(
-            f"¡Pedido #{pedido.id} confirmado! ✅ Total {_pesos(pedido.total)} "
-            f"(domicilio {_pesos(pedido.costo_domicilio)}). Tiempo estimado ~{estimado} min."
-        ),
+        data=data,
+        resumen=resumen,
         evento="pedido_confirmado",
         idempotente="aplicada",
     )

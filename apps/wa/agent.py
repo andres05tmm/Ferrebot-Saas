@@ -30,6 +30,12 @@ from ai.cobranza_tools import (
     ejecutar as cobranza_ejecutar,
     exponer_catalogo as exponer_cobranza,
 )
+from ai.cotizaciones_tools import (
+    CotizacionesDeps,
+    POR_NOMBRE as COTIZACIONES_POR_NOMBRE,
+    ejecutar as cotizaciones_ejecutar,
+    exponer_catalogo as exponer_cotizaciones,
+)
 from ai.envelope import Contexto, ErrorTool, Resultado
 from ai.faq_tools import (
     FaqDeps,
@@ -62,6 +68,8 @@ from modules.cobranza.repository import SqlCobranzaRepository
 from modules.cobranza.service import CobranzaService
 from modules.conversaciones.repository import SqlConversacionRepository
 from modules.conversaciones.service import ConversacionService
+from modules.cotizaciones.repository import SqlCotizacionesRepository
+from modules.cotizaciones.service import CotizacionesService
 from modules.faq.repository import SqlConocimientoRepository
 from modules.faq.service import FaqService
 from modules.pedidos.repository import SqlPedidosRepository
@@ -123,6 +131,16 @@ _SECCION_PEDIDOS = (
     "ofrece las sugerencias de la herramienta o escala a un humano; jamás prometas algo fuera del menú."
 )
 
+# Sección de cotizaciones (solo con `pack_ventas`, ADR 0017): el agente nunca inventa precio/stock.
+_SECCION_COTIZACIONES = (
+    "Si el cliente pregunta precios o disponibilidad ('¿a cómo…?', '¿tienes…?'): responde SOLO con "
+    "cotizar_producto (aplica el precio real por cantidad; nunca inventes ni negocies precios o "
+    "stock). Si quiere varios productos, arma la cotización con agregar_a_cotizacion (y "
+    "quitar_de_cotizacion / ver_mi_cotizacion para ajustarla); cuando confirme que es todo, ciérrala "
+    "con emitir_cotizacion y preséntale el detalle con su vigencia. Si un producto no aparece, "
+    "ofrece las sugerencias de la herramienta o escala a un humano."
+)
+
 # Sección de cobranza (solo con `pack_cobranza`). El tono respetuoso es FIJO del sistema (ADR 0015):
 # la `persona` del negocio no puede volverlo agresivo (esta sección manda sobre cualquier persona).
 _SECCION_COBRANZA = (
@@ -169,6 +187,8 @@ def construir_system(persona: str | None, capacidades: frozenset[str] | None = N
     partes = [_INTRO_AGENDA if "pack_agenda" in capacidades else _INTRO_GENERICA]
     if "pack_pedidos" in capacidades:
         partes.append(_SECCION_PEDIDOS)
+    if "pack_ventas" in capacidades:
+        partes.append(_SECCION_COTIZACIONES)
     if "pack_cobranza" in capacidades:
         partes.append(_SECCION_COBRANZA)
     if "pack_faq" in capacidades:
@@ -226,26 +246,29 @@ class RuntimeDeps:
     faq: FaqDeps
     cobranza: CobranzaDeps
     pedidos: PedidosDeps
+    cotizaciones: CotizacionesDeps
 
 
 def exponer_runtime(ctx: Contexto) -> list[ToolSpec]:
     """Specs que ve el modelo: packs de dominio (gateados por flag) + transversales (handoff núcleo)."""
     return [
-        *exponer_agenda(ctx), *exponer_pedidos(ctx), *exponer_cobranza(ctx),
-        *exponer_faq(ctx), *exponer_handoff(ctx),
+        *exponer_agenda(ctx), *exponer_pedidos(ctx), *exponer_cotizaciones(ctx),
+        *exponer_cobranza(ctx), *exponer_faq(ctx), *exponer_handoff(ctx),
     ]
 
 
 async def ejecutar_runtime(
     tool_call: Any, ctx: Contexto, deps: RuntimeDeps
 ) -> Resultado | ErrorTool:
-    """Despacha la herramienta al pack que la define (transversales, pedidos, cobranza o agenda)."""
+    """Despacha la herramienta al pack que la define (transversales o packs de dominio)."""
     if tool_call.name in HANDOFF_POR_NOMBRE:
         return await handoff_ejecutar(tool_call, ctx, deps.handoff)
     if tool_call.name in FAQ_POR_NOMBRE:
         return await faq_ejecutar(tool_call, ctx, deps.faq)
     if tool_call.name in PEDIDOS_POR_NOMBRE:
         return await pedidos_ejecutar(tool_call, ctx, deps.pedidos)
+    if tool_call.name in COTIZACIONES_POR_NOMBRE:
+        return await cotizaciones_ejecutar(tool_call, ctx, deps.cotizaciones)
     if tool_call.name in COBRANZA_POR_NOMBRE:
         return await cobranza_ejecutar(tool_call, ctx, deps.cobranza)
     return await agenda_ejecutar(tool_call, ctx, deps.agenda)
@@ -428,6 +451,9 @@ class AgenteWa:
                             conversaciones=conversaciones,
                         ),
                         pedidos=PedidosDeps(pedidos=PedidosService(SqlPedidosRepository(session))),
+                        cotizaciones=CotizacionesDeps(
+                            cotizaciones=CotizacionesService(SqlCotizacionesRepository(session)),
+                        ),
                     )
                     texto = await correr_bucle(
                         proveedor=proveedor,

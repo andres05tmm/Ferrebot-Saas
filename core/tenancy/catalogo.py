@@ -20,7 +20,8 @@ OPCIONALES: frozenset[str] = frozenset({
     "facturacion_electronica", "documento_soporte", "notas_electronicas", "libro_iva",
     "pos_electronico",
     "compras_fiscal", "honorarios", "fiados", "mayorista", "ventas_voz", "bot_telegram",
-    "multi_vendedor", "pack_agenda", "pack_faq", "pack_cobranza", "pack_pedidos", "canal_whatsapp",
+    "multi_vendedor", "pack_agenda", "pack_faq", "pack_cobranza", "pack_pedidos", "pack_ventas",
+    "canal_whatsapp",
 })
 
 # feature → conjunto-requisito en modo OR: basta UNA del conjunto para satisfacer la dependencia.
@@ -39,6 +40,8 @@ DEPENDENCIAS: dict[str, frozenset[str]] = {
     "pack_cobranza": frozenset({"fiados"}),
     # Pedidos (ADR 0016): el menú ES el catálogo del POS (productos + inventario, solo lectura).
     "pack_pedidos": frozenset({"pos"}),
+    # Cotizaciones hacia afuera (ADR 0017): cotiza el catálogo y los precios del POS.
+    "pack_ventas": frozenset({"pos"}),
 }
 
 

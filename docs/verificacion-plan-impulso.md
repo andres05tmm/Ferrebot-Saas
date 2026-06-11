@@ -102,8 +102,10 @@ wiring declarativo (deps + despacho + sección de prompt).
    verificar tarifa QR Bre-B online + pedir la spec del webhook.
 3. **Prender flags** por tenant (orden sugerido: `pack_cobranza` en Punto Rojo primero — ROI inmediato).
 4. **Número de WhatsApp (Kapso) para clinica-demo** → habilita la demo vendible de la Ola 1.
-5. **Elegir la propuesta de diseño** (Aurora / Brisa / Lienzo en `design-propuestas/`) → desbloquea
-   portarla como tema base del dashboard React y la landing.
+5. **Propuestas de diseño** (Aurora / Brisa / Lienzo en `design-propuestas/`): NO hay que elegir una —
+   son el catálogo para mostrar a cada cliente según su vertical (la landing nueva hace lo mismo con
+   su selector). Lo único pendiente de decisión: cuál usar como TEMA BASE al portar el dashboard
+   React (las tres comparten estructura; portar una hace mecánicas las otras).
 6. Deploy a Railway (push a main ya quedó; redeploy aplica migraciones 0019–0023 solas).
 
 ## 4. Pendientes de código (conscientes, NO bloqueantes)
@@ -112,8 +114,11 @@ wiring declarativo (deps + despacho + sección de prompt).
   página. Decidir si va en Cartera, en una pestaña propia o dentro de Ventas.
 - **UI del reporte del agente**: el endpoint existe; falta la página "Reportes" del modelo de páginas
   (plan §4.8) consumiéndolo.
-- **Landing pública (C1) y billing (C2)**: gateados por la decisión de diseño (#5 de arriba); las
-  propuestas navegables ya existen para vender mientras tanto.
+- **Landing pública (C1): HECHA** → `landing/index.html` (standalone, abre en cualquier navegador).
+  Multi-vertical por diseño: el selector retematiza colores, foto, titular y la conversación demo
+  según el negocio (barbería / odontología / hotel / restaurante / ferretería) — sirve para mostrarla
+  a cualquier cliente según su vertical. **Pendiente de Andrés:** reemplazar el número placeholder
+  `wa.me/573000000000` por el real y decidir dónde hospedarla. Billing (C2) sigue pendiente.
 - **Webhook de Bold** (v1.1): hoy concilia por polling cada 5 min — correcto y suficiente; el webhook
   baja la latencia cuando Bold entregue la spec.
 - **Pedido → venta POS** (descuenta stock, mueve caja, emite POS electrónico) y **cotización →

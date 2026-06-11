@@ -5,6 +5,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from modules.facturacion.repository import EstadoFiscalVenta
+
 # Métodos vigentes para ventas NUEVAS (cierra #9). Las ventas históricas con tarjeta/nequi/daviplata
 # se siguen leyendo (VentaLeer.metodo_pago es str; el enum de Postgres conserva esos valores).
 MetodoPago = Literal["efectivo", "transferencia", "datafono", "fiado"]
@@ -49,6 +51,9 @@ class VentaLeer(BaseModel):
     estado: str
     origen: str
     idempotency_key: str | None
+    # Estado fiscal (badge): lo COMPONE el router solo si el tenant tiene capacidad fiscal; None si no
+    # tiene capacidad o la venta no generó documento. Reusa el schema del módulo facturación (no se duplica).
+    fiscal: EstadoFiscalVenta | None = None
 
 
 class VentaDetalleLeer(BaseModel):

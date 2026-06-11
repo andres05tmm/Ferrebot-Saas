@@ -15,7 +15,8 @@ from httpx import ASGITransport
 
 from core.auth import Principal, get_current_user
 from core.auth.features import get_capacidades
-from modules.ventas.router import get_ventas_repo, router
+from modules.facturacion.repository import EstadoFiscalVenta
+from modules.ventas.router import get_facturacion_lectura, get_ventas_repo, router
 from modules.ventas.schemas import VentaConLineas, VentaDetalleLeer, VentaLeer
 
 
@@ -51,12 +52,30 @@ class _FakeVentasRepo:
         return VentaConLineas(**v.model_dump(), lineas=[_LINEA])
 
 
-def _app(repo: _FakeVentasRepo, *, rol: str = "vendedor", user_id: int = 5) -> FastAPI:
+class _FakeFacturacionRepo:
+    """Fake del repo de facturación: cuenta los batches (para verificar que NO hay N+1) y los ids pedidos."""
+
+    def __init__(self, estados: dict[int, EstadoFiscalVenta] | None = None) -> None:
+        self._estados = estados or {}
+        self.llamadas = 0
+        self.ids_pedidos: list[int] | None = None
+
+    async def estados_por_ventas(self, venta_ids: list[int]) -> dict[int, EstadoFiscalVenta]:
+        self.llamadas += 1
+        self.ids_pedidos = list(venta_ids)
+        return {vid: self._estados[vid] for vid in venta_ids if vid in self._estados}
+
+
+def _app(
+    repo: _FakeVentasRepo, *, rol: str = "vendedor", user_id: int = 5,
+    capacidades: frozenset[str] = frozenset({"pos"}), fact_repo: _FakeFacturacionRepo | None = None,
+) -> FastAPI:
     app = FastAPI()
     app.include_router(router, prefix="/api/v1")
     app.dependency_overrides[get_ventas_repo] = lambda: repo
+    app.dependency_overrides[get_facturacion_lectura] = lambda: fact_repo or _FakeFacturacionRepo()
     app.dependency_overrides[get_current_user] = lambda: Principal(user_id=user_id, tenant="pr", rol=rol)
-    app.dependency_overrides[get_capacidades] = lambda: frozenset({"pos"})  # router POS (ADR 0008)
+    app.dependency_overrides[get_capacidades] = lambda: capacidades  # router POS (ADR 0008)
     return app
 
 
@@ -131,3 +150,76 @@ async def test_obtener_admin_ve_cualquiera_200():
         r = await c.get("/api/v1/ventas/2")
     assert r.status_code == 200, r.text
     assert r.json()["id"] == 2
+
+
+# --- F2.3c: composición del estado fiscal (badge) sobre la lista/detalle ------
+
+_CAP_FISCAL = frozenset({"pos", "pos_electronico"})   # tenant con capacidad fiscal (POS-default)
+
+
+def _estado(**over) -> EstadoFiscalVenta:
+    base = {"tipo": "pos", "estado": "aceptada", "cufe": "CUDE-1", "numero": 7, "prefijo": "DPOS"}
+    return EstadoFiscalVenta(**{**base, **over})
+
+
+async def test_lista_compone_estado_fiscal_pos_aceptado():
+    """Venta con POS aceptado en un tenant con capacidad fiscal → `fiscal` poblado (tipo/estado/cufe)."""
+    repo = _FakeVentasRepo([_venta(1)])
+    fact = _FakeFacturacionRepo({1: _estado()})
+    app = _app(repo, capacidades=_CAP_FISCAL, fact_repo=fact)
+    async with _cliente(app) as c:
+        r = await c.get("/api/v1/ventas")
+    assert r.status_code == 200, r.text
+    assert r.json()[0]["fiscal"] == {
+        "tipo": "pos", "estado": "aceptada", "cufe": "CUDE-1", "numero": 7, "prefijo": "DPOS",
+    }
+    assert fact.llamadas == 1                              # un solo batch
+
+
+async def test_lista_venta_sin_documento_fiscal_none():
+    """Tenant con capacidad fiscal pero la venta no generó documento → `fiscal=None`."""
+    repo = _FakeVentasRepo([_venta(1)])
+    fact = _FakeFacturacionRepo({})                       # sin documento para la venta 1
+    app = _app(repo, capacidades=_CAP_FISCAL, fact_repo=fact)
+    async with _cliente(app) as c:
+        r = await c.get("/api/v1/ventas")
+    assert r.json()[0]["fiscal"] is None
+    assert fact.llamadas == 1
+
+
+async def test_sin_capacidad_fiscal_no_consulta_la_tabla():
+    """Tenant sin capacidad fiscal (solo `pos`) → `fiscal=None` SIN tocar facturas_electronicas."""
+    repo = _FakeVentasRepo([_venta(1)])
+    fact = _FakeFacturacionRepo({1: _estado()})           # habría documento, pero no se debe consultar
+    app = _app(repo, capacidades=frozenset({"pos"}), fact_repo=fact)
+    async with _cliente(app) as c:
+        r = await c.get("/api/v1/ventas")
+    assert r.json()[0]["fiscal"] is None
+    assert fact.llamadas == 0                              # NO se consultó la tabla
+
+
+async def test_lista_batch_sin_n_mas_uno():
+    """Lista de 3 ventas → UNA sola query batch con todos los ids (sin N+1)."""
+    repo = _FakeVentasRepo([_venta(1), _venta(2), _venta(3)])
+    fact = _FakeFacturacionRepo({2: _estado(tipo="factura", estado="pendiente", cufe=None, numero=None, prefijo="FPR")})
+    app = _app(repo, capacidades=_CAP_FISCAL, fact_repo=fact)
+    async with _cliente(app) as c:
+        r = await c.get("/api/v1/ventas")
+    body = r.json()
+    assert fact.llamadas == 1                              # una sola llamada para las 3 ventas
+    assert sorted(fact.ids_pedidos) == [1, 2, 3]           # pidió todas en el batch
+    assert body[0]["fiscal"] is None
+    assert body[1]["fiscal"]["estado"] == "pendiente" and body[1]["fiscal"]["tipo"] == "factura"
+    assert body[2]["fiscal"] is None
+
+
+async def test_detalle_compone_estado_fiscal():
+    """GET /ventas/{id} también lleva el estado fiscal (para el CUDE/CUFE del detalle)."""
+    repo = _FakeVentasRepo([_venta(1)])
+    fact = _FakeFacturacionRepo({1: _estado(cufe="CUDE-XYZ")})
+    app = _app(repo, capacidades=_CAP_FISCAL, fact_repo=fact)
+    async with _cliente(app) as c:
+        r = await c.get("/api/v1/ventas/1")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["fiscal"]["cufe"] == "CUDE-XYZ" and body["lineas"][0]["descripcion"] == "Martillo"

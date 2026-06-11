@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 
+import { FeaturesProvider } from '@/lib/features.jsx'
 import TabVentasRapidas from './TabVentasRapidas.jsx'
 
 function jsonResp(data) { return { ok: true, status: 200, json: async () => data } }
@@ -108,5 +109,81 @@ describe('TabVentasRapidas', () => {
     await screen.findByText('Agrega productos para vender.')
 
     expect(ventaBody(fetchMock).lineas).toEqual([{ producto_id: 2, cantidad: 1 }])  // sin precio_unitario
+  })
+})
+
+// Selector de documento por venta (F2.3b, ADR 0014): se gatea por capacidades del tenant.
+function renderCon(features, productos = [MARTILLO]) {
+  const fetchMock = instalarFetch(productos)
+  render(
+    <FeaturesProvider features={features}>
+      <TabVentasRapidas />
+    </FeaturesProvider>,
+  )
+  return fetchMock
+}
+
+async function agregarMartillo(fetchMock) {
+  fireEvent.change(screen.getByLabelText('Buscar producto'), { target: { value: 'mar' } })
+  fireEvent.click(await screen.findByText('Martillo'))
+  return fetchMock
+}
+
+describe('TabVentasRapidas — selector de documento', () => {
+  it('sin capacidad fiscal NO renderiza el selector ni manda `documento`', async () => {
+    const fetchMock = renderCon([])  // ni pos_electronico ni facturacion_electronica
+    expect(screen.queryByLabelText('Documento fiscal')).toBeNull()
+
+    await agregarMartillo(fetchMock)
+    fireEvent.click(screen.getByText('Registrar venta'))
+    await screen.findByText('Agrega productos para vender.')
+    expect(ventaBody(fetchMock).documento).toBeUndefined()
+  })
+
+  it('con ambas capacidades: selector con default POS; el payload manda documento="pos"', async () => {
+    const fetchMock = renderCon(['pos_electronico', 'facturacion_electronica'])
+    const pos = screen.getByRole('button', { name: /documento pos/i })
+    const fe = screen.getByRole('button', { name: /documento factura/i })
+    expect(pos).toHaveAttribute('aria-pressed', 'true')   // default POS
+    expect(fe).toHaveAttribute('aria-pressed', 'false')
+
+    await agregarMartillo(fetchMock)
+    fireEvent.click(screen.getByText('Registrar venta'))
+    await screen.findByText('Agrega productos para vender.')
+    expect(ventaBody(fetchMock).documento).toBe('pos')
+  })
+
+  it('elegir "Factura" manda documento="fe" y muestra la nota de cliente', async () => {
+    const fetchMock = renderCon(['pos_electronico', 'facturacion_electronica'])
+    fireEvent.click(screen.getByRole('button', { name: /documento factura/i }))
+    expect(screen.getByText(/consumidor final/i)).toBeInTheDocument()  // nota junto al ClientePicker
+
+    await agregarMartillo(fetchMock)
+    fireEvent.click(screen.getByText('Registrar venta'))
+    await screen.findByText('Agrega productos para vender.')
+    expect(ventaBody(fetchMock).documento).toBe('fe')
+  })
+
+  it('solo pos_electronico: estado fijo POS (sin botón Factura) y manda documento="pos"', async () => {
+    const fetchMock = renderCon(['pos_electronico'])
+    expect(screen.queryByRole('button', { name: /documento factura/i })).toBeNull()
+    expect(screen.getByLabelText('Documento fiscal')).toHaveTextContent('POS')
+
+    await agregarMartillo(fetchMock)
+    fireEvent.click(screen.getByText('Registrar venta'))
+    await screen.findByText('Agrega productos para vender.')
+    expect(ventaBody(fetchMock).documento).toBe('pos')
+  })
+
+  it('solo facturacion_electronica: estado fijo Factura, default fe, nota visible y manda documento="fe"', async () => {
+    const fetchMock = renderCon(['facturacion_electronica'])
+    expect(screen.queryByRole('button', { name: /documento pos/i })).toBeNull()
+    expect(screen.getByLabelText('Documento fiscal')).toHaveTextContent(/factura/i)
+    expect(screen.getByText(/consumidor final/i)).toBeInTheDocument()
+
+    await agregarMartillo(fetchMock)
+    fireEvent.click(screen.getByText('Registrar venta'))
+    await screen.findByText('Agrega productos para vender.')
+    expect(ventaBody(fetchMock).documento).toBe('fe')
   })
 })

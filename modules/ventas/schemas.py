@@ -33,6 +33,10 @@ class VentaCrear(BaseModel):
     cliente_id: int | None = None
     origen: Origen = "web"
     idempotency_key: str | None = None
+    # Intención de documento fiscal por venta (ADR 0014): None → default por capacidad del tenant.
+    # TRANSIENTE: no se persiste; solo rutea el cierre fiscal (`_resolver_documento` decide el efectivo
+    # y cae al default si la intención no calza la capacidad). "No registrar ante DIAN" NO es opción aquí.
+    documento: Literal["pos", "fe"] | None = None
     lineas: list[VentaDetalleCrear] = Field(min_length=1)
 
 

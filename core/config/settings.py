@@ -83,6 +83,11 @@ class Settings(BaseSettings):
     # Es el nombre registrado en la WABA; vacío = el job NO envía recordatorios (queda inactivo).
     kapso_template_recordatorio: str = ""
     kapso_template_recordatorio_idioma: str = "es"
+    # Plantilla aprobada para el recordatorio de cobranza (ADR 0015). Genérica a propósito (sin el
+    # monto: el saldo exacto lo da `mi_saldo` cuando el cliente responde, ya en la ventana de 24h).
+    # Vacío = el cron de cobranza NO envía (queda inactivo hasta aprobar la plantilla en la WABA).
+    kapso_template_cobranza: str = ""
+    kapso_template_cobranza_idioma: str = "es"
 
     # Google Calendar (sync OPCIONAL del pack Agenda, write-only). Credencial de PLATAFORMA: el JSON
     # del SERVICE ACCOUNT (no OAuth). El negocio comparte su calendario con el email del SA y guarda

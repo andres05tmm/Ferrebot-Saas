@@ -37,6 +37,8 @@ from core.tenancy.control_repo import listar_tenants, listar_wa_numeros_activos,
 from modules.agenda.gcal import calendar_client_por_defecto
 from modules.agenda.repository import SqlAgendaRepository
 from modules.agenda.service import AgendaService
+from modules.cobranza.repository import SqlCobranzaRepository
+from modules.cobranza.service import CobranzaService, DeudorRecordatorio
 from modules.facturacion.config import cargar_config_matias
 from modules.facturacion.matias_client import MatiasClient, MatiasCredenciales
 from modules.facturacion.politica import Decision
@@ -259,6 +261,63 @@ async def reconfirmaciones_agenda(ctx: dict) -> str:
     return f"procesadas={procesadas}"
 
 
+def _hacer_enviar_cobranza(sender: KapsoSender, settings, phone_number_id: str):
+    """Closure `enviar(deudor) -> bool` que manda la PLANTILLA de cobranza por el número del tenant.
+
+    Sin plantilla configurada (`kapso_template_cobranza` vacío) → no intenta enviar (devuelve False:
+    el motor no sella el dedup y reintentará cuando se configure). Un fallo de red tampoco rompe el job.
+    """
+    template = settings.kapso_template_cobranza
+
+    async def enviar(deudor: DeudorRecordatorio) -> bool:
+        if not template:
+            return False
+        try:
+            await sender.enviar_plantilla(
+                phone_number_id=phone_number_id, to=deudor.telefono,
+                nombre=template, idioma=settings.kapso_template_cobranza_idioma,
+            )
+            return True
+        except Exception:  # noqa: BLE001 — un fallo de envío no debe tumbar el job
+            log.exception("cobranza_envio_error", cliente_id=deudor.cliente_id)
+            return False
+
+    return enviar
+
+
+async def recordatorios_cobranza(ctx: dict) -> str:
+    """Cron de cartera (ADR 0015): por cada tenant con WhatsApp activo y `pack_cobranza`, corre el motor.
+
+    Smoke manual (como `reconfirmaciones_agenda`): la lógica determinista (cadencia, tope, ventana
+    horaria, opt-out, promesas) vive en `CobranzaService.procesar_recordatorios` (testeada contra base
+    efímera). Aquí solo el barrido multi-tenant con el `enviar` de la plantilla paga de Kapso.
+    """
+    settings = get_settings()
+    sender = KapsoSender(settings.kapso_api_key, base_url=settings.kapso_api_base)
+    async with control_session() as cs:
+        numeros = await listar_wa_numeros_activos(cs)
+
+    enviados = 0
+    for empresa_id, phone_number_id in numeros:
+        async with control_session() as cs:
+            capacidades = await ControlCapacidades(cs).efectivas(empresa_id)
+            if "pack_cobranza" not in capacidades:
+                continue
+            tenant = await resolve_tenant_by_id(cs, empresa_id)
+        if tenant is None:
+            continue
+        enviar = _hacer_enviar_cobranza(sender, settings, phone_number_id)
+        async for s in tenant_session(tenant):   # commit al cerrar el generador
+            servicio = CobranzaService(SqlCobranzaRepository(s))
+            resumen = await servicio.procesar_recordatorios(ahora=now_co(), enviar=enviar)
+            enviados += resumen.recordatorios
+            log.info(
+                "cobranza_tenant", tenant_id=empresa_id, recordatorios=resumen.recordatorios,
+                promesas_incumplidas=resumen.promesas_incumplidas, al_dia=resumen.al_dia,
+            )
+    return f"enviados={enviados}"
+
+
 async def reconciliar_pendientes(ctx: dict) -> str:
     """Cron de reconciliación (D7.2): por cada tenant con `facturacion_electronica`, consulta en MATIAS el
     estado de las facturas estancadas y cierra el dead-letter silencioso (red de respaldo del webhook).
@@ -301,6 +360,8 @@ class WorkerSettings:
         cron(reconfirmaciones_agenda, minute={0, 15, 30, 45}, run_at_startup=False),
         # Reconciliación fiscal (D7.2): cada 10 min consulta el estado de las facturas estancadas.
         cron(reconciliar_pendientes, minute=set(range(0, 60, 10)), run_at_startup=False),
+        # Cobranza (ADR 0015): cada 30 min; la ventana horaria/cadencia/tope los aplica el motor.
+        cron(recordatorios_cobranza, minute={5, 35}, run_at_startup=False),
     ]
     redis_settings = RedisSettings.from_dsn(get_settings().redis_url)
     max_tries = MAX_INTENTOS + 1

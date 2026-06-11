@@ -24,6 +24,12 @@ from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ai.agenda_tools import AgendaDeps, ejecutar as agenda_ejecutar, exponer_catalogo as exponer_agenda
+from ai.cobranza_tools import (
+    CobranzaDeps,
+    POR_NOMBRE as COBRANZA_POR_NOMBRE,
+    ejecutar as cobranza_ejecutar,
+    exponer_catalogo as exponer_cobranza,
+)
 from ai.envelope import Contexto, ErrorTool, Resultado
 from ai.faq_tools import (
     FaqDeps,
@@ -46,6 +52,8 @@ from core.tenancy.context import ResolvedTenant
 from modules.agenda.gcal import CalendarPort
 from modules.agenda.repository import SqlAgendaRepository
 from modules.agenda.service import AgendaService
+from modules.cobranza.repository import SqlCobranzaRepository
+from modules.cobranza.service import CobranzaService
 from modules.conversaciones.repository import SqlConversacionRepository
 from modules.conversaciones.service import ConversacionService
 from modules.faq.repository import SqlConocimientoRepository
@@ -59,7 +67,10 @@ FALLBACK = "Disculpa, tuve un problema para atenderte. ¿Puedes intentarlo de nu
 # Tope de iteraciones modelo↔herramientas por mensaje (agendar puede encadenar varias consultas).
 _MAX_ITERS = 6
 
-_SYSTEM_BASE = (
+# El system prompt se COMPONE por pack activo (igual que el catálogo de herramientas): intro según
+# el pack de dominio + secciones gateadas por capacidad + handoff siempre. Asistente ESPECIALIZADO
+# (cumple la regla de Meta: nada de propósito general) con la persona/tono del negocio al final.
+_INTRO_AGENDA = (
     "Eres un asistente virtual de citas por WhatsApp para un negocio de servicios. Tu ÚNICO propósito "
     "es ayudar al cliente a: ver los servicios, consultar horarios disponibles, y agendar, reagendar "
     "o cancelar SUS citas. No respondes temas ajenos a la agenda.\n"
@@ -67,16 +78,44 @@ _SYSTEM_BASE = (
     "nunca inventes horarios, precios ni confirmes una cita sin la herramienta. Pide los datos que "
     "falten (servicio, fecha/hora, nombre) antes de agendar. Responde en español, breve y cordial; "
     "las fechas y horas son de Colombia. Si te piden algo fuera de las citas, di con amabilidad que "
-    "solo puedes ayudar con la agenda.\n"
+    "solo puedes ayudar con la agenda."
+)
+
+_INTRO_GENERICA = (
+    "Eres un asistente virtual de atención al cliente por WhatsApp de un negocio. Tu ÚNICO propósito "
+    "es atender los temas de ESTE negocio con las herramientas disponibles; no respondes temas ajenos. "
+    "Nunca inventes datos, precios ni saldos: usa siempre las herramientas. Responde en español, "
+    "breve y cordial; las fechas y horas son de Colombia."
+)
+
+_SECCION_FAQ = (
     "Para dudas generales del negocio (ubicación, horarios, precios, formas de pago, parqueo, "
     "políticas) usa responder_faq y responde SOLO con esa información. Si no hay información suficiente, "
-    "NO inventes: ofrece pasar a un asesor humano (escalar_humano) o di que no tienes ese dato.\n"
+    "NO inventes: ofrece pasar a un asesor humano (escalar_humano) o di que no tienes ese dato."
+)
+
+_SECCION_HANDOFF = (
     "Escala a un humano (escalar_humano) SOLO si en ESTE mensaje el cliente lo pide explícitamente o "
     "presenta una queja/tema fuera de tu alcance; nunca por algo dicho antes. Si el cliente solo saluda, "
-    "salúdalo y ofrece ayudarlo con su cita — NUNCA des la bienvenida y escales en el mismo turno.\n"
+    "salúdalo y ofrece tu ayuda — NUNCA des la bienvenida y escales en el mismo turno."
+)
+
+_SECCION_RECORDATORIO_CITA = (
     "Si el cliente responde a un RECORDATORIO de su cita: si confirma que asistirá (sí, confirmo, ahí "
     "estaré, dale) usa mis_citas para hallar su próxima cita y reconfírmala con reconfirmar_cita; si "
     "dice que no podrá o quiere cancelar, cancélala con cancelar_cita. Si quiere otro horario, reagenda."
+)
+
+# Sección de cobranza (solo con `pack_cobranza`). El tono respetuoso es FIJO del sistema (ADR 0015):
+# la `persona` del negocio no puede volverlo agresivo (esta sección manda sobre cualquier persona).
+_SECCION_COBRANZA = (
+    "Si el cliente escribe por su deuda o responde a un recordatorio de pago: consulta su saldo "
+    "SOLO con mi_saldo (nunca lo calcules, inventes ni negocies); si promete pagar en una fecha, "
+    "regístrala con prometer_pago; si dice que ya pagó, usa reportar_pago y pídele el comprobante "
+    "(un asesor lo verificará — NUNCA confirmes tú que el pago quedó aplicado); si pide que no le "
+    "escriban más recordatorios, usa no_mas_recordatorios y respétalo de inmediato. El tema del "
+    "dinero se trata SIEMPRE con respeto y amabilidad: jamás presiones, amenaces ni avergüences al "
+    "cliente, sin importar el tono que pida el negocio."
 )
 
 
@@ -101,9 +140,24 @@ def _ancla_fecha() -> str:
     )
 
 
-def construir_system(persona: str | None) -> str:
-    """System prompt del asistente especializado + ancla de fecha de hoy + persona del negocio."""
-    base = f"{_SYSTEM_BASE}\n\n{_ancla_fecha()}"
+def construir_system(persona: str | None, capacidades: frozenset[str] | None = None) -> str:
+    """System prompt del asistente: intro + secciones por pack activo + ancla de fecha + persona.
+
+    `capacidades=None` (llamadas legadas/tests) compone como si la empresa tuviera agenda + FAQ
+    (el comportamiento histórico). En runtime el agente pasa las capacidades reales del tenant: una
+    empresa SIN `pack_agenda` (p. ej. ferretería con solo cobranza) no se presenta como agente de citas.
+    """
+    if capacidades is None:
+        capacidades = frozenset({"pack_agenda", "pack_faq"})
+    partes = [_INTRO_AGENDA if "pack_agenda" in capacidades else _INTRO_GENERICA]
+    if "pack_cobranza" in capacidades:
+        partes.append(_SECCION_COBRANZA)
+    if "pack_faq" in capacidades:
+        partes.append(_SECCION_FAQ)
+    partes.append(_SECCION_HANDOFF)
+    if "pack_agenda" in capacidades:
+        partes.append(_SECCION_RECORDATORIO_CITA)
+    base = "\n".join(partes) + f"\n\n{_ancla_fecha()}"
     if persona:
         return f"{base}\n\nTono e identidad del negocio: {persona}"
     return base
@@ -146,26 +200,29 @@ def _envelope_json(resultado: Resultado | ErrorTool) -> str:
 
 @dataclass(frozen=True, slots=True)
 class RuntimeDeps:
-    """Dependencias de TODOS los packs del runtime de cara al cliente (agenda + handoff + FAQ transversales)."""
+    """Dependencias de TODOS los packs del runtime de cara al cliente (agenda + cobranza + transversales)."""
 
     agenda: AgendaDeps
     handoff: HandoffDeps
     faq: FaqDeps
+    cobranza: CobranzaDeps
 
 
 def exponer_runtime(ctx: Contexto) -> list[ToolSpec]:
-    """Specs que ve el modelo: pack(s) de dominio + transversales (FAQ gateada por flag, handoff núcleo)."""
-    return [*exponer_agenda(ctx), *exponer_faq(ctx), *exponer_handoff(ctx)]
+    """Specs que ve el modelo: packs de dominio (gateados por flag) + transversales (handoff núcleo)."""
+    return [*exponer_agenda(ctx), *exponer_cobranza(ctx), *exponer_faq(ctx), *exponer_handoff(ctx)]
 
 
 async def ejecutar_runtime(
     tool_call: Any, ctx: Contexto, deps: RuntimeDeps
 ) -> Resultado | ErrorTool:
-    """Despacha la herramienta al pack que la define (handoff/FAQ transversales o agenda)."""
+    """Despacha la herramienta al pack que la define (transversales, cobranza o agenda)."""
     if tool_call.name in HANDOFF_POR_NOMBRE:
         return await handoff_ejecutar(tool_call, ctx, deps.handoff)
     if tool_call.name in FAQ_POR_NOMBRE:
         return await faq_ejecutar(tool_call, ctx, deps.faq)
+    if tool_call.name in COBRANZA_POR_NOMBRE:
+        return await cobranza_ejecutar(tool_call, ctx, deps.cobranza)
     return await agenda_ejecutar(tool_call, ctx, deps.agenda)
 
 
@@ -341,10 +398,14 @@ class AgenteWa:
                         agenda=AgendaDeps(agenda=AgendaService(repo, gcal=self._gcal)),
                         handoff=HandoffDeps(conversaciones=conversaciones),
                         faq=FaqDeps(faq=FaqService(SqlConocimientoRepository(session))),
+                        cobranza=CobranzaDeps(
+                            cobranza=CobranzaService(SqlCobranzaRepository(session)),
+                            conversaciones=conversaciones,
+                        ),
                     )
                     texto = await correr_bucle(
                         proveedor=proveedor,
-                        system=construir_system(cfg.persona if cfg else None),
+                        system=construir_system(cfg.persona if cfg else None, capacidades),
                         tools=exponer_runtime(ctx),       # agenda (gated por flag) + handoff (núcleo)
                         ctx=ctx, deps=deps, historial=historial, texto=mensaje.texto,
                     )

@@ -37,8 +37,12 @@ from core.tenancy.control_repo import listar_tenants, listar_wa_numeros_activos,
 from modules.agenda.gcal import calendar_client_por_defecto
 from modules.agenda.repository import SqlAgendaRepository
 from modules.agenda.service import AgendaService
+from core.pagos.bold import BoldClient
+from core.pagos.config import cargar_config_bold
 from modules.cobranza.repository import SqlCobranzaRepository
 from modules.cobranza.service import CobranzaService, DeudorRecordatorio
+from modules.pagos.repository import SqlPagosRepository
+from modules.pagos.service import PagosService
 from modules.facturacion.config import cargar_config_matias
 from modules.facturacion.matias_client import MatiasClient, MatiasCredenciales
 from modules.facturacion.politica import Decision
@@ -168,6 +172,12 @@ def _construir_agente(settings) -> AgenteWa:
         async with control_session() as s:
             return await ControlCapacidades(s).efectivas(tenant_id)
 
+    async def resolver_psp(tenant_id: int):
+        """PSP Bold del tenant (ADR 0013): None si no tiene llave (modo manual)."""
+        async with control_session() as s:
+            cred = await cargar_config_bold(s, settings.secrets_master_key, tenant_id)
+        return BoldClient(cred) if cred is not None else None
+
     return AgenteWa(
         abrir_tenant=tenant_session,
         resolver_llm=resolver_llm,
@@ -176,6 +186,7 @@ def _construir_agente(settings) -> AgenteWa:
         sender=KapsoSender(settings.kapso_api_key, base_url=settings.kapso_api_base),
         # Sync write-only con Google Calendar (None si no hay service account en el entorno).
         gcal=calendar_client_por_defecto(),
+        resolver_psp=resolver_psp,
     )
 
 
@@ -318,6 +329,39 @@ async def recordatorios_cobranza(ctx: dict) -> str:
     return f"enviados={enviados}"
 
 
+async def conciliar_cobros(ctx: dict) -> str:
+    """Cron del frente de pagos (ADR 0013): por cada tenant con `pagos_online` y llave Bold, consulta
+    el estado de sus cobros pendientes (polling; el webhook de Bold llega en v1.1 con su spec real).
+
+    Smoke manual (como los demás crons): la lógica vive en `PagosService.conciliar` (testeada con un
+    PSP falso). Aquí el barrido multi-tenant: capacidad + credencial Bold descifrada por empresa.
+    """
+    settings = get_settings()
+    async with control_session() as cs:
+        tenants = await listar_tenants(cs)
+
+    pagados = 0
+    for t in tenants:
+        if "pagos_online" not in t.features:
+            continue
+        async with control_session() as cs:
+            cred = await cargar_config_bold(cs, settings.secrets_master_key, t.id)
+            tenant = await resolve_tenant_by_id(cs, t.id)
+        if cred is None or tenant is None:
+            continue                      # sin llave Bold → modo manual, nada que conciliar
+        psp = BoldClient(cred)
+        async for s in tenant_session(tenant):   # commit al cerrar el generador
+            servicio = PagosService(SqlPagosRepository(s), psp=psp)
+            resumen = await servicio.conciliar()
+            pagados += resumen.pagados
+            if resumen.revisados:
+                log.info(
+                    "conciliar_cobros_tenant", tenant_id=t.id, revisados=resumen.revisados,
+                    pagados=resumen.pagados, cerrados=resumen.cerrados,
+                )
+    return f"pagados={pagados}"
+
+
 async def reconciliar_pendientes(ctx: dict) -> str:
     """Cron de reconciliación (D7.2): por cada tenant con `facturacion_electronica`, consulta en MATIAS el
     estado de las facturas estancadas y cierra el dead-letter silencioso (red de respaldo del webhook).
@@ -362,6 +406,8 @@ class WorkerSettings:
         cron(reconciliar_pendientes, minute=set(range(0, 60, 10)), run_at_startup=False),
         # Cobranza (ADR 0015): cada 30 min; la ventana horaria/cadencia/tope los aplica el motor.
         cron(recordatorios_cobranza, minute={5, 35}, run_at_startup=False),
+        # Pagos (ADR 0013): conciliación por polling cada 5 min (links pagados → estado + SSE).
+        cron(conciliar_cobros, minute=set(range(2, 60, 5)), run_at_startup=False),
     ]
     redis_settings = RedisSettings.from_dsn(get_settings().redis_url)
     max_tries = MAX_INTENTOS + 1

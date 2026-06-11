@@ -1,7 +1,9 @@
 # ADR 0013 — Frente de pagos: Bre-B vía PSP (link/QR con webhook)
 
-- **Estado:** propuesto (research del 11 jun 2026; decisión final pendiente — requiere verificar
-  tarifa puntual con el PSP y abrir cuenta)
+- **Estado:** aceptado — infraestructura v1 implementada (11 jun 2026): puerto `core/pagos` +
+  adaptador Bold + tabla `cobros` (0021) + conciliación por polling + flag `pagos_online` +
+  integración con pedidos. Pendiente con la cuenta Bold real: verificar tarifa del QR Bre-B online
+  y la spec del webhook (v1.1 — mientras tanto el polling concilia).
 - **Contexto:** `docs/plan-impulso-agentes-2026.md` (Ola 2 §8): habilitar **anticipos** de agenda y
   reservas de hotel (`agenda_config.requiere_anticipo` ya diseñado) y **cobro en pedidos**
   (`pack_pedidos`). Pendiente #5 del handoff 10-jun (research de PSPs).

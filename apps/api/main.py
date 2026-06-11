@@ -38,6 +38,7 @@ from modules.facturacion.router import router as facturacion_router
 from modules.facturacion.webhook import crear_router_matias
 from modules.facturacion.webhook_wiring import construir_webhook_matias_deps
 from modules.faq.router import router as faq_router
+from modules.pagos.router import router as pagos_router
 from modules.pedidos.router import router as pedidos_router
 from modules.fiados.router import router as fiados_router
 from modules.inventario.router import router as inventario_router
@@ -155,6 +156,7 @@ def create_app(spa_dist: Path | None = None) -> FastAPI:
     app.include_router(cobranza_router, prefix="/api/v1")   # página Cartera (ADR 0015)
     app.include_router(pedidos_router, prefix="/api/v1")    # kanban Pedidos (ADR 0016)
     app.include_router(cotizaciones_router, prefix="/api/v1")  # cotizaciones WA (ADR 0017)
+    app.include_router(pagos_router, prefix="/api/v1")         # cobros (ADR 0013)
     # Webhook único de WhatsApp (Kapso): NO va bajo /api/ (no es por-empresa; resuelve el tenant por
     # phone_number_id). El TenantMiddleware lo deja pasar (solo /api/ es por-empresa).
     app.include_router(crear_router_wa())

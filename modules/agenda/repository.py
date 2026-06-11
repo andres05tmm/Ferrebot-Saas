@@ -170,6 +170,16 @@ class SqlAgendaRepository:
             stmt = stmt.where(Recurso.activo.is_(True))
         return list((await self._s.execute(stmt)).scalars().all())
 
+    async def servicios_de_recurso(self, recurso_id: int) -> list[Servicio]:
+        """Servicios que presta un recurso (inverso de `recursos_de_servicio`; lo usa reservas)."""
+        stmt = (
+            select(Servicio)
+            .join(RecursoServicio, RecursoServicio.servicio_id == Servicio.id)
+            .where(RecursoServicio.recurso_id == recurso_id, Servicio.activo.is_(True))
+            .order_by(Servicio.id)
+        )
+        return list((await self._s.execute(stmt)).scalars().all())
+
     async def recurso_presta(self, *, recurso_id: int, servicio_id: int) -> bool:
         existe = (
             await self._s.execute(

@@ -55,6 +55,12 @@ from ai.pedidos_tools import (
     ejecutar as pedidos_ejecutar,
     exponer_catalogo as exponer_pedidos,
 )
+from ai.reservas_tools import (
+    ReservasDeps,
+    POR_NOMBRE as RESERVAS_POR_NOMBRE,
+    ejecutar as reservas_ejecutar,
+    exponer_catalogo as exponer_reservas,
+)
 from apps.wa.kapso import KapsoSender, MensajeWa
 from core.config.timezone import now_co
 from core.llm.base import Message, ToolSpec
@@ -77,6 +83,7 @@ from modules.pagos.repository import SqlPagosRepository
 from modules.pagos.service import PagosService
 from modules.pedidos.repository import SqlPedidosRepository
 from modules.pedidos.service import PedidosService
+from modules.reservas.service import ReservasService
 
 log = get_logger("wa.agent")
 
@@ -134,6 +141,15 @@ _SECCION_PEDIDOS = (
     "ofrece las sugerencias de la herramienta o escala a un humano; jamás prometas algo fuera del menú."
 )
 
+# Sección de reservas (solo con `pack_reservas`, plan §2.7): noches sobre el motor de agenda.
+_SECCION_RESERVAS = (
+    "Si el huésped quiere reservar alojamiento: consulta disponibilidad SOLO con consultar_noches "
+    "(fecha de llegada + noches; nunca inventes habitaciones, tarifas ni fechas libres) y reserva "
+    "con reservar_habitacion cuando elija. Si la reserva queda pendiente de anticipo, explícalo con "
+    "claridad y comparte el link de pago si la herramienta lo da. Para ver o cancelar su reserva usa "
+    "mis_citas y cancelar_cita."
+)
+
 # Sección de cotizaciones (solo con `pack_ventas`, ADR 0017): el agente nunca inventa precio/stock.
 _SECCION_COTIZACIONES = (
     "Si el cliente pregunta precios o disponibilidad ('¿a cómo…?', '¿tienes…?'): responde SOLO con "
@@ -188,6 +204,8 @@ def construir_system(persona: str | None, capacidades: frozenset[str] | None = N
     if capacidades is None:
         capacidades = frozenset({"pack_agenda", "pack_faq"})
     partes = [_INTRO_AGENDA if "pack_agenda" in capacidades else _INTRO_GENERICA]
+    if "pack_reservas" in capacidades:
+        partes.append(_SECCION_RESERVAS)
     if "pack_pedidos" in capacidades:
         partes.append(_SECCION_PEDIDOS)
     if "pack_ventas" in capacidades:
@@ -250,13 +268,15 @@ class RuntimeDeps:
     cobranza: CobranzaDeps
     pedidos: PedidosDeps
     cotizaciones: CotizacionesDeps
+    reservas: ReservasDeps
 
 
 def exponer_runtime(ctx: Contexto) -> list[ToolSpec]:
     """Specs que ve el modelo: packs de dominio (gateados por flag) + transversales (handoff núcleo)."""
     return [
-        *exponer_agenda(ctx), *exponer_pedidos(ctx), *exponer_cotizaciones(ctx),
-        *exponer_cobranza(ctx), *exponer_faq(ctx), *exponer_handoff(ctx),
+        *exponer_agenda(ctx), *exponer_reservas(ctx), *exponer_pedidos(ctx),
+        *exponer_cotizaciones(ctx), *exponer_cobranza(ctx), *exponer_faq(ctx),
+        *exponer_handoff(ctx),
     ]
 
 
@@ -268,6 +288,8 @@ async def ejecutar_runtime(
         return await handoff_ejecutar(tool_call, ctx, deps.handoff)
     if tool_call.name in FAQ_POR_NOMBRE:
         return await faq_ejecutar(tool_call, ctx, deps.faq)
+    if tool_call.name in RESERVAS_POR_NOMBRE:
+        return await reservas_ejecutar(tool_call, ctx, deps.reservas)
     if tool_call.name in PEDIDOS_POR_NOMBRE:
         return await pedidos_ejecutar(tool_call, ctx, deps.pedidos)
     if tool_call.name in COTIZACIONES_POR_NOMBRE:
@@ -464,6 +486,10 @@ class AgenteWa:
                         ),
                         cotizaciones=CotizacionesDeps(
                             cotizaciones=CotizacionesService(SqlCotizacionesRepository(session)),
+                        ),
+                        reservas=ReservasDeps(
+                            reservas=ReservasService(repo),
+                            pagos=await self._pagos(tenant, session, capacidades),
                         ),
                     )
                     texto = await correr_bucle(

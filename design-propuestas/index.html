@@ -34,11 +34,21 @@ h1 .grad{background:linear-gradient(90deg,#6c5ce7,#0ea5a3,#c9a35c);-webkit-backg
 .p-lienzo .mini{background:#f4f5f9}.p-lienzo .ms{background:#13151c}
 .p-lienzo .bar.b1{background:#6c5ce7;width:45%}.p-lienzo .bar.b2{background:#efecfd;width:75%}
 .p-lienzo .k{background:#fff;border:1px solid #e6e8ef}
+.p-navaja .mini{background:#171310}.p-navaja .ms{background:#13100d;border-right:1px solid #352d24}
+.p-navaja .bar.b1{background:#d99a3d;width:45%}.p-navaja .bar.b2{background:#352d24;width:75%}
+.p-navaja .k{background:#211c17;border:1px solid #352d24}
+.p-brasa .mini{background:#faf5ef}.p-brasa .ms{background:#ffffff;border-right:1px solid #eee0d8}
+.p-brasa .bar.b1{background:#d6452c;width:45%}.p-brasa .bar.b2{background:#fbe3de;width:75%}
+.p-brasa .k{background:#fff;border:1px solid #eee0d8}
 .body{padding:22px 22px 24px}
 .body .tagv{font-size:10.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;border-radius:99px;padding:4px 11px;display:inline-block;margin-bottom:12px}
 .p-aurora .tagv{background:rgba(14,135,132,.18);color:#5cd6cf}
 .p-brisa .tagv{background:rgba(201,163,92,.18);color:#e2c285}
 .p-lienzo .tagv{background:rgba(108,92,231,.2);color:#a99cff}
+.p-navaja .tagv{background:rgba(217,154,61,.18);color:#e8b066}
+.p-brasa .tagv{background:rgba(214,69,44,.18);color:#f0907c}
+.p-aurora .open{color:#5cd6cf}.p-brisa .open{color:#e2c285}.p-lienzo .open{color:#a99cff}
+.p-navaja .open{color:#e8b066}.p-brasa .open{color:#f0907c}
 .body h2{font-size:21px;margin-bottom:8px}
 .body p{font-size:13px;color:#aab1bf;line-height:1.6}
 .body .open{margin-top:16px;font-size:13px;font-weight:600;display:inline-flex;align-items:center;gap:6px}
@@ -52,7 +62,7 @@ h1 .grad{background:linear-gradient(90deg,#6c5ce7,#0ea5a3,#c9a35c);-webkit-backg
 <div class="wrap">
   <div class="eyebrow">FerreBot SaaS · Propuestas de diseño · junio 2026</div>
   <h1>Tu negocio atendido por IA,<br>con <span class="grad">tu propia marca</span></h1>
-  <p class="lead">Tres direcciones de diseño para el dashboard de agentes. Las tres comparten la misma estructura — Hoy, Agenda/Reservas/Pedidos, Conversaciones — pero cada una viste el producto distinto. Todo es navegable: haz clic, cambia de pestaña, mira las conversaciones.</p>
+  <p class="lead">El catálogo de estilos del dashboard, uno por vertical: ábrele al prospecto el de SU negocio. Todas comparten la misma estructura — Hoy, Agenda/Turnos/Reservas/Pedidos, Conversaciones — pero cada una viste el producto distinto. Todo es navegable: haz clic, cambia de pestaña, mira las conversaciones.</p>
   <div class="cards">
     <a class="pcard p-aurora" href="propuesta-aurora-clinica.html">
       <div class="preview"><div class="mini"><div class="ms"></div><div class="mc"><div class="bar b1"></div><div class="bar b2"></div><div class="rowk"><div class="k"></div><div class="k"></div><div class="k"></div></div></div></div></div>
@@ -72,12 +82,30 @@ h1 .grad{background:linear-gradient(90deg,#6c5ce7,#0ea5a3,#c9a35c);-webkit-backg
         <span class="open">Abrir demo →</span>
       </div>
     </a>
+    <a class="pcard p-navaja" href="propuesta-navaja-barberia.html">
+      <div class="preview"><div class="mini"><div class="ms"></div><div class="mc"><div class="bar b1"></div><div class="bar b2"></div><div class="rowk"><div class="k"></div><div class="k"></div><div class="k"></div></div></div></div></div>
+      <div class="body">
+        <span class="tagv">Barberías · Estudios · Tatuajes</span>
+        <h2>Navaja</h2>
+        <p>Oscuro con actitud: ámbar y cobre sobre tinta, tipografía de letrero. Turnos por barbero en columnas, el agente llenando la agenda de la noche y bandeja de casos con foto.</p>
+        <span class="open">Abrir demo →</span>
+      </div>
+    </a>
+    <a class="pcard p-brasa" href="propuesta-brasa-restaurante.html">
+      <div class="preview"><div class="mini"><div class="ms"></div><div class="mc"><div class="bar b1"></div><div class="bar b2"></div><div class="rowk"><div class="k"></div><div class="k"></div><div class="k"></div></div></div></div></div>
+      <div class="body">
+        <span class="tagv">Restaurantes · Comidas rápidas</span>
+        <h2>Brasa</h2>
+        <p>Claro y caliente: tomate sobre crema. El kanban de pedidos como pantalla de cocina (confirmado → preparación → en camino → entregado) con pagos por link conciliados.</p>
+        <span class="open">Abrir demo →</span>
+      </div>
+    </a>
     <a class="pcard p-lienzo" href="propuesta-lienzo-generico.html">
       <div class="preview"><div class="mini"><div class="ms"></div><div class="mc"><div class="bar b1"></div><div class="bar b2"></div><div class="rowk"><div class="k"></div><div class="k"></div><div class="k"></div></div></div></div></div>
       <div class="body">
-        <span class="tagv">Restaurantes · Tiendas · Cualquier vertical</span>
+        <span class="tagv">Ferreterías · Tiendas · Cualquier vertical</span>
         <h2>Lienzo</h2>
-        <p>Neutro y poderoso: sidebar oscura, denso en datos, kanban de pedidos en vivo y <b>selector de color de marca en vivo</b> — la demo del white-label en un clic.</p>
+        <p>Neutro y poderoso: sidebar oscura, denso en datos y <b>selector de color de marca en vivo</b> — la demo del white-label en un clic para el vertical que no tenga estilo propio.</p>
         <span class="open">Abrir demo →</span>
       </div>
     </a>

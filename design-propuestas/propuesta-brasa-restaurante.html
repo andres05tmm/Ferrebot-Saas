@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Brasa — Burgers La 70 · Dashboard de Agente IA</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Figtree:wght@500;600;700;800&display=swap" rel="stylesheet">
+<style>
+/* «Brasa» — restaurantes y comidas rápidas: claro y caliente, tomate sobre
+   crema, el kanban de pedidos como pantalla principal de la cocina. */
+:root{
+  --brand:#d6452c; --brand-dark:#b23722; --brand-soft:#fbe3de; --brand-softer:#fdf2f0;
+  --ink:#2b201d; --ink-soft:#7d6b66; --surface:#faf5ef; --card:#ffffff;
+  --line:#eee0d8; --ok:#2e9e6b; --warn:#e6a23c; --bad:#d9534f; --wa:#25d366;
+  --radius:16px; --shadow:0 1px 3px rgba(90,40,25,.07),0 10px 26px rgba(90,40,25,.06);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Figtree',sans-serif;background:var(--surface);color:var(--ink);font-size:14px}
+.app{display:grid;grid-template-columns:240px 1fr;min-height:100vh}
+
+/* ── Sidebar ── */
+.side{background:var(--card);border-right:1px solid var(--line);padding:20px 14px;display:flex;flex-direction:column;gap:4px;position:sticky;top:0;height:100vh}
+.logo{display:flex;align-items:center;gap:10px;padding:6px 10px 22px}
+.logo .mark{width:38px;height:38px;border-radius:12px;background:linear-gradient(135deg,var(--brand),#e8763c);display:grid;place-items:center;color:#fff;font-size:19px}
+.logo b{font-size:16px;display:block;line-height:1.1;font-weight:800}
+.logo span{font-size:11px;color:var(--ink-soft)}
+.nav-label{font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-soft);padding:14px 12px 6px;font-weight:700}
+.nav a{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:10px;color:var(--ink-soft);text-decoration:none;font-weight:600;cursor:pointer;transition:.15s}
+.nav a:hover{background:var(--brand-softer);color:var(--brand-dark)}
+.nav a.active{background:var(--brand-soft);color:var(--brand-dark)}
+.nav .ico{width:20px;text-align:center}
+.agent-pill{margin-top:auto;background:var(--brand-softer);border:1px solid var(--line);border-radius:var(--radius);padding:14px}
+.agent-pill .dot{width:8px;height:8px;border-radius:50%;background:var(--ok);display:inline-block;margin-right:6px;animation:pulse 2s infinite}
+@keyframes pulse{50%{opacity:.4}}
+.agent-pill b{font-size:13px}.agent-pill p{font-size:11px;color:var(--ink-soft);margin-top:4px;line-height:1.4}
+
+/* ── Main ── */
+.main{padding:26px 32px;max-width:1220px}
+.topbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:24px}
+.topbar h1{font-size:23px;font-weight:800;letter-spacing:-.01em}
+.topbar .sub{color:var(--ink-soft);font-size:13px;margin-top:2px}
+.top-actions{display:flex;gap:10px;align-items:center}
+.btn{border:none;border-radius:10px;padding:10px 16px;font-weight:700;font-size:13px;cursor:pointer;font-family:'Figtree'}
+.btn-primary{background:var(--brand);color:#fff}.btn-primary:hover{background:var(--brand-dark)}
+.btn-ghost{background:var(--card);border:1px solid var(--line);color:var(--ink)}
+.avatar{width:36px;height:36px;border-radius:50%;background:var(--brand-soft);display:grid;place-items:center;font-weight:800;color:var(--brand-dark);font-size:13px}
+
+.view{display:none}.view.active{display:block;animation:fade .25s ease}
+@keyframes fade{from{opacity:0;transform:translateY(4px)}to{opacity:1}}
+
+/* KPIs */
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:22px}
+.kpi{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:18px;box-shadow:var(--shadow)}
+.kpi .label{font-size:12px;color:var(--ink-soft);font-weight:600}
+.kpi .value{font-size:29px;font-weight:800;margin-top:6px;letter-spacing:-.02em}
+.kpi .delta{font-size:11px;margin-top:4px;font-weight:700}
+.kpi .delta.up{color:var(--ok)}.kpi .delta.warn{color:var(--warn)}
+
+.grid-2{display:grid;grid-template-columns:1.6fr 1fr;gap:14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow)}
+.card .head{display:flex;justify-content:space-between;align-items:center;padding:16px 18px;border-bottom:1px solid var(--line)}
+.card .head h3{font-size:15px;font-weight:700}
+.card .head .link{font-size:12px;color:var(--brand);font-weight:700;cursor:pointer}
+
+/* lista resumen pedidos (vista hoy) */
+.fila-pedido{display:flex;align-items:center;gap:14px;padding:13px 18px;border-bottom:1px solid var(--line)}
+.fila-pedido:last-child{border-bottom:none}
+.fila-pedido .npd{font-weight:800;font-size:14px;color:var(--brand-dark);width:50px}
+.fila-pedido .info b{font-size:13.5px;display:block}
+.fila-pedido .info span{font-size:12px;color:var(--ink-soft)}
+.fila-pedido .monto{margin-left:auto;font-weight:800;font-size:13.5px}
+.fila-pedido .tag{font-size:11px;font-weight:700;padding:4px 10px;border-radius:99px}
+.t-prep{background:#fdf3e3;color:#a8730f}
+.t-camino{background:#e7f0fb;color:#2a5da8}
+.t-ok{background:#e8f7ee;color:#1f8a4c}
+
+/* Bandeja humana */
+.alerta{display:flex;gap:12px;padding:13px 18px;border-bottom:1px solid var(--line)}
+.alerta:last-child{border:none}
+.alerta .who{width:34px;height:34px;border-radius:50%;background:#fdf3e3;display:grid;place-items:center;font-size:15px;flex-shrink:0}
+.alerta b{font-size:13px;display:block}.alerta p{font-size:12px;color:var(--ink-soft);margin-top:2px;line-height:1.4}
+.alerta .t{font-size:11px;color:var(--warn);font-weight:700;margin-left:auto;white-space:nowrap}
+
+/* ── KANBAN de pedidos (la pantalla del restaurante) ── */
+.kanban-toolbar{display:flex;gap:10px;align-items:center;margin-bottom:14px}
+.chip{padding:7px 14px;border-radius:99px;border:1px solid var(--line);background:var(--card);font-size:12.5px;font-weight:600;cursor:pointer;color:var(--ink-soft)}
+.chip.on{background:var(--brand);color:#fff;border-color:var(--brand)}
+.kanban{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;align-items:start}
+.kcol .kh{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:var(--ink-soft);padding:0 4px 10px}
+.kcol .kh .n{background:var(--brand-soft);color:var(--brand-dark);border-radius:99px;padding:1px 9px;font-size:11px}
+.pedido{background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);padding:13px 14px;margin-bottom:12px}
+.pedido .ph{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:7px}
+.pedido .ph b{font-size:13.5px;font-weight:800}
+.pedido .ph span{font-size:11px;color:var(--ink-soft)}
+.pedido ul{list-style:none;font-size:12.5px;color:var(--ink-soft);margin-bottom:9px}
+.pedido li{padding:1.5px 0}
+.pedido .dir{font-size:11.5px;color:var(--ink-soft);padding:6px 0;border-top:1px dashed var(--line)}
+.pedido .pf{display:flex;justify-content:space-between;align-items:center;margin-top:4px}
+.pedido .pf b{font-size:14px;font-weight:800;color:var(--brand-dark)}
+.pedido .pago{font-size:10.5px;font-weight:700;border-radius:99px;padding:3px 9px}
+.pg-ok{background:#e8f7ee;color:#1f8a4c}
+.pg-pend{background:#fdf3e3;color:#a8730f}
+.pedido .avanzar{width:100%;margin-top:10px;border:none;border-radius:9px;padding:9px;font-weight:700;font-size:12.5px;cursor:pointer;background:var(--brand-soft);color:var(--brand-dark);font-family:'Figtree'}
+.pedido .avanzar:hover{background:var(--brand);color:#fff}
+.pedido .robot{font-size:10.5px;color:var(--ink-soft)}
+
+/* Conversaciones */
+.conv-wrap{display:grid;grid-template-columns:320px 1fr;background:var(--card);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;height:600px;box-shadow:var(--shadow)}
+.conv-list{border-right:1px solid var(--line);overflow-y:auto}
+.conv-search{padding:12px}.conv-search input{width:100%;padding:9px 12px;border:1px solid var(--line);border-radius:10px;font-size:13px;background:var(--surface)}
+.conv{display:flex;gap:11px;padding:12px 14px;cursor:pointer;border-bottom:1px solid var(--line)}
+.conv:hover{background:var(--brand-softer)}
+.conv.sel{background:var(--brand-soft)}
+.conv .av{width:40px;height:40px;border-radius:50%;display:grid;place-items:center;font-weight:700;color:#fff;flex-shrink:0;font-size:14px}
+.conv b{font-size:13px}.conv p{font-size:12px;color:var(--ink-soft);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:175px;margin-top:2px}
+.conv .meta{margin-left:auto;text-align:right;font-size:10.5px;color:var(--ink-soft)}
+.badge{display:inline-block;font-size:9.5px;font-weight:700;border-radius:99px;padding:2px 7px;margin-top:4px}
+.b-ia{background:var(--brand-soft);color:var(--brand-dark)}
+.b-hum{background:#fdf3e3;color:#a8730f}
+.thread{display:flex;flex-direction:column;background:#f6efe8}
+.thread-head{background:var(--card);padding:13px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px}
+.thread-head .actions{margin-left:auto;display:flex;gap:8px}
+.msgs{flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:10px}
+.msg{max-width:65%;padding:10px 14px;border-radius:14px;font-size:13px;line-height:1.45}
+.m-in{background:#fff;border:1px solid var(--line);align-self:flex-start;border-bottom-left-radius:4px}
+.m-out{background:var(--brand-soft);align-self:flex-end;border-bottom-right-radius:4px}
+.m-out .by{font-size:10px;color:var(--brand-dark);font-weight:700;margin-bottom:3px}
+.m-sys{align-self:center;background:#fdf3e3;color:#a8730f;font-size:11px;font-weight:600;padding:6px 14px;border-radius:99px}
+.composer{padding:12px 16px;background:var(--card);border-top:1px solid var(--line);display:flex;gap:10px}
+.composer input{flex:1;padding:11px 14px;border:1px solid var(--line);border-radius:10px;font-size:13px}
+.foot{text-align:center;color:var(--ink-soft);font-size:11px;padding:26px 0 8px}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="side">
+    <div class="logo">
+      <div class="mark">🍔</div>
+      <div><b>Burgers La 70</b><span>Cartagena · Crespo</span></div>
+    </div>
+    <div class="nav-label">Operación</div>
+    <nav class="nav">
+      <a class="active" data-v="hoy"><span class="ico">☀️</span> Hoy</a>
+      <a data-v="pedidos"><span class="ico">🛵</span> Pedidos</a>
+      <a data-v="conv"><span class="ico">💬</span> Conversaciones</a>
+    </nav>
+    <div class="nav-label">Agente IA</div>
+    <nav class="nav">
+      <a><span class="ico">🧠</span> Conocimiento</a>
+      <a><span class="ico">⚙️</span> Configurar agente</a>
+    </nav>
+    <div class="nav-label">Negocio</div>
+    <nav class="nav">
+      <a><span class="ico">🍟</span> Carta y zonas</a>
+      <a><span class="ico">📈</span> Reportes</a>
+      <a><span class="ico">🎨</span> Ajustes</a>
+    </nav>
+    <div class="agent-pill">
+      <b><span class="dot"></span>Agente activo</b>
+      <p>Tomando pedidos 24/7.<br>Hoy: <b>52 conversaciones</b>, 19 pedidos confirmados.</p>
+    </div>
+  </aside>
+
+  <main class="main">
+    <!-- ════ VISTA HOY ════ -->
+    <section class="view active" id="v-hoy">
+      <div class="topbar">
+        <div><h1>¡A la plancha, Wilmer! 🔥</h1><div class="sub">Jueves 11 de junio · 19 pedidos hoy · $812.000 vendidos por el agente</div></div>
+        <div class="top-actions"><button class="btn btn-ghost">Pausar pedidos</button><button class="btn btn-primary">+ Pedido manual</button><div class="avatar">WL</div></div>
+      </div>
+      <div class="kpis">
+        <div class="kpi"><div class="label">Pedidos hoy</div><div class="value">19</div><div class="delta up">17 los tomó el agente</div></div>
+        <div class="kpi"><div class="label">Vendido hoy</div><div class="value">$812K</div><div class="delta up">▲ 26% vs jueves pasado</div></div>
+        <div class="kpi"><div class="label">Ticket promedio</div><div class="value">$42.7K</div><div class="delta up">▲ $3.2K con combos</div></div>
+        <div class="kpi"><div class="label">Tiempo de entrega</div><div class="value">38 min</div><div class="delta warn">obj. 35 min</div></div>
+      </div>
+      <div class="grid-2">
+        <div class="card">
+          <div class="head"><h3>Últimos pedidos</h3><span class="link" onclick="go('pedidos')">Abrir el tablero de cocina →</span></div>
+          <div class="fila-pedido"><div class="npd">#121</div><div class="info"><b>Valeria Soto</b><span>2× Doble carne · 1× Limonada · Manga</span></div><span class="tag t-prep">En preparación</span><span class="monto">$47.000</span></div>
+          <div class="fila-pedido"><div class="npd">#120</div><div class="info"><b>Camilo Ruiz</b><span>1× Familiar · Crespo</span></div><span class="tag t-prep">En preparación</span><span class="monto">$78.000</span></div>
+          <div class="fila-pedido"><div class="npd">#119</div><div class="info"><b>Yina Polo</b><span>3× Clásica · 3× Gaseosa · Marbella</span></div><span class="tag t-camino">En camino</span><span class="monto">$69.000</span></div>
+          <div class="fila-pedido"><div class="npd">#118</div><div class="info"><b>Carlos Mendoza</b><span>2× Doble carne · Manga</span></div><span class="tag t-camino">En camino</span><span class="monto">$45.000</span></div>
+          <div class="fila-pedido"><div class="npd">#117</div><div class="info"><b>Laura Díaz</b><span>1× Veggie · 1× Jugo · Pie de la Popa</span></div><span class="tag t-ok">Entregado</span><span class="monto">$31.000</span></div>
+        </div>
+        <div class="card">
+          <div class="head"><h3>⚠️ Necesitan un humano</h3><span class="link" onclick="go('conv')">Ir a la bandeja →</span></div>
+          <div class="alerta"><div class="who">🎂</div><div><b>Marcela Vives</b><p>Quiere cotizar 40 combos para un cumpleaños el sábado — pedido grande, lo pasó contigo.</p></div><span class="t">hace 6 min</span></div>
+          <div class="alerta"><div class="who">🛵</div><div><b>Camilo Ruiz</b><p>Pregunta si pueden dejar el pedido en portería — el agente confirmó la dirección pero te consulta la excepción.</p></div><span class="t">hace 20 min</span></div>
+          <div class="alerta"><div class="who">💢</div><div><b>Sin registrar</b><p>"La hamburguesa llegó fría" — el agente se disculpó, ofreció reposición y te pasó el caso.</p></div><span class="t">hace 1 h</span></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ════ VISTA PEDIDOS (kanban) ════ -->
+    <section class="view" id="v-pedidos">
+      <div class="topbar">
+        <div><h1>Pedidos en vivo</h1><div class="sub">El tablero de la cocina · se actualiza solo cuando el agente confirma</div></div>
+        <div class="top-actions"><button class="btn btn-ghost">Pausar pedidos</button><button class="btn btn-primary">+ Pedido manual</button></div>
+      </div>
+      <div class="kanban-toolbar">
+        <span class="chip on">Hoy</span><span class="chip">Solo domicilios</span><span class="chip">Solo recoger</span>
+        <span style="margin-left:auto;font-size:12px;color:var(--ink-soft)">🤖 = lo tomó el agente por WhatsApp</span>
+      </div>
+      <div class="kanban">
+        <div class="kcol">
+          <div class="kh">Confirmados <span class="n">2</span></div>
+          <div class="pedido">
+            <div class="ph"><b>#122 · Andrea P.</b><span>3:42 pm</span></div>
+            <ul><li>1× Doble carne</li><li>1× Salchipapa</li><li>2× Gaseosa</li></ul>
+            <div class="dir">📍 Cl 30 #18-44 · Pie de la Popa</div>
+            <div class="pf"><b>$52.000</b><span class="pago pg-ok">Pagado · link Bre-B</span></div>
+            <button class="avanzar">→ A cocina</button>
+            <div class="robot" style="margin-top:7px">🤖 tomado por el agente</div>
+          </div>
+          <div class="pedido">
+            <div class="ph"><b>#123 · Édgar M.</b><span>3:47 pm</span></div>
+            <ul><li>2× Clásica</li><li>1× Limonada natural</li></ul>
+            <div class="dir">🏃 Para recoger en el local</div>
+            <div class="pf"><b>$38.000</b><span class="pago pg-pend">Paga al recoger</span></div>
+            <button class="avanzar">→ A cocina</button>
+            <div class="robot" style="margin-top:7px">🤖 tomado por el agente</div>
+          </div>
+        </div>
+        <div class="kcol">
+          <div class="kh">En preparación <span class="n">2</span></div>
+          <div class="pedido">
+            <div class="ph"><b>#121 · Valeria S.</b><span>3:31 pm</span></div>
+            <ul><li>2× Doble carne</li><li>1× Limonada</li></ul>
+            <div class="dir">📍 Cra 70 #45-12 · Manga</div>
+            <div class="pf"><b>$47.000</b><span class="pago pg-ok">Pagado · Nequi</span></div>
+            <button class="avanzar">→ Despachar</button>
+          </div>
+          <div class="pedido">
+            <div class="ph"><b>#120 · Camilo R.</b><span>3:25 pm</span></div>
+            <ul><li>1× Familiar (4 personas)</li></ul>
+            <div class="dir">📍 Av San Martín #9-80 · Crespo</div>
+            <div class="pf"><b>$78.000</b><span class="pago pg-pend">Efectivo</span></div>
+            <button class="avanzar">→ Despachar</button>
+          </div>
+        </div>
+        <div class="kcol">
+          <div class="kh">En camino <span class="n">2</span></div>
+          <div class="pedido">
+            <div class="ph"><b>#119 · Yina P.</b><span>3:05 pm</span></div>
+            <ul><li>3× Clásica</li><li>3× Gaseosa</li></ul>
+            <div class="dir">🛵 Marbella · salió 3:38 pm</div>
+            <div class="pf"><b>$69.000</b><span class="pago pg-ok">Pagado · link</span></div>
+            <button class="avanzar">✓ Entregado</button>
+          </div>
+          <div class="pedido">
+            <div class="ph"><b>#118 · Carlos M.</b><span>2:58 pm</span></div>
+            <ul><li>2× Doble carne</li></ul>
+            <div class="dir">🛵 Manga · salió 3:30 pm</div>
+            <div class="pf"><b>$45.000</b><span class="pago pg-ok">Pagado · link</span></div>
+            <button class="avanzar">✓ Entregado</button>
+          </div>
+        </div>
+        <div class="kcol">
+          <div class="kh">Entregados <span class="n">13</span></div>
+          <div class="pedido" style="opacity:.65">
+            <div class="ph"><b>#117 · Laura D.</b><span>2:30 pm</span></div>
+            <ul><li>1× Veggie · 1× Jugo</li></ul>
+            <div class="pf"><b>$31.000</b><span class="pago pg-ok">Entregado 3:12 pm</span></div>
+          </div>
+          <div class="pedido" style="opacity:.65">
+            <div class="ph"><b>#116 · Andrés T.</b><span>2:21 pm</span></div>
+            <ul><li>3× Clásica</li></ul>
+            <div class="pf"><b>$63.000</b><span class="pago pg-ok">Entregado 3:02 pm</span></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ════ VISTA CONVERSACIONES ════ -->
+    <section class="view" id="v-conv">
+      <div class="topbar">
+        <div><h1>Conversaciones</h1><div class="sub">WhatsApp · 52 hoy · 3 esperando humano</div></div>
+        <div class="top-actions"><span class="chip on">Todas</span><span class="chip">🤖 Agente</span><span class="chip">🙋 Necesitan humano</span></div>
+      </div>
+      <div class="conv-wrap">
+        <div class="conv-list">
+          <div class="conv-search"><input placeholder="Buscar cliente o teléfono…"></div>
+          <div class="conv sel"><div class="av" style="background:#d6452c">AP</div><div><b>Andrea Polo</b><p>Pedido #122 confirmado ✅ llega en ~40 min…</p><span class="badge b-ia">🤖 Pedido tomado</span></div><div class="meta">3:42</div></div>
+          <div class="conv"><div class="av" style="background:#e6a23c">MV</div><div><b>Marcela Vives</b><p>¿40 combos para el sábado?</p><span class="badge b-hum">🙋 Necesita humano</span></div><div class="meta">3:36</div></div>
+          <div class="conv"><div class="av" style="background:#5a8fd4">CR</div><div><b>Camilo Ruiz</b><p>¿Lo pueden dejar en portería?</p><span class="badge b-hum">🙋 Necesita humano</span></div><div class="meta">3:22</div></div>
+          <div class="conv"><div class="av" style="background:#2e9e6b">VS</div><div><b>Valeria Soto</b><p>Gracias! quedo pendiente 😊</p><span class="badge b-ia">🤖 Pedido + pago</span></div><div class="meta">3:31</div></div>
+          <div class="conv"><div class="av" style="background:#9b6bb3">LD</div><div><b>Laura Díaz</b><p>⭐⭐⭐⭐⭐ Todo perfecto</p><span class="badge b-ia">🤖 Encuesta respondida</span></div><div class="meta">3:20</div></div>
+        </div>
+        <div class="thread">
+          <div class="thread-head">
+            <div class="av" style="width:38px;height:38px;border-radius:50%;background:#d6452c;color:#fff;display:grid;place-items:center;font-weight:800">AP</div>
+            <div><b style="font-size:14px">Andrea Polo</b><div style="font-size:11.5px;color:var(--ink-soft)">+57 314 220 9981 · 6 pedidos este mes</div></div>
+            <div class="actions"><button class="btn btn-ghost">Ver pedidos</button><button class="btn btn-primary">Tomar el control</button></div>
+          </div>
+          <div class="msgs">
+            <div class="msg m-in">Holaa, me mandas una doble carne, una salchipapa y 2 gaseosas porfa 🙏</div>
+            <div class="msg m-out"><div class="by">🤖 Agente La 70</div>¡Hola Andrea! 🍔 Claro:\n1× Doble carne $24.000 · 1× Salchipapa $18.000 · 2× Gaseosa $10.000 = <b>$52.000</b>. ¿Misma dirección de siempre en Pie de la Popa?</div>
+            <div class="msg m-in">Sí señor, la misma</div>
+            <div class="msg m-out"><div class="by">🤖 Agente La 70</div>Pedido <b>#122</b> confirmado ✅ Domicilio $4.000 incluido. Llega en ~40 min.\n👉 Si quieres pagar de una: la70.co/pagar/122</div>
+            <div class="msg m-in">Listo, pagado ✅</div>
+            <div class="msg m-out"><div class="by">🤖 Agente La 70</div>¡Pago recibido! 🎉 Tu pedido ya está en cocina. Te aviso cuando salga el domiciliario.</div>
+            <div class="msg m-sys">✅ Pedido #122 · pago conciliado por link Bre-B · enviado al tablero de cocina</div>
+          </div>
+          <div class="composer"><input placeholder="Escribe para intervenir como humano…"><button class="btn btn-primary">Enviar</button></div>
+        </div>
+      </div>
+    </section>
+    <div class="foot">Propuesta «Brasa» · FerreBot SaaS · mismo producto, tu marca — demo con datos ficticios</div>
+  </main>
+</div>
+<script>
+function go(v){
+  document.querySelectorAll('.view').forEach(x=>x.classList.remove('active'));
+  document.getElementById('v-'+v).classList.add('active');
+  document.querySelectorAll('.nav a[data-v]').forEach(a=>a.classList.toggle('active',a.dataset.v===v));
+}
+document.querySelectorAll('.nav a[data-v]').forEach(a=>a.addEventListener('click',()=>go(a.dataset.v)));
+</script>
+</body>
+</html>

@@ -33,7 +33,8 @@ MONEY = Numeric(12, 2)
 
 # Los tipos los crea la migración (create_type=False): aquí solo se mapean.
 recurso_tipo = PgEnum(
-    "profesional", "sala", "equipo", "mesa", "cancha", name="recurso_tipo", create_type=False
+    "profesional", "sala", "equipo", "mesa", "cancha", "habitacion",
+    name="recurso_tipo", create_type=False,
 )
 cita_estado = PgEnum(
     "pendiente", "confirmada", "cumplida", "cancelada", "no_show",
@@ -163,6 +164,9 @@ class AgendaConfig(TenantBase):
         ARRAY(Integer), nullable=False, server_default="{24,2}"
     )
     persona: Mapped[str | None] = mapped_column(Text)  # tono/saludo del agente
+    # Modo reservas/noches (0022): las horas que convierten "N noches" en [check-in, check-out).
+    checkin_hora: Mapped[time] = mapped_column(Time, nullable=False, server_default="15:00")
+    checkout_hora: Mapped[time] = mapped_column(Time, nullable=False, server_default="12:00")
     # Sync OPCIONAL con Google Calendar (write-only): id del calendario que el negocio compartió con
     # el service account de plataforma. NULL = sync apagado (la base sigue siendo la fuente de verdad).
     google_calendar_id: Mapped[str | None] = mapped_column(Text)

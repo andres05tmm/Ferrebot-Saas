@@ -10,7 +10,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-RecursoTipo = Literal["profesional", "sala", "equipo", "mesa", "cancha"]
+RecursoTipo = Literal["profesional", "sala", "equipo", "mesa", "cancha", "habitacion"]
 CitaEstado = Literal["pendiente", "confirmada", "cumplida", "cancelada", "no_show"]
 CitaOrigen = Literal["whatsapp", "dashboard"]
 ModoConfirmacion = Literal["auto", "manual"]
@@ -129,6 +129,9 @@ class AgendaConfigCrear(BaseModel):
     capacidad_por_slot: int = Field(default=1, gt=0)
     recordatorios_horas: list[int] = Field(default_factory=lambda: [24, 2])
     persona: str | None = None
+    # Modo reservas/noches (0022): horas de check-in/check-out de los recursos tipo habitación.
+    checkin_hora: time = time(15, 0)
+    checkout_hora: time = time(12, 0)
     # Sync opcional con Google Calendar: calendar_id compartido con el service account. None = apagado.
     google_calendar_id: str | None = None
 
@@ -151,6 +154,8 @@ class AgendaConfigLeer(BaseModel):
     capacidad_por_slot: int
     recordatorios_horas: list[int]
     persona: str | None
+    checkin_hora: time
+    checkout_hora: time
     google_calendar_id: str | None
     creado_en: datetime
     actualizado_en: datetime | None

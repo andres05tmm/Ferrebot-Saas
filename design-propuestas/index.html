@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Propuestas de diseño — Dashboard de Agentes IA · FerreBot SaaS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Inter',sans-serif;background:#0f1117;color:#e7e9ee;min-height:100vh;font-size:15px}
+h1,h2,h3{font-family:'Sora',sans-serif}
+.wrap{max-width:1080px;margin:0 auto;padding:60px 28px}
+.eyebrow{font-size:12px;letter-spacing:.22em;text-transform:uppercase;color:#8b93a3;font-weight:600}
+h1{font-size:38px;font-weight:800;margin:14px 0 12px;line-height:1.15}
+h1 .grad{background:linear-gradient(90deg,#6c5ce7,#0ea5a3,#c9a35c);-webkit-background-clip:text;background-clip:text;color:transparent}
+.lead{color:#aab1bf;max-width:640px;line-height:1.65;margin-bottom:48px}
+.cards{display:grid;grid-template-columns:repeat(3,1fr);gap:20px}
+.pcard{border-radius:18px;overflow:hidden;border:1px solid #262a35;background:#161922;text-decoration:none;color:inherit;display:flex;flex-direction:column;transition:.2s}
+.pcard:hover{transform:translateY(-4px);border-color:#3a4052}
+.preview{height:170px;position:relative;display:flex;align-items:flex-end;padding:16px}
+.preview .mini{position:absolute;inset:0;display:grid;grid-template-columns:56px 1fr;opacity:.95}
+.mini .ms{height:100%}
+.mini .mc{padding:14px;display:flex;flex-direction:column;gap:8px}
+.mini .bar{height:10px;border-radius:5px}
+.mini .rowk{display:flex;gap:8px}
+.mini .k{flex:1;height:34px;border-radius:8px}
+.p-aurora .mini{background:#f6f9f9}.p-aurora .ms{background:#ffffff;border-right:1px solid #e3edec}
+.p-aurora .bar.b1{background:#0e8784;width:45%}.p-aurora .bar.b2{background:#e0f2f1;width:75%}
+.p-aurora .k{background:#fff;border:1px solid #e3edec}
+.p-brisa .mini{background:#f7f1e5}.p-brisa .ms{background:linear-gradient(180deg,#0b3954,#072638)}
+.p-brisa .bar.b1{background:#c9a35c;width:45%}.p-brisa .bar.b2{background:#efe5d2;width:75%}
+.p-brisa .k{background:#fffdf8;border:1px solid #e8dfcd}
+.p-lienzo .mini{background:#f4f5f9}.p-lienzo .ms{background:#13151c}
+.p-lienzo .bar.b1{background:#6c5ce7;width:45%}.p-lienzo .bar.b2{background:#efecfd;width:75%}
+.p-lienzo .k{background:#fff;border:1px solid #e6e8ef}
+.body{padding:22px 22px 24px}
+.body .tagv{font-size:10.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;border-radius:99px;padding:4px 11px;display:inline-block;margin-bottom:12px}
+.p-aurora .tagv{background:rgba(14,135,132,.18);color:#5cd6cf}
+.p-brisa .tagv{background:rgba(201,163,92,.18);color:#e2c285}
+.p-lienzo .tagv{background:rgba(108,92,231,.2);color:#a99cff}
+.body h2{font-size:21px;margin-bottom:8px}
+.body p{font-size:13px;color:#aab1bf;line-height:1.6}
+.body .open{margin-top:16px;font-size:13px;font-weight:600;display:inline-flex;align-items:center;gap:6px}
+.p-aurora .open{color:#5cd6cf}.p-brisa .open{color:#e2c285}.p-lienzo .open{color:#a99cff}
+.note{margin-top:44px;border:1px solid #262a35;border-radius:16px;padding:22px 26px;background:#13161e;color:#aab1bf;font-size:13.5px;line-height:1.7}
+.note b{color:#e7e9ee}
+@media(max-width:900px){.cards{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="eyebrow">FerreBot SaaS · Propuestas de diseño · junio 2026</div>
+  <h1>Tu negocio atendido por IA,<br>con <span class="grad">tu propia marca</span></h1>
+  <p class="lead">Tres direcciones de diseño para el dashboard de agentes. Las tres comparten la misma estructura — Hoy, Agenda/Reservas/Pedidos, Conversaciones — pero cada una viste el producto distinto. Todo es navegable: haz clic, cambia de pestaña, mira las conversaciones.</p>
+  <div class="cards">
+    <a class="pcard p-aurora" href="propuesta-aurora-clinica.html">
+      <div class="preview"><div class="mini"><div class="ms"></div><div class="mc"><div class="bar b1"></div><div class="bar b2"></div><div class="rowk"><div class="k"></div><div class="k"></div><div class="k"></div></div></div></div></div>
+      <div class="body">
+        <span class="tagv">Clínicas · Consultorios · Spas</span>
+        <h2>Aurora</h2>
+        <p>Calma clínica: teal y blanco, tarjetas suaves, tipografía amable. Agenda semanal por profesional, citas que el agente cierra solo y bandeja de "necesita un humano".</p>
+        <span class="open">Abrir demo →</span>
+      </div>
+    </a>
+    <a class="pcard p-brisa" href="propuesta-brisa-hotel.html">
+      <div class="preview"><div class="mini"><div class="ms"></div><div class="mc"><div class="bar b1"></div><div class="bar b2"></div><div class="rowk"><div class="k"></div><div class="k"></div><div class="k"></div></div></div></div></div>
+      <div class="body">
+        <span class="tagv">Hoteles · Hostales de playa</span>
+        <h2>Brisa</h2>
+        <p>Cálido y premium: océano, arena y dorado, serif elegante. Calendario de ocupación por habitación, concierge IA que cierra reservas con anticipo y llegadas del día.</p>
+        <span class="open">Abrir demo →</span>
+      </div>
+    </a>
+    <a class="pcard p-lienzo" href="propuesta-lienzo-generico.html">
+      <div class="preview"><div class="mini"><div class="ms"></div><div class="mc"><div class="bar b1"></div><div class="bar b2"></div><div class="rowk"><div class="k"></div><div class="k"></div><div class="k"></div></div></div></div></div>
+      <div class="body">
+        <span class="tagv">Restaurantes · Tiendas · Cualquier vertical</span>
+        <h2>Lienzo</h2>
+        <p>Neutro y poderoso: sidebar oscura, denso en datos, kanban de pedidos en vivo y <b>selector de color de marca en vivo</b> — la demo del white-label en un clic.</p>
+        <span class="open">Abrir demo →</span>
+      </div>
+    </a>
+  </div>
+  <div class="note">
+    <b>Cómo usar esto en una venta:</b> abre la propuesta del vertical del prospecto y navega Hoy → Conversaciones para mostrar al agente cerrando una cita/reserva/pedido real por WhatsApp. En «Lienzo», cambia el color de marca frente al cliente: <b>"así se vería con TU logo y TU color"</b>. La propuesta elegida se porta al dashboard React como tema base (tokens CSS por tenant servidos por <code>GET /api/v1/config</code>) — ver <b>docs/plan-impulso-agentes-2026.md §4</b>.
+  </div>
+</div>
+</body>
+</html>

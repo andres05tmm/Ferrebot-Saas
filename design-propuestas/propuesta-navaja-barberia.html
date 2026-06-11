@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Navaja — Barbería El Patio · Dashboard de Agente IA</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800&family=Archivo+Narrow:wght@500;600&display=swap" rel="stylesheet">
+<style>
+/* «Navaja» — barberías y estudios de tatuaje: oscuro cálido, ámbar/cobre,
+   tipografía condensada de letrero. El mismo dashboard, con actitud. */
+:root{
+  --brand:#d99a3d; --brand-up:#e8b066; --brand-soft:#3a2d1c; --brand-softer:#2c2418;
+  --ink:#f0e9df; --ink-soft:#a59a8a; --surface:#171310; --card:#211c17;
+  --line:#352d24; --ok:#7fb069; --warn:#e6a23c; --bad:#d9534f; --wa:#25d366;
+  --radius:14px; --shadow:0 2px 4px rgba(0,0,0,.35),0 14px 34px rgba(0,0,0,.3);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Archivo',sans-serif;background:var(--surface);color:var(--ink);font-size:14px}
+h1,h2,h3{font-family:'Archivo',sans-serif;letter-spacing:-.01em}
+.app{display:grid;grid-template-columns:240px 1fr;min-height:100vh}
+
+/* ── Sidebar ── */
+.side{background:#13100d;border-right:1px solid var(--line);padding:20px 14px;display:flex;flex-direction:column;gap:4px;position:sticky;top:0;height:100vh}
+.logo{display:flex;align-items:center;gap:10px;padding:6px 10px 22px}
+.logo .mark{width:38px;height:38px;border-radius:10px;background:linear-gradient(135deg,var(--brand),#a8691f);display:grid;place-items:center;font-size:19px}
+.logo b{font-size:16px;display:block;line-height:1.1;font-weight:800}
+.logo span{font-size:11px;color:var(--ink-soft)}
+.nav-label{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-soft);padding:14px 12px 6px;font-weight:600}
+.nav a{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:9px;color:var(--ink-soft);text-decoration:none;font-weight:600;cursor:pointer;transition:.15s}
+.nav a:hover{background:var(--brand-softer);color:var(--brand)}
+.nav a.active{background:var(--brand-soft);color:var(--brand)}
+.nav .ico{width:20px;text-align:center}
+.agent-pill{margin-top:auto;background:var(--brand-softer);border:1px solid var(--line);border-radius:var(--radius);padding:14px}
+.agent-pill .dot{width:8px;height:8px;border-radius:50%;background:var(--ok);display:inline-block;margin-right:6px;animation:pulse 2s infinite}
+@keyframes pulse{50%{opacity:.4}}
+.agent-pill b{font-size:13px}.agent-pill p{font-size:11px;color:var(--ink-soft);margin-top:4px;line-height:1.4}
+
+/* ── Main ── */
+.main{padding:26px 32px;max-width:1180px}
+.topbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:24px}
+.topbar h1{font-size:23px;font-weight:800}
+.topbar .sub{color:var(--ink-soft);font-size:13px;margin-top:2px}
+.top-actions{display:flex;gap:10px;align-items:center}
+.btn{border:none;border-radius:9px;padding:10px 16px;font-weight:700;font-size:13px;cursor:pointer;font-family:'Archivo'}
+.btn-primary{background:var(--brand);color:#1d1409}.btn-primary:hover{background:var(--brand-up)}
+.btn-ghost{background:var(--card);border:1px solid var(--line);color:var(--ink)}
+.avatar{width:36px;height:36px;border-radius:50%;background:var(--brand-soft);display:grid;place-items:center;font-weight:700;color:var(--brand);font-size:13px}
+
+.view{display:none}.view.active{display:block;animation:fade .25s ease}
+@keyframes fade{from{opacity:0;transform:translateY(4px)}to{opacity:1}}
+
+/* KPIs */
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:22px}
+.kpi{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:18px;box-shadow:var(--shadow)}
+.kpi .label{font-size:12px;color:var(--ink-soft);font-weight:600}
+.kpi .value{font-size:30px;font-weight:800;margin-top:6px;letter-spacing:-.02em}
+.kpi .delta{font-size:11px;margin-top:4px;font-weight:700}
+.kpi .delta.up{color:var(--ok)}.kpi .delta.warn{color:var(--warn)}
+
+.grid-2{display:grid;grid-template-columns:1.6fr 1fr;gap:14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow)}
+.card .head{display:flex;justify-content:space-between;align-items:center;padding:16px 18px;border-bottom:1px solid var(--line)}
+.card .head h3{font-size:15px;font-weight:700}
+.card .head .link{font-size:12px;color:var(--brand);font-weight:700;cursor:pointer}
+
+/* Turnos hoy */
+.cita{display:flex;align-items:center;gap:14px;padding:13px 18px;border-bottom:1px solid var(--line)}
+.cita:last-child{border-bottom:none}
+.cita .hora{font-weight:800;font-size:14px;color:var(--brand);width:62px}
+.cita .info b{font-size:13.5px;display:block}
+.cita .info span{font-size:12px;color:var(--ink-soft)}
+.cita .tag{margin-left:auto;font-size:11px;font-weight:700;padding:4px 10px;border-radius:99px}
+.t-conf{background:var(--brand-soft);color:var(--brand)}
+.t-pend{background:#3a2f17;color:#e0b35a}
+.t-wa{background:#1d3325;color:#6fcf8f}
+
+/* Bandeja humana */
+.alerta{display:flex;gap:12px;padding:13px 18px;border-bottom:1px solid var(--line)}
+.alerta:last-child{border:none}
+.alerta .who{width:34px;height:34px;border-radius:50%;background:#3a2f17;display:grid;place-items:center;font-size:15px;flex-shrink:0}
+.alerta b{font-size:13px;display:block}.alerta p{font-size:12px;color:var(--ink-soft);margin-top:2px;line-height:1.4}
+.alerta .t{font-size:11px;color:var(--warn);font-weight:700;margin-left:auto;white-space:nowrap}
+
+/* Agenda por barbero (columnas) */
+.agenda-toolbar{display:flex;gap:10px;align-items:center;margin-bottom:14px}
+.chip{padding:7px 14px;border-radius:99px;border:1px solid var(--line);background:var(--card);font-size:12.5px;font-weight:600;cursor:pointer;color:var(--ink-soft)}
+.chip.on{background:var(--brand);color:#1d1409;border-color:var(--brand)}
+.barberos{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+.barbero{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;box-shadow:var(--shadow)}
+.barbero .bh{display:flex;align-items:center;gap:10px;padding:13px 16px;border-bottom:1px solid var(--line);background:var(--brand-softer)}
+.barbero .bh .bavatar{width:34px;height:34px;border-radius:50%;background:var(--brand);color:#1d1409;display:grid;place-items:center;font-weight:800;font-size:13px}
+.barbero .bh b{font-size:13.5px;display:block}
+.barbero .bh span{font-size:11px;color:var(--ink-soft)}
+.turno{display:flex;gap:10px;align-items:center;padding:11px 16px;border-bottom:1px solid var(--line);font-size:12.5px}
+.turno:last-child{border:none}
+.turno .th{font-weight:800;color:var(--brand);width:52px}
+.turno b{font-weight:600;display:block}
+.turno small{color:var(--ink-soft)}
+.turno .robot{margin-left:auto;font-size:14px}
+.turno.libre{color:var(--ink-soft);font-style:italic}
+.turno.libre .th{color:var(--ink-soft);font-style:normal}
+
+/* Conversaciones */
+.conv-wrap{display:grid;grid-template-columns:320px 1fr;background:var(--card);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;height:600px;box-shadow:var(--shadow)}
+.conv-list{border-right:1px solid var(--line);overflow-y:auto}
+.conv-search{padding:12px}.conv-search input{width:100%;padding:9px 12px;border:1px solid var(--line);border-radius:9px;font-size:13px;background:var(--surface);color:var(--ink)}
+.conv{display:flex;gap:11px;padding:12px 14px;cursor:pointer;border-bottom:1px solid var(--line)}
+.conv:hover{background:var(--brand-softer)}
+.conv.sel{background:var(--brand-soft)}
+.conv .av{width:40px;height:40px;border-radius:50%;display:grid;place-items:center;font-weight:700;color:#fff;flex-shrink:0;font-size:14px}
+.conv b{font-size:13px}.conv p{font-size:12px;color:var(--ink-soft);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:175px;margin-top:2px}
+.conv .meta{margin-left:auto;text-align:right;font-size:10.5px;color:var(--ink-soft)}
+.badge{display:inline-block;font-size:9.5px;font-weight:700;border-radius:99px;padding:2px 7px;margin-top:4px}
+.b-ia{background:var(--brand-soft);color:var(--brand)}
+.b-hum{background:#3a2f17;color:#e0b35a}
+.thread{display:flex;flex-direction:column;background:#1b1613}
+.thread-head{background:var(--card);padding:13px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px}
+.thread-head .actions{margin-left:auto;display:flex;gap:8px}
+.msgs{flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:10px}
+.msg{max-width:65%;padding:10px 14px;border-radius:14px;font-size:13px;line-height:1.45}
+.m-in{background:var(--card);border:1px solid var(--line);align-self:flex-start;border-bottom-left-radius:4px}
+.m-out{background:var(--brand-soft);align-self:flex-end;border-bottom-right-radius:4px}
+.m-out .by{font-size:10px;color:var(--brand);font-weight:700;margin-bottom:3px}
+.m-sys{align-self:center;background:#3a2f17;color:#e0b35a;font-size:11px;font-weight:600;padding:6px 14px;border-radius:99px}
+.composer{padding:12px 16px;background:var(--card);border-top:1px solid var(--line);display:flex;gap:10px}
+.composer input{flex:1;padding:11px 14px;border:1px solid var(--line);border-radius:9px;font-size:13px;background:var(--surface);color:var(--ink)}
+.foot{text-align:center;color:var(--ink-soft);font-size:11px;padding:26px 0 8px}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="side">
+    <div class="logo">
+      <div class="mark">💈</div>
+      <div><b>Barbería El Patio</b><span>Cartagena · Getsemaní</span></div>
+    </div>
+    <div class="nav-label">Operación</div>
+    <nav class="nav">
+      <a class="active" data-v="hoy"><span class="ico">☀️</span> Hoy</a>
+      <a data-v="agenda"><span class="ico">✂️</span> Turnos</a>
+      <a data-v="conv"><span class="ico">💬</span> Conversaciones</a>
+    </nav>
+    <div class="nav-label">Agente IA</div>
+    <nav class="nav">
+      <a><span class="ico">🧠</span> Conocimiento</a>
+      <a><span class="ico">⚙️</span> Configurar agente</a>
+    </nav>
+    <div class="nav-label">Negocio</div>
+    <nav class="nav">
+      <a><span class="ico">👥</span> Clientes</a>
+      <a><span class="ico">📈</span> Reportes</a>
+      <a><span class="ico">🎨</span> Ajustes</a>
+    </nav>
+    <div class="agent-pill">
+      <b><span class="dot"></span>Agente activo</b>
+      <p>Atendiendo WhatsApp 24/7.<br>Hoy: <b>41 conversaciones</b>, 37 resueltas sin humano.</p>
+    </div>
+  </aside>
+
+  <main class="main">
+    <!-- ════ VISTA HOY ════ -->
+    <section class="view active" id="v-hoy">
+      <div class="topbar">
+        <div><h1>Qué hay pa' hoy, Maicol 💈</h1><div class="sub">Jueves 11 de junio · 14 turnos hoy · el agente agendó 9 anoche</div></div>
+        <div class="top-actions"><button class="btn btn-ghost">+ Bloquear horario</button><button class="btn btn-primary">+ Nuevo turno</button><div class="avatar">MA</div></div>
+      </div>
+      <div class="kpis">
+        <div class="kpi"><div class="label">Turnos hoy</div><div class="value">14</div><div class="delta up">9 agendados por el agente</div></div>
+        <div class="kpi"><div class="label">Conversaciones (semana)</div><div class="value">163</div><div class="delta up">▲ 22% vs semana pasada</div></div>
+        <div class="kpi"><div class="label">Resueltas sin humano</div><div class="value">90%</div><div class="delta up">▲ 3 pts</div></div>
+        <div class="kpi"><div class="label">Sillas vacías del mes</div><div class="value">5</div><div class="delta up">▼ 70% con recordatorios</div></div>
+      </div>
+      <div class="grid-2">
+        <div class="card">
+          <div class="head"><h3>Turnos de hoy</h3><span class="link" onclick="go('agenda')">Ver todos los barberos →</span></div>
+          <div class="cita"><div class="hora">3:00</div><div class="info"><b>Jorge Iriarte</b><span>Corte clásico · Maicol · 30 min</span></div><span class="tag t-conf">Confirmado</span></div>
+          <div class="cita"><div class="hora">3:30</div><div class="info"><b>Samuel Caro</b><span>Corte + barba · Deivis · 50 min</span></div><span class="tag t-wa">Agendó el agente</span></div>
+          <div class="cita"><div class="hora">4:30</div><div class="info"><b>Brayan Pérez</b><span>Diseño freestyle · Maicol · 45 min</span></div><span class="tag t-wa">Agendó el agente</span></div>
+          <div class="cita"><div class="hora">5:15</div><div class="info"><b>Jorge (nuevo)</b><span>Corte clásico · Maicol · 30 min</span></div><span class="tag t-pend">Por confirmar</span></div>
+          <div class="cita"><div class="hora">6:00</div><div class="info"><b>Keiner Julio</b><span>Cejas + barba · Deivis · 30 min</span></div><span class="tag t-conf">Confirmado</span></div>
+          <div class="cita"><div class="hora">7:00</div><div class="info"><b>Andrés Torres</b><span>Corte clásico · Wilfran · 30 min</span></div><span class="tag t-wa">Agendó el agente</span></div>
+        </div>
+        <div class="card">
+          <div class="head"><h3>⚠️ Necesitan un humano</h3><span class="link" onclick="go('conv')">Ir a la bandeja →</span></div>
+          <div class="alerta"><div class="who">📸</div><div><b>Cristian Ballestas</b><p>Mandó una foto de referencia para un diseño — quiere saber si Maicol se lo hace y cuánto vale.</p></div><span class="t">hace 8 min</span></div>
+          <div class="alerta"><div class="who">🎉</div><div><b>Sandra Madrid</b><p>Pregunta por el combo para una despedida de soltero (6 personas, domingo).</p></div><span class="t">hace 35 min</span></div>
+          <div class="alerta"><div class="who">💢</div><div><b>Sin registrar</b><p>"El corte de la vez pasada no me gustó" — el agente se disculpó y te pasó la conversación.</p></div><span class="t">hace 2 h</span></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ════ VISTA TURNOS ════ -->
+    <section class="view" id="v-agenda">
+      <div class="topbar">
+        <div><h1>Turnos</h1><div class="sub">Hoy jueves 11 de junio · por barbero</div></div>
+        <div class="top-actions"><button class="btn btn-ghost">‹ Ayer</button><button class="btn btn-ghost">Mañana ›</button><button class="btn btn-primary">+ Nuevo turno</button></div>
+      </div>
+      <div class="agenda-toolbar">
+        <span class="chip on">Hoy</span><span class="chip">Semana</span>
+        <span style="margin-left:auto;font-size:12px;color:var(--ink-soft)">🤖 = lo agendó el agente</span>
+      </div>
+      <div class="barberos">
+        <div class="barbero">
+          <div class="bh"><div class="bavatar">MA</div><div><b>Maicol</b><span>6 turnos · libre 8:00 pm</span></div></div>
+          <div class="turno"><span class="th">3:00</span><div><b>Jorge Iriarte</b><small>Corte clásico</small></div></div>
+          <div class="turno"><span class="th">4:30</span><div><b>Brayan Pérez</b><small>Diseño freestyle</small></div><span class="robot">🤖</span></div>
+          <div class="turno"><span class="th">5:15</span><div><b>Jorge (nuevo)</b><small>Corte clásico</small></div><span class="robot">🤖</span></div>
+          <div class="turno"><span class="th">6:00</span><div><b>Luis Beltrán</b><small>Corte + barba</small></div></div>
+          <div class="turno libre"><span class="th">7:00</span><div>libre</div></div>
+        </div>
+        <div class="barbero">
+          <div class="bh"><div class="bavatar">DE</div><div><b>Deivis</b><span>5 turnos · libre 7:30 pm</span></div></div>
+          <div class="turno"><span class="th">3:30</span><div><b>Samuel Caro</b><small>Corte + barba</small></div><span class="robot">🤖</span></div>
+          <div class="turno"><span class="th">4:30</span><div><b>Kevin Osorio</b><small>Cejas + barba</small></div></div>
+          <div class="turno"><span class="th">6:00</span><div><b>Keiner Julio</b><small>Cejas + barba</small></div></div>
+          <div class="turno libre"><span class="th">7:30</span><div>libre</div></div>
+        </div>
+        <div class="barbero">
+          <div class="bh"><div class="bavatar">WI</div><div><b>Wilfran</b><span>3 turnos · libre 5:00 pm</span></div></div>
+          <div class="turno"><span class="th">3:00</span><div><b>David Llamas</b><small>Corte clásico</small></div></div>
+          <div class="turno libre"><span class="th">5:00</span><div>libre</div></div>
+          <div class="turno"><span class="th">7:00</span><div><b>Andrés Torres</b><small>Corte clásico</small></div><span class="robot">🤖</span></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ════ VISTA CONVERSACIONES ════ -->
+    <section class="view" id="v-conv">
+      <div class="topbar">
+        <div><h1>Conversaciones</h1><div class="sub">WhatsApp · 41 hoy · 3 esperando humano</div></div>
+        <div class="top-actions"><span class="chip on">Todas</span><span class="chip">🤖 Agente</span><span class="chip">🙋 Necesitan humano</span></div>
+      </div>
+      <div class="conv-wrap">
+        <div class="conv-list">
+          <div class="conv-search"><input placeholder="Buscar cliente o teléfono…"></div>
+          <div class="conv sel"><div class="av" style="background:#d99a3d;color:#1d1409">BP</div><div><b>Brayan Pérez</b><p>Listo Brayan ✅ Turno hoy 4:30 con Maicol…</p><span class="badge b-ia">🤖 Turno agendado</span></div><div class="meta">11:02</div></div>
+          <div class="conv"><div class="av" style="background:#e6a23c;color:#1d1409">CB</div><div><b>Cristian Ballestas</b><p>📷 Foto · ¿Maicol me hace este diseño?</p><span class="badge b-hum">🙋 Necesita humano</span></div><div class="meta">10:48</div></div>
+          <div class="conv"><div class="av" style="background:#7fb069;color:#142013">SC</div><div><b>Samuel Caro</b><p>Dale, ahí estaré 🙏</p><span class="badge b-ia">🤖 Reconfirmado</span></div><div class="meta">10:15</div></div>
+          <div class="conv"><div class="av" style="background:#9b6bb3">SM</div><div><b>Sandra Madrid</b><p>¿Combo para 6 personas el domingo?</p><span class="badge b-hum">🙋 Necesita humano</span></div><div class="meta">9:50</div></div>
+          <div class="conv"><div class="av" style="background:#5a8fd4">KJ</div><div><b>Keiner Julio</b><p>Gracias hermano 💪</p><span class="badge b-ia">🤖 Resuelta por el agente</span></div><div class="meta">ayer</div></div>
+        </div>
+        <div class="thread">
+          <div class="thread-head">
+            <div class="av" style="width:38px;height:38px;border-radius:50%;background:#d99a3d;color:#1d1409;display:grid;place-items:center;font-weight:800">BP</div>
+            <div><b style="font-size:14px">Brayan Pérez</b><div style="font-size:11.5px;color:var(--ink-soft)">+57 301 442 8870 · cliente desde 2025 · 11 cortes</div></div>
+            <div class="actions"><button class="btn btn-ghost">Ver historial</button><button class="btn btn-primary">Tomar el control</button></div>
+          </div>
+          <div class="msgs">
+            <div class="msg m-in">Qué más! ¿Maicol tiene algo hoy en la tarde? Quiero un freestyle 🔥</div>
+            <div class="msg m-out"><div class="by">🤖 Agente El Patio</div>¡Qué más Brayan! 💈 Maicol hoy tiene libre <b>4:30 pm</b> y <b>5:15 pm</b> para diseño freestyle (45 min, $35.000). ¿Te reservo?</div>
+            <div class="msg m-in">El de 4:30 de una</div>
+            <div class="msg m-out"><div class="by">🤖 Agente El Patio</div>Listo Brayan ✅ Turno <b>#214 hoy 4:30 pm con Maicol</b>. Cae pelao 😎</div>
+            <div class="msg m-in">🔥🔥🔥</div>
+            <div class="msg m-sys">✅ Turno #214 creado por el agente · recordatorio programado 3:30 pm</div>
+          </div>
+          <div class="composer"><input placeholder="Escribe para intervenir como humano…"><button class="btn btn-primary">Enviar</button></div>
+        </div>
+      </div>
+    </section>
+    <div class="foot">Propuesta «Navaja» · FerreBot SaaS · mismo producto, tu marca — demo con datos ficticios</div>
+  </main>
+</div>
+<script>
+function go(v){
+  document.querySelectorAll('.view').forEach(x=>x.classList.remove('active'));
+  document.getElementById('v-'+v).classList.add('active');
+  document.querySelectorAll('.nav a[data-v]').forEach(a=>a.classList.toggle('active',a.dataset.v===v));
+}
+document.querySelectorAll('.nav a[data-v]').forEach(a=>a.addEventListener('click',()=>go(a.dataset.v)));
+</script>
+</body>
+</html>

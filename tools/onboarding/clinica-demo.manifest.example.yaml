@@ -20,11 +20,10 @@ plan:
 features_override: {}
 
 branding:
-  color_primario: "#0EA5A4"
+  preset: "aurora"          # preset por vertical (plan §5.2): nace teal (paleta/tipografía Aurora). Sin preset → default melquiadez.
   nombre_comercial: "Clínica Demo"
   logo_url: null
   dominio: null
-  tema: "aurora"            # tema de UI con nombre: el dashboard se ve teal (paleta/tipografía Aurora). Sin tema → base rojo.
 
 # Secretos por-tenant (CIFRADOS en control DB). Opcional: un agente por Kapso suele tener cero.
 # (Una ferretería con facturación pondría aquí matias_email/matias_password, etc.)

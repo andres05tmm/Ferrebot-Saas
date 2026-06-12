@@ -29,9 +29,8 @@ plan:
 features_override: {}
 
 branding:
-  color_primario: "#B5341B"           # brasa/ladrillo — acento "Brasa"
+  preset: "brasa"                     # preset por vertical (ladrillo/brasa cálido). El primario lo pone el preset.
   nombre_comercial: "Brasa"
-  tema: "brasa"
 
 secretos: {}
 config: {}

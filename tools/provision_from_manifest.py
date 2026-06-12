@@ -53,6 +53,7 @@ def _datos_base(m: Manifiesto) -> dict:
         "secretos": dict(m.secretos),
         "config": dict(m.config),
         "branding": {
+            "preset": m.branding.preset,
             "color_primario": m.branding.color_primario,
             "nombre_comercial": m.branding.nombre_comercial,
             "logo_url": m.branding.logo_url,

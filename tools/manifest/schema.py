@@ -134,12 +134,29 @@ class Plan(_Base):
 
 
 class Branding(_Base):
-    color_primario: str = "#C8200E"
+    # Preset de marca por vertical (plan §5.2): el tenant nace con el look de su gremio. Validado
+    # contra el registro de `core.tenancy.branding_presets`. None → default de plataforma (melquiadez).
+    preset: str | None = None
+    # Override puntual del acento: si se da, GANA sobre el primario del preset (Punto Rojo conserva su
+    # rojo). None (lo normal en un tenant con preset) → el primario lo pone el preset.
+    color_primario: str | None = None
     nombre_comercial: str | None = None
     logo_url: str | None = None
     dominio: str | None = None
-    # Tema de UI con nombre (p. ej. "aurora"); None → el dashboard usa el tema base (rojo de siempre).
+    # `tema`: nombre VIEJO del preset (compat). Si no hay `preset`, `leer_branding` lo usa de fallback.
     tema: str | None = None
+
+    @field_validator("preset")
+    @classmethod
+    def _preset_valido(cls, v: str | None) -> str | None:
+        # Import local: el esquema no debe arrastrar core.tenancy al importarse (evita ciclos).
+        from core.tenancy.branding_presets import PRESETS, es_preset_valido
+
+        if v is not None and not es_preset_valido(v):
+            raise ValueError(
+                f"branding.preset '{v}' no existe; presets válidos: {', '.join(sorted(PRESETS))}"
+            )
+        return v
 
 
 # ---------------------------------------------------------------------------

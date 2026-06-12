@@ -9,16 +9,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.config import get_settings
 from core.crypto import decrypt
+from core.tenancy.branding_presets import resolver_branding
 from core.tenancy.capacidades import ControlCapacidades
 from core.tenancy.context import ResolvedTenant
 from core.tenancy.models import Empresa, TenantDatabase, WaNumero
-
-# Branding por defecto cuando la empresa no tiene fila en `branding` (color de marca FerreBot).
-# `tema` None → el dashboard usa el tema base (rojo); un tenant lo declara explícito (p. ej. "aurora").
-_BRANDING_DEFAULT: dict[str, str | None] = {
-    "logo_url": None, "color_primario": "#C8200E", "nombre_comercial": None,
-    "dominio": None, "tema": None,
-}
 
 
 def _resolver(row) -> ResolvedTenant | None:
@@ -143,22 +137,35 @@ async def listar_tenants(session: AsyncSession) -> list[TenantResumen]:
 
 
 async def leer_branding(session: AsyncSession, empresa_id: int) -> dict[str, str | None]:
-    """Branding (logo, color, nombre comercial, dominio) de la empresa; defaults si no hay fila."""
+    """Branding RESUELTO de la empresa: preset + overrides → tokens planos (plan §5.2).
+
+    Parte del preset de la fila (default `melquiadez` de plataforma) y resuelve sus tokens; un
+    `color_primario` explícito GANA sobre el preset (Punto Rojo conserva su rojo). `tema` se conserva
+    como fallback del nombre del preset (es el nombre VIEJO del mismo concepto) y se devuelve plano por
+    compatibilidad. El resultado lleva `tokens` (set completo) + los campos legacy que ya consumía el
+    dashboard (`color_primario`, `logo_url`, `nombre_comercial`, `dominio`, `tema`, `preset`).
+    """
     row = (
         await session.execute(
             text(
-                "SELECT logo_url, color_primario, nombre_comercial, dominio, tema "
+                "SELECT logo_url, color_primario, nombre_comercial, dominio, tema, preset "
                 "FROM branding WHERE empresa_id = :e"
             ),
             {"e": empresa_id},
         )
     ).first()
-    if row is None:
-        return dict(_BRANDING_DEFAULT)
-    return {
-        "logo_url": row[0],
-        "color_primario": row[1] or _BRANDING_DEFAULT["color_primario"],
-        "nombre_comercial": row[2],
-        "dominio": row[3],
-        "tema": row[4],
-    }
+    fila = None
+    tema = None
+    if row is not None:
+        tema = row[4]
+        fila = {
+            # `tema` es el nombre viejo del preset: úsalo como fallback si no hay `preset` explícito.
+            "preset": row[5] or tema,
+            "color_primario": row[1],
+            "logo_url": row[0],
+            "nombre_comercial": row[2],
+            "dominio": row[3],
+        }
+    resuelto = resolver_branding(fila)
+    resuelto["tema"] = tema
+    return resuelto

@@ -3,26 +3,38 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Aurora theme — proof</title>
-<!-- Estado (tema base/aurora · light/dark · login/dash) desde el query, aplicado ANTES del paint.
+<title>Branding presets — proof</title>
+<!-- Estado (preset por vertical · light/dark · login/dash) desde el query, aplicado ANTES del paint.
      Esto NO es parte de la app: es un harness de verificación visual que reusa la MISMA capa de tokens
-     (src/index.css) y las MISMAS clases semánticas que los componentes reales. -->
+     (src/index.css) y las MISMAS clases semánticas que los componentes reales. El preset activa su
+     bloque [data-tema] del index.css (paleta/forma/tipografía completa) y fija --color-primary, igual
+     que applyTheming en lib/config.js a partir de los tokens resueltos de /config. -->
 <script>
   (function () {
+    // Primario por preset (espeja core/tenancy/branding_presets.PRESETS[*].primario). El resto de la
+    // paleta la pone el bloque [data-tema] correspondiente del index.css. melquiadez/base = tema base.
+    const PRESETS = {
+      base:       { tema: null,     primario: '#C8200E' },   // Punto Rojo (branding explícito)
+      melquiadez: { tema: null,     primario: '#b8924f' },   // default de plataforma (oro viejo)
+      aurora:     { tema: 'aurora', primario: '#0e8784' },   // clínica
+      brasa:      { tema: 'brasa',  primario: '#d6452c' },   // restaurante
+      navaja:     { tema: 'navaja', primario: '#d99a3d' },   // barbería (oscuro)
+      brisa:      { tema: 'brisa',  primario: '#0b3954' },   // hotel
+      lienzo:     { tema: 'lienzo', primario: '#6c5ce7' },   // genérico
+    }
     const q = new URLSearchParams(location.search)
-    const s = q.get('s') || 'base-light'           // base-light | base-dark | aurora-light | aurora-dark
+    const s = q.get('s') || 'base-light'           // <preset>-light | <preset>-dark
     const el = document.documentElement
     const dark = s.endsWith('dark')
+    const nombre = s.replace(/-(light|dark)$/, '')
+    const preset = PRESETS[nombre] || PRESETS.base
     el.setAttribute('data-theme', dark ? 'dark' : 'light')
-    if (s.startsWith('aurora')) {
-      el.setAttribute('data-tema', 'aurora')
-      el.style.setProperty('--color-primary', '#0EA5A4')   // branding teal de clinica-demo
-    } else {
-      el.style.setProperty('--color-primary', '#C8200E')   // branding rojo de Punto Rojo
-    }
+    if (preset.tema) el.setAttribute('data-tema', preset.tema)
+    else el.removeAttribute('data-tema')
+    el.style.setProperty('--color-primary', preset.primario)
   })()
 </script>
-<!-- Fuentes self-host (mismas que la app: Inter cuerpo, Nunito títulos del tema aurora). -->
+<!-- Fuentes self-host: las familias display de TODOS los presets (las pone --font-display por tema). -->
 <style>
   @import url('../node_modules/@fontsource/inter/400.css');
   @import url('../node_modules/@fontsource/inter/500.css');
@@ -31,6 +43,17 @@
   @import url('../node_modules/@fontsource/nunito/600.css');
   @import url('../node_modules/@fontsource/nunito/700.css');
   @import url('../node_modules/@fontsource/nunito/800.css');
+  @import url('../node_modules/@fontsource/figtree/600.css');
+  @import url('../node_modules/@fontsource/figtree/700.css');
+  @import url('../node_modules/@fontsource/figtree/800.css');
+  @import url('../node_modules/@fontsource/archivo/600.css');
+  @import url('../node_modules/@fontsource/archivo/700.css');
+  @import url('../node_modules/@fontsource/archivo/800.css');
+  @import url('../node_modules/@fontsource/cormorant-garamond/600.css');
+  @import url('../node_modules/@fontsource/cormorant-garamond/700.css');
+  @import url('../node_modules/@fontsource/sora/600.css');
+  @import url('../node_modules/@fontsource/sora/700.css');
+  @import url('../node_modules/@fontsource/sora/800.css');
 </style>
 <link rel="stylesheet" href="./proof.css" />
 </head>

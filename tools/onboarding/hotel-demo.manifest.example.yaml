@@ -29,9 +29,8 @@ plan:
 features_override: {}
 
 branding:
-  color_primario: "#1E6F8E"           # mar/brisa — acento "Brisa"
+  preset: "brisa"                     # preset por vertical (mar profundo + arena). El primario lo pone el preset.
   nombre_comercial: "Brisa"
-  tema: "brisa"
 
 secretos: {}
 config: {}

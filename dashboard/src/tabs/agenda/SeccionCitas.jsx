@@ -86,7 +86,7 @@ export default function SeccionCitas() {
       )}
 
       <div className="flex flex-col xl:flex-row gap-3 items-start">
-        <Card className="flex-1 w-full p-0 overflow-hidden">
+        <Card className="flex-1 w-full p-0 overflow-hidden shadow-sm">
           <Calendario
             loading={citasQ.loading || recursosQ.loading}
             recursos={recursosVisibles} citas={citasDia} nombreServicio={nombreServicio} dia={dia}
@@ -156,11 +156,11 @@ function Calendario({ loading, recursos, citas, nombreServicio, dia }) {
     <div className="overflow-x-auto">
       <div className="min-w-[560px]">
         {/* Encabezado de recursos */}
-        <div className="flex border-b border-border sticky top-0 bg-surface z-10">
+        <div className="flex border-b border-border sticky top-0 bg-surface-2 z-10">
           <div className="w-14 shrink-0" />
           {recursos.map(r => (
             <div key={r.id} className="flex-1 min-w-[170px] px-3 py-2 border-l border-border-subtle text-center">
-              <div className="text-sm font-semibold truncate">{r.nombre}</div>
+              <div className="font-display text-sm font-bold truncate">{r.nombre}</div>
               <div className="text-[11px] text-muted-foreground capitalize">{r.tipo}</div>
             </div>
           ))}
@@ -248,7 +248,7 @@ function BloqueCita({ cita, servicio }) {
 // ── Panel "Acción Requerida" ─────────────────────────────────────────────────
 function AccionRequerida({ pendientes, nombreServicio, refrescar }) {
   return (
-    <Card className="w-full xl:w-80 shrink-0 p-3">
+    <Card className="w-full xl:w-80 shrink-0 p-3 shadow-sm">
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-sm font-semibold inline-flex items-center gap-1.5">
           <BellRing className="size-4 text-primary" /> Acción requerida

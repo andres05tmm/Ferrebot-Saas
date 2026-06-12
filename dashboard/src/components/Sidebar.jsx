@@ -86,7 +86,7 @@ export default function Sidebar({ collapsed, setCollapsed, onOpenCommand, colorS
         )}
         {!collapsed && (
           <div className="flex flex-col leading-tight min-w-0">
-            <span className="text-[17px] font-bold tracking-tight text-foreground truncate leading-tight">{nombreComercial}</span>
+            <span className="font-display text-[17px] font-bold tracking-tight text-foreground truncate leading-tight">{nombreComercial}</span>
             <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Dashboard</span>
           </div>
         )}

@@ -83,11 +83,11 @@ export default function KpiCard({
           className="flex items-center justify-between gap-2 px-3 py-1.5"
           style={{ background: t.color }}
         >
-          <span className="text-[10.5px] font-semibold uppercase tracking-wider text-white truncate">
+          <span className="text-[10.5px] font-semibold uppercase tracking-wider text-primary-foreground truncate">
             {label}
           </span>
           {Icon && (
-            <Icon className="size-3.5 text-white shrink-0" aria-hidden="true" />
+            <Icon className="size-3.5 text-primary-foreground shrink-0" aria-hidden="true" />
           )}
         </div>
 
@@ -99,7 +99,7 @@ export default function KpiCard({
             : undefined}
         >
           <div className={cn(
-            'text-xl font-semibold tracking-tight tabular leading-none',
+            'font-display text-xl font-semibold tracking-tight tabular leading-none',
             !coloredValue && 'text-foreground',
             loading && 'opacity-50',
           )}
@@ -183,7 +183,7 @@ export default function KpiCard({
               className="grid place-items-center rounded-md size-6 shrink-0"
               style={{ background: t.color }}
             >
-              <Icon className="size-3 text-white" aria-hidden="true" />
+              <Icon className="size-3 text-primary-foreground" aria-hidden="true" />
             </span>
           )}
           {Icon && iconStyle === 'subtle' && (
@@ -198,7 +198,7 @@ export default function KpiCard({
       </div>
 
       <div className={cn(
-        'mt-1.5 font-semibold tracking-tight tabular leading-none',
+        'font-display mt-1.5 font-semibold tracking-tight tabular leading-none',
         !coloredValue && 'text-foreground',
         heroValue ? 'text-2xl' : 'text-lg',
         loading && 'opacity-50',

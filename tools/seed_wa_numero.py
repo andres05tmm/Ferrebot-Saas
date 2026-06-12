@@ -20,6 +20,31 @@ from core.logging import configure_logging, get_logger
 log = get_logger("seed_wa_numero")
 
 
+def upsert_wa_numero(
+    conn: psycopg.Connection,
+    phone_number_id: str,
+    empresa_id: int,
+    *,
+    numero: str | None = None,
+    waba_id: str | None = None,
+) -> None:
+    """Upsert del mapeo `phone_number_id` → empresa (estado `activo`). SQL único, reusado por el switch.
+
+    `numero`/`waba_id` solo se sobreescriben si se pasan (COALESCE): re-apuntar la empresa de un número
+    ya existente no borra su número legible/WABA. La conexión maneja su propia transacción/commit.
+    """
+    conn.execute(
+        """INSERT INTO wa_numeros (phone_number_id, empresa_id, numero, waba_id, estado)
+           VALUES (%s, %s, %s, %s, 'activo')
+           ON CONFLICT (phone_number_id)
+           DO UPDATE SET empresa_id = EXCLUDED.empresa_id,
+                         numero = COALESCE(EXCLUDED.numero, wa_numeros.numero),
+                         waba_id = COALESCE(EXCLUDED.waba_id, wa_numeros.waba_id),
+                         estado = 'activo'""",
+        (phone_number_id, empresa_id, numero, waba_id),
+    )
+
+
 def seed(phone_number_id: str, slug: str, *, numero: str | None, waba_id: str | None) -> int:
     control_url = to_libpq(get_settings().control_database_url)
     with psycopg.connect(control_url, row_factory=dict_row, autocommit=True) as conn:
@@ -29,14 +54,7 @@ def seed(phone_number_id: str, slug: str, *, numero: str | None, waba_id: str | 
         if empresa is None:
             log.error("empresa_no_encontrada", slug=slug)
             return 1
-        conn.execute(
-            """INSERT INTO wa_numeros (phone_number_id, empresa_id, numero, waba_id, estado)
-               VALUES (%s, %s, %s, %s, 'activo')
-               ON CONFLICT (phone_number_id)
-               DO UPDATE SET empresa_id = EXCLUDED.empresa_id, numero = EXCLUDED.numero,
-                             waba_id = EXCLUDED.waba_id, estado = 'activo'""",
-            (phone_number_id, empresa["id"], numero, waba_id),
-        )
+        upsert_wa_numero(conn, phone_number_id, empresa["id"], numero=numero, waba_id=waba_id)
     log.info("wa_numero_mapeado", phone_number_id=phone_number_id, slug=slug)
     return 0
 

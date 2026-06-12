@@ -1,6 +1,12 @@
 {
   "name": "melquiadez-landing",
   "compatibility_date": "2025-06-12",
+  // La landing es una SPA Vite (landing/): wrangler compila a dist/ antes de servir/deployar.
+  // Workers Builds ejecuta `wrangler deploy`, que corre este build.command primero.
+  "build": {
+    "command": "npm ci --prefix landing && npm run build --prefix landing",
+    "watch_dir": "landing/src"
+  },
   "assets": {
     "directory": "./landing/dist",
     "not_found_handling": "single-page-application"

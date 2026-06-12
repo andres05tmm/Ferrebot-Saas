@@ -17,6 +17,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from core.tenancy.resolver import LABELS_RESERVADOS
+
 # Patrón ESTRICTO del slug (ADR 0010 §Guardarraíles v1): el slug se vuelve nombre de base
 # (`CREATE DATABASE "ferrebot_<slug>"`), así que un slug no validado es un vector de inyección de
 # identificador. minúscula inicial + [a-z0-9-], 2..41 chars. El job lo RE-valida antes de tocar la BD.
@@ -25,8 +27,12 @@ _SLUG_RE = re.compile(SLUG_PATTERN)
 
 
 def slug_valido(slug: str) -> bool:
-    """True si `slug` cumple el patrón estricto. Defensa en profundidad del job (además del esquema)."""
-    return isinstance(slug, str) and bool(_SLUG_RE.match(slug))
+    """True si `slug` cumple el patrón estricto y no es un label reservado del resolver.
+
+    Defensa en profundidad del job (además del esquema). Un slug reservado (`app`, `api`, …) sería
+    inalcanzable por subdominio: el resolver trata esos labels como "sin subdominio".
+    """
+    return isinstance(slug, str) and bool(_SLUG_RE.match(slug)) and slug not in LABELS_RESERVADOS
 
 
 # Clave natural del pack POS (ADR 0011 §D3): dos nombres que solo difieren en mayúsculas o espacios
@@ -52,6 +58,19 @@ class Identidad(_Base):
     # Requerido: empresas.nit es NOT NULL + UNIQUE en el control DB; un NIT ausente debe fallar como
     # error de validación limpio (Fase 1), no como violación NOT NULL al insertar (Fase 3).
     nit: str
+
+    @field_validator("slug")
+    @classmethod
+    def _slug_no_reservado(cls, v: str) -> str:
+        # El slug es también el subdominio del tenant ({slug}.BASE_DOMAIN): un label reservado del
+        # resolver nunca resolvería a este tenant y chocaría con la entrada de clientes (app./api.).
+        if v in LABELS_RESERVADOS:
+            reservados = ", ".join(sorted(LABELS_RESERVADOS))
+            raise ValueError(
+                f"identidad.slug '{v}' es un label reservado de la plataforma ({reservados}): "
+                "es el subdominio de entrada, no puede ser un tenant"
+            )
+        return v
 
 
 class Admin(_Base):

@@ -11,8 +11,11 @@ from pathlib import Path
 
 import pytest
 import yaml
+from pydantic import ValidationError
 
+from core.tenancy.resolver import LABELS_RESERVADOS
 from tools.manifest import ErrorManifiesto, Manifiesto, cargar_manifiesto, validar
+from tools.manifest.schema import slug_valido
 
 _EJEMPLO = Path(__file__).parents[1] / "tools" / "onboarding" / "clinica-demo.manifest.example.yaml"
 
@@ -153,6 +156,23 @@ def test_reune_varios_errores_en_un_solo_mensaje():
     mensaje = str(exc.value)
     assert "no_existe" in mensaje and "robot" in mensaje
     assert "2 error(es)" in mensaje
+
+
+@pytest.mark.parametrize("label", sorted(LABELS_RESERVADOS))
+def test_slug_reservado_es_error_de_esquema(label):
+    # Labels reservados del resolver (app/api/www/admin): un tenant con ese slug colisionaría con la
+    # entrada de clientes (`app.melquiadez.com`) y sería inalcanzable por subdominio. Falla en el
+    # esquema con mensaje claro, antes de tocar el provisionador.
+    datos = _datos_ejemplo()
+    datos["identidad"]["slug"] = label
+    with pytest.raises(ValidationError, match="reservado"):
+        _manifiesto(datos)
+
+
+@pytest.mark.parametrize("label", sorted(LABELS_RESERVADOS))
+def test_slug_valido_rechaza_labels_reservados(label):
+    # Defensa en profundidad del job (apps/worker/jobs.py valida con slug_valido ANTES del esquema).
+    assert not slug_valido(label)
 
 
 def test_campo_no_modelado_es_error_de_esquema():

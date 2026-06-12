@@ -11,6 +11,12 @@ from starlette.requests import HTTPConnection
 from core.auth.jwt import decode_token_optional
 from core.config import get_settings
 
+# Labels que NO son tenants (plan Melquiadez §3): con DNS wildcard `*.BASE_DOMAIN` → API, hosts como
+# `app.BASE_DOMAIN` (la entrada de clientes) llegan con subdominio real; sin esta lista el resolver
+# los tomaría como slug y el claim del JWT nunca aplicaría. Reservado = "sin subdominio" (la cadena
+# de señales sigue). El manifiesto (tools/manifest/schema.py) prohíbe provisionar estos slugs.
+LABELS_RESERVADOS = frozenset({"app", "api", "www", "admin"})
+
 
 def _slug_from_host(host: str, base_domain: str) -> str | None:
     host = host.split(":")[0].lower()
@@ -18,7 +24,9 @@ def _slug_from_host(host: str, base_domain: str) -> str | None:
     if host in (base, "localhost", "127.0.0.1") or not host.endswith("." + base):
         return None
     label = host[: -(len(base) + 1)]
-    return label or None
+    if not label or label in LABELS_RESERVADOS:
+        return None
+    return label
 
 
 def resolve_slug(conn: HTTPConnection) -> str | None:

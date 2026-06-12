@@ -45,6 +45,9 @@ def _datos_base(m: Manifiesto) -> dict:
         "nombre": m.identidad.nombre,
         "nit": m.identidad.nit,
         "admin": {"nombre": m.admin.nombre, "telegram_id": m.admin.telegram_id, "email": m.admin.email},
+        "identidades": [
+            {"email": i.email, "nombre": i.nombre, "rol": i.rol} for i in m.identidades
+        ],
         "plan": {"nombre": m.plan.nombre, "features": list(m.plan.features)} if m.plan else None,
         "features_override": dict(m.features_override),
         "secretos": dict(m.secretos),

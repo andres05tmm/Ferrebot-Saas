@@ -66,6 +66,16 @@ class Identidad(_Base):
     nit: str
 
 
+def _email_normalizado(v: str | None, *, rotulo: str) -> str | None:
+    """Valida y normaliza un email del manifiesto (trim). None pasa (opcional)."""
+    if v is None:
+        return None
+    v = v.strip()
+    if "@" not in v or "." not in v.split("@")[-1]:
+        raise ValueError(f"{rotulo} no parece un email válido")
+    return v
+
+
 class Admin(_Base):
     nombre: str = "Admin"
     telegram_id: int | None = None
@@ -76,12 +86,27 @@ class Admin(_Base):
     @field_validator("email")
     @classmethod
     def _email_valido(cls, v: str | None) -> str | None:
-        if v is None:
-            return None
-        v = v.strip()
-        if "@" not in v or "." not in v.split("@")[-1]:
-            raise ValueError("admin.email no parece un email válido")
-        return v
+        return _email_normalizado(v, rotulo="admin.email")
+
+
+class IdentidadExtra(_Base):
+    """Identidad de login ADICIONAL a la del admin (login real, ADR 0009). El provisionador crea su
+    `usuario` en la base del tenant (con el `rol` dado) + su `identidad` en el control DB y emite un
+    enlace de set-password. Caso de uso: la identidad DEMO de un tenant demo (rol `vendedor`, para que
+    un prospecto pruebe el dashboard sin poder romper la demo). NUNCA una contraseña en el manifiesto.
+    """
+
+    email: str
+    nombre: str = "Demo"
+    # rol del tenant: enum usuario_rol = (admin, vendedor). Default vendedor (no-admin) a propósito.
+    rol: Literal["admin", "vendedor"] = "vendedor"
+
+    @field_validator("email")
+    @classmethod
+    def _email_valido(cls, v: str) -> str:
+        validado = _email_normalizado(v, rotulo="identidad.email")
+        assert validado is not None  # email es requerido aquí (no Optional)
+        return validado
 
 
 class Plan(_Base):
@@ -320,6 +345,8 @@ class Manifiesto(_Base):
     version: int = 1
     identidad: Identidad
     admin: Admin = Field(default_factory=Admin)
+    # Identidades de login ADICIONALES a la del admin (p. ej. la identidad demo, rol vendedor).
+    identidades: list[IdentidadExtra] = Field(default_factory=list)
     plan: Plan | None = None
     features_override: dict[str, bool] = Field(default_factory=dict)
     branding: Branding = Field(default_factory=Branding)

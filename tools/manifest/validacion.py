@@ -213,6 +213,27 @@ def _errores_pedidos(manifiesto: Manifiesto) -> list[str]:
     return errores
 
 
+def _errores_identidades(manifiesto: Manifiesto) -> list[str]:
+    """Identidades extra: email único entre ellas y distinto del admin (cada email = una identidad).
+
+    Dos filas con el mismo email harían que la segunda pisara a la primera (UPSERT por email): un
+    error de configuración silencioso. La identidad se materializa por email (clave natural), así que la
+    unicidad debe valer en el manifiesto.
+    """
+    errores: list[str] = []
+    vistos: dict[str, int] = {}
+    admin_email = manifiesto.admin.email.lower() if manifiesto.admin.email else None
+    for ident in manifiesto.identidades:
+        clave = ident.email.lower()
+        vistos[clave] = vistos.get(clave, 0) + 1
+        if admin_email is not None and clave == admin_email:
+            errores.append(f"identidad '{ident.email}': repite el email del admin (un email = una identidad)")
+    for clave, n in vistos.items():
+        if n > 1:
+            errores.append(f"identidad duplicada: el email '{clave}' aparece {n} veces")
+    return errores
+
+
 def validar(manifiesto: Manifiesto) -> None:
     """Valida el manifiesto completo. No devuelve nada si es válido; si no, lanza `ErrorManifiesto`.
 
@@ -225,6 +246,7 @@ def validar(manifiesto: Manifiesto) -> None:
         *_errores_agenda(manifiesto),
         *_errores_pos(manifiesto),
         *_errores_pedidos(manifiesto),
+        *_errores_identidades(manifiesto),
     ]
     if errores:
         raise ErrorManifiesto(

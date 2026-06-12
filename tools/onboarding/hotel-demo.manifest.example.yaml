@@ -22,7 +22,8 @@ identidades:
     rol: "vendedor"
 
 plan:
-  nombre: "Agente"
+  # Nombre de plan ÚNICO por demo (los planes se comparten por nombre; ver barberia-demo).
+  nombre: "Demo Hotel"
   # pack_reservas depende de pack_agenda (su motor). canal_whatsapp para atender por WhatsApp.
   features: ["pack_agenda", "pack_reservas", "pack_faq", "canal_whatsapp"]
 features_override: {}

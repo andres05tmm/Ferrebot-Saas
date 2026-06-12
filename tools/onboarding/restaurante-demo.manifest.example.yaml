@@ -22,7 +22,8 @@ identidades:
     rol: "vendedor"
 
 plan:
-  nombre: "Agente"
+  # Nombre de plan ÚNICO por demo (los planes se comparten por nombre; ver barberia-demo).
+  nombre: "Demo Restaurante"
   # pack_pedidos depende de pos (el catálogo/menú). canal_whatsapp para atender por WhatsApp.
   features: ["pos", "pack_pedidos", "pack_faq", "canal_whatsapp"]
 features_override: {}

@@ -19,7 +19,10 @@ identidades:
     rol: "vendedor"
 
 plan:
-  nombre: "Agente"
+  # Nombre de plan ÚNICO por demo a propósito: los planes se comparten por NOMBRE (el provisionador
+  # upserta planes.limites por nombre, ver cargar_plan_features), así que dos tenants con el mismo
+  # nombre de plan comparten features. Cada vertical demo necesita su propio set → su propio plan.
+  nombre: "Demo Barbería"
   features: ["pack_agenda", "pack_faq", "canal_whatsapp"]
 features_override: {}
 

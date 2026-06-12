@@ -1,0 +1,23 @@
+/* Tokens de marca (papel/tinta/oro + temas + acentos por vertical) — archivo central. */
+@import '../marca/tokens.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+  body {
+    @apply bg-fondo text-texto font-sans antialiased overflow-x-hidden;
+    font-size: 16px;
+    line-height: 1.6;
+    font-weight: 430;
+    transition: background-color .5s var(--ease), color .5s var(--ease);
+  }
+  ::selection {
+    background: var(--acento);
+    color: var(--sobre-acento);
+  }
+}

@@ -1,0 +1,83 @@
+# Manifiesto de tenant DEMO — hotel "Brisa" (vertical hotel). Ver ADR docs/adr/0007.
+# Demo provisionable por:  python -m tools.provision_from_manifest --from tools/onboarding/hotel-demo.manifest.example.yaml
+#
+# pack_reservas (plan §2.7) ES la variante NOCHES del motor de agenda: una reserva es una cita sobre un
+# recurso tipo `habitacion`, con inicio=check-in y fin=check-out (horas de agenda_config). Por eso los
+# datos del hotel se declaran bajo packs.agenda (los siembra cargar_agenda); pack_reservas no tiene
+# sección/loader propio. El precio por NOCHE de una habitación = el precio del servicio que presta.
+version: 1
+
+identidad:
+  slug: hotel-demo
+  nombre: "Hotel Brisa"
+  nit: "901300300-3"
+
+admin:
+  nombre: "Recepción Brisa"
+  email: "admin@hotel-demo.melquiadez.com"
+
+identidades:
+  - email: "demo+hotel-demo@melquiadez.com"
+    nombre: "Visitante Demo"
+    rol: "vendedor"
+
+plan:
+  nombre: "Agente"
+  # pack_reservas depende de pack_agenda (su motor). canal_whatsapp para atender por WhatsApp.
+  features: ["pack_agenda", "pack_reservas", "pack_faq", "canal_whatsapp"]
+features_override: {}
+
+branding:
+  color_primario: "#1E6F8E"           # mar/brisa — acento "Brisa"
+  nombre_comercial: "Brisa"
+  tema: "brisa"
+
+secretos: {}
+config: {}
+
+packs:
+  agenda:
+    config:
+      zona_horaria: "America/Bogota"
+      ventana_maxima_dias: 30
+      politica_cancelacion_horas: 48
+      modo_confirmacion: "auto"
+      capacidad_por_slot: 1
+      recordatorios_horas: [24]
+      # Modo noches: el motor convierte "N noches" en [check-in 15:00, check-out 12:00).
+      checkin_hora: "15:00"
+      checkout_hora: "12:00"
+      persona: "Eres el asistente de reservas del Hotel Brisa. Hablas cálido y hospitalario; confirmas siempre el tipo de habitación, la fecha de entrada, cuántas noches y el nombre antes de reservar."
+
+    # servicios = tipos de habitación; el `precio` ES el precio por NOCHE. duracion_min no se usa en
+    # modo noches (el rango lo dan check-in/check-out), pero el esquema lo exige: 1440 = un día.
+    servicios:
+      - { nombre: "Noche Estándar", duracion_min: 1440, precio: 180000, categoria: "Habitación" }
+      - { nombre: "Noche Superior", duracion_min: 1440, precio: 260000, categoria: "Habitación" }
+      - { nombre: "Suite Brisa",    duracion_min: 1440, precio: 420000, categoria: "Habitación" }
+
+    # recursos = habitaciones (tipo `habitacion`). Cada una presta UN tipo (su precio/noche).
+    # Sin disponibilidad semanal: una habitación está libre salvo que tenga una reserva que se cruce
+    # (el motor de reservas mira ocupaciones, no franjas horarias).
+    recursos:
+      - { nombre: "Habitación 101", tipo: "habitacion", presta: ["Noche Estándar"] }
+      - { nombre: "Habitación 102", tipo: "habitacion", presta: ["Noche Estándar"] }
+      - { nombre: "Habitación 103", tipo: "habitacion", presta: ["Noche Estándar"] }
+      - { nombre: "Habitación 201", tipo: "habitacion", presta: ["Noche Superior"] }
+      - { nombre: "Habitación 202", tipo: "habitacion", presta: ["Noche Superior"] }
+      - { nombre: "Suite 301",      tipo: "habitacion", presta: ["Suite Brisa"] }
+
+  faq:
+    entradas:
+      - { titulo: "¿Hora de check-in y check-out?", contenido: "Check-in desde las 3:00 p.m. y check-out hasta las 12:00 m. Si llegas antes guardamos tu equipaje sin costo.", orden: 1 }
+      - { titulo: "¿El desayuno está incluido?", contenido: "Sí, desayuno típico incluido (7:00 a 10:00 a.m.) en todas las habitaciones.", orden: 2 }
+      - { titulo: "¿Tienen parqueadero?", contenido: "Sí, parqueadero privado gratuito para huéspedes, según disponibilidad.", orden: 3 }
+      - { titulo: "¿Aceptan mascotas?", contenido: "Aceptamos mascotas pequeñas avisando con anticipación. Pregúntame y te confirmo.", orden: 4 }
+      - { titulo: "¿Cómo reservo?", contenido: "Dime la fecha de entrada, cuántas noches y el tipo de habitación (Estándar, Superior o Suite) y te muestro lo disponible.", orden: 5 }
+      - { titulo: "Formas de pago", contenido: "Efectivo, tarjeta y transferencia. Para fechas de alta demanda pedimos un anticipo.", orden: 6 }
+
+canal:
+  whatsapp:
+    phone_number_id: "demo-hotel-0001"
+    numero: null
+    waba_id: null

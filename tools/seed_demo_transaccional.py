@@ -12,8 +12,9 @@ fija el manifiesto. Solo lo transaccional (citas, pedidos). Driver SYNC (psycopg
 loaders de manifiesto; el commit lo hace `resembrar_demo`. Determinista vía `Random(ahora.toordinal())`
 para que un test pueda afirmar conteos y la relatividad de las fechas.
 
-SOLO para tenants demo: el llamador (provisionador / cron de resiembra) ya restringe a `demo_slugs`.
-Borra datos: jamás apuntar esto a un tenant real.
+SOLO para tenants demo: `resembrar_slug` exige que el slug sea demo (en `demo_slugs` Y con sufijo
+"-demo") y aborta ANTES de conectar si no lo es — el seeder BORRA datos transaccionales, así que jamás
+debe apuntar a un tenant real, ni siquiera por un slug mal tecleado en el CLI.
 """
 from __future__ import annotations
 
@@ -278,9 +279,34 @@ def capacidades_efectivas_sync(slug: str) -> frozenset[str]:
     return capacidades_completas(_features_efectivas(plan_features, overrides))
 
 
+def _verificar_slug_demo(slug: str, settings) -> None:
+    """Guardarraíl anti-pérdida-de-datos: aborta si `slug` no es un tenant demo, ANTES de conectar.
+
+    `resembrar_demo` hace DELETE sobre las tablas transaccionales: apuntarlo a un tenant real lo
+    vaciaría. Dos cinturones independientes (cualquiera que falle aborta): el slug debe estar en la
+    lista declarada `demo_slugs` Y terminar en "-demo" (convención de los tenants demo). Lanza
+    `SystemExit` con mensaje claro antes de abrir conexión alguna."""
+    if slug not in settings.demo_slugs:
+        raise SystemExit(
+            f"rehúso resembrar '{slug}': no está en DEMO_TENANT_SLUGS "
+            f"({', '.join(settings.demo_slugs) or 'vacío'}). Resembrar BORRA datos transaccionales."
+        )
+    if not slug.endswith("-demo"):
+        raise SystemExit(
+            f"rehúso resembrar '{slug}': no termina en '-demo' (convención de tenant demo). "
+            f"Resembrar BORRA datos transaccionales."
+        )
+
+
 def resembrar_slug(slug: str, ahora: datetime | None = None) -> dict[str, int]:
-    """Resiembra un tenant demo por SLUG (resuelve caps + URL directa). Conveniencia para el CLI."""
+    """Resiembra un tenant demo por SLUG (resuelve caps + URL directa). Cubre el CLI y cualquier llamador.
+
+    Verifica PRIMERO que `slug` sea un tenant demo (`_verificar_slug_demo`): es el único punto que
+    convierte un slug arbitrario en una conexión + DELETE, así que el guardarraíl vive aquí, no en el
+    CLI, para proteger también a futuros llamadores.
+    """
     settings = get_settings()
+    _verificar_slug_demo(slug, settings)   # aborta (SystemExit) ANTES de tocar la BD si no es demo
     capacidades = capacidades_efectivas_sync(slug)
     conn_url = tenant_url(settings.tenants_direct_url_base, _db_name(slug))
     return resembrar_demo(conn_url, capacidades, ahora or now_co())

@@ -25,6 +25,12 @@ import '@fontsource/archivo/700.css'
 import '@fontsource/archivo/800.css'
 import App from './App.jsx'
 import './index.css'
+import { consumeTokenFromHash } from './lib/handoff.js'
+
+// Handoff de la landing (plan §3): ANTES de montar el router o disparar cualquier fetch, si la URL trae
+// `#token=...` lo guardamos como sesión y borramos el fragmento del historial (que jamás quede en el
+// historial ni en logs). Si ya había sesión, el token del fragmento la reemplaza.
+consumeTokenFromHash()
 
 // El boot de /config (theming + features) corre ya autenticado, dentro de ProtectedRoute (App.jsx).
 ReactDOM.createRoot(document.getElementById('root')).render(

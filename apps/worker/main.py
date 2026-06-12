@@ -27,13 +27,21 @@ from apps.worker.jobs import (
 from core.config import get_settings
 from core.config.timezone import now_co
 from core.db.session import control_session, tenant_session
+from core.db.urls import tenant_url
 from core.llm.factory import PlataformaLLM, Turno, get_llm
 from core.llm.stores import ControlLLMConfigStore, ControlLLMKeyStore
 from core.logging import get_logger
 from core.observability import init_sentry
 from core.tenancy.capacidades import ControlCapacidades
 from core.tenancy.context import ResolvedTenant
-from core.tenancy.control_repo import listar_tenants, listar_wa_numeros_activos, resolve_tenant_by_id
+from core.tenancy.control_repo import (
+    listar_tenants,
+    listar_wa_numeros_activos,
+    resolve_tenant_by_id,
+    resolve_tenant_by_slug,
+)
+from tools.provision_tenant import _db_name
+from tools.seed_demo_transaccional import resembrar_demo
 from modules.agenda.gcal import calendar_client_por_defecto
 from modules.agenda.repository import SqlAgendaRepository
 from modules.agenda.service import AgendaService
@@ -447,6 +455,35 @@ async def reconciliar_pendientes(ctx: dict) -> str:
     return f"reconciliadas={reconciliadas}"
 
 
+async def resembrar_demos(ctx: dict) -> str:
+    """Cron nocturno de higiene de demos (plan §4): resetea cada tenant demo a su estado canónico.
+
+    "Las demos siempre amanecen impecables": por cada slug en `settings.demo_slugs`, borra lo
+    transaccional del día y vuelve a sembrar datos VIVOS con fechas relativas a hoy (now_co). La
+    lógica determinista vive en `tools.seed_demo_transaccional.resembrar_demo` (testeada contra base
+    efímera). Aquí solo el barrido multi-tenant: resuelve el tenant + sus capacidades y corre el seed
+    SYNC en un hilo (psycopg) para no bloquear el event loop. Smoke manual, como los demás crons.
+    """
+    settings = get_settings()
+    ahora = now_co()
+    resembrados = 0
+    for slug in settings.demo_slugs:
+        async with control_session() as cs:
+            tenant = await resolve_tenant_by_slug(cs, slug)
+            if tenant is None:
+                continue
+            capacidades = await ControlCapacidades(cs).efectivas(tenant.id)
+        conn_url = tenant_url(settings.tenants_direct_url_base, _db_name(slug))
+        try:
+            conteos = await asyncio.to_thread(resembrar_demo, conn_url, capacidades, ahora)
+        except Exception:  # noqa: BLE001 — una demo rota no debe impedir resembrar las demás
+            log.exception("resembrar_demo_error", tenant_id=tenant.id, slug=slug)
+            continue
+        resembrados += 1
+        log.info("resembrar_demo_tenant", tenant_id=tenant.id, slug=slug, **conteos)
+    return f"resembrados={resembrados}"
+
+
 class WorkerSettings:
     """Configuración del worker ARQ (functions, cron, Redis, reintentos)."""
 
@@ -465,6 +502,11 @@ class WorkerSettings:
         cron(conciliar_cobros, minute=set(range(2, 60, 5)), run_at_startup=False),
         # Postventa (plan §2.6): cada hora; la espera tras el evento y el dedup los aplica el motor.
         cron(seguimientos_postventa, minute={50}, run_at_startup=False),
+        # Higiene de demos (plan §4): cada noche resetea los tenants demo a su estado canónico con
+        # fechas relativas (la demo amanece llena). ARQ corre el cron en la hora del servidor (UTC en
+        # Railway): 09:10 UTC ≈ 04:10 a.m. Colombia — hora muerta. La RELATIVIDAD de las fechas la da
+        # now_co dentro del seed, así que el dato queda correcto sin importar el reloj del servidor.
+        cron(resembrar_demos, hour={9}, minute={10}, run_at_startup=False),
     ]
     redis_settings = RedisSettings.from_dsn(get_settings().redis_url)
     max_tries = MAX_INTENTOS + 1

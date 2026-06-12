@@ -24,6 +24,11 @@ class Settings(BaseSettings):
     # multi-tenant normal (sin fallback). Ver core/tenancy/resolver.py.
     default_tenant_slug: str | None = None
     service_type: str = "api"
+    # Tenants DEMO (superficie pública Melquiadez, plan §4-§5): se marcan por LISTA DE SLUGS en config,
+    # NO por una columna `es_demo` en el control DB — es lo más simple y reversible (cero migración) y el
+    # único consumidor hoy es el cron de resiembra nocturna. Si el panel super-admin algún día necesita
+    # filtrar demos en SQL, se promueve a columna. Coma-separado; vacío = no hay demos que resembrar.
+    demo_tenant_slugs: str = "clinica-demo,barberia-demo,restaurante-demo,hotel-demo"
     redis_url: str = "redis://localhost:6379/0"
     sentry_dsn: str = ""
     sentry_environment: str = "production"
@@ -98,6 +103,11 @@ class Settings(BaseSettings):
     # solo su `google_calendar_id` por tenant (en agenda_config). Vacío = sync deshabilitado en toda la
     # plataforma. NUNCA hardcodear: va en el entorno (es un secreto). Ver docs/agenda-google-calendar.md.
     google_service_account_json: str = ""
+
+    @property
+    def demo_slugs(self) -> tuple[str, ...]:
+        """Slugs de tenants demo, parseados de `demo_tenant_slugs` (coma-separado, sin vacíos)."""
+        return tuple(s.strip() for s in self.demo_tenant_slugs.split(",") if s.strip())
 
 
 @lru_cache

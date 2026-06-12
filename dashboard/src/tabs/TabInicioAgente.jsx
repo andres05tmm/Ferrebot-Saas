@@ -104,9 +104,9 @@ function BannerPendientes({ total, onAbrir }) {
       role="button" tabIndex={0} onClick={onAbrir}
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onAbrir() } }}
       aria-label="Abrir inbox de conversaciones"
-      className={`p-3.5 flex items-center gap-3 cursor-pointer transition-all duration-base ease-out-quad hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 ${hay ? 'border-warning/30 bg-warning/[0.04]' : 'border-border'}`}
+      className={`p-3.5 flex items-center gap-3 cursor-pointer shadow-sm transition-all duration-base ease-out-quad hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 ${hay ? 'border-warning/30 bg-warning/[0.04]' : 'border-border'}`}
     >
-      <span className={`grid place-items-center rounded-md size-9 shrink-0 ${hay ? 'bg-warning text-white' : 'bg-surface-2 text-muted-foreground'}`}>
+      <span className={`grid place-items-center rounded-md size-9 shrink-0 ${hay ? 'bg-warning text-primary-foreground' : 'bg-surface-2 text-muted-foreground'}`}>
         <Headset className="size-4" aria-hidden="true" />
       </span>
       <div className="min-w-0 flex-1">
@@ -194,7 +194,7 @@ function ProximasCitas({ citas, servicios, loading, onVerAgenda }) {
   }, [citas])
 
   return (
-    <Card className="lg:col-span-2 p-3.5">
+    <Card className="lg:col-span-2 p-3.5 shadow-sm">
       <div className="flex items-center justify-between mb-2.5">
         <h2 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground inline-flex items-center gap-1.5">
           <CalendarClock className="size-3.5" /> Próximas citas de hoy
@@ -215,7 +215,7 @@ function ProximasCitas({ citas, servicios, loading, onVerAgenda }) {
         <ul className="divide-y divide-border-subtle">
           {proximas.map(c => (
             <li key={c.id} className="py-2 flex items-center gap-3">
-              <span className="text-[13px] font-semibold tabular-nums text-foreground w-12 shrink-0">{fmtHora(c.inicio)}</span>
+              <span className="font-display text-[13px] font-bold tabular-nums text-primary w-12 shrink-0">{fmtHora(c.inicio)}</span>
               <div className="min-w-0 flex-1">
                 <div className="text-[13px] font-medium truncate flex items-center gap-1.5">
                   {c.origen === 'whatsapp'
@@ -253,7 +253,7 @@ function AccionesRapidas({ features, navigate }) {
   }
 
   return (
-    <Card className="p-3.5">
+    <Card className="p-3.5 shadow-sm">
       <div className="flex items-center justify-between mb-2.5">
         <h2 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground inline-flex items-center gap-1.5">
           <TrendingUp className="size-3.5" /> Acciones rápidas

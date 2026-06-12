@@ -111,7 +111,7 @@ export default function TabConversaciones() {
       ) : inboxQ.error ? (
         <ErrorMsg msg="No se pudieron cargar las conversaciones." />
       ) : (
-        <Card className="grid grid-cols-1 md:grid-cols-[320px_1fr] overflow-hidden p-0 h-[600px]">
+        <Card className="grid grid-cols-1 md:grid-cols-[320px_1fr] overflow-hidden p-0 h-[600px] shadow-sm">
           <ListaConversaciones
             conversaciones={visibles}
             seleccionId={seleccionId}

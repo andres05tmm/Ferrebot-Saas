@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Melquiadez — harness de marca</title>
+<style>
+  body { margin: 0; font: 13px system-ui; display: grid; grid-template-columns: 1fr 1fr; }
+  section { padding: 28px; }
+  .papel { background: #f9f7f3; color: #120c08; }
+  .tinta { background: #120c08; color: #f9f7f3; }
+  h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .1em; opacity: .5; margin: 0 0 14px; }
+  .fila { display: flex; align-items: center; gap: 22px; margin-bottom: 26px; flex-wrap: wrap; }
+  .chip { display: grid; place-items: center; gap: 6px; font-size: 10px; opacity: .9; }
+  /* en la página oscura forzamos el modo dark de los SVG con filtro CSS no — usamos object para que
+     prefers-color-scheme no aplique; aquí simplemente mostramos ambos fondos con el MISMO svg para
+     juzgar el modo claro; el dark real se ve abriendo el harness con el SO en dark. */
+  img { display: block; }
+  .borde { outline: 1px dashed rgba(128,128,128,.35); }
+</style>
+</head>
+<body>
+  <section class="papel">
+    <h2>Sello sobre papel</h2>
+    <div class="fila">
+      <span class="chip"><img src="sello.svg" width="280" height="280">280</span>
+      <span class="chip"><img src="sello.svg" width="96" height="96">96</span>
+      <span class="chip"><img src="sello.svg" width="48" height="48">48</span>
+      <span class="chip"><img src="sello.svg" width="32" height="32">32</span>
+      <span class="chip"><img src="sello.svg" width="16" height="16">16</span>
+    </div>
+    <h2>Wordmark</h2>
+    <div class="fila"><img src="wordmark.svg" width="420" class="borde"></div>
+    <h2>Lockup</h2>
+    <div class="fila"><img src="lockup.svg" width="520" class="borde"></div>
+  </section>
+  <section class="tinta">
+    <h2>Sello sobre tinta (versión dark embebida)</h2>
+    <div class="fila">
+      <span class="chip"><span id="d280"></span>280</span>
+      <span class="chip"><span id="d96"></span>96</span>
+      <span class="chip"><span id="d48"></span>48</span>
+      <span class="chip"><span id="d32"></span>32</span>
+    </div>
+    <h2>Wordmark dark</h2>
+    <div class="fila"><span id="dw"></span></div>
+    <h2>Lockup dark</h2>
+    <div class="fila"><span id="dl"></span></div>
+  </section>
+<script>
+/* Inserta los SVG inline en modo dark: quita el <style> interno (que es por archivo y colisionaría
+   a nivel documento) y fija la tinta vía style.color en la raíz (currentColor hace el resto). */
+async function inyectar(src, destinos) {
+  const txt = await (await fetch(src)).text()
+  destinos.forEach(([id, w], i) => {
+    const el = document.getElementById(id)
+    if (!el) return
+    el.innerHTML = txt
+      .replace(/<style>[\s\S]*?<\/style>/, '')
+      .replaceAll('id="cometa', `id="cometa-${id}`)
+      .replaceAll('url(#cometa', `url(#cometa-${id}`)
+    const svg = el.querySelector('svg')
+    svg.style.color = '#f9f7f3'
+    svg.setAttribute('width', w)
+    svg.removeAttribute('height')
+  })
+}
+inyectar('sello.svg', [['d280', 280], ['d96', 96], ['d48', 48], ['d32', 32]])
+inyectar('wordmark.svg', [['dw', 420]])
+inyectar('lockup.svg', [['dl', 520]])
+</script>
+</body>
+</html>

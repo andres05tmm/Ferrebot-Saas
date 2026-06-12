@@ -19,6 +19,12 @@ class Settings(BaseSettings):
     secret_key: str = "dev-only-change-me"
     secrets_master_key: str = "dev-only-change-me-master"
     base_domain: str = "localhost"
+    # CORS quirúrgico (plan Melquiadez §3): origins permitidos a las rutas PÚBLICAS de auth
+    # (login/reset) cuando la landing en melquiadez.com hace POST cross-origin a app.melquiadez.com.
+    # Coma-separado. Default SEGURO = solo la landing de prod; el resto de la API NUNCA recibe CORS.
+    # En DEV se agrega el origin de Vite por env (`CORS_ALLOW_ORIGINS=https://melquiadez.com,http://localhost:5173`)
+    # — nunca hardcodeado aquí. Ver apps/api/cors.py.
+    cors_allow_origins: str = "https://melquiadez.com"
     # Empresa por defecto (opt-in) para despliegues SINGLE-TENANT sin dominio propio (p. ej. el dominio
     # que da Railway, sin subdominio): último recurso de resolución de tenant. None = comportamiento
     # multi-tenant normal (sin fallback). Ver core/tenancy/resolver.py.
@@ -108,6 +114,11 @@ class Settings(BaseSettings):
     def demo_slugs(self) -> tuple[str, ...]:
         """Slugs de tenants demo, parseados de `demo_tenant_slugs` (coma-separado, sin vacíos)."""
         return tuple(s.strip() for s in self.demo_tenant_slugs.split(",") if s.strip())
+
+    @property
+    def cors_origins(self) -> tuple[str, ...]:
+        """Origins permitidos para el CORS de auth, parseados de `cors_allow_origins` (coma-separado)."""
+        return tuple(o.strip() for o in self.cors_allow_origins.split(",") if o.strip())
 
 
 @lru_cache

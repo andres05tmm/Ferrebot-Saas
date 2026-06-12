@@ -29,6 +29,18 @@ def slug_valido(slug: str) -> bool:
     return isinstance(slug, str) and bool(_SLUG_RE.match(slug))
 
 
+# "HH:MM" 00:00..23:59 — una hora suelta (check-in/out de reservas, horario de cocina de pedidos).
+# Espeja el `_FRANJA` de `validacion` pero para un solo extremo; se valida en el esquema (es un valor
+# escalar, no una lista: el error sale al parsear, con mensaje claro).
+_HORA_RE = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
+
+
+def _hora_valida(valor: str) -> str:
+    if not _HORA_RE.match(valor):
+        raise ValueError(f"hora mal formada '{valor}' (esperado \"HH:MM\")")
+    return valor
+
+
 # Clave natural del pack POS (ADR 0011 §D3): dos nombres que solo difieren en mayúsculas o espacios
 # son el MISMO producto. La usan el loader (upsert) y la validación (nombres duplicados); el loader la
 # espeja en SQL (`lower(btrim(regexp_replace(nombre,'\s+',' ','g')))`) para encontrar la fila que insertó.
@@ -107,6 +119,16 @@ class AgendaConfig(_Base):
     recordatorios_horas: list[int] = Field(default_factory=lambda: [24, 2])
     persona: str | None = None
     google_calendar_id: str | None = None
+    # Modo reservas/noches (migración tenant 0022): las horas que convierten "N noches" en
+    # [check-in, check-out). Defaults = `server_default` del esquema. Solo importan en hoteles, pero
+    # toda agenda las tiene (columnas NOT NULL), así que el manifiesto puede fijarlas en cualquier vertical.
+    checkin_hora: str = "15:00"
+    checkout_hora: str = "12:00"
+
+    @field_validator("checkin_hora", "checkout_hora")
+    @classmethod
+    def _hora_hhmm(cls, v: str) -> str:
+        return _hora_valida(v)
 
 
 class Servicio(_Base):
@@ -164,6 +186,39 @@ class EntradaFaq(_Base):
 
 class PackFaq(_Base):
     entradas: list[EntradaFaq] = Field(default_factory=list)
+
+
+# ---------------------------------------------------------------------------
+# Pack Pedidos (ADR 0016) — config de cocina/domicilios. El MENÚ no vive aquí: es el catálogo del POS
+# (`packs.pos.productos`), que el pack de pedidos solo LEE. Aquí solo la operación: horario, mínimo,
+# tiempo estimado y zonas de domicilio.
+# ---------------------------------------------------------------------------
+class ZonaDomicilio(_Base):
+    """-> tabla `zonas_domicilio` (barrio → tarifa). `tarifa` en pesos (entero); el loader → Decimal."""
+
+    nombre: str
+    tarifa: int
+
+
+class PedidoConfig(_Base):
+    """-> tabla `pedido_config` (una sola fila). Defaults = `server_default` del esquema (0019)."""
+
+    activo: bool = True
+    hora_apertura: str = "08:00"
+    hora_cierre: str = "21:00"
+    minimo_pedido: int = 0          # pesos (entero)
+    tiempo_estimado_min: int = 45
+    costo_domicilio_default: int = 0  # pesos (entero)
+
+    @field_validator("hora_apertura", "hora_cierre")
+    @classmethod
+    def _hora_hhmm(cls, v: str) -> str:
+        return _hora_valida(v)
+
+
+class PackPedidos(_Base):
+    config: PedidoConfig = Field(default_factory=PedidoConfig)
+    zonas: list[ZonaDomicilio] = Field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -240,6 +295,7 @@ class Packs(_Base):
     agenda: PackAgenda | None = None
     faq: PackFaq | None = None
     pos: PackPos | None = None
+    pedidos: PackPedidos | None = None
 
 
 # ---------------------------------------------------------------------------

@@ -116,17 +116,21 @@ def _upsert_agenda_config(conn, cfg: AgendaConfig) -> None:
         "recordatorios_horas": cfg.recordatorios_horas,  # psycopg adapta list[int] → array
         "persona": cfg.persona,
         "google_calendar_id": cfg.google_calendar_id,
+        # Modo reservas/noches (0022): "HH:MM" → columna Time (PG castea el texto, igual que las franjas).
+        "checkin_hora": cfg.checkin_hora,
+        "checkout_hora": cfg.checkout_hora,
     }
     conn.execute(
         "INSERT INTO agenda_config (id, zona_horaria, intervalo_slots_min, anticipacion_minima_min, "
         "ventana_maxima_dias, politica_cancelacion_horas, corte_riesgo_horas, permite_reagendar, "
         "modo_confirmacion, requiere_anticipo, anticipo_tipo, anticipo_valor, capacidad_por_slot, "
-        "recordatorios_horas, persona, google_calendar_id) "
+        "recordatorios_horas, persona, google_calendar_id, checkin_hora, checkout_hora) "
         "VALUES (1, %(zona_horaria)s, %(intervalo_slots_min)s, %(anticipacion_minima_min)s, "
         "%(ventana_maxima_dias)s, %(politica_cancelacion_horas)s, %(corte_riesgo_horas)s, "
         "%(permite_reagendar)s, %(modo_confirmacion)s::modo_confirmacion, %(requiere_anticipo)s, "
         "%(anticipo_tipo)s::anticipo_tipo, %(anticipo_valor)s, %(capacidad_por_slot)s, "
-        "%(recordatorios_horas)s, %(persona)s, %(google_calendar_id)s) "
+        "%(recordatorios_horas)s, %(persona)s, %(google_calendar_id)s, "
+        "%(checkin_hora)s, %(checkout_hora)s) "
         "ON CONFLICT (id) DO UPDATE SET "
         "zona_horaria=EXCLUDED.zona_horaria, intervalo_slots_min=EXCLUDED.intervalo_slots_min, "
         "anticipacion_minima_min=EXCLUDED.anticipacion_minima_min, "
@@ -137,6 +141,7 @@ def _upsert_agenda_config(conn, cfg: AgendaConfig) -> None:
         "anticipo_tipo=EXCLUDED.anticipo_tipo, anticipo_valor=EXCLUDED.anticipo_valor, "
         "capacidad_por_slot=EXCLUDED.capacidad_por_slot, recordatorios_horas=EXCLUDED.recordatorios_horas, "
         "persona=EXCLUDED.persona, google_calendar_id=EXCLUDED.google_calendar_id, "
+        "checkin_hora=EXCLUDED.checkin_hora, checkout_hora=EXCLUDED.checkout_hora, "
         "actualizado_en=now()",
         params,
     )

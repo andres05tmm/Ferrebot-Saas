@@ -73,6 +73,20 @@ async def resolve_tenant_by_wa_number(
     return _resolver((await session.execute(stmt)).first())
 
 
+async def phone_number_id_activo(session: AsyncSession, empresa_id: int) -> str | None:
+    """`phone_number_id` del canal WhatsApp ACTIVO de una empresa (para enviar saliente). None si no tiene.
+
+    Inversa de `resolve_tenant_by_wa_number`: el inbox del dashboard responde por el número del tenant.
+    """
+    stmt = (
+        select(WaNumero.phone_number_id)
+        .where(WaNumero.empresa_id == empresa_id, WaNumero.estado == "activo")
+        .limit(1)
+    )
+    valor = (await session.execute(stmt)).scalar_one_or_none()
+    return str(valor) if valor is not None else None
+
+
 async def listar_wa_numeros_activos(session: AsyncSession) -> list[tuple[int, str]]:
     """`(empresa_id, phone_number_id)` de cada canal de WhatsApp activo (para jobs multi-tenant).
 

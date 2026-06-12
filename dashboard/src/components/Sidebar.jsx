@@ -28,7 +28,7 @@ function saveGroupState(state) {
 export default function Sidebar({ collapsed, setCollapsed, onOpenCommand, colorScheme, onToggleColorScheme }) {
   const features = useFeatures()
   const branding = useBranding()
-  const nombreComercial = branding?.nombre_comercial || 'FerreBot'
+  const nombreComercial = branding?.nombre_comercial || 'Melquiadez'
   const [groupOpen, setGroupOpen] = useState(loadGroupState)
   // Logo resiliente: si la imagen no carga (URL rota/ausente), `onError` lo marca y caemos al cuadro
   // tematizado — nunca se muestra el ícono de "imagen rota". Se reintenta si cambia la URL.
@@ -69,7 +69,7 @@ export default function Sidebar({ collapsed, setCollapsed, onOpenCommand, colorS
       aria-label="Navegación principal"
     >
       {/* Brand — white-label: logo + nombre comercial de la empresa (GET /config). Sin logo → cuadro
-          tematizado con --color-primary; sin nombre → fallback "FerreBot". */}
+          tematizado con --color-primary; sin nombre → fallback "Melquiadez" (marca de plataforma). */}
       <div className={cn('flex items-center gap-2.5 px-3 h-[88px] border-b border-border', collapsed && 'justify-center px-0')}>
         {branding?.logo_url && !logoRoto ? (
           <img

@@ -87,7 +87,7 @@ export default function Login() {
         <div className="flex flex-col items-center gap-2.5 w-full">
           <div className="size-10 rounded-md bg-color-primary mb-1" aria-hidden="true" />
           <h1 id="login-title" className="m-0 text-[22px] font-extrabold text-foreground tracking-tight leading-tight text-center">
-            FerreBot
+            Melquiadez
           </h1>
           <p className="m-0 mt-1 text-[11px] text-muted-foreground tracking-wider uppercase">
             Dashboard

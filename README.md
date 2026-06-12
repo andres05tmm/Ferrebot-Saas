@@ -1,10 +1,17 @@
-# FerreBot SaaS
+# Melquiadez
 
-Plataforma POS multi-empresa para ferreterías y comercios: dashboard web (React) + agente IA en Telegram, con facturación electrónica DIAN. Cada empresa es un *tenant* con su propia base de datos.
+> El repositorio se llama `ferrebot-saas` por su origen; la plataforma es **Melquiadez**.
+
+Plataforma SaaS multi-empresa que le da a un negocio de barrio un empleado que no duerme: un **agente IA**
+que atiende su WhatsApp/Telegram (agenda citas, toma pedidos, reserva, cobra) + un **dashboard web** (React)
+donde el dueño lo ve todo, con POS y facturación electrónica DIAN. Cada empresa es un *tenant* con su propia
+base de datos.
 
 ## Estado
 
-En arranque. Punto Rojo (migración desde el proyecto FerreBot) es el primer tenant.
+En arranque. **Punto Rojo** (ferretería; migración desde el proyecto **FerreBot**, que sigue siendo el nombre
+de su producto) es el tenant #1. La superficie pública (landing, sign-in, demos por vertical) vive en
+`docs/plan-melquiadez-superficie-publica.md`.
 
 ## Stack
 

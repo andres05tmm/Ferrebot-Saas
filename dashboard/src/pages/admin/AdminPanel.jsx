@@ -43,7 +43,7 @@ export default function AdminPanel() {
       <header className="flex items-center justify-between">
         <div>
           <h1 className="text-lg font-extrabold tracking-tight">Panel super-admin</h1>
-          <p className="text-[11px] text-muted-foreground uppercase tracking-wider">FerreBot · plataforma</p>
+          <p className="text-[11px] text-muted-foreground uppercase tracking-wider">Melquiadez · plataforma</p>
         </div>
         <Button variant="ghost" size="sm" onClick={logout}>Salir</Button>
       </header>

@@ -19,7 +19,13 @@ router = APIRouter(tags=["config"])
 
 
 class Branding(BaseModel):
-    """Marca blanca de la empresa (control DB); `color_primario` siempre presente (default de marca)."""
+    """Marca blanca de la empresa (control DB); `color_primario` siempre presente (default de marca).
+
+    El branding viaja YA RESUELTO (preset + overrides): el front recibe `tokens` planos —no el nombre
+    del preset a interpretar— y los aplica como variables CSS. `color_primario`/`tema`/`preset` se
+    mantienen por compatibilidad y para el `data-tema` con nombre. `tokens` vacío → el front cae a su
+    fallback (solo `--color-primary`), así un /config viejo no rompe nada.
+    """
 
     logo_url: str | None = None
     color_primario: str
@@ -28,6 +34,10 @@ class Branding(BaseModel):
     # Tema de UI con nombre (p. ej. "aurora"); None → el dashboard usa el tema base. El front lo aplica
     # como `data-tema` en <html> (bloque de CSS vars), combinable con light/dark.
     tema: str | None = None
+    # Preset de marca por vertical (plan §5.2). El front lo usa como `data-tema` y como llave de caché.
+    preset: str | None = None
+    # Tokens RESUELTOS (paleta + radio + fuentes); ver core.tenancy.branding_presets.TOKEN_KEYS.
+    tokens: dict[str, str] = {}
 
 
 class Usuario(BaseModel):

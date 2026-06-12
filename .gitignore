@@ -42,3 +42,8 @@ screen.png
 .coverage
 *.lock
 !uv.lock
+
+# wrangler files
+.wrangler
+.dev.vars*
+!.dev.vars.example

@@ -14,6 +14,23 @@
     /* Marca white-label: el boot la sobreescribe con branding.color_primario (GET /config). */
     --color-primary: #C8200E;
 
+    /* ── Tokens de marca PLANOS (preset por vertical) ───────────────────────────────────
+       El boot (lib/config.js) los sobreescribe inline con branding.tokens resueltos en /config.
+       Aquí van los fallbacks: un /config viejo SIN tokens deja estos valores neutros y nada rompe.
+       (La paleta visual completa por vertical la sigue dando el bloque [data-tema] de más abajo.) */
+    --color-primary-up: #A01808;
+    --color-surface: #f3f4f6;
+    --color-card: #ffffff;
+    --color-line: #e4e4e7;
+    --color-ink: #18181b;
+    --color-ink-soft: #52525b;
+    --color-ok: #15803d;
+    --color-warn: #c2410c;
+    --color-bad: #b91c1c;
+    --radius-brand: 14px;
+    /* Familia de cuerpo temable (la display vive más abajo). */
+    --font-ui: 'Inter', ui-sans-serif, system-ui, sans-serif;
+
     /* ── Forma / sombra / tipografía base (temables, agnósticas de light/dark) ──────────
        Estos defaults espejan los valores fijos previos → el tema base queda PIXEL-IDÉNTICO.
        Un tema con nombre (p. ej. [data-tema="aurora"]) los sobreescribe sin tocar el base. */

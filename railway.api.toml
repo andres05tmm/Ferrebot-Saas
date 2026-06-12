@@ -12,17 +12,21 @@
 # runner aplica `upgrade head` a cada app DB; con 0 tenants es no-op, así que es seguro desde el 1er
 # deploy. Re-ejecutar no daña (alembic queda en head; el runner es idempotente).
 #
-# ENTRYPOINT: docker-entrypoint.sh tiene un passthrough (`[ "$#" -gt 0 ] && exec "$@"`), así que el
-# preDeployCommand —y cualquier start-command override— se ejecuta tal cual, ya sea que Railway lo
-# corra como comando del contenedor o lo pase como argumentos al ENTRYPOINT. El arranque normal del
-# API corre SIN args → sigue cayendo en SERVICE_TYPE=api (uvicorn).
+# POR QUÉ `sh -c '...'` (no quitar): docker-entrypoint.sh hace el passthrough con `exec "$@"`, que
+# ejecuta los argumentos DIRECTAMENTE (execve), SIN un shell de por medio. Los operadores de shell
+# (`&&`, `|`, `;`) solo los interpreta un shell, así que el comando encadenado DEBE envolverse en
+# `sh -c '...'`. Sin el `sh -c`, el `&&` y lo que le sigue (`python -m tools.migrate_tenants`) se
+# pasaban como argumentos LITERALES de `alembic` (que los ignora): la migración de CONTROL corría pero
+# el runner de TENANTS nunca → los tenants se quedaban sin migrar (confirmado en prod: en los logs del
+# pre-deploy solo aparecía el alembic de control, jamás migrate_tenants). El arranque normal del API
+# corre SIN args → sigue cayendo en SERVICE_TYPE=api (uvicorn).
 
 [build]
 builder = "DOCKERFILE"
 dockerfilePath = "Dockerfile"
 
 [deploy]
-preDeployCommand = "alembic -c migrations/control/alembic.ini upgrade head && python -m tools.migrate_tenants"
+preDeployCommand = "sh -c 'alembic -c migrations/control/alembic.ini upgrade head && python -m tools.migrate_tenants'"
 healthcheckPath = "/health"
 healthcheckTimeout = 300
 restartPolicyType = "ON_FAILURE"

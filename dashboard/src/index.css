@@ -285,6 +285,382 @@
     }
   }
 
+  /* ════════════════════════════════════════════════════════════════════════════
+     TEMA "brasa" — restaurante — terracota cálida (design-propuestas/propuesta-brasa-restaurante.html). Display: Figtree.
+     Mismo patrón que aurora: remapea los MISMOS tokens semánticos (light default · dark explícito ·
+     dark por SO). Tema base y aurora intactos.
+     ════════════════════════════════════════════════════════════════════════════ */
+  [data-tema="brasa"] {
+    --radius-sm: 8px; --radius-md: 10px; --radius-lg: 16px; --radius-xl: 16px;
+    --font-display: 'Figtree', 'Inter', ui-sans-serif, system-ui, sans-serif;
+
+    --bg-body: 33 52% 96%;
+    --bg-body-strong: 9 76% 97%;
+    --bg-surface: 0 0% 100%;
+    --bg-surface-2: 9 76% 97%;
+    --bg-sidebar: 0 0% 100%;
+    --border-subtle: 23 39% 91%;
+    --border: 22 39% 89%;
+    --border-strong: 13 10% 45%;
+    --input: 22 39% 89%;
+    --ring: 9 67% 51%;
+    --text-primary: 13 19% 14%;
+    --text-secondary: 14 17% 25%;
+    --text-muted: 13 10% 45%;
+    --text-disabled: 20 12% 66%;
+    --accent: 9 67% 51%;
+    --accent-hover: 9 68% 42%;
+    --accent-soft: 10 78% 93%;
+    --accent-on: 0 0% 100%;
+    --accent-yellow: 36 77% 57%;
+    --accent-blue: 214 62% 56%;
+    --accent-green: 153 55% 40%;
+    --accent-orange: 9 67% 51%;
+    --success: 150 59% 30%;
+    --warning: 26 89% 37%;
+    --danger: 6 63% 46%;
+    --info: 212 61% 44%;
+    --chart-1: 9 67% 51%;
+    --chart-2: 153 55% 40%;
+    --chart-3: 214 62% 56%;
+    --chart-4: 36 77% 57%;
+    --chart-5: 258 90% 66%;
+    --chart-6: 13 10% 45%;
+
+    --shadow-xs: 0 1px 2px rgba(90,40,25,.06);
+    --shadow-sm: 0 1px 3px rgba(90,40,25,.07), 0 10px 26px rgba(90,40,25,.06);
+    --shadow-md: 0 4px 12px rgba(90,40,25,.09), 0 12px 32px rgba(90,40,25,.07);
+  }
+
+  [data-tema="brasa"][data-theme="dark"] {
+    --bg-body: 16 24% 9%;
+    --bg-body-strong: 20 26% 11%;
+    --bg-surface: 20 25% 12%;
+    --bg-surface-2: 17 25% 17%;
+    --bg-sidebar: 16 24% 9%;
+    --border-subtle: 21 24% 14%;
+    --border: 18 25% 18%;
+    --border-strong: 13 10% 45%;
+    --input: 18 25% 18%;
+    --ring: 12 75% 64%;
+    --text-primary: 21 52% 94%;
+    --text-secondary: 22 26% 84%;
+    --text-muted: 19 16% 63%;
+    --text-disabled: 17 15% 36%;
+    --accent: 11 72% 59%;
+    --accent-hover: 12 81% 67%;
+    --accent-soft: 11 72% 59%;
+    --accent-on: 0 0% 100%;
+    --accent-yellow: 38 79% 61%;
+    --accent-blue: 214 64% 61%;
+    --accent-green: 154 50% 47%;
+    --accent-orange: 11 72% 59%;
+    --success: 154 61% 44%;
+    --warning: 32 79% 49%;
+    --danger: 4 71% 60%;
+    --info: 213 77% 64%;
+    --chart-1: 11 72% 59%;
+    --chart-2: 154 61% 44%;
+    --chart-3: 213 77% 64%;
+    --chart-4: 38 79% 61%;
+    --chart-5: 255 92% 76%;
+    --chart-6: 19 16% 63%;
+
+    --shadow-xs: 0 1px 2px rgba(0,0,0,0.4);
+    --shadow-sm: 0 1px 3px rgba(0,0,0,0.5), 0 8px 24px rgba(0,0,0,0.35);
+    --shadow-md: 0 4px 12px rgba(0,0,0,0.5), 0 12px 32px rgba(0,0,0,0.4);
+  }
+  @media (prefers-color-scheme: dark) {
+    [data-tema="brasa"]:not([data-theme]) {
+      --bg-body: 16 24% 9%; --bg-body-strong: 20 26% 11%; --bg-surface: 20 25% 12%; --bg-surface-2: 17 25% 17%; --bg-sidebar: 16 24% 9%; --border-subtle: 21 24% 14%; --border: 18 25% 18%; --border-strong: 13 10% 45%; --input: 18 25% 18%; --ring: 12 75% 64%; --text-primary: 21 52% 94%; --text-secondary: 22 26% 84%; --text-muted: 19 16% 63%; --text-disabled: 17 15% 36%; --accent: 11 72% 59%; --accent-hover: 12 81% 67%; --accent-soft: 11 72% 59%; --accent-on: 0 0% 100%; --accent-yellow: 38 79% 61%; --accent-blue: 214 64% 61%; --accent-green: 154 50% 47%; --accent-orange: 11 72% 59%; --success: 154 61% 44%; --warning: 32 79% 49%; --danger: 4 71% 60%; --info: 213 77% 64%; --chart-1: 11 72% 59%; --chart-2: 154 61% 44%; --chart-3: 213 77% 64%; --chart-4: 38 79% 61%; --chart-5: 255 92% 76%; --chart-6: 19 16% 63%;
+      --shadow-xs: 0 1px 2px rgba(0,0,0,0.4);
+      --shadow-sm: 0 1px 3px rgba(0,0,0,0.5), 0 8px 24px rgba(0,0,0,0.35);
+      --shadow-md: 0 4px 12px rgba(0,0,0,0.5), 0 12px 32px rgba(0,0,0,0.4);
+    }
+  }
+
+  /* ════════════════════════════════════════════════════════════════════════════
+     TEMA "brisa" — hotel — costa náutica (azul océano + arena + oro). Display: Cormorant Garamond.
+     Mismo patrón que aurora: remapea los MISMOS tokens semánticos (light default · dark explícito ·
+     dark por SO). Tema base y aurora intactos.
+     ════════════════════════════════════════════════════════════════════════════ */
+  [data-tema="brisa"] {
+    --radius-sm: 8px; --radius-md: 10px; --radius-lg: 14px; --radius-xl: 16px;
+    --font-display: 'Cormorant Garamond', Georgia, 'Times New Roman', serif;
+
+    --bg-body: 40 53% 93%;
+    --bg-body-strong: 39 48% 88%;
+    --bg-surface: 43 100% 99%;
+    --bg-surface-2: 39 48% 88%;
+    --bg-sidebar: 43 100% 99%;
+    --border-subtle: 39 42% 89%;
+    --border: 40 37% 86%;
+    --border-strong: 205 5% 51%;
+    --input: 40 37% 86%;
+    --ring: 202 77% 19%;
+    --text-primary: 207 10% 18%;
+    --text-secondary: 205 8% 29%;
+    --text-muted: 205 5% 51%;
+    --text-disabled: 204 6% 69%;
+    --accent: 202 77% 19%;
+    --accent-hover: 202 78% 12%;
+    --accent-soft: 204 28% 90%;
+    --accent-on: 0 0% 100%;
+    --accent-yellow: 39 50% 57%;
+    --accent-blue: 205 54% 40%;
+    --accent-green: 158 51% 37%;
+    --accent-orange: 13 68% 63%;
+    --success: 158 51% 37%;
+    --warning: 42 54% 40%;
+    --danger: 10 52% 52%;
+    --info: 205 54% 40%;
+    --chart-1: 202 77% 19%;
+    --chart-2: 158 51% 37%;
+    --chart-3: 205 54% 40%;
+    --chart-4: 39 50% 57%;
+    --chart-5: 13 68% 63%;
+    --chart-6: 205 5% 51%;
+
+    --shadow-xs: 0 1px 2px rgba(11,57,84,.06);
+    --shadow-sm: 0 2px 6px rgba(11,57,84,.07), 0 12px 32px rgba(11,57,84,.06);
+    --shadow-md: 0 4px 12px rgba(11,57,84,.09), 0 16px 36px rgba(11,57,84,.07);
+  }
+
+  [data-tema="brisa"][data-theme="dark"] {
+    --bg-body: 204 60% 10%;
+    --bg-body-strong: 204 59% 13%;
+    --bg-surface: 203 59% 15%;
+    --bg-surface-2: 201 58% 19%;
+    --bg-sidebar: 204 60% 10%;
+    --border-subtle: 203 53% 17%;
+    --border: 202 50% 23%;
+    --border-strong: 205 5% 51%;
+    --input: 202 50% 23%;
+    --ring: 202 50% 57%;
+    --text-primary: 189 26% 95%;
+    --text-secondary: 193 16% 83%;
+    --text-muted: 196 11% 61%;
+    --text-disabled: 196 11% 40%;
+    --accent: 202 46% 44%;
+    --accent-hover: 201 45% 53%;
+    --accent-soft: 202 46% 44%;
+    --accent-on: 0 0% 100%;
+    --accent-yellow: 40 55% 62%;
+    --accent-blue: 202 50% 57%;
+    --accent-green: 158 42% 46%;
+    --accent-orange: 12 71% 69%;
+    --success: 158 42% 46%;
+    --warning: 38 55% 56%;
+    --danger: 12 71% 69%;
+    --info: 202 50% 57%;
+    --chart-1: 202 46% 44%;
+    --chart-2: 158 42% 46%;
+    --chart-3: 202 50% 57%;
+    --chart-4: 40 55% 62%;
+    --chart-5: 12 71% 69%;
+    --chart-6: 196 11% 61%;
+
+    --shadow-xs: 0 1px 2px rgba(0,0,0,0.45);
+    --shadow-sm: 0 1px 3px rgba(0,0,0,0.55), 0 8px 24px rgba(0,0,0,0.4);
+    --shadow-md: 0 4px 12px rgba(0,0,0,0.55), 0 12px 32px rgba(0,0,0,0.45);
+  }
+  @media (prefers-color-scheme: dark) {
+    [data-tema="brisa"]:not([data-theme]) {
+      --bg-body: 204 60% 10%; --bg-body-strong: 204 59% 13%; --bg-surface: 203 59% 15%; --bg-surface-2: 201 58% 19%; --bg-sidebar: 204 60% 10%; --border-subtle: 203 53% 17%; --border: 202 50% 23%; --border-strong: 205 5% 51%; --input: 202 50% 23%; --ring: 202 50% 57%; --text-primary: 189 26% 95%; --text-secondary: 193 16% 83%; --text-muted: 196 11% 61%; --text-disabled: 196 11% 40%; --accent: 202 46% 44%; --accent-hover: 201 45% 53%; --accent-soft: 202 46% 44%; --accent-on: 0 0% 100%; --accent-yellow: 40 55% 62%; --accent-blue: 202 50% 57%; --accent-green: 158 42% 46%; --accent-orange: 12 71% 69%; --success: 158 42% 46%; --warning: 38 55% 56%; --danger: 12 71% 69%; --info: 202 50% 57%; --chart-1: 202 46% 44%; --chart-2: 158 42% 46%; --chart-3: 202 50% 57%; --chart-4: 40 55% 62%; --chart-5: 12 71% 69%; --chart-6: 196 11% 61%;
+      --shadow-xs: 0 1px 2px rgba(0,0,0,0.45);
+      --shadow-sm: 0 1px 3px rgba(0,0,0,0.55), 0 8px 24px rgba(0,0,0,0.4);
+      --shadow-md: 0 4px 12px rgba(0,0,0,0.55), 0 12px 32px rgba(0,0,0,0.45);
+    }
+  }
+
+  /* ════════════════════════════════════════════════════════════════════════════
+     TEMA "lienzo" — genérico — violeta limpio sobre gris (sidebar claro, neutro vendible). Display: Sora.
+     Mismo patrón que aurora: remapea los MISMOS tokens semánticos (light default · dark explícito ·
+     dark por SO). Tema base y aurora intactos.
+     ════════════════════════════════════════════════════════════════════════════ */
+  [data-tema="lienzo"] {
+    --radius-sm: 8px; --radius-md: 10px; --radius-lg: 14px; --radius-xl: 16px;
+    --font-display: 'Sora', 'Inter', ui-sans-serif, system-ui, sans-serif;
+
+    --bg-body: 228 29% 97%;
+    --bg-body-strong: 227 27% 94%;
+    --bg-surface: 0 0% 100%;
+    --bg-surface-2: 225 31% 95%;
+    --bg-sidebar: 0 0% 100%;
+    --border-subtle: 223 26% 95%;
+    --border: 227 22% 92%;
+    --border-strong: 220 9% 46%;
+    --input: 227 22% 92%;
+    --ring: 247 74% 63%;
+    --text-primary: 223 14% 10%;
+    --text-secondary: 221 12% 26%;
+    --text-muted: 220 9% 46%;
+    --text-disabled: 220 11% 69%;
+    --accent: 247 74% 63%;
+    --accent-hover: 246 48% 48%;
+    --accent-soft: 251 81% 96%;
+    --accent-on: 0 0% 100%;
+    --accent-yellow: 32 95% 44%;
+    --accent-blue: 221 83% 53%;
+    --accent-green: 142 76% 36%;
+    --accent-orange: 21 90% 48%;
+    --success: 142 76% 36%;
+    --warning: 26 90% 37%;
+    --danger: 0 72% 51%;
+    --info: 221 83% 53%;
+    --chart-1: 247 74% 63%;
+    --chart-2: 142 76% 36%;
+    --chart-3: 221 83% 53%;
+    --chart-4: 32 95% 44%;
+    --chart-5: 330 81% 60%;
+    --chart-6: 220 9% 46%;
+
+    --shadow-xs: 0 1px 2px rgba(15,18,25,.05);
+    --shadow-sm: 0 1px 2px rgba(15,18,25,.05), 0 8px 24px rgba(15,18,25,.06);
+    --shadow-md: 0 4px 12px rgba(15,18,25,.08), 0 12px 32px rgba(15,18,25,.06);
+  }
+
+  [data-tema="lienzo"][data-theme="dark"] {
+    --bg-body: 231 25% 10%;
+    --bg-body-strong: 229 25% 13%;
+    --bg-surface: 229 23% 14%;
+    --bg-surface-2: 228 21% 19%;
+    --bg-sidebar: 231 25% 10%;
+    --border-subtle: 224 19% 15%;
+    --border: 226 20% 22%;
+    --border-strong: 220 9% 46%;
+    --input: 226 20% 22%;
+    --ring: 247 78% 72%;
+    --text-primary: 228 26% 96%;
+    --text-secondary: 227 18% 85%;
+    --text-muted: 218 10% 64%;
+    --text-disabled: 223 12% 38%;
+    --accent: 247 78% 72%;
+    --accent-hover: 247 100% 81%;
+    --accent-soft: 247 78% 72%;
+    --accent-on: 0 0% 100%;
+    --accent-yellow: 38 92% 50%;
+    --accent-blue: 220 91% 64%;
+    --accent-green: 142 71% 45%;
+    --accent-orange: 16 96% 62%;
+    --success: 142 71% 45%;
+    --warning: 34 82% 48%;
+    --danger: 0 85% 60%;
+    --info: 220 91% 64%;
+    --chart-1: 247 78% 72%;
+    --chart-2: 142 71% 45%;
+    --chart-3: 220 91% 64%;
+    --chart-4: 38 92% 50%;
+    --chart-5: 329 86% 70%;
+    --chart-6: 218 10% 64%;
+
+    --shadow-xs: 0 1px 2px rgba(0,0,0,0.4);
+    --shadow-sm: 0 1px 3px rgba(0,0,0,0.5), 0 8px 24px rgba(0,0,0,0.35);
+    --shadow-md: 0 4px 12px rgba(0,0,0,0.5), 0 12px 32px rgba(0,0,0,0.4);
+  }
+  @media (prefers-color-scheme: dark) {
+    [data-tema="lienzo"]:not([data-theme]) {
+      --bg-body: 231 25% 10%; --bg-body-strong: 229 25% 13%; --bg-surface: 229 23% 14%; --bg-surface-2: 228 21% 19%; --bg-sidebar: 231 25% 10%; --border-subtle: 224 19% 15%; --border: 226 20% 22%; --border-strong: 220 9% 46%; --input: 226 20% 22%; --ring: 247 78% 72%; --text-primary: 228 26% 96%; --text-secondary: 227 18% 85%; --text-muted: 218 10% 64%; --text-disabled: 223 12% 38%; --accent: 247 78% 72%; --accent-hover: 247 100% 81%; --accent-soft: 247 78% 72%; --accent-on: 0 0% 100%; --accent-yellow: 38 92% 50%; --accent-blue: 220 91% 64%; --accent-green: 142 71% 45%; --accent-orange: 16 96% 62%; --success: 142 71% 45%; --warning: 34 82% 48%; --danger: 0 85% 60%; --info: 220 91% 64%; --chart-1: 247 78% 72%; --chart-2: 142 71% 45%; --chart-3: 220 91% 64%; --chart-4: 38 92% 50%; --chart-5: 329 86% 70%; --chart-6: 218 10% 64%;
+      --shadow-xs: 0 1px 2px rgba(0,0,0,0.4);
+      --shadow-sm: 0 1px 3px rgba(0,0,0,0.5), 0 8px 24px rgba(0,0,0,0.35);
+      --shadow-md: 0 4px 12px rgba(0,0,0,0.5), 0 12px 32px rgba(0,0,0,0.4);
+    }
+  }
+
+  /* ════════════════════════════════════════════════════════════════════════════
+     TEMA "navaja" — barbería — ámbar cálido y madera oscura. El gold del mockup vive en --accent-yellow; el accent es bronce (texto blanco legible). Display: Archivo.
+     Mismo patrón que aurora: remapea los MISMOS tokens semánticos (light default · dark explícito ·
+     dark por SO). Tema base y aurora intactos.
+     ════════════════════════════════════════════════════════════════════════════ */
+  [data-tema="navaja"] {
+    --radius-sm: 8px; --radius-md: 9px; --radius-lg: 14px; --radius-xl: 16px;
+    --font-display: 'Archivo', 'Inter', ui-sans-serif, system-ui, sans-serif;
+
+    --bg-body: 36 43% 93%;
+    --bg-body-strong: 35 39% 88%;
+    --bg-surface: 40 100% 99%;
+    --bg-surface-2: 38 44% 89%;
+    --bg-sidebar: 40 100% 99%;
+    --border-subtle: 38 43% 89%;
+    --border: 36 37% 84%;
+    --border-strong: 35 13% 42%;
+    --input: 36 37% 84%;
+    --ring: 37 70% 34%;
+    --text-primary: 30 27% 13%;
+    --text-secondary: 35 21% 24%;
+    --text-muted: 35 13% 42%;
+    --text-disabled: 36 17% 61%;
+    --accent: 37 70% 34%;
+    --accent-hover: 36 73% 26%;
+    --accent-soft: 38 60% 88%;
+    --accent-on: 0 0% 100%;
+    --accent-yellow: 36 67% 55%;
+    --accent-blue: 214 62% 56%;
+    --accent-green: 106 32% 43%;
+    --accent-orange: 25 64% 46%;
+    --success: 107 38% 39%;
+    --warning: 36 77% 37%;
+    --danger: 4 52% 50%;
+    --info: 214 62% 56%;
+    --chart-1: 37 70% 34%;
+    --chart-2: 106 32% 43%;
+    --chart-3: 214 62% 56%;
+    --chart-4: 36 67% 55%;
+    --chart-5: 24 36% 45%;
+    --chart-6: 35 13% 42%;
+
+    --shadow-xs: 0 1px 2px rgba(70,50,20,.06);
+    --shadow-sm: 0 1px 3px rgba(70,50,20,.08), 0 10px 26px rgba(70,50,20,.06);
+    --shadow-md: 0 4px 12px rgba(70,50,20,.10), 0 14px 34px rgba(70,50,20,.07);
+  }
+
+  [data-tema="navaja"][data-theme="dark"] {
+    --bg-body: 26 18% 8%;
+    --bg-body-strong: 33 22% 10%;
+    --bg-surface: 30 18% 11%;
+    --bg-surface-2: 36 29% 13%;
+    --bg-sidebar: 26 18% 8%;
+    --border-subtle: 34 20% 14%;
+    --border: 32 19% 17%;
+    --border-strong: 36 13% 59%;
+    --input: 32 19% 17%;
+    --ring: 34 74% 65%;
+    --text-primary: 35 36% 91%;
+    --text-secondary: 36 23% 78%;
+    --text-muted: 36 13% 59%;
+    --text-disabled: 34 13% 37%;
+    --accent: 36 65% 48%;
+    --accent-hover: 36 67% 55%;
+    --accent-soft: 36 65% 48%;
+    --accent-on: 34 40% 8%;
+    --accent-yellow: 34 74% 65%;
+    --accent-blue: 214 64% 61%;
+    --accent-green: 101 31% 55%;
+    --accent-orange: 27 65% 57%;
+    --success: 101 31% 55%;
+    --warning: 37 73% 56%;
+    --danger: 4 68% 62%;
+    --info: 214 64% 61%;
+    --chart-1: 36 67% 55%;
+    --chart-2: 101 31% 55%;
+    --chart-3: 214 64% 61%;
+    --chart-4: 34 74% 65%;
+    --chart-5: 25 39% 58%;
+    --chart-6: 36 13% 59%;
+
+    --shadow-xs: 0 2px 4px rgba(0,0,0,.35);
+    --shadow-sm: 0 2px 4px rgba(0,0,0,.4), 0 14px 34px rgba(0,0,0,.3);
+    --shadow-md: 0 6px 16px rgba(0,0,0,.5), 0 18px 40px rgba(0,0,0,.4);
+  }
+  @media (prefers-color-scheme: dark) {
+    [data-tema="navaja"]:not([data-theme]) {
+      --bg-body: 26 18% 8%; --bg-body-strong: 33 22% 10%; --bg-surface: 30 18% 11%; --bg-surface-2: 36 29% 13%; --bg-sidebar: 26 18% 8%; --border-subtle: 34 20% 14%; --border: 32 19% 17%; --border-strong: 36 13% 59%; --input: 32 19% 17%; --ring: 34 74% 65%; --text-primary: 35 36% 91%; --text-secondary: 36 23% 78%; --text-muted: 36 13% 59%; --text-disabled: 34 13% 37%; --accent: 36 65% 48%; --accent-hover: 36 67% 55%; --accent-soft: 36 65% 48%; --accent-on: 34 40% 8%; --accent-yellow: 34 74% 65%; --accent-blue: 214 64% 61%; --accent-green: 101 31% 55%; --accent-orange: 27 65% 57%; --success: 101 31% 55%; --warning: 37 73% 56%; --danger: 4 68% 62%; --info: 214 64% 61%; --chart-1: 36 67% 55%; --chart-2: 101 31% 55%; --chart-3: 214 64% 61%; --chart-4: 34 74% 65%; --chart-5: 25 39% 58%; --chart-6: 36 13% 59%;
+      --shadow-xs: 0 2px 4px rgba(0,0,0,.35);
+      --shadow-sm: 0 2px 4px rgba(0,0,0,.4), 0 14px 34px rgba(0,0,0,.3);
+      --shadow-md: 0 6px 16px rgba(0,0,0,.5), 0 18px 40px rgba(0,0,0,.4);
+    }
+  }
+
   html, body {
     background-color: hsl(var(--bg-body));
     color: hsl(var(--text-primary));

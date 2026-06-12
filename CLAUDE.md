@@ -64,4 +64,5 @@ python -m tools.migrate_tenants            # aplica a todas las empresas
 | Operar (provisioning, migraciones, restore) | `docs/runbook.md` |
 | Dar de alta una empresa | `docs/onboarding-tenant.md` |
 | Manifiesto de tenant + provisionador de un paso | `docs/adr/0007-manifiesto-tenant-y-provisionador.md` · `tools/provision_from_manifest.py` |
+| Superficie pública Melquiadez (landing, sign-in, demos, switch Kapso) | `docs/plan-melquiadez-superficie-publica.md` |
 | Reglas de desarrollo | `.claude/rules/` |

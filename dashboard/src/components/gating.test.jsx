@@ -80,9 +80,9 @@ describe('branding white-label del Sidebar', () => {
     expect(logo.getAttribute('src')).toBe('https://cdn.test/pr/logo.png')
   })
 
-  it('sin branding usa el fallback neutro "FerreBot" (no rompe)', () => {
+  it('sin branding usa el fallback neutro "Melquiadez" (no rompe)', () => {
     renderSidebar([])
-    expect(screen.getByText('FerreBot')).toBeInTheDocument()
+    expect(screen.getByText('Melquiadez')).toBeInTheDocument()
     expect(screen.queryByRole('img')).toBeNull()   // sin logo_url → cuadro tematizado, no <img>
   })
 

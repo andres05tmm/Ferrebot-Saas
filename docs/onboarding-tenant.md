@@ -1,16 +1,64 @@
 # Alta de una empresa (onboarding)
 
-1. **Registro:** el super-admin crea la empresa en el panel (nombre, NIT, slug/subdominio, plan).
-2. **Base de datos:** el sistema crea la app DB de la empresa y corre `migrations/tenant` (upgrade head).
-3. **Semilla:** datos base (categorías, métodos de pago, config inicial).
-4. **Secretos:** cargar cifrados MATIAS (email/password/resolución/prefijo/consecutivos, DS-NO), Cloudinary y el token del bot de Telegram.
-5. **Branding:** logo, color, nombre comercial, dominio.
-6. **Admin:** crear el usuario administrador de la empresa.
-7. **Bot:** registrar el webhook `/tg/{empresa}` con el token de su bot.
-8. **Verificación:** smoke test (una venta de prueba, una emisión de factura de prueba).
-9. **Suscripción:** marcar `estado = activa` (cobro manual por ahora).
+> **Meta: < 30 min de insumos a dashboard vivo** (plan superficie pública §7). El alta de un tenant de
+> servicios (clínica, barbería, restaurante, hotel) es **un manifiesto + un comando**; no se toca el panel
+> ni se escribe SQL. El camino fiscal/POS (ferretería, secretos MATIAS) sigue por JSON — ver más abajo.
 
-> Para Punto Rojo (tenant #1), tras los pasos 1-3 se **copian** los datos desde FerreBot (ver `architecture.md` §17).
+## Flujo real de punta a punta (tenant-agente de servicios)
+
+1. **Manifiesto desde insumos naturales — skill `onboarding-magico`.** Se le entregan los insumos del
+   negocio tal como llegan (fotos de la lista de precios, screenshots de Instagram, Excel/CSV del
+   catálogo) y produce un **manifiesto YAML válido** listo para provisionar, bajo el contrato
+   **anti-alucinación del ADR 0011** (no inventa precios/servicios; lo que no está en los insumos queda
+   marcado para confirmar). Partir de un canónico también vale:
+   `cp tools/onboarding/clinica-demo.manifest.example.yaml tools/onboarding/mi-negocio.yaml`.
+   El manifiesto declara `identidad` (slug = subdominio), `admin`, `plan.features`, `branding.preset`,
+   los `packs` (agenda/FAQ/…) y `canal.whatsapp.phone_number_id`. Con valores reales va **gitignored**.
+
+2. **Provisionar — un comando idempotente.**
+   ```bash
+   python -m tools.provision_from_manifest --from tools/onboarding/mi-negocio.yaml
+   ```
+   Ejecuta toda la coreografía: **valida** (falla cerrado, ver abajo) → crea la app DB → la registra en
+   el control DB (URL cifrada) → migra (`tenant` head) → siembra catálogo de packs → carga secretos/branding
+   → crea el **admin** y las **identidades** → mapea el número de WhatsApp → smoke read-only. Imprime un
+   resumen de una línea y los **tokens de set-password** (admin y cada identidad). Re-correr converge al
+   mismo estado (idempotente; la garantía es idempotencia, no atomicidad).
+
+3. **Enlace set-password al cliente.** El provisionador NO fija contraseñas: emite un token por identidad
+   (`set-password de admin@…: token=…`, guardado en Redis como `sha256(token)`). Se le pasa al cliente el
+   enlace `https://app.melquiadez.com/set-password?token=…`; él pone su clave. (Si caduca, pide un reset.)
+
+4. **Branding listo sin diseñar — `branding.preset`.** El preset por vertical (`navaja`, `aurora`, `brasa`,
+   `brisa`, `lienzo`, o el default `melquiadez`) hace que el tenant nazca con el look de su gremio:
+   `GET /config` entrega los **tokens resueltos** (paleta + radio + fuentes) y el shell los aplica como
+   variables CSS. Un `branding.color_primario` explícito GANA sobre el preset (así Punto Rojo conserva su
+   rojo). Personalizable después; no bloquea el alta.
+
+5. **Subdominio automático.** Con el wildcard `*.melquiadez.com` apuntando a la API, todo tenant nace con
+   `{slug}.melquiadez.com` resolviendo **sin pasos extra**: el resolver lee el subdominio (`core/tenancy/
+   resolver.py`). El slug se valida en el manifiesto (`tools/manifest/schema.py`): patrón estricto (se
+   materializa en `CREATE DATABASE`) y **no puede ser un label reservado** (`app`, `api`, `www`, `admin`)
+   —esos hosts caen al claim del JWT, no a un tenant—.
+
+6. **Mapear el número de Kapso → tenant.** Si el manifiesto no traía un `phone_number_id` real (los demos
+   llevan placeholder), se mapea aparte:
+   ```bash
+   python -m tools.seed_wa_numero <phone_number_id> <slug>     # upsert por phone_number_id
+   ```
+   Para el número demo compartido se usa `tools/switch_demo` (lo re-apunta y limpia su memoria en Redis).
+
+7. **Verificar — smoke read-only (NO emite facturas).**
+   ```bash
+   .venv/Scripts/python.exe -m tools.verify_tenant <slug>
+   ```
+   Comprueba presencia de carga en control/tenant DB, **login real** (con el bot-token descifrado, que
+   nunca se imprime) y, con `facturacion_electronica` activa, los catálogos MATIAS producción (solo
+   lectura). Verde = dashboard vivo.
+
+> **Punto Rojo (tenant #1)** va por el camino fiscal/POS (JSON, abajo): tras crear DB+migrar se **copian**
+> los datos desde el FerreBot legado (ver `architecture.md` §17). FerreBot sigue siendo el nombre del
+> producto de Punto Rojo; la plataforma es Melquiadez.
 
 ## Dos caminos de provisioning
 
@@ -104,12 +152,14 @@ y el **`telegram_id`** real del admin.
    ```
    Re-ejecutar es seguro (UPSERT por `(empresa_id, clave)` / `empresa_id`): no duplica.
 
-4. **Verificación manual (read-only; NO emite facturas):**
-   - **Login real:** abrir el dashboard y entrar con el `telegram_id` configurado vía Telegram Login
-     Widget → `POST /api/v1/auth/login` responde **200** y el shell carga tematizado por el branding.
-   - **Catálogos MATIAS:** con `facturacion_electronica` activa, `GET /api/v1/clientes/ciudades` y
-     `GET /api/v1/clientes/paises` resuelven contra **MATIAS producción** (solo lectura).
-   - **La emisión real de facturas queda FUERA de este flujo, deliberada.**
+4. **Verificación (read-only; NO emite facturas) — `tools.verify_tenant`:**
+   ```bash
+   .venv/Scripts/python.exe -m tools.verify_tenant <slug>     # default: puntorojo
+   ```
+   Automatiza el smoke: **login real** (con el bot-token descifrado, que nunca se imprime → `POST
+   /api/v1/auth/login` **200**) y, con `facturacion_electronica` activa, los **catálogos MATIAS
+   producción** (`/clientes/ciudades`, `/clientes/paises`, solo lectura). **La emisión real de facturas
+   queda FUERA de este flujo, deliberada.**
 
 5. **Bot:** registrar el webhook `/tg/{slug}` con el token cargado (`secretos_empresa.telegram_token`).
 
@@ -125,9 +175,28 @@ cada demo es un test de provisioning). Los manifiestos se versionan (no llevan s
 | `restaurante-demo` | Brasa | `pos`, `pack_pedidos`, `pack_faq`, `canal_whatsapp` | `tools/onboarding/restaurante-demo.manifest.example.yaml` |
 | `hotel-demo` | Brisa | `pack_agenda`, `pack_reservas`, `pack_faq`, `canal_whatsapp` | `tools/onboarding/hotel-demo.manifest.example.yaml` |
 
-Cada manifiesto trae, además del admin, una **identidad demo no-admin** (`demo+<slug>@melquiadez.com`,
-rol `vendedor`) para que un prospecto pruebe el dashboard sin poder romper la demo. La contraseña se fija
-por el enlace de set-password que imprime el provisionador.
+### Alta de un tenant DEMO (qué lo hace distinto de un cliente)
+
+Un demo se provisiona **exactamente igual** que un cliente pagado (mismo `provision_from_manifest`), con
+tres particularidades:
+
+1. **Identidad demo no-admin.** Además del admin, el manifiesto declara una identidad
+   `demo+<slug>@melquiadez.com` con rol `vendedor` (no admin: que un prospecto pruebe el dashboard sin
+   poder romper la demo). Su contraseña se fija por el enlace de set-password que imprime el provisionador
+   —o, para una demo pública, se le pone una clave corta conocida con un reset—. El botón "Ver demo" de la
+   landing hace el login de esta identidad y cae en `{slug}.melquiadez.com`.
+
+2. **Marca de demo = lista de slugs en config, NO una columna `es_demo`.** El plan §4 contemplaba una
+   columna `es_demo` en el control DB; la implementación la **descartó** a favor del setting
+   `demo_tenant_slugs` (`core/config/settings.py`, default
+   `clinica-demo,barberia-demo,restaurante-demo,hotel-demo`): cero migración, reversible, y el único
+   consumidor hoy es el cron de resiembra. Marcar/desmarcar un demo = editar esa lista (por entorno en
+   prod). Si algún día el panel super-admin necesita filtrar demos en SQL, se promueve a columna.
+
+3. **Datos vivos con higiene nocturna** (siguiente sección): a diferencia de un cliente, sus datos
+   transaccionales se **resiembran** cada noche para que la demo siempre amanezca impecable.
+
+Verificar un demo recién provisionado es el mismo `python -m tools.verify_tenant <slug>` del flujo real.
 
 > **Nombre de plan único por demo:** los planes se comparten por NOMBRE (ver caveat arriba), así que cada
 > demo tiene su propio plan (`Demo Barbería`/`Restaurante`/`Hotel`) para que sus capacidades efectivas

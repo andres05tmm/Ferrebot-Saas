@@ -12,6 +12,8 @@ venv/
 # Node / frontend
 node_modules/
 dashboard/dist/
+landing/dist/
+.scratch-logo/
 # Onboarding: valores REALES por empresa (secretos en claro) — nunca commitear.
 # Solo se versionan las plantillas *.example.{json,yaml} (incl. manifiestos, ADR 0007).
 tools/onboarding/*.json

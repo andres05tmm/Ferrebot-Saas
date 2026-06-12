@@ -1,0 +1,74 @@
+/* ============================================================
+   Melquiadez — tokens de marca (archivo central).
+   Realismo mágico moderno: papel cálido, tinta noche, oro viejo.
+   La landing y cualquier superficie pública importan ESTE archivo;
+   los acentos por vertical vienen de la landing v2 y se conservan.
+   ============================================================ */
+
+:root {
+  /* ---- núcleo de marca ---- */
+  --papel:        oklch(97.6% .006 85);   /* fondo claro — nunca blanco puro   */
+  --papel-2:      oklch(95.4% .008 82);
+  --tinta:        oklch(16% .014 55);     /* la noche de Macondo               */
+  --tinta-2:      oklch(19.5% .016 55);
+  --oro:          oklch(70% .12 80);      /* oro viejo — acento de marca       */
+  --oro-claro:    oklch(78% .11 82);      /* oro sobre fondos oscuros          */
+  --oro-oscuro:   oklch(58% .11 75);      /* oro sobre papel (más contraste)   */
+  --oro-suave:    oklch(70% .12 80 / .14);
+
+  /* equivalentes sRGB para contextos sin oklch (SVG standalone, meta theme-color):
+     papel #f9f7f3 · papel-2 #f2efea · tinta #120c08 · tinta-2 #1b130e
+     oro #c5953b · oro-claro #dab060 · oro-oscuro #a07020 */
+
+  /* ---- tipografía ---- */
+  --fuente-display: 'Fraunces', 'Iowan Old Style', Georgia, serif;
+  --fuente-cuerpo:  'Bricolage Grotesque', system-ui, sans-serif;
+
+  /* ---- WhatsApp (canal del producto) ---- */
+  --wa:       oklch(63% .17 152);
+  --wa-tinta: oklch(22% .05 152);
+
+  --ease: cubic-bezier(.16, 1, .3, 1);
+}
+
+/* ---- tema claro (default): el papel ---- */
+[data-tema="claro"] {
+  --fondo:      var(--papel);
+  --fondo-2:    var(--papel-2);
+  --panel:      oklch(99% .003 85);
+  --linea:      oklch(89% .01 80);
+  --texto:      oklch(23% .018 60);
+  --texto-2:    oklch(43% .015 60);
+  --texto-3:    oklch(58% .012 65);
+  --sombra:     0 22px 50px -22px oklch(30% .03 60 / .28);
+  --chat-fondo: oklch(94.5% .009 82);
+  --chat-marco: oklch(20% .015 60);
+  --oro-vivo:   var(--oro-oscuro);        /* oro legible sobre papel */
+}
+
+/* ---- tema oscuro: la noche de Macondo ---- */
+[data-tema="oscuro"] {
+  --fondo:      var(--tinta);
+  --fondo-2:    var(--tinta-2);
+  --panel:      oklch(21.5% .017 55);
+  --linea:      oklch(31% .02 55);
+  --texto:      oklch(94% .01 75);
+  --texto-2:    oklch(71% .015 70);
+  --texto-3:    oklch(55% .015 65);
+  --sombra:     0 26px 60px -24px oklch(0% 0 0 / .7);
+  --chat-fondo: oklch(13% .012 55);
+  --chat-marco: oklch(10% .01 55);
+  --oro-vivo:   var(--oro-claro);         /* oro luminoso sobre tinta */
+}
+
+/* ---- acento por vertical (par claro/oscuro + suave) ----
+   Heredados de la landing v2: cada vertical retematiza la página. */
+[data-vertical="neutro"]      { --acento-c: oklch(56% .17 40);  --acento-o: oklch(72% .15 45);  --acento-suave-c: oklch(93% .03 45);   --acento-suave-o: oklch(26% .05 45) }
+[data-vertical="barberia"]    { --acento-c: oklch(55% .12 65);  --acento-o: oklch(75% .14 70);  --acento-suave-c: oklch(93% .03 70);   --acento-suave-o: oklch(26% .045 65) }
+[data-vertical="odontologia"] { --acento-c: oklch(52% .1 190);  --acento-o: oklch(78% .11 184); --acento-suave-c: oklch(93% .03 190);  --acento-suave-o: oklch(25% .04 192) }
+[data-vertical="hotel"]       { --acento-c: oklch(50% .09 240); --acento-o: oklch(80% .1 88);   --acento-suave-c: oklch(93% .025 240); --acento-suave-o: oklch(25% .04 245) }
+[data-vertical="restaurante"] { --acento-c: oklch(56% .19 32);  --acento-o: oklch(69% .18 35);  --acento-suave-c: oklch(93.5% .03 35); --acento-suave-o: oklch(26% .05 32) }
+[data-vertical="ferreteria"]  { --acento-c: oklch(52% .2 29);   --acento-o: oklch(62% .2 29);   --acento-suave-c: oklch(93.5% .03 29); --acento-suave-o: oklch(25% .055 28) }
+
+[data-tema="claro"]  { --acento: var(--acento-c); --acento-suave: var(--acento-suave-c); --sobre-acento: oklch(98% .005 85) }
+[data-tema="oscuro"] { --acento: var(--acento-o); --acento-suave: var(--acento-suave-o); --sobre-acento: oklch(16% .014 55) }

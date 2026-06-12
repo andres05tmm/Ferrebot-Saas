@@ -54,6 +54,37 @@ async def test_config_con_features_y_branding():
     assert body["branding"]["tema"] == "aurora"                # tema de UI con nombre (white-label)
 
 
+async def test_config_entrega_tokens_planos_del_preset():
+    # El branding viaja YA resuelto: el front recibe tokens planos (no el nombre del preset).
+    from core.tenancy.branding_presets import resolver_branding
+
+    resuelto = resolver_branding({"preset": "navaja"})
+    branding = Branding(color_primario=resuelto["color_primario"], preset="navaja",
+                        tokens=resuelto["tokens"])
+    app = _app(frozenset({"pack_agenda"}), branding)
+    async with _cliente(app) as c:
+        r = await c.get("/api/v1/config")
+    assert r.status_code == 200, r.text
+    tokens = r.json()["branding"]["tokens"]
+    assert r.json()["branding"]["preset"] == "navaja"
+    assert tokens["superficie"] == "#171310"                   # navaja es oscuro
+    assert tokens["font_display"] == "Archivo"
+    assert set(tokens) >= {"primario", "superficie", "card", "radius", "font_display"}
+
+
+async def test_config_sin_tokens_compat_front_viejo():
+    # /config sin tokens (branding mínimo) NO rompe: tokens viaja como {} y el front cae a su fallback.
+    branding = Branding(color_primario="#0d6efd")
+    app = _app(frozenset(), branding)
+    async with _cliente(app) as c:
+        r = await c.get("/api/v1/config")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["branding"]["tokens"] == {}
+    assert body["branding"]["preset"] is None
+    assert body["branding"]["color_primario"] == "#0d6efd"
+
+
 async def test_config_sin_branding_defaults_y_solo_nucleo():
     branding = Branding(color_primario="#C8200E")              # empresa sin branding → defaults
     app = _app(frozenset(), branding)

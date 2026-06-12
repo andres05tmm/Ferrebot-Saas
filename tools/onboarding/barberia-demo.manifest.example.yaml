@@ -27,9 +27,8 @@ plan:
 features_override: {}
 
 branding:
-  color_primario: "#1C1A17"           # carbón/tinta — acento "Navaja"
+  preset: "navaja"                    # preset por vertical (oro sobre carbón, oscuro). El primario lo pone el preset.
   nombre_comercial: "El Patio"
-  tema: "navaja"
 
 secretos: {}
 config: {}

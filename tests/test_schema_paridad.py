@@ -7,11 +7,11 @@ prueba, forzando la revisión. Tras la 0005, `config_empresa` ya NO existe en la
 from sqlalchemy import inspect
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-# 60 tablas de negocio del esquema tenant en head (sin 'alembic_version').
+# 61 tablas de negocio del esquema tenant en head (sin 'alembic_version').
 # Incluye el pack Agenda/Citas (0008): agenda_config, bloqueos, citas, disponibilidad,
-# recurso_servicio, recursos, servicios; el handoff transversal (0009): conversaciones;
-# el pack FAQ (0012_faq_conocimiento): conocimiento; y el pack cobranza (0017, ADR 0015):
-# cobranza_config, cobranza_clientes, promesas_pago, pagos_reportados.
+# recurso_servicio, recursos, servicios; el handoff transversal (0009): conversaciones, y su hilo
+# de mensajes (0024): conversacion_mensajes; el pack FAQ (0012_faq_conocimiento): conocimiento; y el
+# pack cobranza (0017, ADR 0015): cobranza_config, cobranza_clientes, promesas_pago, pagos_reportados.
 _TABLAS_ESPERADAS: frozenset[str] = frozenset({
     "aliases", "api_costo_diario", "audio_logs", "bancolombia_transferencias", "caja",
     "caja_movimientos", "clientes", "compras", "compras_detalle", "compras_fiscal",
@@ -22,6 +22,7 @@ _TABLAS_ESPERADAS: frozenset[str] = frozenset({
     "proveedores", "usuarios", "ventas", "ventas_detalle", "ventas_pendientes_voz",
     "agenda_config", "bloqueos", "citas", "disponibilidad", "recurso_servicio", "recursos",
     "servicios", "conversaciones",
+    "conversacion_mensajes",   # hilo del inbox / handoff (0024, Fase 2)
     "conocimiento",   # pack FAQ (0012_faq_conocimiento)
     "webhooks_matias_recibidos",   # idempotencia del webhook MATIAS (0014, D7.1)
     "cobranza_config", "cobranza_clientes", "promesas_pago", "pagos_reportados",   # pack cobranza (0017)

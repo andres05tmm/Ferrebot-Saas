@@ -7,7 +7,7 @@ import { useEffect, useState } from 'react'
 import { NavLink } from 'react-router-dom'
 import { ChevronDown, ChevronRight, PanelLeftClose, PanelLeftOpen, Command, Sun, Moon } from 'lucide-react'
 import { ROUTES, GROUPS, routesByGroup } from '@/routes.jsx'
-import { useFeatures } from '@/lib/features.jsx'
+import { useFeatures, isRouteEnabled } from '@/lib/features.jsx'
 import { useBranding } from '@/lib/branding.jsx'
 import { cn } from '@/lib/utils'
 
@@ -56,7 +56,8 @@ export default function Sidebar({ collapsed, setCollapsed, onOpenCommand, colorS
     return () => window.removeEventListener('keydown', fn)
   }, [setCollapsed])
 
-  const topItems = ROUTES.filter(r => r.group === 'top')
+  // Las portadas (top) también se gatean: solo la home resuelta del tenant (Inicio o Hoy) se muestra.
+  const topItems = ROUTES.filter(r => r.group === 'top' && isRouteEnabled(r.path, features))
 
   return (
     <aside

@@ -481,3 +481,42 @@ async def test_agente_escala_a_humano_y_pausa_el_siguiente_mensaje(tenant):
         _tenant_resuelto(),
     )
     assert texto2 == "" and sender2.envios == [] and provider2.generaciones == []
+
+
+# --- inbox: el runtime persiste el hilo (entrante + saliente) ----------------
+async def _hilo(engine, telefono: str):
+    async with AsyncSession(engine, expire_on_commit=False) as s:
+        return await SqlConversacionRepository(s).listar_mensajes(telefono)
+
+
+async def test_atender_persiste_entrante_y_saliente_del_bot(tenant):
+    await _seed(tenant.engine)
+    provider = _ScriptedProvider([LLMResponse(text="¡Hola! ¿Te agendo una cita?", tool_calls=[])])
+    agente = _agente(tenant.engine, provider, sender=_FakeSender())
+    await agente.atender(
+        MensajeWa(message_id="w", telefono=TEL, phone_number_id=PNID, texto="hola"), _tenant_resuelto()
+    )
+    hilo = await _hilo(tenant.engine, TEL)
+    assert [(m.direccion, m.autor, m.texto) for m in hilo] == [
+        ("entrante", "cliente", "hola"),
+        ("saliente", "bot", "¡Hola! ¿Te agendo una cita?"),
+    ]
+    # Y la conversación aparece en el inbox aunque el bot la haya resuelto (estado bot).
+    async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
+        conv = await SqlConversacionRepository(s).por_telefono(TEL)
+    assert conv is not None and conv.estado == "bot"
+
+
+async def test_atender_pausado_persiste_solo_el_entrante(tenant):
+    await _seed(tenant.engine)
+    await _escalar(tenant.engine, TEL)               # ya está en humano
+    agente = _agente(tenant.engine, _ScriptedProvider([]), sender=_FakeSender())
+    await agente.atender(
+        MensajeWa(message_id="w", telefono=TEL, phone_number_id=PNID, texto="¿hay novedad?"),
+        _tenant_resuelto(),
+    )
+    hilo = await _hilo(tenant.engine, TEL)
+    # Pausado: se guarda el mensaje entrante (para el inbox) pero NO una respuesta del bot.
+    assert [(m.direccion, m.autor, m.texto) for m in hilo] == [
+        ("entrante", "cliente", "¿hay novedad?"),
+    ]

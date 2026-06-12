@@ -7,7 +7,7 @@ import { useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { LayoutDashboard, ChevronUp, X } from 'lucide-react'
 import { GROUPS, routesByGroup, ROUTES } from '@/routes.jsx'
-import { useFeatures } from '@/lib/features.jsx'
+import { useFeatures, resolveHomePath } from '@/lib/features.jsx'
 import { cn } from '@/lib/utils'
 
 const GROUP_ICONS = {
@@ -23,7 +23,11 @@ export default function MobileNav() {
   const navigate = useNavigate()
   const location = useLocation()
 
-  const isHoy     = location.pathname === '/hoy' || location.pathname === '/'
+  // Portada del tenant (Inicio de servicios o Hoy POS): un solo botón "home" que resuelve por features.
+  const homePath = resolveHomePath(features)
+  const homeRoute = ROUTES.find(r => r.path === homePath)
+  const HomeIcon = homeRoute?.icon || LayoutDashboard
+  const isHome = location.pathname === homePath || location.pathname === '/'
   const activeGroup = ROUTES.find(r => r.path === location.pathname)?.group
   const drawer = openGroup ? GROUPS.find(g => g.id === openGroup) : null
 
@@ -79,10 +83,10 @@ export default function MobileNav() {
         aria-label="Navegación móvil"
       >
         <BottomItem
-          icon={LayoutDashboard}
-          label="Hoy"
-          active={isHoy}
-          onClick={() => go('/hoy')}
+          icon={HomeIcon}
+          label={homeRoute?.label || 'Inicio'}
+          active={isHome}
+          onClick={() => go(homePath)}
         />
         {GROUPS.map(group => {
           const Icon = GROUP_ICONS[group.id]

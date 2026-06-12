@@ -37,15 +37,22 @@ afterEach(() => {
 })
 
 describe('gating del Sidebar', () => {
-  it('muestra los tabs núcleo siempre (sin importar features)', () => {
+  it('un negocio de servicios ve la portada Inicio + núcleo, y NO ve Hoy/POS', () => {
     renderSidebar([])
-    // Núcleo transversal (ADR 0008): Hoy, Clientes, Resultados financieros.
-    expect(screen.getByText('Hoy')).toBeInTheDocument()
+    // Portada de servicios (Fase 1) + núcleo transversal (ADR 0008): Clientes, Resultados.
+    expect(screen.getByText('Inicio')).toBeInTheDocument()
     expect(screen.getByText('Clientes')).toBeInTheDocument()
     expect(screen.getByText('Resultados financieros')).toBeInTheDocument()
-    // El POS ya NO es núcleo: oculto sin la capacidad `pos`.
+    // La portada POS y el resto del POS quedan ocultos sin la capacidad `pos`.
+    expect(screen.queryByText('Hoy')).toBeNull()
     expect(screen.queryByText('Ventas Rápidas')).toBeNull()
     expect(screen.queryByText('Inventario')).toBeNull()
+  })
+
+  it('un tenant con `pos` (Punto Rojo) ve la portada Hoy, no Inicio', () => {
+    renderSidebar(['pos'])
+    expect(screen.getByText('Hoy')).toBeInTheDocument()
+    expect(screen.queryByText('Inicio')).toBeNull()
   })
 
   it('oculta los tabs fiscales cuando su feature no está activa', () => {

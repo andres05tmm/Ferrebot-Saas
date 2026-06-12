@@ -16,6 +16,7 @@ import AdminPanel from './pages/admin/AdminPanel.jsx'
 import PlatformRoute from './components/PlatformRoute.jsx'
 import TabStub from './tabs/TabStub.jsx'
 import TabHoy from './tabs/TabHoy.jsx'
+import TabInicioAgente from './tabs/TabInicioAgente.jsx'
 import TabVentasRapidas from './tabs/TabVentasRapidas.jsx'
 import TabInventario from './tabs/TabInventario.jsx'
 import TabCaja from './tabs/TabCaja.jsx'
@@ -39,6 +40,7 @@ import { ROUTES } from './routes.jsx'
 // Tabs núcleo (E6) + reportes (S2) + facturación (S3) + compras (S4a) + proveedores (S4b) +
 // compras fiscal (S6a) + libro IVA (S5); el resto, stub.
 const TABS = {
+  '/inicio': TabInicioAgente,
   '/hoy': TabHoy,
   '/ventas': TabVentasRapidas,
   '/inventario': TabInventario,
@@ -60,8 +62,15 @@ const TABS = {
   '/pedidos': TabPedidos,
 }
 import { bootConfig } from './lib/config.js'
-import { FeaturesProvider } from './lib/features.jsx'
+import { FeaturesProvider, useFeatures, resolveHomePath } from './lib/features.jsx'
 import { BrandingProvider } from './lib/branding.jsx'
+
+// Redirige a la portada del tenant resuelta por sus features (Hoy POS / Inicio agente). Vive dentro de
+// FeaturesProvider (ShellBoot), así que lee las features del shell ya cargado.
+function HomeRedirect() {
+  const features = useFeatures()
+  return <Navigate to={resolveHomePath(features)} replace />
+}
 
 // ── Error Boundary ───────────────────────────────────────────────────────────
 class ErrorBoundary extends React.Component {
@@ -135,7 +144,7 @@ export default function App() {
           <Route path="/recuperar" element={<RecuperarPassword />} />
           {/* Panel super-admin (ADR 0010): FUERA del shell de tenant; gateado por rol super_admin. */}
           <Route path="/admin" element={<PlatformRoute><AdminPanel /></PlatformRoute>} />
-          {/* Compat: el catch-all del shell redirige rutas desconocidas a /hoy (ver abajo). */}
+          {/* La portada y el catch-all resuelven la home por features (HomeRedirect): Hoy POS o Inicio agente. */}
           <Route
             element={
               <ProtectedRoute>
@@ -143,12 +152,12 @@ export default function App() {
               </ProtectedRoute>
             }
           >
-            <Route path="/" element={<Navigate to="/hoy" replace />} />
+            <Route path="/" element={<HomeRedirect />} />
             {ROUTES.map(r => {
               const Comp = TABS[r.path] || TabStub
               return <Route key={r.path} path={r.path} element={<Comp />} />
             })}
-            <Route path="*" element={<Navigate to="/hoy" replace />} />
+            <Route path="*" element={<HomeRedirect />} />
           </Route>
         </Routes>
       </Router>

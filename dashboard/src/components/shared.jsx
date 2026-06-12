@@ -7,14 +7,17 @@ import { apiJson } from '@/lib/api.js'
 // ── useFetch — GET por api.js con estado loading/error y refetch() ───────────
 // `deps` controla cuándo re-pedir (p. ej. [refreshKey] del shell). Los tabs llaman a refetch()
 // ante eventos SSE (useRealtimeEvent). El 401 lo maneja api.js (redirige a /login).
+// Un `path` falsy (null/'') desactiva el fetch: queda en reposo (data null, sin loading) — útil para
+// pedir un endpoint solo cuando la feature del tenant lo habilita, sin llamadas que darían 403/404.
 export function useFetch(path, deps = []) {
   const [data, setData] = useState(null)
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(!!path)
   const [error, setError] = useState(null)
   const [tick, setTick] = useState(0)
   const refetch = useCallback(() => setTick(t => t + 1), [])
 
   useEffect(() => {
+    if (!path) { setLoading(false); setError(null); return }
     let cancelado = false
     setLoading(true)
     setError(null)

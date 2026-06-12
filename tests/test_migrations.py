@@ -30,8 +30,9 @@ async def test_tenant_upgrade_downgrade_limpio(tenant):
     # anticipo_tipo y cita_confirmacion —este último añadido por 0011_reconfirmacion—) + 1 del
     # handoff (conversacion_estado, 0009_conversaciones) + 1 del pack cobranza
     # (promesa_estado, 0017_cobranza) + 1 del pack pedidos (pedido_estado, 0019) + 1 del pack
-    # ventas/cotizaciones (cotizacion_estado, 0020) + 1 de pagos (cobro_estado, 0021). Total: 22.
-    assert enums == 22
+    # ventas/cotizaciones (cotizacion_estado, 0020) + 1 de pagos (cobro_estado, 0021) + 2 del inbox
+    # de conversación (mensaje_direccion, mensaje_autor, 0024_conversacion_mensajes). Total: 24.
+    assert enums == 24
 
     await tenant.engine.dispose()
     downgrade_tenant(tenant.url, "base")
@@ -65,6 +66,30 @@ async def test_0002_idempotency_key_up_down(tenant):
     upgrade_tenant(tenant.url)   # reaplica 0002 limpio (idempotente para el fixture)
     async with AsyncSession(tenant.engine) as s:
         assert (await s.execute(text(_COL_IDEM))).scalar_one() == 1
+
+
+_TBL_MSGS = "SELECT to_regclass('public.conversacion_mensajes') IS NOT NULL"
+_ENUMS_MSGS = (
+    "SELECT count(*) FROM pg_type WHERE typtype='e' AND typname IN ('mensaje_direccion','mensaje_autor')"
+)
+
+
+async def test_0024_conversacion_mensajes_up_down(tenant):
+    # head incluye 0024: la tabla del hilo y sus 2 enums existen.
+    async with AsyncSession(tenant.engine) as s:
+        assert (await s.execute(text(_TBL_MSGS))).scalar_one() is True
+        assert (await s.execute(text(_ENUMS_MSGS))).scalar_one() == 2
+
+    await tenant.engine.dispose()
+    downgrade_tenant(tenant.url, "0023_postventa")
+    async with AsyncSession(tenant.engine) as s:
+        assert (await s.execute(text(_TBL_MSGS))).scalar_one() is False
+        assert (await s.execute(text(_ENUMS_MSGS))).scalar_one() == 0   # los tipos se fueron con la tabla
+
+    await tenant.engine.dispose()
+    upgrade_tenant(tenant.url)   # reaplica head limpio (idempotente para el fixture)
+    async with AsyncSession(tenant.engine) as s:
+        assert (await s.execute(text(_TBL_MSGS))).scalar_one() is True
 
 
 _TABLAS_0003 = ("caja_movimientos", "gastos", "fiados", "fiados_movimientos")

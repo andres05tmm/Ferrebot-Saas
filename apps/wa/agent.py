@@ -484,7 +484,15 @@ class AgenteWa:
             # una conexión asyncpg que el GC finalizaría tarde y colgaría el cierre del event loop.
             async with aclosing(self._abrir_tenant(tenant)) as sesiones:
                 async for session in sesiones:
-                    conversaciones = ConversacionService(SqlConversacionRepository(session))
+                    repo_conv = SqlConversacionRepository(session)
+                    conversaciones = ConversacionService(repo_conv)
+                    # Persiste el HILO del inbox: asegura la fila de la conversación (para que aparezca en
+                    # el inbox aunque el bot la resuelva) y guarda el mensaje entrante del cliente. El
+                    # commit al cerrar el generador lo hace firme y entrega su evento SSE.
+                    await repo_conv.asegurar(mensaje.telefono)
+                    await repo_conv.agregar_mensaje(
+                        mensaje.telefono, "entrante", "cliente", mensaje.texto
+                    )
                     # Pausa del agente: si está en manos de un humano, no se corre el LLM (regla del runtime).
                     if await conversaciones.esta_en_humano(mensaje.telefono):
                         pausado = True
@@ -522,6 +530,9 @@ class AgenteWa:
                         tools=exponer_runtime(ctx),       # agenda (gated por flag) + handoff (núcleo)
                         ctx=ctx, deps=deps, historial=historial, texto=mensaje.texto,
                     )
+                    # Hilo del inbox: guarda la respuesta del bot (saliente). Si el agente escaló en este
+                    # turno, igual queda el texto que el bot alcanzó a dar antes de pasar al humano.
+                    await repo_conv.agregar_mensaje(mensaje.telefono, "saliente", "bot", texto)
                     # commit al cerrar el generador → la cita agendada / el escalamiento quedan firmes.
             if pausado:
                 # No se responde mientras lo atiende un humano; el entrante se preserva en el historial.

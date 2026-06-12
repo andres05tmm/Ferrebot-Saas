@@ -67,8 +67,8 @@ export default function CommandPalette({ open, setOpen, onRefresh }) {
 
         <CommandSeparator />
 
-        <CommandGroup heading="Hoy">
-          {ROUTES.filter(r => r.group === 'top').map(r => {
+        <CommandGroup heading="Inicio">
+          {ROUTES.filter(r => r.group === 'top' && isRouteEnabled(r.path, features)).map(r => {
             const Icon = r.icon
             return (
               <CommandItem key={r.path} onSelect={() => run(() => navigate(r.path))}>

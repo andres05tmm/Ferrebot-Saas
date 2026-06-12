@@ -21,6 +21,7 @@ from apps.wa.webhook import crear_router_wa
 from apps.wa.wiring import construir_wa_deps
 from core.observability import init_sentry
 from core.tenancy.middleware import TenantMiddleware
+from apps.api.cors import AUTH_CORS_PATHS, ScopedCORSMiddleware
 from modules.admin.router import router as admin_router
 from modules.agenda.router import router as agenda_router
 from modules.auth.login_email import router as auth_email_router
@@ -136,6 +137,15 @@ def mount_spa(app: FastAPI, dist_dir: Path) -> None:
 def create_app(spa_dist: Path | None = None) -> FastAPI:
     app = FastAPI(title="FerreBot SaaS API", version="0.1.0", lifespan=lifespan)
     app.add_middleware(TenantMiddleware)
+    # CORS quirúrgico (plan §3): SOLO las rutas públicas de auth, SOLO desde el origin de la landing.
+    # Se añade DESPUÉS del TenantMiddleware → queda MÁS EXTERNO: el preflight OPTIONS se responde antes
+    # de resolver tenant, y el resto de la API jamás recibe headers CORS. Origins por settings (env).
+    app.add_middleware(
+        ScopedCORSMiddleware,
+        allow_origins=get_settings().cors_origins,
+        allow_methods=["POST"],
+        allow_paths=AUTH_CORS_PATHS,
+    )
     app.include_router(auth_router, prefix="/api/v1")
     app.include_router(auth_email_router, prefix="/api/v1")   # login email/contraseña (ADR 0009)
     app.include_router(auth_reset_router, prefix="/api/v1")   # set-password / reset por token (ADR 0009)

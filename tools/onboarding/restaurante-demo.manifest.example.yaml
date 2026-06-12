@@ -1,0 +1,107 @@
+# Manifiesto de tenant DEMO — restaurante "Brasa" (vertical restaurante). Ver ADR docs/adr/0007.
+# Demo provisionable por:  python -m tools.provision_from_manifest --from tools/onboarding/restaurante-demo.manifest.example.yaml
+#
+# El MENÚ vive en packs.pos.productos (es el catálogo del POS, que pack_pedidos LEE). pack_pedidos solo
+# aporta lo operativo: pedido_config (horario de cocina, mínimo, domicilio) + zonas_domicilio.
+# IVA de los ítems = 0: la comida preparada en restaurante tributa IMPOCONSUMO 8% (fuera del campo iva,
+# que solo admite 0/5/19); para la demo basta el precio de carta.
+version: 1
+
+identidad:
+  slug: restaurante-demo
+  nombre: "Brasa Parrilla"
+  nit: "901200200-2"
+
+admin:
+  nombre: "Doña Marta"
+  email: "admin@restaurante-demo.melquiadez.com"
+
+identidades:
+  - email: "demo+restaurante-demo@melquiadez.com"
+    nombre: "Visitante Demo"
+    rol: "vendedor"
+
+plan:
+  # Nombre de plan ÚNICO por demo (los planes se comparten por nombre; ver barberia-demo).
+  nombre: "Demo Restaurante"
+  # pack_pedidos depende de pos (el catálogo/menú). canal_whatsapp para atender por WhatsApp.
+  features: ["pos", "pack_pedidos", "pack_faq", "canal_whatsapp"]
+features_override: {}
+
+branding:
+  color_primario: "#B5341B"           # brasa/ladrillo — acento "Brasa"
+  nombre_comercial: "Brasa"
+  tema: "brasa"
+
+secretos: {}
+config: {}
+
+packs:
+  # MENÚ (~25 ítems) — catálogo del POS. unidad_medida "plato"/"unidad"; iva 0 (impoconsumo aparte).
+  pos:
+    productos:
+      # Entradas
+      - { nombre: "Patacón con guacamole", categoria: "Entradas", unidad_medida: "plato", precio_venta: 14000, iva: 0 }
+      - { nombre: "Empanadas de carne (x3)", categoria: "Entradas", unidad_medida: "porción", precio_venta: 12000, iva: 0 }
+      - { nombre: "Chicharrón crocante", categoria: "Entradas", unidad_medida: "porción", precio_venta: 16000, iva: 0 }
+      - { nombre: "Yuca frita", categoria: "Entradas", unidad_medida: "porción", precio_venta: 9000, iva: 0 }
+      # Parrilla / platos fuertes
+      - { nombre: "Bandeja paisa", categoria: "Platos fuertes", unidad_medida: "plato", precio_venta: 32000, iva: 0 }
+      - { nombre: "Churrasco 300g", categoria: "Platos fuertes", unidad_medida: "plato", precio_venta: 38000, iva: 0 }
+      - { nombre: "Punta de anca 250g", categoria: "Platos fuertes", unidad_medida: "plato", precio_venta: 36000, iva: 0 }
+      - { nombre: "Pechuga a la plancha", categoria: "Platos fuertes", unidad_medida: "plato", precio_venta: 28000, iva: 0 }
+      - { nombre: "Costillas BBQ", categoria: "Platos fuertes", unidad_medida: "plato", precio_venta: 35000, iva: 0 }
+      - { nombre: "Mojarra frita", categoria: "Platos fuertes", unidad_medida: "plato", precio_venta: 34000, iva: 0 }
+      - { nombre: "Cazuela de mariscos", categoria: "Platos fuertes", unidad_medida: "plato", precio_venta: 40000, iva: 0 }
+      - { nombre: "Picada para dos", categoria: "Platos fuertes", unidad_medida: "plato", precio_venta: 58000, iva: 0 }
+      # Hamburguesas / rápidas
+      - { nombre: "Hamburguesa Brasa", categoria: "Rápidas", unidad_medida: "unidad", precio_venta: 24000, iva: 0 }
+      - { nombre: "Perro caliente especial", categoria: "Rápidas", unidad_medida: "unidad", precio_venta: 16000, iva: 0 }
+      - { nombre: "Salchipapa", categoria: "Rápidas", unidad_medida: "plato", precio_venta: 18000, iva: 0 }
+      # Acompañamientos
+      - { nombre: "Arroz blanco", categoria: "Acompañamientos", unidad_medida: "porción", precio_venta: 5000, iva: 0 }
+      - { nombre: "Papa a la francesa", categoria: "Acompañamientos", unidad_medida: "porción", precio_venta: 8000, iva: 0 }
+      - { nombre: "Ensalada de la casa", categoria: "Acompañamientos", unidad_medida: "porción", precio_venta: 9000, iva: 0 }
+      # Bebidas
+      - { nombre: "Limonada natural", categoria: "Bebidas", unidad_medida: "vaso", precio_venta: 7000, iva: 0 }
+      - { nombre: "Jugo de mora", categoria: "Bebidas", unidad_medida: "vaso", precio_venta: 7000, iva: 0 }
+      - { nombre: "Gaseosa 400ml", categoria: "Bebidas", unidad_medida: "unidad", precio_venta: 5000, iva: 0 }
+      - { nombre: "Cerveza nacional", categoria: "Bebidas", unidad_medida: "unidad", precio_venta: 6000, iva: 0 }
+      - { nombre: "Agua", categoria: "Bebidas", unidad_medida: "unidad", precio_venta: 4000, iva: 0 }
+      # Postres
+      - { nombre: "Postre de natas", categoria: "Postres", unidad_medida: "porción", precio_venta: 9000, iva: 0 }
+      - { nombre: "Flan de caramelo", categoria: "Postres", unidad_medida: "porción", precio_venta: 9000, iva: 0 }
+
+    aliases:
+      - { termino: "bandeja", reemplazo: "Bandeja paisa", producto: "Bandeja paisa" }
+      - { termino: "burger", reemplazo: "Hamburguesa Brasa", producto: "Hamburguesa Brasa" }
+      - { termino: "limonada", reemplazo: "Limonada natural", producto: "Limonada natural" }
+
+  # Operación del pack pedidos (ADR 0016): horario de cocina + zonas de domicilio.
+  pedidos:
+    config:
+      activo: true
+      hora_apertura: "11:00"
+      hora_cierre: "22:00"
+      minimo_pedido: 20000
+      tiempo_estimado_min: 40
+      costo_domicilio_default: 5000
+    zonas:
+      - { nombre: "Centro",       tarifa: 4000 }
+      - { nombre: "La Soledad",   tarifa: 4000 }
+      - { nombre: "Chapinero",    tarifa: 6000 }
+      - { nombre: "Norte",        tarifa: 8000 }
+
+  faq:
+    entradas:
+      - { titulo: "¿Horario?", contenido: "Cocina abierta de 11:00 a 22:00, todos los días. Domicilios hasta las 21:30.", orden: 1 }
+      - { titulo: "¿Hacen domicilios?", contenido: "Sí. Pedido mínimo $20.000. El domicilio va de $4.000 a $8.000 según la zona.", orden: 2 }
+      - { titulo: "¿Cuánto se demora?", contenido: "En promedio 40 minutos según la zona y la hora pico.", orden: 3 }
+      - { titulo: "Formas de pago", contenido: "Efectivo, datáfono a domicilio, y transferencia (Nequi/Bancolombia).", orden: 4 }
+      - { titulo: "¿Tienen opciones sin carne?", contenido: "Sí: pechuga a la plancha, mojarra, ensalada de la casa y acompañamientos. Pregúntame y te armo el pedido.", orden: 5 }
+
+canal:
+  whatsapp:
+    phone_number_id: "demo-restaurante-0001"
+    numero: null
+    waba_id: null

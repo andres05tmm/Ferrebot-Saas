@@ -11,6 +11,7 @@ from dataclasses import dataclass
 
 from tools.manifest.packs.agenda import cargar_agenda
 from tools.manifest.packs.faq import cargar_faq
+from tools.manifest.packs.pedidos import cargar_pedidos
 from tools.manifest.packs.pos import cargar_pos
 
 
@@ -41,6 +42,22 @@ PACKS: dict[str, Pack] = {
         flag="pack_faq",
         loader=cargar_faq,
         tablas=("conocimiento",),
+    ),
+    # `pack_pedidos` (ADR 0016): el MENÚ es el catálogo del POS (`packs.pos`, su dependencia); este
+    # loader solo siembra lo OPERATIVO declarativo: `pedido_config` (una fila) + `zonas_domicilio`.
+    "pack_pedidos": Pack(
+        flag="pack_pedidos",
+        loader=cargar_pedidos,
+        tablas=("pedido_config", "zonas_domicilio", "pedidos", "pedido_items"),
+    ),
+    # `pack_reservas` (plan §2.7): la variante NOCHES del motor de agenda (su dependencia `pack_agenda`).
+    # NO tiene datos declarativos propios — sus recursos (habitaciones), servicios y `agenda_config`
+    # (incl. checkin_hora/checkout_hora) se declaran bajo `packs.agenda` y los siembra `cargar_agenda`.
+    # loader=None (pack ESTRUCTURAL sobre agenda): el provisionador lo salta sin buscar sección propia.
+    "pack_reservas": Pack(
+        flag="pack_reservas",
+        loader=None,
+        tablas=("citas", "recursos", "agenda_config"),
     ),
 }
 

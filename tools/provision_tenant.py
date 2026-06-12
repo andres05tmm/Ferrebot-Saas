@@ -294,6 +294,61 @@ def _provisionar_identidad_admin(empresa_id: int, conn_url: str, email: str) -> 
         print(f"   identidad de {email} creada; Redis no disponible para el token (usa reset).")
 
 
+def _usuario_id_de_identidad(empresa_id: int, email: str) -> int | None:
+    """`usuario_id` que ya enlaza esta identidad (por email) SI pertenece a esta empresa. Idempotencia:
+    en una re-provisión, la identidad ya existe y apunta a un usuario del tenant — se reusa ese usuario
+    en vez de crear uno nuevo (los `usuarios` del tenant no tienen clave natural por nombre)."""
+    with psycopg.connect(to_libpq(get_settings().control_database_url), row_factory=dict_row) as conn:
+        row = conn.execute(
+            "SELECT usuario_id, empresa_id FROM identidades WHERE lower(email)=%s",
+            (email.strip().lower(),),
+        ).fetchone()
+    if row is None or row["empresa_id"] != empresa_id:
+        return None
+    return row["usuario_id"]
+
+
+def _upsert_usuario_tenant(conn_url: str, usuario_id: int | None, nombre: str, rol: str) -> int:
+    """Crea (o refresca) un usuario en la base del tenant con el `rol` dado. Devuelve su id.
+
+    `rol` ∈ enum usuario_rol (admin|vendedor). Si `usuario_id` viene dado (re-provisión), actualiza
+    su nombre/rol; si no, inserta uno nuevo. Idempotente cuando el llamador pasa el id resuelto."""
+    with psycopg.connect(to_libpq(conn_url), row_factory=dict_row) as conn:
+        if usuario_id is not None:
+            conn.execute(
+                "UPDATE usuarios SET nombre=%s, rol=%s::usuario_rol WHERE id=%s",
+                (nombre, rol, usuario_id),
+            )
+            conn.commit()
+            return usuario_id
+        nuevo = conn.execute(
+            "INSERT INTO usuarios (nombre, rol) VALUES (%s, %s::usuario_rol) RETURNING id",
+            (nombre, rol),
+        ).fetchone()["id"]
+        conn.commit()
+        return nuevo
+
+
+def _provisionar_identidad_extra(empresa_id: int, conn_url: str, ident: dict) -> None:
+    """Crea/refresca una identidad de login ADICIONAL (no-admin) + su usuario en el tenant. Idempotente.
+
+    `ident` = {email, nombre, rol}. La identidad demo de un tenant demo (rol `vendedor`) entra por aquí.
+    Reusa el upsert por email de `crear_identidad_admin` (genérico en el `rol`) y emite token set-password.
+    """
+    email = ident["email"]
+    rol = ident.get("rol", "vendedor")
+    nombre = ident.get("nombre", "Demo")
+    usuario_id = _usuario_id_de_identidad(empresa_id, email)
+    usuario_id = _upsert_usuario_tenant(conn_url, usuario_id, nombre, rol)
+    identidad_id = crear_identidad_admin(empresa_id, usuario_id, email, rol=rol)
+    token = emitir_token_set_password(identidad_id)
+    log.info("identidad_extra_creada", empresa_id=empresa_id, identidad_id=identidad_id, rol=rol)
+    if token:
+        print(f"   set-password de {email} (rol {rol}): token={token}")
+    else:
+        print(f"   identidad de {email} (rol {rol}) creada; Redis no disponible para el token (usa reset).")
+
+
 def provision_tenant_full(datos: dict) -> int:
     """Aprovisiona desde un dict de onboarding: base + control + secretos/config/branding + admin.
 
@@ -315,6 +370,9 @@ def provision_tenant_full(datos: dict) -> int:
     email = admin.get("email")
     if email:
         _provisionar_identidad_admin(empresa_id, conn_url, email)
+    # Identidades ADICIONALES (no-admin): la identidad demo del tenant demo (rol vendedor), etc.
+    for ident in datos.get("identidades", []):
+        _provisionar_identidad_extra(empresa_id, conn_url, ident)
     return empresa_id
 
 

@@ -112,3 +112,63 @@ y el **`telegram_id`** real del admin.
    - **La emisión real de facturas queda FUERA de este flujo, deliberada.**
 
 5. **Bot:** registrar el webhook `/tg/{slug}` con el token cargado (`secretos_empresa.telegram_token`).
+
+## Tenants demo (superficie pública Melquiadez) — 4 verticales
+
+Cada demo es un **tenant real provisionado por manifiesto** (mismo camino que un cliente pagado, así
+cada demo es un test de provisioning). Los manifiestos se versionan (no llevan secretos):
+
+| Slug | Negocio | Packs | Manifiesto |
+|---|---|---|---|
+| `clinica-demo` | Clínica Aurora | `pack_agenda`, `pack_faq`, `canal_whatsapp` | `tools/onboarding/clinica-demo.manifest.example.yaml` |
+| `barberia-demo` | El Patio | `pack_agenda`, `pack_faq`, `canal_whatsapp` | `tools/onboarding/barberia-demo.manifest.example.yaml` |
+| `restaurante-demo` | Brasa | `pos`, `pack_pedidos`, `pack_faq`, `canal_whatsapp` | `tools/onboarding/restaurante-demo.manifest.example.yaml` |
+| `hotel-demo` | Brisa | `pack_agenda`, `pack_reservas`, `pack_faq`, `canal_whatsapp` | `tools/onboarding/hotel-demo.manifest.example.yaml` |
+
+Cada manifiesto trae, además del admin, una **identidad demo no-admin** (`demo+<slug>@melquiadez.com`,
+rol `vendedor`) para que un prospecto pruebe el dashboard sin poder romper la demo. La contraseña se fija
+por el enlace de set-password que imprime el provisionador.
+
+> **Nombre de plan único por demo:** los planes se comparten por NOMBRE (ver caveat arriba), así que cada
+> demo tiene su propio plan (`Demo Barbería`/`Restaurante`/`Hotel`) para que sus capacidades efectivas
+> sean las suyas. No reutilizar un nombre de plan entre verticales distintos.
+
+### Datos vivos + higiene nocturna
+
+El provisionador siembra **config/catálogo** (servicios, recursos, menú POS, FAQ). Los **datos
+transaccionales vivos** (citas/reservas/pedidos con fechas relativas a hoy) los pone
+`tools/seed_demo_transaccional.py`, que además es la operación de **reset**: borra lo transaccional y
+resiembra relativo a `now_co` (idempotente). El cron `resembrar_demos` (worker ARQ, ~04:10 Colombia) lo
+corre cada noche para todos los `settings.demo_tenant_slugs` → las demos siempre amanecen llenas.
+
+Siembra/reset manual:
+```bash
+python -m tools.seed_demo_transaccional               # todos los demo_tenant_slugs
+python -m tools.seed_demo_transaccional --slug barberia-demo   # uno
+```
+
+### Provisionar las demos en producción (EN-RED, `railway ssh` al Worker)
+
+Igual que el resto de provisioning/migraciones: **en-red** (para que la URL del tenant guarde el host
+privado) y en el **servicio Worker** (tiene `ADMIN_DATABASE_URL` + `SECRETS_MASTER_KEY`). Patrón del
+runbook (`docs/DEPLOY-RAILWAY-PILOT.md §6`):
+
+```bash
+railway ssh                       # contenedor del Worker (no el API)
+
+# 1) Provisionar las 3 demos nuevas (clinica-demo ya existe; re-correrla es idempotente).
+python -m tools.provision_from_manifest --from tools/onboarding/barberia-demo.manifest.example.yaml
+python -m tools.provision_from_manifest --from tools/onboarding/restaurante-demo.manifest.example.yaml
+python -m tools.provision_from_manifest --from tools/onboarding/hotel-demo.manifest.example.yaml
+# Cada uno imprime su resumen + los tokens de set-password (admin y demo). Guárdalos o usa /reset.
+
+# 2) Sembrar los datos vivos por primera vez (luego el cron nocturno los mantiene frescos).
+python -m tools.seed_demo_transaccional
+
+# 3) (Opcional) Apuntar el número Kapso de demo al vertical que vas a mostrar — ver §6 del plan
+#    Melquiadez (tools/switch_demo, frente aparte).
+```
+
+> Los `phone_number_id` de los manifiestos demo son placeholders (`demo-<vertical>-0001`): el número
+> real de Kapso se re-apunta al vuelo con el switch de demos. `DEMO_TENANT_SLUGS` puede sobreescribirse
+> por entorno si en prod conviven menos/más demos.

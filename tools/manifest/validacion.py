@@ -74,6 +74,9 @@ def _errores_coherencia(manifiesto: Manifiesto, efectivas: frozenset[str]) -> li
     pos = manifiesto.packs.pos
     if pos is not None and (pos.productos or pos.aliases) and "pos" not in efectivas:
         errores.append("packs.pos declarado pero la feature pos no está activa")
+    pedidos = manifiesto.packs.pedidos
+    if pedidos is not None and pedidos.zonas and "pack_pedidos" not in efectivas:
+        errores.append("packs.pedidos declarado pero la feature pack_pedidos no está activa")
     if manifiesto.canal.whatsapp is not None and "canal_whatsapp" not in efectivas:
         errores.append("canal.whatsapp declarado pero la feature canal_whatsapp no está activa")
     return errores
@@ -181,6 +184,56 @@ def _errores_pos(manifiesto: Manifiesto) -> list[str]:
     return errores
 
 
+def _errores_pedidos(manifiesto: Manifiesto) -> list[str]:
+    """Pack Pedidos: tarifa de zona > 0, mínimo/domicilio >= 0, nombres de zona únicos."""
+    pedidos = manifiesto.packs.pedidos
+    if pedidos is None:
+        return []
+
+    errores: list[str] = []
+    cfg = pedidos.config
+    if cfg.minimo_pedido < 0:
+        errores.append(f"pedido_config.minimo_pedido debe ser >= 0 (es {cfg.minimo_pedido})")
+    if cfg.costo_domicilio_default < 0:
+        errores.append(
+            f"pedido_config.costo_domicilio_default debe ser >= 0 (es {cfg.costo_domicilio_default})"
+        )
+    if cfg.tiempo_estimado_min <= 0:
+        errores.append(f"pedido_config.tiempo_estimado_min debe ser > 0 (es {cfg.tiempo_estimado_min})")
+
+    nombres: dict[str, int] = {}
+    for z in pedidos.zonas:
+        if z.tarifa < 0:
+            errores.append(f"zona '{z.nombre}': tarifa debe ser >= 0 (es {z.tarifa})")
+        clave = normalizar_nombre(z.nombre)
+        nombres[clave] = nombres.get(clave, 0) + 1
+    for clave, n in nombres.items():
+        if n > 1:
+            errores.append(f"zona de domicilio duplicada (normalizada): '{clave}' aparece {n} veces")
+    return errores
+
+
+def _errores_identidades(manifiesto: Manifiesto) -> list[str]:
+    """Identidades extra: email único entre ellas y distinto del admin (cada email = una identidad).
+
+    Dos filas con el mismo email harían que la segunda pisara a la primera (UPSERT por email): un
+    error de configuración silencioso. La identidad se materializa por email (clave natural), así que la
+    unicidad debe valer en el manifiesto.
+    """
+    errores: list[str] = []
+    vistos: dict[str, int] = {}
+    admin_email = manifiesto.admin.email.lower() if manifiesto.admin.email else None
+    for ident in manifiesto.identidades:
+        clave = ident.email.lower()
+        vistos[clave] = vistos.get(clave, 0) + 1
+        if admin_email is not None and clave == admin_email:
+            errores.append(f"identidad '{ident.email}': repite el email del admin (un email = una identidad)")
+    for clave, n in vistos.items():
+        if n > 1:
+            errores.append(f"identidad duplicada: el email '{clave}' aparece {n} veces")
+    return errores
+
+
 def validar(manifiesto: Manifiesto) -> None:
     """Valida el manifiesto completo. No devuelve nada si es válido; si no, lanza `ErrorManifiesto`.
 
@@ -192,6 +245,8 @@ def validar(manifiesto: Manifiesto) -> None:
         *_errores_coherencia(manifiesto, efectivas),
         *_errores_agenda(manifiesto),
         *_errores_pos(manifiesto),
+        *_errores_pedidos(manifiesto),
+        *_errores_identidades(manifiesto),
     ]
     if errores:
         raise ErrorManifiesto(

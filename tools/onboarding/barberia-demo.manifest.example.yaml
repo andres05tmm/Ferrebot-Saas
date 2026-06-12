@@ -1,0 +1,93 @@
+# Manifiesto de tenant DEMO — barbería "El Patio" (vertical barbería). Ver ADR docs/adr/0007.
+# Demo provisionable por:  python -m tools.provision_from_manifest --from tools/onboarding/barberia-demo.manifest.example.yaml
+# Sin secretos → se versiona tal cual (no hay *.yaml gitignored que ocultar).
+version: 1
+
+identidad:
+  slug: barberia-demo
+  nombre: "El Patio Barbería"
+  nit: "901100100-1"
+
+admin:
+  nombre: "Andrés (El Patrón)"
+  email: "admin@barberia-demo.melquiadez.com"
+
+# Identidad DEMO para que un prospecto entre al dashboard sin poder romperlo (rol vendedor, no admin).
+identidades:
+  - email: "demo+barberia-demo@melquiadez.com"
+    nombre: "Visitante Demo"
+    rol: "vendedor"
+
+plan:
+  # Nombre de plan ÚNICO por demo a propósito: los planes se comparten por NOMBRE (el provisionador
+  # upserta planes.limites por nombre, ver cargar_plan_features), así que dos tenants con el mismo
+  # nombre de plan comparten features. Cada vertical demo necesita su propio set → su propio plan.
+  nombre: "Demo Barbería"
+  features: ["pack_agenda", "pack_faq", "canal_whatsapp"]
+features_override: {}
+
+branding:
+  color_primario: "#1C1A17"           # carbón/tinta — acento "Navaja"
+  nombre_comercial: "El Patio"
+  tema: "navaja"
+
+secretos: {}
+config: {}
+
+packs:
+  agenda:
+    config:
+      zona_horaria: "America/Bogota"
+      intervalo_slots_min: 15
+      anticipacion_minima_min: 60
+      ventana_maxima_dias: 21
+      politica_cancelacion_horas: 6
+      modo_confirmacion: "auto"
+      capacidad_por_slot: 1
+      recordatorios_horas: [24, 2]
+      corte_riesgo_horas: 2
+      persona: "Eres el asistente de El Patio Barbería. Hablas relajado y directo, como en la barbería de toda la vida; confirmas siempre el servicio, el barbero, la fecha y el nombre antes de agendar."
+
+    # precio en pesos. buffers en minutos (limpieza de la silla entre clientes).
+    servicios:
+      - { nombre: "Corte clásico",        duracion_min: 30, precio: 25000, buffer_despues_min: 5,  categoria: "Corte" }
+      - { nombre: "Corte + barba",        duracion_min: 45, precio: 38000, buffer_despues_min: 5,  categoria: "Corte" }
+      - { nombre: "Arreglo de barba",     duracion_min: 20, precio: 18000, buffer_despues_min: 5,  categoria: "Barba" }
+      - { nombre: "Corte niño",           duracion_min: 25, precio: 20000, buffer_despues_min: 5,  categoria: "Corte" }
+      - { nombre: "Tinte / color",        duracion_min: 60, precio: 55000, buffer_despues_min: 10, categoria: "Color" }
+      - { nombre: "Ritual afeitado toalla caliente", duracion_min: 40, precio: 42000, buffer_despues_min: 10, categoria: "Barba" }
+
+    # recursos = barberos (tipo profesional). disponibilidad L–S (dias 0=lunes … 5=sábado).
+    recursos:
+      - nombre: "Andrés (El Patrón)"
+        tipo: "profesional"
+        presta: ["Corte clásico", "Corte + barba", "Arreglo de barba", "Ritual afeitado toalla caliente"]
+        disponibilidad:
+          - { dias: [0, 1, 2, 3, 4], franjas: ["09:00-13:00", "14:00-19:00"] }
+          - { dias: [5],            franjas: ["09:00-16:00"] }
+      - nombre: "Carlos"
+        tipo: "profesional"
+        presta: ["Corte clásico", "Corte + barba", "Arreglo de barba", "Corte niño"]
+        disponibilidad:
+          - { dias: [0, 1, 2, 3, 4], franjas: ["10:00-14:00", "15:00-20:00"] }
+          - { dias: [5],            franjas: ["10:00-17:00"] }
+      - nombre: "Johan"
+        tipo: "profesional"
+        presta: ["Corte clásico", "Corte niño", "Tinte / color", "Arreglo de barba"]
+        disponibilidad:
+          - { dias: [1, 2, 3, 4, 5], franjas: ["09:00-13:00", "14:00-18:00"] }
+
+  faq:
+    entradas:
+      - { titulo: "¿Dónde están?", contenido: "Estamos en Calle 45 #12-30, barrio La Soledad. Entrada por la cafetería; el patio queda al fondo.", orden: 1 }
+      - { titulo: "¿Atienden sin cita?", contenido: "Sí, por orden de llegada cuando hay silla libre. Para asegurar hora, mejor agenda por aquí.", orden: 2 }
+      - { titulo: "Formas de pago", contenido: "Efectivo, tarjeta y transferencia (Nequi/Bancolombia).", orden: 3 }
+      - { titulo: "¿Puedo elegir barbero?", contenido: "Claro: dime con quién quieres (Andrés, Carlos o Johan) y te muestro sus horas libres.", orden: 4 }
+      - { titulo: "¿Cuánto dura un corte?", contenido: "Un corte clásico ~30 min; corte + barba ~45 min. Llega 5 minutos antes, porfa.", orden: 5 }
+
+canal:
+  whatsapp:
+    # phone_number_id de demostración (el número real se re-apunta con tools/switch_demo al mostrar la demo).
+    phone_number_id: "demo-barberia-0001"
+    numero: null
+    waba_id: null

@@ -1,10 +1,10 @@
 import { lazy, Suspense, useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { Loader2 } from 'lucide-react'
 import Sello from '@/components/Sello.jsx'
 import { Input } from '@/components/ui/input.jsx'
 import { Label } from '@/components/ui/label.jsx'
-import { APP_URL, iniciarSesion, urlDashboardConToken } from '@/lib/auth.js'
+import { APP_URL, esSlugValido, iniciarSesion, urlDashboardConToken, urlDashboardParaTenant } from '@/lib/auth.js'
 
 const AuroraOro = lazy(() => import('@/components/AuroraOro.jsx'))
 
@@ -15,6 +15,7 @@ const AuroraOro = lazy(() => import('@/components/AuroraOro.jsx'))
  * no viaja al servidor). 401 → mensaje genérico; 429 → bloqueo temporal.
  */
 export default function Login() {
+  const [searchParams] = useSearchParams()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [cargando, setCargando] = useState(false)
@@ -32,7 +33,12 @@ export default function Login() {
     setError('')
     const res = await iniciarSesion(email.trim(), password)
     if (res.ok) {
-      window.location.assign(urlDashboardConToken(res.token))
+      // Destino: el `next` del bounce (slug del subdominio que rebotó) si es válido; si no, el tenant
+      // del JWT. Sin slug (super_admin / sin tenant) → app. (plataforma → el dashboard lo lleva a /admin).
+      const next = searchParams.get('next')
+      const slug = esSlugValido(next) ? next : res.usuario?.tenant
+      const destino = urlDashboardParaTenant(slug, res.token) || urlDashboardConToken(res.token)
+      window.location.assign(destino) // token en el FRAGMENTO: no viaja al servidor
       return // seguimos "cargando" mientras el navegador navega
     }
     setError(res.error)

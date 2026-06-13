@@ -9,8 +9,10 @@
  *  2. SALIDA: si un request sin sesión cae en `{slug}.melquiadez.com`, el dashboard rebota a la landing
  *     (`landingLoginUrlForHost`) con el slug DEL HOST actual como `next` — nunca input del usuario.
  *
- * Origins/dominios por env (Vite): VITE_LANDING_ORIGIN, VITE_BASE_DOMAIN. Sin configurar (dev local)
- * NO hay landing → el dashboard usa su propio /login.
+ * Origins/dominios: en prod se DERIVAN del host actual en runtime (no del build), porque el build
+ * desplegado no lleva las VITE_ vars (los .env.* están gitignored y no hay Dockerfile que las inyecte).
+ * Las env VITE_LANDING_ORIGIN / VITE_BASE_DOMAIN, si están, ganan como override explícito. En dev local
+ * (localhost / IP / un solo label) no se deriva base domain → no hay landing → el dashboard usa su /login.
  */
 import { TOKEN_KEY } from './api.js'
 
@@ -21,12 +23,42 @@ const LABELS_RESERVADOS = new Set(['app', 'api', 'www', 'admin'])
 // Contrato del slug acordado con la landing (ver landingLoginUrlForHost).
 const SLUG_RE = /^[a-z0-9-]+$/
 
-export function landingOrigin() {
-  return import.meta.env.VITE_LANDING_ORIGIN || ''
+/**
+ * baseDomain — dominio apex del despliegue. Override por env (VITE_BASE_DOMAIN); si no, se deriva del
+ * host actual en runtime:
+ *   - dev (localhost, *.localhost, una IP, o un solo label) → '' (no hay landing).
+ *   - prod → el apex registrable = los dos últimos labels (barberia-demo.melquiadez.com y
+ *     app.melquiadez.com → melquiadez.com; melquiadez.com → melquiadez.com).
+ * NOTA: la heurística "dos últimos labels" no cubre hosts multinivel no estándar (p. ej. staging.x.y,
+ * o TLDs compuestos tipo example.co.uk). Para esos casos, setear VITE_BASE_DOMAIN sigue siendo el camino.
+ */
+export function baseDomain(hostname = currentHostname()) {
+  const env = import.meta.env.VITE_BASE_DOMAIN
+  if (env) return env
+  const host = (hostname || '').toLowerCase().trim()
+  if (!host) return ''
+  if (host === 'localhost' || host.endsWith('.localhost')) return ''   // dev
+  if (isIpAddress(host)) return ''                                     // dev (IP literal)
+  const labels = host.split('.')
+  if (labels.length < 2) return ''                                     // un solo label → dev
+  return labels.slice(-2).join('.')                                    // apex registrable
 }
 
-export function baseDomain() {
-  return import.meta.env.VITE_BASE_DOMAIN || ''
+/**
+ * landingOrigin — origin de la landing. Override por env (VITE_LANDING_ORIGIN); si no, en prod se deriva
+ * como `https://${baseDomain()}`; en dev (sin base domain) → '' (no hay landing).
+ */
+export function landingOrigin(hostname = currentHostname()) {
+  const env = import.meta.env.VITE_LANDING_ORIGIN
+  if (env) return env
+  const base = baseDomain(hostname)
+  return base ? `https://${base}` : ''
+}
+
+// IP literal (IPv4 o IPv6) → host de dev, sin landing derivable.
+function isIpAddress(host) {
+  if (host.includes(':')) return true                  // IPv6
+  return /^\d{1,3}(\.\d{1,3}){3}$/.test(host)           // IPv4
 }
 
 /**
@@ -77,9 +109,9 @@ export function slugFromHost(hostname, base = baseDomain()) {
  * Devuelve null si no hay landing configurada (dev) → el caller usa el /login propio del dashboard.
  */
 export function landingLoginUrlForHost(hostname = currentHostname()) {
-  const origin = landingOrigin()
+  const origin = landingOrigin(hostname)
   if (!origin) return null
-  const slug = slugFromHost(hostname, baseDomain())
+  const slug = slugFromHost(hostname, baseDomain(hostname))
   const base = `${origin.replace(/\/$/, '')}/login`
   return slug ? `${base}?next=${encodeURIComponent(slug)}` : base
 }

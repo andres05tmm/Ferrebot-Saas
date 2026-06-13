@@ -48,30 +48,22 @@ describe('/login', () => {
     expect(destino).toContain('#token=jwt-123')
   })
 
-  it('con ?next válido enruta al subdominio de ese tenant (gana sobre el JWT)', async () => {
+  it('el tenant del JWT gana aunque haya ?next de OTRA empresa (evita el 403 del guard)', async () => {
     const destino = await destinoTrasLogin(
       { token: 'jwt-123', usuario: { rol: 'admin', tenant: 'brasa' } },
       '/login?next=barberia-demo',
     )
-    expect(destino).toBe('https://barberia-demo.melquiadez.com/#token=jwt-123')
+    expect(destino).toBe('https://brasa.melquiadez.com/#token=jwt-123')
   })
 
-  it('sin next usa el tenant del JWT (usuario.tenant)', async () => {
+  it('enruta al subdominio del tenant del JWT (usuario.tenant)', async () => {
     const destino = await destinoTrasLogin({ token: 'jwt-123', usuario: { rol: 'admin', tenant: 'brasa' } })
     expect(destino).toBe('https://brasa.melquiadez.com/#token=jwt-123')
   })
 
-  it('super_admin (tenant null, sin next) cae a app. (plataforma)', async () => {
+  it('super_admin (tenant null) cae a app. (plataforma)', async () => {
     const destino = await destinoTrasLogin({ token: 'jwt-123', usuario: { rol: 'super_admin', tenant: null } })
     expect(destino).toBe(`${APP_URL}/#token=jwt-123`)
-  })
-
-  it('next inválido (no matchea ^[a-z0-9-]+$) se ignora → usa usuario.tenant', async () => {
-    const destino = await destinoTrasLogin(
-      { token: 'jwt-123', usuario: { rol: 'admin', tenant: 'brasa' } },
-      '/login?next=../evil',
-    )
-    expect(destino).toBe('https://brasa.melquiadez.com/#token=jwt-123')
   })
 
   it('401 muestra el mensaje genérico y no navega', async () => {

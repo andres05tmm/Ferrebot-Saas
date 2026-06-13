@@ -11,14 +11,16 @@
 
 @layer base {
   :root {
-    /* Marca white-label: el boot la sobreescribe con branding.color_primario (GET /config). */
-    --color-primary: #C8200E;
+    /* Marca white-label: el boot la sobreescribe con branding.color_primario (GET /config). El default
+       pre-auth es el oro Melquiadez (la plataforma), no el rojo de un tenant; Punto Rojo recupera su
+       rojo porque viaja como color_primario explícito en /config tras autenticar. */
+    --color-primary: #b8924f;
 
     /* ── Tokens de marca PLANOS (preset por vertical) ───────────────────────────────────
        El boot (lib/config.js) los sobreescribe inline con branding.tokens resueltos en /config.
        Aquí van los fallbacks: un /config viejo SIN tokens deja estos valores neutros y nada rompe.
        (La paleta visual completa por vertical la sigue dando el bloque [data-tema] de más abajo.) */
-    --color-primary-up: #A01808;
+    --color-primary-up: #cda863;
     --color-surface: #f3f4f6;
     --color-card: #ffffff;
     --color-line: #e4e4e7;

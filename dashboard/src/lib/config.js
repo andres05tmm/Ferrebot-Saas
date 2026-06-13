@@ -12,7 +12,9 @@
  */
 import { apiJson } from './api.js'
 
-export const COLOR_PRIMARY_DEFAULT = '#C8200E'
+// Default pre-/sin-branding = oro Melquiadez (la plataforma), no el rojo de un tenant. Un tenant
+// (p. ej. Punto Rojo) recupera su color porque viaja como color_primario explícito en /config.
+export const COLOR_PRIMARY_DEFAULT = '#b8924f'
 // Fuente display que el dashboard ya trae en su stack base: si el preset la usa, no hay que cargar nada.
 export const DEFAULT_DISPLAY_FONT = 'Inter'
 

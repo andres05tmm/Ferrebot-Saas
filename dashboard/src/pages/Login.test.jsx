@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import Login from './Login.jsx'
 import { redirector } from '@/lib/api.js'
@@ -22,8 +22,8 @@ function jsonResp(data, status = 200) {
 
 beforeEach(() => {
   localStorage.clear()
-  vi.stubEnv('VITE_TELEGRAM_BOT_USERNAME', 'elmicha_bot')
   // El interceptor de 401 de api() redirige vía redirector → en jsdom rompería: lo neutralizamos.
+  // (En jsdom el host es localhost → sin landing → cae a toLogin.)
   vi.spyOn(redirector, 'toLogin').mockImplementation(() => {})
 })
 
@@ -31,7 +31,6 @@ afterEach(() => {
   cleanup()
   vi.restoreAllMocks()
   vi.unstubAllEnvs()
-  delete window.onTelegramAuth
 })
 
 
@@ -78,33 +77,17 @@ describe('Login email/contraseña (entrada primaria, A1.5)', () => {
 })
 
 
-const PAYLOAD = { id: 7, first_name: 'Ana', username: 'ana', auth_date: 1700000000, hash: 'firma' }
-
-describe('Login (Telegram Login Widget — entrada alterna)', () => {
-  it('onTelegramAuth postea a /api/v1/auth/login y en 200 guarda y navega', async () => {
-    const fetchMock = vi.fn().mockResolvedValue(
-      jsonResp({ token: 'jwt-xyz', usuario: { id: 7, rol: 'admin', tenant: 'pr' } }),
-    )
-    vi.stubGlobal('fetch', fetchMock)
-
+describe('Login — Telegram retirado (login único en la landing)', () => {
+  it('NO monta el widget de Telegram aunque exista VITE_TELEGRAM_BOT_USERNAME', () => {
+    vi.stubEnv('VITE_TELEGRAM_BOT_USERNAME', 'elmicha_bot')
     renderLogin()
-    await act(async () => { await window.onTelegramAuth(PAYLOAD) })
 
-    const [url, opts] = fetchMock.mock.calls[0]
-    expect(url).toBe('/api/v1/auth/login')
-    expect(opts.method).toBe('POST')
-    expect(JSON.parse(opts.body)).toMatchObject({ id: 7, hash: 'firma' })
-    expect(localStorage.getItem('ferrebot_token')).toBe('jwt-xyz')
-    expect(screen.getByText('HOME OK')).toBeInTheDocument()   // navegó a /
-  })
-
-  it('en 403 muestra el mensaje de "pídele a Andrés"', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 403 }))
-
-    renderLogin()
-    await act(async () => { await window.onTelegramAuth(PAYLOAD) })
-
-    expect(screen.getByText(/Pídele a Andrés/)).toBeInTheDocument()
-    expect(localStorage.getItem('ferrebot_token')).toBeNull()
+    // Ni hook global, ni script del widget, ni el divisor "o" de la entrada alterna.
+    expect(window.onTelegramAuth).toBeUndefined()
+    expect(document.querySelector('script[data-telegram-login]')).toBeNull()
+    expect(screen.queryByText('o')).toBeNull()
+    // El formulario email+contraseña sigue ahí.
+    expect(screen.getByLabelText('Email')).toBeInTheDocument()
+    expect(screen.getByLabelText('Contraseña')).toBeInTheDocument()
   })
 })

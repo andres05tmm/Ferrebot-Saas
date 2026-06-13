@@ -3,7 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import Login from './Login.jsx'
-import { MENSAJES } from '@/lib/auth.js'
+import { APP_URL, MENSAJES } from '@/lib/auth.js'
 
 // El shader es WebGL puro (no aplica en jsdom).
 vi.mock('@/components/AuroraOro.jsx', () => ({ default: () => null }))
@@ -11,8 +11,12 @@ vi.mock('@/components/AuroraOro.jsx', () => ({ default: () => null }))
 const respuesta = (status, body = {}) =>
   Promise.resolve({ ok: status >= 200 && status < 300, status, json: () => Promise.resolve(body) })
 
-function montar() {
-  render(<MemoryRouter><Login /></MemoryRouter>)
+function montar(ruta = '/login') {
+  render(
+    <MemoryRouter initialEntries={[ruta]}>
+      <Login />
+    </MemoryRouter>,
+  )
 }
 
 async function llenarYEnviar(user) {
@@ -31,13 +35,43 @@ describe('/login', () => {
     })
   })
 
-  it('al éxito redirige al dashboard con el token en el fragmento', async () => {
-    vi.stubGlobal('fetch', vi.fn(() => respuesta(200, { token: 'jwt-123', usuario: { rol: 'admin' } })))
-    montar()
+  async function destinoTrasLogin(body, ruta) {
+    vi.stubGlobal('fetch', vi.fn(() => respuesta(200, body)))
+    montar(ruta)
     await llenarYEnviar(userEvent.setup())
     await waitFor(() => expect(window.location.assign).toHaveBeenCalledTimes(1))
-    const destino = window.location.assign.mock.calls[0][0]
+    return window.location.assign.mock.calls[0][0]
+  }
+
+  it('al éxito redirige al dashboard con el token en el fragmento', async () => {
+    const destino = await destinoTrasLogin({ token: 'jwt-123', usuario: { rol: 'admin', tenant: 'brasa' } })
     expect(destino).toContain('#token=jwt-123')
+  })
+
+  it('con ?next válido enruta al subdominio de ese tenant (gana sobre el JWT)', async () => {
+    const destino = await destinoTrasLogin(
+      { token: 'jwt-123', usuario: { rol: 'admin', tenant: 'brasa' } },
+      '/login?next=barberia-demo',
+    )
+    expect(destino).toBe('https://barberia-demo.melquiadez.com/#token=jwt-123')
+  })
+
+  it('sin next usa el tenant del JWT (usuario.tenant)', async () => {
+    const destino = await destinoTrasLogin({ token: 'jwt-123', usuario: { rol: 'admin', tenant: 'brasa' } })
+    expect(destino).toBe('https://brasa.melquiadez.com/#token=jwt-123')
+  })
+
+  it('super_admin (tenant null, sin next) cae a app. (plataforma)', async () => {
+    const destino = await destinoTrasLogin({ token: 'jwt-123', usuario: { rol: 'super_admin', tenant: null } })
+    expect(destino).toBe(`${APP_URL}/#token=jwt-123`)
+  })
+
+  it('next inválido (no matchea ^[a-z0-9-]+$) se ignora → usa usuario.tenant', async () => {
+    const destino = await destinoTrasLogin(
+      { token: 'jwt-123', usuario: { rol: 'admin', tenant: 'brasa' } },
+      '/login?next=../evil',
+    )
+    expect(destino).toBe('https://brasa.melquiadez.com/#token=jwt-123')
   })
 
   it('401 muestra el mensaje genérico y no navega', async () => {

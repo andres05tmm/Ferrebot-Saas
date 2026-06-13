@@ -1,5 +1,7 @@
-import { describe, expect, it, vi } from 'vitest'
-import { API_URL, MENSAJES, iniciarSesion, urlDashboardConToken } from './auth.js'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { API_URL, MENSAJES, esSlugValido, iniciarSesion, urlDashboardConToken, urlDashboardParaTenant } from './auth.js'
+
+afterEach(() => vi.unstubAllEnvs())
 
 const respuesta = (status, body = {}) =>
   Promise.resolve({ ok: status >= 200 && status < 300, status, json: () => Promise.resolve(body) })
@@ -45,5 +47,40 @@ describe('handoff al dashboard', () => {
     expect(url).toMatch(/#token=ey\.J%2FW%2BT%3D$/)
     expect(url.startsWith('https://')).toBe(true)
     expect(url).not.toContain('?token')
+  })
+})
+
+describe('esSlugValido (contrato ^[a-z0-9-]+$)', () => {
+  it('acepta slugs de tenant válidos', () => {
+    expect(esSlugValido('barberia-demo')).toBe(true)
+    expect(esSlugValido('puntorojo')).toBe(true)
+  })
+  it('rechaza vacíos, mayúsculas, puntos y caracteres raros', () => {
+    expect(esSlugValido('')).toBe(false)
+    expect(esSlugValido('Barberia')).toBe(false)
+    expect(esSlugValido('a.b')).toBe(false)
+    expect(esSlugValido('../evil')).toBe(false)
+    expect(esSlugValido(null)).toBe(false)
+    expect(esSlugValido(undefined)).toBe(false)
+  })
+})
+
+describe('urlDashboardParaTenant (handoff al subdominio del tenant)', () => {
+  it('apunta a {slug}.melquiadez.com con el token en el fragmento, URL-encodeado', () => {
+    const url = urlDashboardParaTenant('barberia-demo', 'ey.J/W+T=')
+    expect(url).toBe('https://barberia-demo.melquiadez.com/#token=ey.J%2FW%2BT%3D')
+    expect(url).not.toContain('?token')
+  })
+
+  it('devuelve null si el slug es inválido (caller cae a app.)', () => {
+    expect(urlDashboardParaTenant('', 't')).toBeNull()
+    expect(urlDashboardParaTenant('Bad Slug!', 't')).toBeNull()
+    expect(urlDashboardParaTenant(null, 't')).toBeNull()
+    expect(urlDashboardParaTenant(undefined, 't')).toBeNull()
+  })
+
+  it('VITE_BASE_DOMAIN gana como override del apex', () => {
+    vi.stubEnv('VITE_BASE_DOMAIN', 'staging.example')
+    expect(urlDashboardParaTenant('brasa', 't')).toBe('https://brasa.staging.example/#token=t')
   })
 })

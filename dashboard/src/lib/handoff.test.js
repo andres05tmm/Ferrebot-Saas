@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { consumeTokenFromHash, slugFromHost, landingLoginUrlForHost } from './handoff.js'
+import { consumeTokenFromHash, slugFromHost, landingLoginUrlForHost, baseDomain, landingOrigin } from './handoff.js'
 import { TOKEN_KEY } from './api.js'
 
 beforeEach(() => {
@@ -90,12 +90,63 @@ describe('slugFromHost', () => {
   })
 })
 
-describe('landingLoginUrlForHost', () => {
-  it('sin landing configurada devuelve null (dev → /login propio)', () => {
-    expect(landingLoginUrlForHost('barberia-demo.melquiadez.com')).toBeNull()
+describe('baseDomain (derivación en runtime)', () => {
+  it('la env VITE_BASE_DOMAIN gana como override explícito', () => {
+    vi.stubEnv('VITE_BASE_DOMAIN', 'override.example')
+    expect(baseDomain('barberia-demo.melquiadez.com')).toBe('override.example')
   })
 
-  it('con landing configurada arma el login con next = slug del host', () => {
+  it('sin env, deriva el apex (dos últimos labels) de un subdominio de tenant', () => {
+    expect(baseDomain('barberia-demo.melquiadez.com')).toBe('melquiadez.com')
+  })
+
+  it('sin env, app.melquiadez.com también deriva melquiadez.com', () => {
+    expect(baseDomain('app.melquiadez.com')).toBe('melquiadez.com')
+  })
+
+  it('sin env, el apex se deriva a sí mismo', () => {
+    expect(baseDomain('melquiadez.com')).toBe('melquiadez.com')
+  })
+
+  it('sin env, en dev (localhost / IP / un solo label) no hay base domain', () => {
+    expect(baseDomain('localhost')).toBe('')
+    expect(baseDomain('app.localhost')).toBe('')
+    expect(baseDomain('127.0.0.1')).toBe('')
+    expect(baseDomain('mimaquina')).toBe('')
+  })
+})
+
+describe('landingOrigin (derivación en runtime)', () => {
+  it('la env VITE_LANDING_ORIGIN gana como override explícito', () => {
+    vi.stubEnv('VITE_LANDING_ORIGIN', 'https://landing.example')
+    expect(landingOrigin('barberia-demo.melquiadez.com')).toBe('https://landing.example')
+  })
+
+  it('sin env, deriva https://{baseDomain} en prod', () => {
+    expect(landingOrigin('barberia-demo.melquiadez.com')).toBe('https://melquiadez.com')
+  })
+
+  it('sin env, en dev (sin base domain) devuelve cadena vacía', () => {
+    expect(landingOrigin('localhost')).toBe('')
+  })
+})
+
+describe('landingLoginUrlForHost', () => {
+  it('en dev (localhost) devuelve null → /login propio del dashboard', () => {
+    expect(landingLoginUrlForHost('localhost')).toBeNull()
+    expect(landingLoginUrlForHost('127.0.0.1')).toBeNull()
+  })
+
+  it('sin env, deriva el login de la landing del host con next = slug', () => {
+    expect(landingLoginUrlForHost('barberia-demo.melquiadez.com'))
+      .toBe('https://melquiadez.com/login?next=barberia-demo')
+  })
+
+  it('sin env, en un host sin slug (app.) rebota a la landing SIN next', () => {
+    expect(landingLoginUrlForHost('app.melquiadez.com')).toBe('https://melquiadez.com/login')
+  })
+
+  it('la env gana como override: arma el login con next = slug del host', () => {
     vi.stubEnv('VITE_LANDING_ORIGIN', 'https://melquiadez.com')
     vi.stubEnv('VITE_BASE_DOMAIN', 'melquiadez.com')
 
@@ -103,7 +154,7 @@ describe('landingLoginUrlForHost', () => {
       .toBe('https://melquiadez.com/login?next=barberia-demo')
   })
 
-  it('en un host sin slug (app.) rebota a la landing SIN next', () => {
+  it('la env gana como override: host sin slug (app.) rebota SIN next', () => {
     vi.stubEnv('VITE_LANDING_ORIGIN', 'https://melquiadez.com')
     vi.stubEnv('VITE_BASE_DOMAIN', 'melquiadez.com')
 

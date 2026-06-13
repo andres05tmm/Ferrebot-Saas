@@ -1,30 +1,38 @@
 /*
- * Login — entrada PRIMARIA por email + contraseña (login real, ADR 0009 A1.5) sobre el link compartido.
+ * Login — entrada por email + contraseña (login real, ADR 0009 A1.5).
+ *
+ * El login es ÚNICO y vive en la landing (melquiadez.com/login, plan §3): en PROD esta pantalla no
+ * se muestra — si alguien navega directo a /login en un subdominio de tenant, rebota a la landing
+ * (`landingLoginUrlForHost`, mismo contrato que ProtectedRoute y el intercept de 401). En DEV (sin
+ * landing configurada) se queda el formulario local + el escape hatch del dev_token.
  *
  * POST /auth/login/password (useAuth.loginConPassword) → guarda el token → navega al shell, que trae
  * GET /config (branding + packs). Mensajes SIN enumeración: el mismo texto para email/clave (401) y
- * un aviso claro al bloqueo por intentos (429). El Telegram Login Widget queda como entrada ALTERNA
- * (si VITE_TELEGRAM_BOT_USERNAME está configurado), y el escape hatch del dev_token solo en desarrollo.
+ * un aviso claro al bloqueo por intentos (429).
  */
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Loader2 } from 'lucide-react'
 import { Card } from '@/components/ui/card.jsx'
 import { useAuth } from '@/hooks/useAuth.js'
 import { TOKEN_KEY } from '@/lib/api.js'
+import { landingLoginUrlForHost, handoffNav } from '@/lib/handoff.js'
 
 export default function Login() {
   const navigate = useNavigate()
-  const { login, loginConPassword } = useAuth()
-  // Se lee dentro del componente (no a nivel de módulo) para que el entorno se resuelva en el render
-  // —los tests inyectan VITE_TELEGRAM_BOT_USERNAME por test.
-  const botUsername = import.meta.env.VITE_TELEGRAM_BOT_USERNAME
+  const { loginConPassword } = useAuth()
+  // En prod el login vive en la landing: si hay landing para este host, rebota allí (cubre la
+  // navegación directa a /login). En dev (sin landing) → null → se queda el /login local.
+  const landingUrl = landingLoginUrlForHost()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [devToken, setDevToken] = useState('')
-  const widgetRef = useRef(null)
+
+  useEffect(() => {
+    if (landingUrl) handoffNav.toLanding(landingUrl)
+  }, [landingUrl])
 
   async function enviar(e) {
     e.preventDefault()
@@ -43,43 +51,15 @@ export default function Login() {
     }
   }
 
-  // Telegram Login Widget (entrada alterna): solo si hay bot configurado.
-  useEffect(() => {
-    if (!botUsername) return undefined
-    window.onTelegramAuth = async (user) => {
-      setLoading(true)
-      setError('')
-      try {
-        const res = await login(user)
-        if (res.ok) navigate('/')
-        else setError(res.error)
-      } catch {
-        setError('Error de conexión. Intenta de nuevo.')
-      } finally {
-        setLoading(false)
-      }
-    }
-    if (widgetRef.current) {
-      const script = document.createElement('script')
-      script.src = 'https://telegram.org/js/telegram-widget.js?22'
-      script.setAttribute('data-telegram-login', botUsername)
-      script.setAttribute('data-size', 'large')
-      script.setAttribute('data-onauth', 'onTelegramAuth(user)')
-      script.setAttribute('data-request-access', 'write')
-      script.setAttribute('data-userpic', 'false')
-      script.async = true
-      widgetRef.current.innerHTML = ''
-      widgetRef.current.appendChild(script)
-    }
-    return () => { delete window.onTelegramAuth }
-  }, [navigate, login, botUsername])
-
   function entrarConToken() {
     const t = devToken.trim()
     if (!t) return
     localStorage.setItem(TOKEN_KEY, t)
     navigate('/')
   }
+
+  // En prod el efecto ya disparó el rebote a la landing: no pintamos el form local (evita el flash).
+  if (landingUrl) return null
 
   return (
     <main className="min-h-[100dvh] bg-background flex flex-col items-center justify-center p-5 text-foreground" aria-labelledby="login-title">
@@ -132,16 +112,6 @@ export default function Login() {
         <Link to="/recuperar" className="text-[11px] text-muted-foreground hover:text-foreground underline-offset-2 hover:underline">
           ¿Olvidaste tu contraseña?
         </Link>
-
-        {/* Entrada ALTERNA por Telegram (solo si hay bot configurado). */}
-        {botUsername && (
-          <>
-            <div className="w-full flex items-center gap-3 text-[10px] uppercase tracking-wider text-muted-foreground">
-              <div className="flex-1 h-px bg-border" /> o <div className="flex-1 h-px bg-border" />
-            </div>
-            <div ref={widgetRef} className="flex justify-center min-h-[48px] w-full" />
-          </>
-        )}
 
         {/* Escape hatch SOLO en desarrollo: pegar un JWT y entrar sin login. */}
         {import.meta.env.DEV && (

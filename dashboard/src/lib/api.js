@@ -6,7 +6,8 @@
  * el subdominio). Ante un 401 limpia la sesión y rebota al login: en PROD a la landing
  * (`melquiadez.com/login?next={slug del host}` — el login es único y vive allí, plan §3); en DEV
  * (sin landing) al /login propio del dashboard. Nunca redirige si ya estás en /login (evita el bucle:
- * el propio POST /auth/login responde 401 en credenciales inválidas).
+ * el propio POST /auth/login responde 401 en credenciales inválidas). Un 403 cross-tenant (token de
+ * otra empresa) se trata IGUAL que un 401; el resto de 403 (autorización legítima) sube al caller.
  */
 import { landingLoginUrlForHost } from './handoff.js'
 
@@ -75,8 +76,30 @@ export async function api(path, options = {}) {
   if (res.status === 401) {
     limpiarSesion()
     redirigirSinSesion()
+  } else if (res.status === 403 && await esCrossTenant(res)) {
+    // Token de OTRA empresa (p. ej. sesión vieja tras cambiar de tenant): inservible en este host,
+    // la identidad pertenece a otra empresa → la salida correcta es re-login, igual que un 401.
+    // Cualquier OTRO 403 (permisos insuficientes, empresa inactiva…) NO desloguea: sube al caller.
+    limpiarSesion()
+    redirigirSinSesion()
   }
   return res
+}
+
+// MIRROR de core/auth/deps.py:44 ("El token no pertenece a esta empresa"): el detalle del 403
+// cross-tenant. Espeja el backend igual que SLUG_RE / LABELS_RESERVADOS; si cambia allí, cambia aquí.
+const DETALLE_CROSS_TENANT = 'no pertenece a esta empresa'
+
+// ¿El 403 es por token cross-tenant? Clona la respuesta (solo aquí, no en cada petición) para leer el
+// body sin consumirlo; ante CUALQUIER fallo (body no-JSON, ausente, sin clone) devuelve false: un 403
+// que no podamos identificar como cross-tenant se deja pasar al caller, nunca rompe el flujo.
+async function esCrossTenant(res) {
+  try {
+    const body = await res.clone().json()
+    return typeof body?.detail === 'string' && body.detail.includes(DETALLE_CROSS_TENANT)
+  } catch {
+    return false
+  }
 }
 
 export async function apiJson(path, options = {}) {

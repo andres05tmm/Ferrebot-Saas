@@ -5,7 +5,7 @@
  * whatsapp, SIN pos) NO debe ver ningún tab POS; un tenant con `pos` (Punto Rojo) los sigue viendo.
  */
 import { describe, it, expect } from 'vitest'
-import { isRouteEnabled, RUTA_FEATURE, resolveHomePath } from './features.jsx'
+import { isRouteEnabled, RUTA_FEATURE, resolveHomePath, esAtencionCliente } from './features.jsx'
 import { ROUTES, routesByGroup, GROUPS } from '../routes.jsx'
 
 const RUTAS_POS = ['/ventas', '/caja', '/inventario', '/compras', '/proveedores', '/gastos',
@@ -96,5 +96,68 @@ describe('resolución de la home por features (Fase 1)', () => {
     const topDe = (features) => ROUTES.filter(r => r.group === 'top' && isRouteEnabled(r.path, features)).map(r => r.path)
     expect(topDe(SERVICIOS)).toEqual(['/inicio'])
     expect(topDe(POS)).toEqual(['/hoy'])
+  })
+})
+
+// ── ADR 0018 — dos familias de dashboard (gating por vertical) ───────────────────────────────────
+// El flag `pos` no basta: packs de servicio reusan el catálogo POS y arrastran `pos` por dependencia.
+// `esAtencionCliente` discrimina la familia; un restaurante (pos + pack_pedidos) NO ve el retail.
+describe('dos familias de dashboard (ADR 0018)', () => {
+  // Rutas retail/contables que SOLO debe ver la familia ferretería.
+  const RETAIL = ['/hoy', '/ventas', '/caja', '/inventario', '/compras', '/proveedores', '/gastos',
+    '/top-productos', '/kardex', '/historial']
+  const NUCLEO = ['/clientes', '/resultados']
+
+  const FERRETERIA = ['pos']
+  const RESTAURANTE = ['pos', 'pack_pedidos', 'pack_faq', 'canal_whatsapp']
+  const BARBERIA = ['pack_agenda', 'pack_faq', 'canal_whatsapp']
+  const HOTEL = ['pack_agenda', 'pack_reservas', 'pack_faq', 'canal_whatsapp']
+
+  it('esAtencionCliente: true con packs de servicio, false en ferretería pura', () => {
+    expect(esAtencionCliente(FERRETERIA)).toBe(false)
+    expect(esAtencionCliente(RESTAURANTE)).toBe(true)
+    expect(esAtencionCliente(BARBERIA)).toBe(true)
+    expect(esAtencionCliente(HOTEL)).toBe(true)
+    expect(esAtencionCliente([])).toBe(false)
+  })
+
+  it('ferretería (pos): home /hoy, ve retail, NO ve /pedidos', () => {
+    expect(resolveHomePath(FERRETERIA)).toBe('/hoy')
+    expect(isRouteEnabled('/caja', FERRETERIA)).toBe(true)
+    expect(isRouteEnabled('/compras', FERRETERIA)).toBe(true)
+    expect(isRouteEnabled('/pedidos', FERRETERIA)).toBe(false)
+  })
+
+  it('restaurante (pos + pack_pedidos): home /pedidos, NO ve retail, sí su vertical', () => {
+    expect(resolveHomePath(RESTAURANTE)).toBe('/pedidos')
+    for (const ruta of ['/hoy', '/caja', '/compras', '/inventario', '/gastos', '/ventas']) {
+      expect(isRouteEnabled(ruta, RESTAURANTE)).toBe(false)
+    }
+    expect(isRouteEnabled('/pedidos', RESTAURANTE)).toBe(true)
+    expect(isRouteEnabled('/conocimiento', RESTAURANTE)).toBe(true)
+    expect(isRouteEnabled('/clientes', RESTAURANTE)).toBe(true)
+  })
+
+  it('barbería (pack_agenda): home /inicio, ve /agenda, NO ve retail', () => {
+    expect(resolveHomePath(BARBERIA)).toBe('/inicio')
+    expect(isRouteEnabled('/agenda', BARBERIA)).toBe(true)
+    for (const ruta of RETAIL) {
+      expect(isRouteEnabled(ruta, BARBERIA)).toBe(false)
+    }
+  })
+
+  it('hotel (pack_agenda + pack_reservas): home /inicio', () => {
+    expect(resolveHomePath(HOTEL)).toBe('/inicio')
+    for (const ruta of RETAIL) {
+      expect(isRouteEnabled(ruta, HOTEL)).toBe(false)
+    }
+  })
+
+  it('el núcleo (/clientes, /resultados) es visible en TODA familia', () => {
+    for (const features of [FERRETERIA, RESTAURANTE, BARBERIA, HOTEL, []]) {
+      for (const ruta of NUCLEO) {
+        expect(isRouteEnabled(ruta, features)).toBe(true)
+      }
+    }
   })
 })

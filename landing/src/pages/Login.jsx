@@ -39,16 +39,22 @@ export default function Login() {
     setCargando(false)
   }
 
+  // Campos con afordancia de marca: borde neutro visible (≥3:1 contra el card) + fondo papel-2
+  // (distinto del panel), foco oro (borde --oro-oscuro + halo --oro-suave, un solo color, sin azul).
+  const clasesInput =
+    'h-11 rounded-xl border-texto-3 bg-fondo-2 px-4 text-[15px] placeholder:text-texto-3 ' +
+    'transition-[box-shadow,border-color] focus-visible:border-oro-oscuro focus-visible:ring-[var(--oro-suave)]'
+
   return (
     <main className="grid min-h-[100dvh] place-items-center bg-fondo p-5">
       <div className="flex w-full max-w-4xl flex-col-reverse overflow-hidden rounded-3xl border border-linea bg-panel shadow-marca md:flex-row">
         {/* form */}
         <div className="flex flex-col justify-center p-8 md:w-1/2 md:p-12">
-          <Link to="/" className="mb-8 inline-flex items-center gap-2 text-texto-3 transition-colors hover:text-texto">
+          <Link to="/" className="mb-8 inline-flex items-center gap-2 text-texto-2 transition-colors hover:text-texto">
             <span className="text-sm">← melquiadez.com</span>
           </Link>
           <h1 className="font-display text-3xl font-semibold tracking-tight">Bienvenido de vuelta</h1>
-          <p className="mt-1.5 text-sm text-texto-2">Entra a tu dashboard.</p>
+          <p className="mt-1.5 text-sm text-texto-2">Tu negocio te espera adentro.</p>
 
           <form onSubmit={enviar} className="mt-8 flex flex-col gap-4" aria-label="Iniciar sesión">
             <div className="flex flex-col gap-1.5">
@@ -61,6 +67,7 @@ export default function Login() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
+                className={clasesInput}
               />
             </div>
             <div className="flex flex-col gap-1.5">
@@ -73,12 +80,13 @@ export default function Login() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
+                className={clasesInput}
               />
             </div>
             <button
               type="submit"
               disabled={cargando}
-              className="mt-2 inline-flex items-center justify-center gap-2 rounded-xl bg-acento px-4 py-3 font-semibold text-acento-sobre transition-all duration-300 ease-marca hover:-translate-y-px disabled:opacity-60"
+              className="mt-2 inline-flex items-center justify-center gap-2 rounded-xl bg-tinta px-4 py-3 text-[15px] font-semibold text-papel shadow-sm transition-all duration-300 ease-marca hover:-translate-y-px hover:bg-[var(--tinta-2)] hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-oro-oscuro focus-visible:ring-offset-2 focus-visible:ring-offset-panel disabled:opacity-60 disabled:hover:translate-y-0 disabled:hover:shadow-sm"
             >
               {cargando && <Loader2 className="size-4 animate-spin" />}
               {cargando ? 'Entrando…' : 'Entrar'}
@@ -96,9 +104,9 @@ export default function Login() {
 
           <a
             href={`${APP_URL}/recuperar`}
-            className="mt-6 text-center text-[13px] text-texto-3 underline-offset-2 transition-colors hover:text-texto hover:underline"
+            className="mt-6 text-center text-[13px] text-texto-2 underline-offset-2 transition-colors hover:text-texto hover:underline"
           >
-            ¿Olvidaste tu contraseña?
+            ¿Olvidaste tu clave?
           </a>
         </div>
 

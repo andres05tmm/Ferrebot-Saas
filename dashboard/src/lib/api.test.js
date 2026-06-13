@@ -111,6 +111,77 @@ describe('api wrapper', () => {
     expect(localStorage.getItem('ferrebot_token')).toBeNull()
     expect(toLogin).not.toHaveBeenCalled()
   })
+
+  // Doble de Response para los 403: clone() devuelve algo cuyo json() resuelve al body dado (o lanza,
+  // simulando una respuesta sin JSON). api() solo clona en 403, así que el resto de casos no lo necesita.
+  function res403(detail) {
+    const json = detail === undefined
+      ? () => Promise.reject(new Error('no json'))
+      : () => Promise.resolve({ detail })
+    return { ok: false, status: 403, clone: () => ({ json }) }
+  }
+
+  it('ante 403 cross-tenant en dev limpia la sesión y cae al /login propio (igual que 401)', async () => {
+    setHost('localhost')
+    localStorage.setItem('ferrebot_token', 'de-otra-empresa')
+    localStorage.setItem('ferrebot_user', '{"id":1}')
+    const toLogin = vi.spyOn(redirector, 'toLogin').mockImplementation(() => {})
+    const toLanding = vi.spyOn(redirector, 'toLanding').mockImplementation(() => {})
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(res403('El token no pertenece a esta empresa')))
+
+    await api('/config')
+
+    expect(localStorage.getItem('ferrebot_token')).toBeNull()
+    expect(localStorage.getItem('ferrebot_user')).toBeNull()
+    expect(toLogin).toHaveBeenCalledOnce()
+    expect(toLanding).not.toHaveBeenCalled()
+  })
+
+  it('ante 403 cross-tenant en prod rebota a la landing con next = slug del host (igual que 401)', async () => {
+    setHost('barberia-demo.melquiadez.com')
+    localStorage.setItem('ferrebot_token', 'de-otra-empresa')
+    const toLogin = vi.spyOn(redirector, 'toLogin').mockImplementation(() => {})
+    const toLanding = vi.spyOn(redirector, 'toLanding').mockImplementation(() => {})
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(res403('El token no pertenece a esta empresa')))
+
+    await api('/config')
+
+    expect(localStorage.getItem('ferrebot_token')).toBeNull()
+    expect(toLanding).toHaveBeenCalledWith('https://melquiadez.com/login?next=barberia-demo')
+    expect(toLogin).not.toHaveBeenCalled()
+  })
+
+  it('ante 403 de autorización legítima (permisos insuficientes) NO limpia ni rebota: sube al caller', async () => {
+    setHost('barberia-demo.melquiadez.com')
+    localStorage.setItem('ferrebot_token', 'valido')
+    localStorage.setItem('ferrebot_user', '{"id":1}')
+    const toLogin = vi.spyOn(redirector, 'toLogin').mockImplementation(() => {})
+    const toLanding = vi.spyOn(redirector, 'toLanding').mockImplementation(() => {})
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(res403('Permisos insuficientes')))
+
+    const res = await api('/admin/algo')
+
+    expect(res.status).toBe(403)
+    expect(localStorage.getItem('ferrebot_token')).toBe('valido')
+    expect(localStorage.getItem('ferrebot_user')).toBe('{"id":1}')
+    expect(toLogin).not.toHaveBeenCalled()
+    expect(toLanding).not.toHaveBeenCalled()
+  })
+
+  it('ante 403 sin body JSON NO rompe ni desloguea: sube al caller', async () => {
+    setHost('barberia-demo.melquiadez.com')
+    localStorage.setItem('ferrebot_token', 'valido')
+    const toLogin = vi.spyOn(redirector, 'toLogin').mockImplementation(() => {})
+    const toLanding = vi.spyOn(redirector, 'toLanding').mockImplementation(() => {})
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(res403(undefined)))
+
+    const res = await api('/config')
+
+    expect(res.status).toBe(403)
+    expect(localStorage.getItem('ferrebot_token')).toBe('valido')
+    expect(toLogin).not.toHaveBeenCalled()
+    expect(toLanding).not.toHaveBeenCalled()
+  })
 })
 
 describe('buildAuthHeaders', () => {

@@ -1,10 +1,10 @@
 import { lazy, Suspense, useEffect, useState } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { Loader2 } from 'lucide-react'
 import Sello from '@/components/Sello.jsx'
 import { Input } from '@/components/ui/input.jsx'
 import { Label } from '@/components/ui/label.jsx'
-import { APP_URL, esSlugValido, iniciarSesion, urlDashboardConToken, urlDashboardParaTenant } from '@/lib/auth.js'
+import { APP_URL, iniciarSesion, urlDashboardConToken, urlDashboardParaTenant } from '@/lib/auth.js'
 
 const AuroraOro = lazy(() => import('@/components/AuroraOro.jsx'))
 
@@ -15,7 +15,6 @@ const AuroraOro = lazy(() => import('@/components/AuroraOro.jsx'))
  * no viaja al servidor). 401 → mensaje genérico; 429 → bloqueo temporal.
  */
 export default function Login() {
-  const [searchParams] = useSearchParams()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [cargando, setCargando] = useState(false)
@@ -33,11 +32,11 @@ export default function Login() {
     setError('')
     const res = await iniciarSesion(email.trim(), password)
     if (res.ok) {
-      // Destino: el `next` del bounce (slug del subdominio que rebotó) si es válido; si no, el tenant
-      // del JWT. Sin slug (super_admin / sin tenant) → app. (plataforma → el dashboard lo lleva a /admin).
-      const next = searchParams.get('next')
-      const slug = esSlugValido(next) ? next : res.usuario?.tenant
-      const destino = urlDashboardParaTenant(slug, res.token) || urlDashboardConToken(res.token)
+      // El JWT es AUTORITATIVO: cada identidad pertenece a UNA empresa (claim `tenant`). Enrutamos SIEMPRE
+      // a su subdominio; si no hay tenant (super_admin) → app. (plataforma → el dashboard lo lleva a /admin).
+      // `next` NO se usa para el routing: es un hint que puede no coincidir con las credenciales (otra
+      // empresa) y el subdominio elegido haría que el guard del backend rechace el token con 403.
+      const destino = urlDashboardParaTenant(res.usuario?.tenant, res.token) || urlDashboardConToken(res.token)
       window.location.assign(destino) // token en el FRAGMENTO: no viaja al servidor
       return // seguimos "cargando" mientras el navegador navega
     }

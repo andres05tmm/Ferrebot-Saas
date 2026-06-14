@@ -8,8 +8,9 @@ import { describe, it, expect } from 'vitest'
 import { isRouteEnabled, RUTA_FEATURE, resolveHomePath, esAtencionCliente } from './features.jsx'
 import { ROUTES, routesByGroup, GROUPS } from '../routes.jsx'
 
+// `/historial` NO va aquí: es transversal a las dos familias (ADR 0018) — tiene su propio bloque.
 const RUTAS_POS = ['/ventas', '/caja', '/inventario', '/compras', '/proveedores', '/gastos',
-  '/top-productos', '/kardex', '/historial']
+  '/top-productos', '/kardex']
 // Tras Fase 1 la portada `/hoy` también se gatea por `pos`; el núcleo transversal queda en estas dos.
 const RUTAS_NUCLEO = ['/clientes', '/resultados']
 
@@ -103,9 +104,9 @@ describe('resolución de la home por features (Fase 1)', () => {
 // El flag `pos` no basta: packs de servicio reusan el catálogo POS y arrastran `pos` por dependencia.
 // `esAtencionCliente` discrimina la familia; un restaurante (pos + pack_pedidos) NO ve el retail.
 describe('dos familias de dashboard (ADR 0018)', () => {
-  // Rutas retail/contables que SOLO debe ver la familia ferretería.
+  // Rutas retail/contables que SOLO debe ver la familia ferretería (`/historial` es transversal, aparte).
   const RETAIL = ['/hoy', '/ventas', '/caja', '/inventario', '/compras', '/proveedores', '/gastos',
-    '/top-productos', '/kardex', '/historial']
+    '/top-productos', '/kardex']
   const NUCLEO = ['/clientes', '/resultados']
 
   const FERRETERIA = ['pos']
@@ -159,5 +160,18 @@ describe('dos familias de dashboard (ADR 0018)', () => {
         expect(isRouteEnabled(ruta, features)).toBe(true)
       }
     }
+  })
+
+  // `/historial` es transversal: el POS ve ventas, los servicios su historial por vertical.
+  it('/historial visible para AMBAS familias (POS y servicios)', () => {
+    expect(isRouteEnabled('/historial', FERRETERIA)).toBe(true)   // POS: historial de ventas
+    expect(isRouteEnabled('/historial', RESTAURANTE)).toBe(true)  // servicios: pedidos
+    expect(isRouteEnabled('/historial', BARBERIA)).toBe(true)     // servicios: citas
+    expect(isRouteEnabled('/historial', HOTEL)).toBe(true)        // servicios: reservas
+  })
+
+  it('/historial oculto sin `pos` ni packs de servicio', () => {
+    expect(isRouteEnabled('/historial', [])).toBe(false)
+    expect(isRouteEnabled('/historial', ['facturacion_electronica'])).toBe(false)
   })
 })

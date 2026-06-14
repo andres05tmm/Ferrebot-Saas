@@ -23,6 +23,7 @@ import TabCaja from './tabs/TabCaja.jsx'
 import TabGastos from './tabs/TabGastos.jsx'
 import TabClientes from './tabs/TabClientes.jsx'
 import TabHistorial from './tabs/TabHistorial.jsx'
+import TabHistorialServicios from './tabs/TabHistorialServicios.jsx'
 import TabResultados from './tabs/TabResultados.jsx'
 import TabTopProductos from './tabs/TabTopProductos.jsx'
 import TabFacturacion from './tabs/TabFacturacion.jsx'
@@ -47,7 +48,7 @@ const TABS = {
   '/caja': TabCaja,
   '/gastos': TabGastos,
   '/clientes': TabClientes,
-  '/historial': TabHistorial,
+  '/historial': HistorialPorFamilia,
   '/resultados': TabResultados,
   '/top-productos': TabTopProductos,
   '/facturacion': TabFacturacion,
@@ -62,8 +63,16 @@ const TABS = {
   '/pedidos': TabPedidos,
 }
 import { bootConfig } from './lib/config.js'
-import { FeaturesProvider, useFeatures, resolveHomePath } from './lib/features.jsx'
+import { FeaturesProvider, useFeatures, resolveHomePath, esAtencionCliente } from './lib/features.jsx'
 import { BrandingProvider } from './lib/branding.jsx'
+
+// /historial es transversal (ADR 0018): la familia POS ve el historial de ventas; la de servicios ve
+// el suyo por vertical (pedidos/citas/reservas). El wrapper elige el componente por familia. Vive
+// dentro de FeaturesProvider (ShellBoot), así que lee las features del shell ya cargado.
+export function HistorialPorFamilia() {
+  const features = useFeatures()
+  return esAtencionCliente(features) ? <TabHistorialServicios /> : <TabHistorial />
+}
 
 // Redirige a la portada del tenant resuelta por sus features (Hoy POS / Inicio agente). Vive dentro de
 // FeaturesProvider (ShellBoot), así que lee las features del shell ya cargado.

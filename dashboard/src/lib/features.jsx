@@ -26,10 +26,12 @@ import { createContext, useContext } from 'react'
 const PACKS_ATENCION_CLIENTE = ['pack_agenda', 'pack_pedidos', 'pack_reservas']
 
 // Rutas RETAIL/CONTABLES: la familia ferretería. Visibles solo con `pos` Y sin packs de atención a
-// cliente (ADR 0018). Incluye la portada POS `/hoy` y los reportes POS-específicos.
+// cliente (ADR 0018). Incluye la portada POS `/hoy` y los reportes POS-específicos. `/historial` NO
+// está aquí: es transversal a las dos familias (ventas en POS, pedidos/citas/reservas en servicios) y
+// lleva su propia condición en isRouteEnabled.
 const RUTAS_RETAIL = new Set([
   '/hoy', '/ventas', '/caja', '/inventario', '/compras', '/proveedores', '/gastos',
-  '/top-productos', '/kardex', '/historial',
+  '/top-productos', '/kardex',
 ])
 
 // Ruta → capacidad requerida (catalogo.py). Las rutas NO listadas son núcleo → siempre visibles
@@ -47,7 +49,7 @@ export const RUTA_FEATURE = {
   '/gastos': 'pos',
   '/top-productos': 'pos',
   '/kardex': 'pos',
-  '/historial': 'pos',
+  // `/historial` es transversal (POS y servicios) → condición propia en isRouteEnabled, no aquí.
   // Fiscal
   '/facturacion': 'facturacion_electronica',
   '/facturas-recibidas': 'facturacion_electronica',
@@ -88,6 +90,9 @@ export function resolveHomePath(features = []) {
 export function isRouteEnabled(path, features = []) {
   // Las dos portadas son excluyentes: solo la portada resuelta queda visible en el nav.
   if (path === '/inicio') return resolveHomePath(features) === '/inicio'
+  // `/historial` es transversal a las dos familias (ADR 0018): el POS ve el historial de ventas y la
+  // familia de servicios el suyo por vertical (pedidos/citas/reservas). Visible con `pos` O con packs.
+  if (path === '/historial') return features.includes('pos') || esAtencionCliente(features)
   // Familia ferretería (ADR 0018): el retail/contable solo es visible con `pos` Y sin packs de servicio.
   if (RUTAS_RETAIL.has(path)) return features.includes('pos') && !esAtencionCliente(features)
   const requerida = RUTA_FEATURE[path]

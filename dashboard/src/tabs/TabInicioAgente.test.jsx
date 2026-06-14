@@ -10,9 +10,14 @@ vi.mock('@/components/RealtimeProvider.jsx', () => ({
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), message: vi.fn() } }))
 
 import { FeaturesProvider } from '@/lib/features.jsx'
+import { hoyCO, masDiasCO } from './agenda/util.jsx'
 import TabInicioAgente, { construirKpis } from './TabInicioAgente.jsx'
 
 function jsonResp(data, status = 200) { return { ok: status < 400, status, json: async () => data } }
+
+// Fixtures de reservas RELATIVAS a hoy (el bloque hotelero filtra client-side por la fecha real).
+const at = (ymd, hhmm) => `${ymd}T${hhmm}:00-05:00`
+const HOY = hoyCO()
 
 const ESCALADAS = [
   { id: 1, cliente_telefono: '573001112233', estado: 'humano', motivo: 'Pide asesor', escalada_en: '2026-06-11T10:00:00-05:00' },
@@ -24,6 +29,20 @@ const CITAS = [
   { id: 12, servicio_id: 1, recurso_id: 1, cliente_nombre: 'Cancelada', inicio: '2026-06-11T12:00:00-05:00', fin: '2026-06-11T12:30:00-05:00', estado: 'cancelada', origen: 'whatsapp' },
 ]
 const SERVICIOS = [{ id: 1, nombre: 'Limpieza dental', activo: true }]
+// Hotel: recursos `habitacion` (+ uno no-habitación para verificar el filtro) y reservas de hoy.
+const RECURSOS = [
+  { id: 1, nombre: 'Suite 101', tipo: 'habitacion', activo: true },
+  { id: 2, nombre: 'Habitación 102', tipo: 'habitacion', activo: true },
+  { id: 3, nombre: 'Recepción', tipo: 'profesional', activo: true },
+]
+const RESERVAS = [
+  { id: 20, servicio_id: 1, recurso_id: 1, cliente_nombre: 'Llega Hoy', inicio: at(HOY, '15:00'), fin: at(masDiasCO(2), '12:00'), estado: 'confirmada', origen: 'whatsapp' },
+  { id: 21, servicio_id: 1, recurso_id: 2, cliente_nombre: 'Sale Hoy', inicio: at(masDiasCO(-2), '15:00'), fin: at(HOY, '12:00'), estado: 'confirmada', origen: 'dashboard' },
+  { id: 22, servicio_id: 1, recurso_id: 1, cliente_nombre: 'En Casa', inicio: at(masDiasCO(-1), '15:00'), fin: at(masDiasCO(3), '12:00'), estado: 'confirmada', origen: 'whatsapp' },
+  { id: 23, servicio_id: 1, recurso_id: 2, cliente_nombre: 'Reserva Cancelada', inicio: at(HOY, '16:00'), fin: at(masDiasCO(2), '12:00'), estado: 'cancelada', origen: 'whatsapp' },
+]
+const HOTEL = ['pack_agenda', 'pack_reservas', 'pack_faq', 'canal_whatsapp']
+const BARBERIA = ['pack_agenda', 'canal_whatsapp']
 const REPORTE = {
   desde: '2026-05-12', hasta: '2026-06-11',
   conversaciones: { nuevas: 50, escaladas_a_humano: 10, pct_resueltas_sin_humano: 80 },
@@ -34,7 +53,7 @@ const REPORTE = {
   satisfaccion: { promedio: 4.7, respuestas: 9 },
 }
 
-function instalarFetch({ escaladas = ESCALADAS, citas = CITAS, reporte = REPORTE } = {}) {
+function instalarFetch({ escaladas = ESCALADAS, citas = CITAS, reporte = REPORTE, recursos = RECURSOS } = {}) {
   const calls = []
   const fetchMock = vi.fn((url, opts = {}) => {
     const u = String(url)
@@ -42,6 +61,7 @@ function instalarFetch({ escaladas = ESCALADAS, citas = CITAS, reporte = REPORTE
     if (u.includes('/conversaciones/escaladas')) return Promise.resolve(jsonResp(escaladas))
     if (u.includes('/agente/reporte')) return Promise.resolve(jsonResp(reporte))
     if (u.includes('/agenda/servicios')) return Promise.resolve(jsonResp(SERVICIOS))
+    if (u.includes('/agenda/recursos')) return Promise.resolve(jsonResp(recursos))
     if (u.includes('/agenda/citas')) return Promise.resolve(jsonResp(citas))
     return Promise.resolve(jsonResp([]))
   })
@@ -141,6 +161,86 @@ describe('TabInicioAgente — render por features', () => {
     act(() => { rtHandler?.('conversacion_escalada', { conversacion_id: 9 }) })
     await waitFor(() => {
       const ahora = calls.filter(([u]) => u.includes('/conversaciones/escaladas')).length
+      expect(ahora).toBeGreaterThan(antes)
+    })
+  })
+})
+
+describe('TabInicioAgente — home de reservas (HOTEL, contenido por vertical)', () => {
+  it('hotel (pack_reservas): muestra Llegan/Salen/En casa con huésped y habitación, NO el bloque de citas', async () => {
+    instalarFetch({ citas: RESERVAS })
+    renderHome(HOTEL)
+
+    expect(await screen.findByText('Reservas de hoy')).toBeInTheDocument()
+    // Las tres subsecciones hoteleras (lenguaje correcto, no "cita").
+    expect(screen.getByText('Llegan')).toBeInTheDocument()
+    expect(screen.getByText('Salen')).toBeInTheDocument()
+    expect(screen.getByText('En casa')).toBeInTheDocument()
+    // Huéspedes por movimiento; la reserva cancelada se excluye.
+    expect(screen.getByText('Llega Hoy')).toBeInTheDocument()
+    expect(screen.getByText('Sale Hoy')).toBeInTheDocument()
+    expect(screen.getByText('En Casa')).toBeInTheDocument()
+    expect(screen.queryByText('Reserva Cancelada')).toBeNull()
+    // Nombre de habitación resuelto vía /agenda/recursos (filtrando tipo habitacion).
+    expect(screen.getAllByText('Suite 101').length).toBeGreaterThan(0)
+    expect(screen.getByText('Habitación 102')).toBeInTheDocument()
+    // NO el bloque de citas de servicio.
+    expect(screen.queryByText('Próximas citas de hoy')).toBeNull()
+  })
+
+  it('hotel: pide recursos + citas en VENTANA AMPLIA (no desde=hoy&hasta=hoy)', async () => {
+    const { calls } = instalarFetch({ citas: RESERVAS })
+    renderHome(HOTEL)
+    await screen.findByText('Reservas de hoy')
+
+    expect(calls.some(([u]) => u.includes('/agenda/recursos'))).toBe(true)
+    const citasCall = calls.find(([u]) => u.includes('/agenda/citas'))
+    expect(citasCall).toBeTruthy()
+    expect(citasCall[0]).toContain(`desde=${masDiasCO(-30)}`)
+    expect(citasCall[0]).toContain(`hasta=${masDiasCO(30)}`)
+  })
+
+  it('hotel sin movimientos hoy: ofrece próximas llegadas en vez de un vacío seco', async () => {
+    const FUTURAS = [
+      { id: 30, servicio_id: 1, recurso_id: 1, cliente_nombre: 'Futuro Huésped', inicio: at(masDiasCO(1), '15:00'), fin: at(masDiasCO(3), '12:00'), estado: 'confirmada', origen: 'whatsapp' },
+    ]
+    instalarFetch({ citas: FUTURAS })
+    renderHome(HOTEL)
+
+    expect(await screen.findByText('Próximas llegadas')).toBeInTheDocument()
+    expect(screen.getByText('Futuro Huésped')).toBeInTheDocument()
+    expect(screen.queryByText('No hay reservas próximas.')).toBeNull()
+  })
+
+  it('hotel sin reservas: muestra el vacío propio sin romper el resto del home', async () => {
+    instalarFetch({ citas: [] })
+    renderHome(HOTEL)
+
+    expect(await screen.findByText('No hay reservas próximas.')).toBeInTheDocument()
+    // El resto del home sigue (acciones rápidas).
+    expect(screen.getByText('Ver agenda')).toBeInTheDocument()
+  })
+
+  it('barbería (pack_agenda sin reservas): mantiene el bloque de citas, sin reservas ni recursos', async () => {
+    const { calls } = instalarFetch()
+    renderHome(BARBERIA)
+
+    expect(await screen.findByText('Próximas citas de hoy')).toBeInTheDocument()
+    expect(screen.getByText('Ana')).toBeInTheDocument()
+    expect(screen.queryByText('Reservas de hoy')).toBeNull()
+    // No pide recursos (no es hotel) ni usa la ventana amplia.
+    expect(calls.some(([u]) => u.includes('/agenda/recursos'))).toBe(false)
+  })
+
+  it('tiempo real: un evento de cita refetchea las reservas (una reserva ES una cita)', async () => {
+    const { calls } = instalarFetch({ citas: RESERVAS })
+    renderHome(HOTEL)
+    await screen.findByText('Reservas de hoy')
+    const antes = calls.filter(([u]) => u.includes('/agenda/citas')).length
+
+    act(() => { rtHandler?.('cita_agendada', { cita_id: 99 }) })
+    await waitFor(() => {
+      const ahora = calls.filter(([u]) => u.includes('/agenda/citas')).length
       expect(ahora).toBeGreaterThan(antes)
     })
   })

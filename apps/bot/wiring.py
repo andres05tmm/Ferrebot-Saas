@@ -216,6 +216,7 @@ def construir_deps(
         pendientes=pendientes,
         crear_recursos=crear_recursos,
         memoria=lambda s: MemoriaService(SqlMemoriaRepository(s)),
+        confirm=confirm,   # fail-closed: confirmación de venta sobre límite por botón (camino bypass)
     )
     return BotDeps(
         resolver=ResolverControl(abrir_control),

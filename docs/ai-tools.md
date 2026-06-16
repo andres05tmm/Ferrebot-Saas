@@ -89,6 +89,7 @@ Toda herramienta recibe y devuelve un sobre uniforme. El modelo solo ve `args`; 
 | `capacidad_no_habilitada` | Feature flag off (p. ej. facturación) | no |
 | `validacion` | Argumentos inválidos (Pydantic) | sí |
 | `idempotencia_conflicto` | Misma key, payload distinto | no |
+| `limite_excedido` | Supera un límite por empresa y requiere un rol superior (`limite_modo=escalar`) | no |
 | `error_interno` | Fallo no esperado | no |
 
 ## 4. Idempotencia, RBAC y capacidades en las herramientas
@@ -329,8 +330,25 @@ Caen siempre al modelo (o piden confirmación), aunque el patrón encaje:
 - **Anulación de venta**, notas crédito/débito, ajustes de inventario (riesgo alto).
 - **Emisión de factura** si hay datos fiscales incompletos del cliente.
 - Venta a **fiado** sin cliente resuelto a uno solo.
-- Cualquier monto/cantidad por encima de un **umbral configurable** por empresa (`config_empresa.bypass_umbral`) → confirma.
+- Cualquier monto/cantidad por encima de un **umbral configurable** por empresa → confirma o escala (ver «Política de límites» abajo).
 - Mensajes con **múltiples intenciones** en una frase (p. ej. "vende 2 cemento y registra gasto 10mil").
+
+#### Política de límites (`ai/limites.py`) — el límite vive en la herramienta, no en el permiso
+
+El RBAC dice QUÉ rol puede; los límites dicen CUÁNTO. El despachador aplica una capa SEPARADA del
+cálculo de negocio (sobre `registrar_venta` hoy; lista para `anular_venta`/descuentos cuando se
+expongan), configurable por empresa vía `config_empresa` (control DB, `tools.set_config`):
+
+| Clave | Tipo | Efecto |
+|---|---|---|
+| `venta_monto_max` | decimal | Tope del total de una venta (vacío = sin tope). |
+| `venta_descuento_max_pct` | decimal | % de descuento máximo por línea (precio efectivo vs. catálogo). |
+| `limite_modo` | `confirmar`\|`escalar` | Al exceder: pedir confirmación explícita (default) o exigir un rol superior. |
+| `limite_rol_minimo` | rol | Rol que puede exceder cuando `limite_modo=escalar` (default `admin`). |
+
+`confirmar` → corta con un "¿Confirmo?" y el "sí" del mismo turno reusa la `idempotency_key` (no
+duplica). `escalar` → si el rol no alcanza, devuelve `limite_excedido` (no recuperable) y no ejecuta;
+un rol ≥ `limite_rol_minimo` sí puede. Sin claves configuradas no hay tope (no cambia el comportamiento).
 
 ### 6.5 Confirmación
 

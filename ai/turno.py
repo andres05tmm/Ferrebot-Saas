@@ -49,6 +49,7 @@ from ai.agent import RespuestaAgente, ejecutar_turno, texto_de_respuesta
 from ai.confirmacion import ConfirmStore, VentaPendienteStore, es_afirmacion, es_negacion
 from ai.dispatcher import Dispatcher, Recursos, Respuesta
 from ai.envelope import Contexto
+from ai.rieles import Confirmar
 from apps.bot.ports import (
     ArchivosTelegram,
     CallbackBot,
@@ -462,6 +463,7 @@ def crear_callback_handler(
     pendientes: VentaPendienteStore,
     crear_recursos: RecursosFactory,
     memoria: MemoriaFactory | None = None,
+    confirm: ConfirmStore | None = None,
 ) -> CallbackHandler:
     """Captura el dispatcher + el store de pendientes y devuelve el `CallbackHandler` del webhook.
 
@@ -485,7 +487,7 @@ def crear_callback_handler(
                 await _registrar_con_metodo(
                     data[len(PREFIJO_PAGO):], callback, ctx, session, notificador,
                     dispatcher=dispatcher, pendientes=pendientes,
-                    crear_recursos=crear_recursos, memoria=memoria,
+                    crear_recursos=crear_recursos, memoria=memoria, confirm=confirm,
                 )
             else:
                 log.info("bot_callback_desconocido", data=data, chat_id=callback.chat_id)
@@ -509,11 +511,18 @@ async def _registrar_con_metodo(
     pendientes: VentaPendienteStore,
     crear_recursos: RecursosFactory,
     memoria: MemoriaFactory | None,
+    confirm: ConfirmStore | None = None,
 ) -> None:
     """Ejecuta la venta pendiente con el `metodo` elegido. Consume el pendiente solo si se registró.
 
     El pendiente se borra DESPUÉS de ejecutar; un segundo tap ya no lo encuentra (no re-ejecuta), y si
     dos taps corrieran a la par, la `idempotency_key` estable hace que el despachador dedupe el 2º.
+
+    FAIL-CLOSED ante límites por empresa: si el despachador devuelve `Confirmar` (la venta superó un
+    umbral con `limite_modo=confirmar`), NO se ejecutó nada. Se re-encamina la confirmación al
+    `ConfirmStore` —igual que el camino del modelo— para que el "sí" del usuario la complete
+    (`confirmado=True`, MISMA key); sin `ConfirmStore`, la venta simplemente NO se registra (bloqueada).
+    El modo `escalar` devuelve `ErrorTool(limite_excedido)`: tampoco ejecuta y se informa.
     """
     pendiente = await pendientes.obtener(ctx.tenant_id, callback.chat_id)
     if pendiente is None:
@@ -526,6 +535,20 @@ async def _registrar_con_metodo(
     except Exception:
         log.warning("callback_pago_fallo", chat_id=callback.chat_id, exc_info=True)
         await notificador.responder(callback.chat_id, MENSAJE_RESPALDO)
+        return
+    if isinstance(resultado, Confirmar):
+        # La venta NO se registró (el riel/límite cortó antes del handler). Pasar el pendiente —ya con
+        # método y key— al ConfirmStore para que el "sí" lo re-despache; sin store, queda bloqueada.
+        await pendientes.borrar(ctx.tenant_id, callback.chat_id)
+        if confirm is not None:
+            try:
+                await confirm.guardar(
+                    ctx.tenant_id, callback.chat_id,
+                    tool_call=tool_call, idempotency_key=pendiente.idempotency_key,
+                )
+            except Exception:
+                log.warning("confirmacion_guardar_fallo", chat_id=callback.chat_id, exc_info=True)
+        await notificador.responder(callback.chat_id, texto_de_respuesta(resultado))
         return
     respuesta = texto_de_respuesta(resultado)
     await notificador.responder(callback.chat_id, respuesta)

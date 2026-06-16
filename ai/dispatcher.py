@@ -15,11 +15,14 @@ los rieles `Preguntar`/`Confirmar` cortan y vuelven al usuario; la confirmación
 nuevo reusando la misma `idempotency_key` (no duplica).
 """
 from dataclasses import dataclass, field
+from decimal import Decimal
 
 from pydantic import ValidationError
 
 from ai.envelope import Contexto, ErrorTool, Resultado
+from ai.limites import Escalar, LimitesEmpresa, PedirConfirmacion, Permitir, evaluar_venta
 from ai.ports import CatalogoPrecios, ProductoCatalogo, UmbralesStore
+from ai.saneamiento import revisar as revisar_entrada
 from ai.rieles import (
     Confirmar,
     ItemPrecio,
@@ -33,11 +36,18 @@ from ai.tools import CATALOGO, POR_NOMBRE, Deps, RegistrarVentaArgs, Tool
 from core.auth.rbac import satisface
 from core.llm.base import ToolCall
 from core.llm.factory import ConfigStore, KeyStore, LLMResuelto, PlataformaLLM, Turno, get_llm
+from core.logging import get_logger
 from core.money import cuantizar
 from modules.inventario.precios import obtener_precio_para_cantidad
 
-# Respuesta del despachador: éxito/fallo de herramienta o un corte conversacional del riel.
+log = get_logger("ai.dispatcher")
+
+# Respuesta del despachador: éxito/fallo de herramienta o un corte conversacional del riel/límite.
 Respuesta = Resultado | ErrorTool | Preguntar | Confirmar
+
+# Código de error del envelope cuando un límite por empresa exige un rol superior (no recuperable).
+_ERROR_LIMITE = "limite_excedido"
+_CENT = Decimal("0.01")
 
 
 @dataclass(frozen=True, slots=True)
@@ -82,6 +92,16 @@ class Dispatcher:
 
     # --- Ejecución de una herramienta (rieles incluidos) ----------------------
     async def ejecutar(self, tool_call: ToolCall, ctx: Contexto, recursos: Recursos) -> Respuesta:
+        # Saneamiento de entrada (capa LIGERA previa, agnóstica de la herramienta): texto desmesurado,
+        # caracteres de control, inyección de instrucciones y números absurdos. Antes de resolver nada.
+        motivo = revisar_entrada(tool_call.arguments)
+        if motivo is not None:
+            log.warning(
+                "entrada_rechazada", tenant_id=ctx.tenant_id, tool=tool_call.name,
+                motivo=motivo.detalle, recuperable=motivo.recuperable,
+            )
+            return ErrorTool("validacion", motivo.detalle, recuperable=motivo.recuperable)
+
         tool = POR_NOMBRE.get(tool_call.name)
         if tool is None:
             return ErrorTool("error_interno", f"Herramienta desconocida: {tool_call.name}")
@@ -92,11 +112,13 @@ class Dispatcher:
         if not ctx.tiene_capacidad(tool.feature):
             return ErrorTool("capacidad_no_habilitada", f"{tool.nombre} no está habilitada")
 
-        # Validación de args (Pydantic). Argumentos inválidos del modelo → recuperable.
+        # Validación de args (Pydantic estricta). El detalle crudo (echo de valores, rutas de campos)
+        # NO vuelve al modelo/usuario —puede filtrar internals—: mensaje genérico + detalle al log.
         try:
             args = tool.args_model(**tool_call.arguments)
         except ValidationError as exc:
-            return ErrorTool("validacion", str(exc), recuperable=True)
+            log.info("args_invalidos", tenant_id=ctx.tenant_id, tool=tool.nombre, detalle=str(exc))
+            return ErrorTool("validacion", "Argumentos inválidos para la herramienta.", recuperable=True)
 
         # Rieles ANTES de ejecutar (no muta nada si cortan).
         corte = await self._rieles(tool, args, ctx, recursos)
@@ -105,10 +127,10 @@ class Dispatcher:
 
         return await tool.handler(args, ctx, recursos.deps)
 
-    # --- Rieles ---------------------------------------------------------------
+    # --- Rieles + política de límites -----------------------------------------
     async def _rieles(
         self, tool: Tool, args, ctx: Contexto, recursos: Recursos
-    ) -> Preguntar | Confirmar | None:
+    ) -> Preguntar | Confirmar | ErrorTool | None:
         if tool.valida_productos:
             corte = await self._rieles_venta(args, ctx, recursos)
             if corte is not None:
@@ -126,8 +148,13 @@ class Dispatcher:
 
     async def _rieles_venta(
         self, args: RegistrarVentaArgs, ctx: Contexto, recursos: Recursos
-    ) -> Preguntar | None:
-        """R1 (producto desconocido/ambiguo) y R2 (precio dudoso) sobre los ítems con catálogo."""
+    ) -> Preguntar | Confirmar | ErrorTool | None:
+        """R1 (producto), R2 (precio) y la POLÍTICA DE LÍMITES (monto/descuento) sobre la venta.
+
+        Resuelve los productos UNA sola vez (cache) y comparte esa resolución entre los rieles y los
+        límites (decisión #5b: no relee Postgres). Los rieles viven en ai.rieles y los límites en
+        ai.limites —ambos puros—; este método solo orquesta y traduce la decisión al envelope.
+        """
         cache: dict[int, ProductoCatalogo | None] = {}
         items_r1: list[ItemResuelto] = []
         for it in args.items:
@@ -148,6 +175,9 @@ class Dispatcher:
         if isinstance(decision, Preguntar):
             return decision
 
+        # Una sola lectura de la config de la empresa, reusada por R2 (tolerancia) y por los límites.
+        umbrales = await recursos.umbrales.cargar(ctx.tenant_id)
+
         items_precio: list[ItemPrecio] = []
         for it in args.items:
             if it.producto_id is None or it.precio_unitario is None:
@@ -162,15 +192,84 @@ class Dispatcher:
             )
 
         if items_precio:
-            tol = await recursos.umbrales.cargar(ctx.tenant_id)
             decision = riel_precio(
                 items_precio,
-                tolerancia_pct=tol.precio_tolerancia_pct,
-                tolerancia_min=tol.precio_tolerancia_min,
+                tolerancia_pct=umbrales.precio_tolerancia_pct,
+                tolerancia_min=umbrales.precio_tolerancia_min,
             )
             if isinstance(decision, Preguntar):
                 return decision
+
+        # Política de límites por empresa (monto de venta + % de descuento): capa separada (ai.limites).
+        return self._limites_venta(args, cache, ctx, umbrales.limites)
+
+    def _limites_venta(
+        self,
+        args: RegistrarVentaArgs,
+        cache: dict[int, ProductoCatalogo | None],
+        ctx: Contexto,
+        limites: LimitesEmpresa,
+    ) -> Confirmar | ErrorTool | None:
+        """Aplica los límites de la empresa al monto/descuento de la venta (decisión en ai.limites).
+
+        Reusa la resolución de productos (`cache`) para estimar el total y el descuento máximo —no es el
+        cálculo fiscal, que vive en el servicio—. Devuelve un corte (Confirmar/ErrorTool) o None.
+        """
+        if not limites.activos:                  # sin topes configurados: ni se evalúa
+            return None
+        total, descuento_pct = _montos_venta(args, cache)
+        decision = evaluar_venta(
+            total=total, descuento_pct=descuento_pct, limites=limites,
+            rol=ctx.rol, confirmado=ctx.confirmado,
+        )
+        if isinstance(decision, Permitir):
+            return None
+        if isinstance(decision, Escalar):
+            log.info(
+                "limite_venta_escalado", tenant_id=ctx.tenant_id, rol=ctx.rol,
+                rol_requerido=decision.rol_requerido, total=str(total),
+                descuento_pct=str(descuento_pct), motivos=list(decision.motivos),
+            )
+            return ErrorTool(_ERROR_LIMITE, decision.detalle, recuperable=False)
+        if isinstance(decision, PedirConfirmacion):
+            # Corta y pide un "sí" (mismo turno reusa la idempotency_key → no duplica).
+            log.info(
+                "limite_venta_confirmacion", tenant_id=ctx.tenant_id, rol=ctx.rol,
+                total=str(total), descuento_pct=str(descuento_pct), motivos=list(decision.motivos),
+            )
+            return Confirmar(decision.resumen)
         return None
+
+
+def _montos_venta(
+    args: RegistrarVentaArgs, cache: dict[int, ProductoCatalogo | None]
+) -> tuple[Decimal, Decimal]:
+    """(total de la venta, % de descuento máximo de una línea) para la política de límites.
+
+    Estimación con el MISMO motor de precios que los rieles (no es el cálculo fiscal: ese vive en el
+    servicio). El descuento de una línea es cuánto baja el precio efectivo frente al de catálogo (0 si
+    no hay override o si sube). Reusa la `cache` ya resuelta por los rieles: no agrega lecturas.
+    """
+    total = Decimal("0")
+    descuento_max = Decimal("0")
+    for it in args.items:
+        if it.producto_id is None:               # venta varia: precio obligatorio (ya validado)
+            if it.precio_unitario is not None:
+                total += cuantizar(it.precio_unitario * it.cantidad)
+            continue
+        prod = cache.get(it.producto_id)
+        if prod is None:                          # cubierto por R1; defensa
+            continue
+        total_catalogo, _ = obtener_precio_para_cantidad(prod.esquema, it.cantidad)
+        efectivo = (
+            cuantizar(it.precio_unitario * it.cantidad)
+            if it.precio_unitario is not None else total_catalogo
+        )
+        total += efectivo
+        if total_catalogo > 0 and efectivo < total_catalogo:
+            pct = (total_catalogo - efectivo) / total_catalogo * Decimal("100")
+            descuento_max = max(descuento_max, pct)
+    return cuantizar(total), descuento_max.quantize(_CENT)
 
 
 def _resumen_confirmacion(nombre: str, args) -> str:

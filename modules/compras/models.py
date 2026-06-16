@@ -38,6 +38,9 @@ class Compra(TenantBase):
     )
     fecha: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     total: Mapped[Decimal | None] = mapped_column(MONEY)
+    # Idempotencia estructural (ai-tools.md §4): UNIQUE parcial (WHERE NOT NULL) creado en la migración
+    # 0025. Un reintento con la misma key no duplica la compra ni sus ENTRADAS de inventario.
+    idempotency_key: Mapped[str | None] = mapped_column(Text)
     creado_en: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

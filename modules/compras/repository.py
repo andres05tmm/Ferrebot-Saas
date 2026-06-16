@@ -26,6 +26,19 @@ class ItemCompra:
     costo: Decimal
 
 
+@dataclass(frozen=True, slots=True)
+class CompraIdempotente:
+    """Foto de una compra ya registrada bajo una `idempotency_key`, para comparar el payload (§4).
+
+    Lleva lo necesario para decidir replay vs conflicto sin re-resolver el proveedor: la cabecera, el
+    total y las líneas (producto_id, cantidad, costo).
+    """
+
+    compra: CompraLeer
+    total: Decimal
+    items: tuple[tuple[int, Decimal, Decimal], ...]
+
+
 class SqlComprasRepository:
     def __init__(self, session: AsyncSession) -> None:
         self._s = session
@@ -57,6 +70,23 @@ class SqlComprasRepository:
         await self._s.flush()
         return prov.id
 
+    async def buscar_por_idempotency(self, key: str) -> CompraIdempotente | None:
+        """Compra ya registrada bajo `key` (con su total y líneas), o None. Para el guard de §4."""
+        compra_id = (
+            await self._s.execute(select(Compra.id).where(Compra.idempotency_key == key))
+        ).scalar_one_or_none()
+        if compra_id is None:
+            return None
+        compra = await self._leer(compra_id)
+        filas = (
+            await self._s.execute(
+                select(CompraDetalle.producto_id, CompraDetalle.cantidad, CompraDetalle.costo)
+                .where(CompraDetalle.compra_id == compra_id)
+            )
+        ).all()
+        items = tuple((f.producto_id, f.cantidad, f.costo) for f in filas)
+        return CompraIdempotente(compra=compra, total=compra.total, items=items)
+
     async def crear_compra(
         self,
         *,
@@ -65,9 +95,15 @@ class SqlComprasRepository:
         items: list[ItemCompra],
         total: Decimal,
         usuario_id: int | None,
+        idempotency_key: str | None = None,
     ) -> CompraLeer:
-        """Inserta compra + detalle; por item suma stock (ENTRADA) y fija productos.precio_compra."""
-        compra = Compra(proveedor_id=proveedor_id, fecha=fecha, total=total)
+        """Inserta compra + detalle; por item suma stock (ENTRADA) y fija productos.precio_compra.
+
+        `idempotency_key` se persiste con UNIQUE parcial (migración 0025): el chequeo previo del servicio
+        evita el doble registro y el índice es el respaldo estructural ante una carrera.
+        """
+        compra = Compra(proveedor_id=proveedor_id, fecha=fecha, total=total,
+                        idempotency_key=idempotency_key)
         self._s.add(compra)
         await self._s.flush()  # asigna compra.id
 

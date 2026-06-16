@@ -5,10 +5,11 @@ del tenant. Capacidades NO está aquí: viajan ya resueltas en `Contexto.capacid
 (feature-flags.md), el despachador las lee directo. Los umbrales (la costura del ADR 0005) salen
 de `config_empresa`; aquí van el puerto + el store real y los defaults de plataforma.
 """
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from decimal import Decimal, InvalidOperation
 from typing import Protocol
 
+from ai.limites import LimitesEmpresa, limites_desde_overrides
 from modules.inventario.precios import EsquemaPrecio
 
 # Claves en config_empresa (texto plano, no secreto).
@@ -52,11 +53,16 @@ class CatalogoDesdeVentas:
 # --- Umbrales por empresa (config_empresa) -----------------------------------
 @dataclass(frozen=True, slots=True)
 class Umbrales:
-    """Umbrales de los rieles. Defaults seguros (confirmar ON, tolerancia 1 % / mín 1 peso)."""
+    """Umbrales por empresa para los rieles + la política de límites. Defaults seguros.
+
+    `limites` es una sub-config SEPARADA (ai.limites): topes de monto/descuento. Va aquí para resolverse
+    en la MISMA lectura de config_empresa que los rieles, pero su lógica de decisión vive en ai.limites.
+    """
 
     confirmar_mutaciones: bool = True
     precio_tolerancia_pct: Decimal = Decimal("1")
     precio_tolerancia_min: Decimal = Decimal("1")
+    limites: LimitesEmpresa = field(default_factory=LimitesEmpresa)
 
 
 DEFECTO = Umbrales()
@@ -87,6 +93,7 @@ def umbrales_desde_overrides(overrides: dict[str, str]) -> Umbrales:
         confirmar_mutaciones=_a_bool(overrides.get(_CLAVE_CONFIRMAR), DEFECTO.confirmar_mutaciones),
         precio_tolerancia_pct=_a_decimal(overrides.get(_CLAVE_TOL_PCT), DEFECTO.precio_tolerancia_pct),
         precio_tolerancia_min=_a_decimal(overrides.get(_CLAVE_TOL_MIN), DEFECTO.precio_tolerancia_min),
+        limites=limites_desde_overrides(overrides),
     )
 
 

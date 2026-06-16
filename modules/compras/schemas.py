@@ -33,6 +33,10 @@ class CompraCrear(BaseModel):
     proveedor: ProveedorRef
     fecha: date | None = None
     items: list[CompraItemCrear] = Field(min_length=1)
+    # Idempotencia (ai-tools.md §4): la fija el cliente/bot. En REST llega por el header
+    # `Idempotency-Key` (el router la copia aquí). Misma key + mismo payload → la compra original;
+    # misma key + payload distinto → idempotencia_conflicto.
+    idempotency_key: str | None = None
 
 
 class CompraLeer(BaseModel):

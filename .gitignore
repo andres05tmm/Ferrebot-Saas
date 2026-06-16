@@ -33,6 +33,8 @@ eval-*.md
 eval-*.json
 # Respaldos de prod (los .dump llevan datos reales + secretos cifrados) — nunca commitear.
 backups/
+# CodeGraph: indice local de codigo (SQLite, se reconstruye con `codegraph init`).
+.codegraph/
 # Varios
 .DS_Store
 *.log

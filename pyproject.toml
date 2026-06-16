@@ -52,6 +52,11 @@ asyncio_mode = "auto"
 testpaths = ["tests", "modules"]
 python_files = ["test_*.py"]
 addopts = "-ra -q"
+markers = [
+    # Evals del agente (tests/evals/): precisión de function-call + aislamiento multi-tenant.
+    # Corren dentro de la suite completa y, además, en un paso de CI dedicado (señal crítica) con `-m eval`.
+    "eval: harness de evaluación del agente (function-call accuracy y aislamiento de tenant)",
+]
 
 [tool.uv]
 # uv gestiona el venv con Python 3.12 (asyncpg/psycopg tienen wheels estables ahí)

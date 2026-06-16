@@ -276,6 +276,68 @@ async def test_doble_tap_pago_no_duplica():
     assert notif.callbacks_respondidos == ["cb-3", "cb-3"]   # ack en ambos taps
 
 
+# ============================ F-B: límite por empresa (fail-closed) ============
+
+class _FakeConfirmStore:
+    def __init__(self):
+        self.guardados: list[tuple] = []
+
+    async def guardar(self, tenant_id, chat_id, *, tool_call, idempotency_key):
+        self.guardados.append((tenant_id, chat_id, tool_call, idempotency_key))
+
+    async def obtener(self, tenant_id, chat_id):
+        return None
+
+    async def borrar(self, tenant_id, chat_id):
+        pass
+
+
+async def test_callback_limite_confirmar_no_completa_y_reencamina_a_confirmstore():
+    # Si la venta supera el límite (limite_modo=confirmar), el despachador devuelve Confirmar SIN
+    # ejecutar la mutación (ver test_limites). El callback NO debe darla por registrada: re-encamina
+    # la confirmación al ConfirmStore (con método + key) para que el "sí" la complete.
+    from ai.rieles import Confirmar
+
+    pendientes = _FakeVentaPendientes()
+    await pendientes.guardar(1, 555, tool_call=_tool_call_sin_metodo(), idempotency_key="key-1")
+    disp = _SpyDispatcher(Confirmar("La operación excede los límites. ¿Confirmo?"))
+    confirm = _FakeConfirmStore()
+    notif = _BotonNotificador()
+    handler = crear_callback_handler(
+        dispatcher=disp, pendientes=pendientes, crear_recursos=lambda s: object(),
+        memoria=lambda s: _FakeMemoria(), confirm=confirm,
+    )
+    callback = CallbackBot(callback_id="cb-l1", chat_id=555, telegram_id=555,
+                           data=f"{PREFIJO_PAGO}efectivo")
+    await handler(callback, _ctx(), _SESSION, notif)
+
+    assert pendientes.borrados == [(1, 555)]              # se consumió el pendiente de venta
+    assert len(confirm.guardados) == 1                    # se re-encaminó al ConfirmStore
+    _t, _c, tool_call, key = confirm.guardados[0]
+    assert tool_call.arguments.get("metodo_pago") == "efectivo" and key == "key-1"
+    assert notif.callbacks_respondidos == ["cb-l1"]       # ack a Telegram
+
+
+async def test_callback_limite_sin_confirmstore_queda_bloqueada():
+    # Sin ConfirmStore cableado (defensivo): fail-closed — la venta no se registra ni re-encamina.
+    from ai.rieles import Confirmar
+
+    pendientes = _FakeVentaPendientes()
+    await pendientes.guardar(1, 555, tool_call=_tool_call_sin_metodo(), idempotency_key="key-1")
+    disp = _SpyDispatcher(Confirmar("¿Confirmo?"))
+    notif = _BotonNotificador()
+    handler = crear_callback_handler(
+        dispatcher=disp, pendientes=pendientes, crear_recursos=lambda s: object(),
+        memoria=lambda s: _FakeMemoria(),                 # SIN confirm
+    )
+    callback = CallbackBot(callback_id="cb-l2", chat_id=555, telegram_id=555,
+                           data=f"{PREFIJO_PAGO}efectivo")
+    await handler(callback, _ctx(), _SESSION, notif)
+
+    assert pendientes.borrados == [(1, 555)]              # consumido; no queda venta colgada
+    assert notif.callbacks_respondidos == ["cb-l2"]
+
+
 # ============================ estructurales (PASAN) ============================
 
 class _FakeCliente:

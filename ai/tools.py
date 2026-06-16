@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 from typing import Literal, Protocol
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from ai.envelope import Contexto, ErrorTool, Resultado
 from core.llm.base import ToolSpec
@@ -54,12 +54,28 @@ class Deps:
     cierre_pos: CierreVentaPort | None = None
 
 
+# Topes de cordura por campo (rango razonable de mostrador). Defensa además del saneamiento previo
+# (ai.saneamiento) y de los rieles/límites: un valor mayor es absurdo en este dominio.
+MAX_CANTIDAD = Decimal("100000")        # cien mil unidades en una línea
+MAX_MONTO = Decimal("1000000000")       # mil millones COP en un precio/monto
+
+
 # --- Args de cada herramienta (lo único que provee el modelo) ----------------
-class ItemVentaArg(BaseModel):
-    producto_id: int | None = None
+class ArgsTool(BaseModel):
+    """Base de los args de herramienta: validación ESTRICTA — rechaza campos no declarados.
+
+    `extra="forbid"` evita que el modelo (o un mensaje malicioso) cuele parámetros no contemplados; se
+    refleja como `additionalProperties: false` en el JSON Schema que ve el modelo.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class ItemVentaArg(ArgsTool):
+    producto_id: int | None = Field(default=None, gt=0)
     descripcion: str | None = None
-    cantidad: Decimal = Field(gt=0)
-    precio_unitario: Decimal | None = Field(default=None, ge=0)
+    cantidad: Decimal = Field(gt=0, le=MAX_CANTIDAD)
+    precio_unitario: Decimal | None = Field(default=None, ge=0, le=MAX_MONTO)
     # Explícito: True solo si el USUARIO dijo el precio. El despachador NO lo infiere; el riel de
     # precio confía en esta bandera para no cuestionar un precio declarado (ADR 0005).
     precio_dicho_por_usuario: bool = False
@@ -74,40 +90,42 @@ class ItemVentaArg(BaseModel):
         return self
 
 
-class RegistrarVentaArgs(BaseModel):
-    items: list[ItemVentaArg] = Field(min_length=1)
+class RegistrarVentaArgs(ArgsTool):
+    items: list[ItemVentaArg] = Field(min_length=1, max_length=200)
     metodo_pago: MetodoPago
-    cliente_id: int | None = None       # requerido si metodo_pago = fiado
+    cliente_id: int | None = Field(default=None, gt=0)   # requerido si metodo_pago = fiado
 
 
-class RegistrarGastoArgs(BaseModel):
+class RegistrarGastoArgs(ArgsTool):
     categoria: str = Field(min_length=1)
-    monto: Decimal = Field(gt=0)
+    monto: Decimal = Field(gt=0, le=MAX_MONTO)
     concepto: str | None = None
 
 
-class RegistrarFiadoArgs(BaseModel):
-    cliente_id: int
-    venta_id: int | None = None
-    monto: Decimal = Field(gt=0)
+class RegistrarFiadoArgs(ArgsTool):
+    cliente_id: int = Field(gt=0)
+    venta_id: int | None = Field(default=None, gt=0)
+    monto: Decimal = Field(gt=0, le=MAX_MONTO)
 
 
-class AbonarFiadoArgs(BaseModel):
+class AbonarFiadoArgs(ArgsTool):
     # Abono por `fiado_id` (el modelo lo resuelve antes con una consulta). El abono por
     # `cliente_id` agregando sus fiados queda fuera de este alcance (el servicio abona por fiado).
-    fiado_id: int
-    monto: Decimal = Field(gt=0)
+    fiado_id: int = Field(gt=0)
+    monto: Decimal = Field(gt=0, le=MAX_MONTO)
 
 
 class CrearClienteArgs(ClienteCrear):
-    """Mismos campos que ClienteCrear (ai-tools.md §5.4)."""
+    """Mismos campos que ClienteCrear (ai-tools.md §5.4), pero estricto: sin campos no declarados."""
+
+    model_config = ConfigDict(extra="forbid")
 
 
-class ConsultarVentasDiaArgs(BaseModel):
+class ConsultarVentasDiaArgs(ArgsTool):
     """Sin parámetros: la consulta es SIEMPRE de hoy (zona Colombia)."""
 
 
-class ConsultarProductoArgs(BaseModel):
+class ConsultarProductoArgs(ArgsTool):
     nombre: str = Field(min_length=1)
 
 

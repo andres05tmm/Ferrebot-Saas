@@ -28,3 +28,22 @@
   ítems+total pero proveedor-por-nombre distinto se trata como replay (devuelve la original).
 - **Riesgo:** muy bajo (edge); no inserta nada nuevo.
 - **Acción:** si se requiere estricto, resolver proveedor sin efecto secundario y compararlo.
+
+### FF-4 — Config de límites inválida se vuelve "sin tope" en silencio
+- **Qué:** `limites_desde_overrides` (`ai/limites.py`) convierte un valor inválido o ≤0 en
+  `venta_monto_max` / `venta_descuento_max_pct` a `None` = sin tope. Es fail-open a nivel de
+  **configuración**: un typo al setear el límite lo desactiva sin avisar (el enforcement en runtime
+  sigue siendo fail-closed; el hueco es que el tope podría no existir por un valor mal escrito).
+- **Riesgo:** bajo. El default seguro de runtime no cambia; el riesgo es operativo (creer que hay
+  tope cuando no).
+- **Acción:** validar el valor al **setearlo** en `config_empresa` (`tools/set_config.py`): rechazar
+  no-numérico/≤0 para esas claves, en vez de aceptarlo y degradarlo a "sin tope".
+
+### FF-5 — Falso positivo del denylist de inyección en texto libre
+- **Qué:** el patrón anti-inyección de `ai/saneamiento.py` corre sobre TODOS los campos de texto,
+  incluidos los de texto libre legítimo (`descripcion` de venta varia, `concepto` de gasto). Una
+  frase desafortunada podría dar match y bloquear la operación como `validacion` **no recuperable**.
+- **Riesgo:** bajo (los patrones son de alta señal), pero el bloqueo es duro (no recuperable).
+- **Acción:** monitorear logs `entrada_rechazada` por falsos positivos; considerar NO aplicar el
+  patrón de inyección sobre el contenido de esos campos conocidos de texto libre (sí mantener el cap
+  de longitud y el filtro de caracteres de control).

@@ -44,12 +44,16 @@ class SqlProveedoresRepository:
     async def crear_factura(
         self, *, factura_id: str, proveedor: str, descripcion: str | None,
         total: Decimal, fecha: date, usuario_id: int | None,
+        fecha_vencimiento: date | None = None,
     ) -> FacturaProveedorLeer:
-        """INSERT con pagado=0, pendiente=total, estado='pendiente' (montos cuantizados a centavos)."""
+        """INSERT con pagado=0, pendiente=total, estado='pendiente' (montos cuantizados a centavos).
+
+        `fecha_vencimiento` es opcional: NULL deja que el motor de pagar lo derive (sin cambios)."""
         total = cuantizar(total)
         orm = FacturaProveedor(
             id=factura_id, proveedor=proveedor, descripcion=descripcion, total=total,
-            pagado=Decimal("0.00"), pendiente=total, estado="pendiente", fecha=fecha, usuario_id=usuario_id,
+            pagado=Decimal("0.00"), pendiente=total, estado="pendiente", fecha=fecha,
+            fecha_vencimiento=fecha_vencimiento, usuario_id=usuario_id,
         )
         self._s.add(orm)
         await self._s.flush()

@@ -2,7 +2,7 @@
 from datetime import date
 from decimal import Decimal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class ProveedorLeer(BaseModel):
@@ -23,6 +23,24 @@ class FacturaProveedorCrear(BaseModel):
     descripcion: str | None = None
     total: Decimal = Field(gt=0)
     fecha: date | None = None   # default hoy Colombia en el servicio
+    # Vencimiento real impreso en la factura (pack_pagar). OPCIONAL y backward-compatible: si es NULL,
+    # el motor de pagar lo deriva de `fecha + plazo_default_dias` (comportamiento actual sin cambios).
+    fecha_vencimiento: date | None = None
+
+    @model_validator(mode="after")
+    def _vencimiento_no_anterior_a_fecha(self) -> "FacturaProveedorCrear":
+        """Si se dan ambas fechas, el vencimiento no puede ser anterior a la fecha de la factura.
+
+        Cuando `fecha` es None (se asume hoy en el servicio) no se compara: registrar una factura YA
+        vencida es válido (la cuenta debe poder marcarse vencida), solo se prohíbe el orden absurdo.
+        """
+        if (
+            self.fecha_vencimiento is not None
+            and self.fecha is not None
+            and self.fecha_vencimiento < self.fecha
+        ):
+            raise ValueError("La fecha de vencimiento no puede ser anterior a la fecha de la factura")
+        return self
 
 
 class AbonoCrear(BaseModel):
@@ -46,6 +64,7 @@ class FacturaProveedorLeer(BaseModel):
     pendiente: Decimal
     estado: str
     fecha: date
+    fecha_vencimiento: date | None
     foto_url: str | None
     foto_nombre: str | None
 

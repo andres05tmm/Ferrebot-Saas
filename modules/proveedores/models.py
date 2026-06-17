@@ -29,6 +29,9 @@ class FacturaProveedor(TenantBase):
     pendiente: Mapped[Decimal] = mapped_column(MONEY, nullable=False)
     estado: Mapped[str] = mapped_column(Text, nullable=False, server_default="pendiente")
     fecha: Mapped[date] = mapped_column(Date, nullable=False)
+    # Vencimiento de la cuenta por pagar (pack_pagar / tenant 0026). NULL = se deriva de
+    # `fecha + pagar_config.plazo_default_dias` en el motor; el plano de avisos no toca saldos.
+    fecha_vencimiento: Mapped[date | None] = mapped_column(Date)
     foto_url: Mapped[str | None] = mapped_column(Text)
     foto_nombre: Mapped[str | None] = mapped_column(Text)
     # FK a usuarios existe en la BD (migración); el ORM no la modela (no hay modelo Usuario), como caja/ventas.

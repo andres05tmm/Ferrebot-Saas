@@ -101,6 +101,7 @@ function ProveedoresContenido() {
                     <div className="text-[13px] font-medium truncate">{f.proveedor} · {f.id}</div>
                     <div className="text-[11px] text-muted-foreground">
                       Pendiente <span className="tabular font-semibold">{cop(Number(f.pendiente))}</span> de {cop(Number(f.total))}
+                      {f.fecha_vencimiento && <span> · vence {f.fecha_vencimiento}</span>}
                     </div>
                   </div>
                   <Badge variant="outline" className={`h-5 text-[10px] capitalize shrink-0 ${ESTADO_BADGE[f.estado] || ''}`}>
@@ -126,7 +127,7 @@ function ProveedoresContenido() {
 }
 
 function RegistrarFactura({ onCreada }) {
-  const [f, setF] = useState({ id: '', proveedor: '', descripcion: '', total: '', fecha: '' })
+  const [f, setF] = useState({ id: '', proveedor: '', descripcion: '', total: '', fecha: '', fecha_vencimiento: '' })
   const [enviando, setEnviando] = useState(false)
   const set = (k) => (e) => setF(prev => ({ ...prev, [k]: e.target.value }))
 
@@ -134,11 +135,15 @@ function RegistrarFactura({ onCreada }) {
     if (!f.id.trim() || !f.proveedor.trim() || !(Number(f.total) > 0)) {
       toast.error('Indica nº de factura, proveedor y total válido'); return
     }
+    if (f.fecha && f.fecha_vencimiento && f.fecha_vencimiento < f.fecha) {
+      toast.error('El vencimiento no puede ser anterior a la fecha de la factura'); return
+    }
     const payload = {
       id: f.id.trim(), proveedor: f.proveedor.trim(),
       descripcion: f.descripcion.trim() || null, total: Number(f.total),
     }
     if (f.fecha) payload.fecha = f.fecha
+    if (f.fecha_vencimiento) payload.fecha_vencimiento = f.fecha_vencimiento
     setEnviando(true)
     try {
       const res = await api('/proveedores/facturas', {
@@ -147,7 +152,7 @@ function RegistrarFactura({ onCreada }) {
       if (res.status === 409) { toast.error('Ya existe una factura con ese número'); return }
       if (!res.ok) { toast.error('No se pudo registrar la factura'); return }
       toast.success('Factura registrada')
-      setF({ id: '', proveedor: '', descripcion: '', total: '', fecha: '' })
+      setF({ id: '', proveedor: '', descripcion: '', total: '', fecha: '', fecha_vencimiento: '' })
       onCreada()
     } catch { toast.error('Error de conexión') } finally { setEnviando(false) }
   }
@@ -163,6 +168,11 @@ function RegistrarFactura({ onCreada }) {
           <Input type="number" value={f.total} onChange={set('total')} placeholder="Total *" aria-label="Total" className="h-9 flex-1" />
           <Input type="date" value={f.fecha} onChange={set('fecha')} aria-label="Fecha factura" className="h-9 flex-1" />
         </div>
+        <label className="flex flex-col gap-1">
+          <span className="text-[11px] text-muted-foreground">Vencimiento (opcional)</span>
+          <Input type="date" value={f.fecha_vencimiento} onChange={set('fecha_vencimiento')}
+            aria-label="Fecha de vencimiento" className="h-9" />
+        </label>
         <button onClick={crear} disabled={enviando}
           className="w-full h-10 rounded-md bg-primary text-primary-foreground font-medium hover:bg-primary-hover disabled:opacity-60">
           {enviando ? 'Guardando…' : 'Registrar factura'}

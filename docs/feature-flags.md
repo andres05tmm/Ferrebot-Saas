@@ -27,6 +27,7 @@
 | `pack_ventas` | Cotizaciones y carrito por WhatsApp con el catálogo real (ADR 0017) | `pos` |
 | `pack_reservas` | Reservas por noches (hotel) sobre el motor de agenda | `pack_agenda` |
 | `pack_postventa` | Encuesta 1-5, reseñas y seguimiento tras cita/pedido | — |
+| `pack_pagar` | Aviso **interno** al dueño de cuentas por pagar vencidas/próximas a vencer + página Cuentas por pagar (ADR 0019) | `pos` |
 | `pagos_online` | Link/QR de cobro (Bre-B vía Bold) + conciliación (ADR 0013) | — |
 | `mayorista` | Precio mayorista por producto | — |
 | `ventas_voz` | Ventas por audio (Whisper) en el bot | `bot_telegram` |

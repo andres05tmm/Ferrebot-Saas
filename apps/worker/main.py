@@ -28,6 +28,7 @@ from core.config import get_settings
 from core.config.timezone import now_co
 from core.db.session import control_session, tenant_session
 from core.db.urls import tenant_url
+from core.events.publisher import publish
 from core.llm.factory import PlataformaLLM, Turno, get_llm
 from core.llm.stores import ControlLLMConfigStore, ControlLLMKeyStore
 from core.logging import get_logger
@@ -49,6 +50,8 @@ from core.pagos.bold import BoldClient
 from core.pagos.config import cargar_config_bold
 from modules.cobranza.repository import SqlCobranzaRepository
 from modules.cobranza.service import CobranzaService, DeudorRecordatorio
+from modules.pagar.repository import SqlPagarRepository
+from modules.pagar.service import AvisoPagar, PagarService
 from modules.pagos.repository import SqlPagosRepository
 from modules.pagos.service import PagosService
 from modules.postventa.repository import SqlPostventaRepository
@@ -339,6 +342,67 @@ async def recordatorios_cobranza(ctx: dict) -> str:
     return f"enviados={enviados}"
 
 
+def _hacer_enviar_pagar(session):
+    """Closure `enviar(aviso) -> bool`: publica el resumen como evento INTERNO para el DUEÑO (ADR 0019).
+
+    A diferencia de cobranza (plantilla paga de Kapso a un tercero), el aviso de cuentas por pagar no
+    sale de la empresa: se emite por `pg_notify` en la MISMA transacción del tenant (transaccional —
+    el NOTIFY solo viaja al COMMIT, junto con el sellado del dedup), sin costo de plantilla. La página
+    "Cuentas por pagar" del dashboard reacciona al evento. Un fallo de publicación no tumba el barrido:
+    devuelve False → el motor no sella y reintenta en la próxima corrida.
+    """
+
+    async def enviar(aviso: AvisoPagar) -> bool:
+        try:
+            await publish(session, "pagar_aviso", {
+                "facturas": len(aviso.cuentas),
+                "total_por_vencer": str(aviso.total_por_vencer),
+                "total_vencido": str(aviso.total_vencido),
+                "generado_en": aviso.generado_en.isoformat(),
+            })
+            return True
+        except Exception:  # noqa: BLE001 — un fallo de publicación no debe tumbar el job
+            log.exception("pagar_envio_error")
+            return False
+
+    return enviar
+
+
+async def avisos_pagar(ctx: dict) -> str:
+    """Cron de cuentas por pagar (ADR 0019): por cada tenant con `pack_pagar`, avisa al DUEÑO de las
+    facturas de proveedor próximas a vencer/vencidas. Barre TODOS los tenants (el aviso es interno vía
+    SSE, no depende de WhatsApp como cobranza).
+
+    Smoke manual (como los demás crons): la lógica determinista (ventana horaria, cadencia, dedup) vive
+    en `PagarService.procesar_avisos` (testeada contra base efímera). Aquí solo el barrido multi-tenant:
+    filtra por capacidad, abre la base de cada empresa y corre el motor con el `enviar` interno (SSE).
+    """
+    async with control_session() as cs:
+        tenants = await listar_tenants(cs)
+
+    notificadas = 0
+    for t in tenants:
+        if "pack_pagar" not in t.features:
+            continue
+        async with control_session() as cs:
+            tenant = await resolve_tenant_by_id(cs, t.id)
+        if tenant is None:
+            continue
+        try:
+            async for s in tenant_session(tenant):   # commit al cerrar el generador
+                servicio = PagarService(SqlPagarRepository(s))
+                resumen = await servicio.procesar_avisos(ahora=now_co(), enviar=_hacer_enviar_pagar(s))
+                notificadas += resumen.facturas_notificadas
+                if resumen.avisos_enviados:
+                    log.info(
+                        "pagar_tenant", tenant_id=t.id,
+                        avisos=resumen.avisos_enviados, facturas=resumen.facturas_notificadas,
+                    )
+        except Exception:  # noqa: BLE001 — un fallo en un tenant no debe tumbar el barrido
+            log.exception("avisos_pagar_error", tenant_id=t.id)
+    return f"notificadas={notificadas}"
+
+
 def _hacer_enviar_postventa(sender: KapsoSender, settings, phone_number_id: str):
     """Closure `enviar(seguimiento) -> bool` que manda la PLANTILLA de postventa por el número del tenant.
 
@@ -498,6 +562,9 @@ class WorkerSettings:
         cron(reconciliar_pendientes, minute=set(range(0, 60, 10)), run_at_startup=False),
         # Cobranza (ADR 0015): cada 30 min; la ventana horaria/cadencia/tope los aplica el motor.
         cron(recordatorios_cobranza, minute={5, 35}, run_at_startup=False),
+        # Cuentas por pagar (ADR 0019): cada 30 min (decalado de cobranza); la ventana/cadencia/dedup
+        # los aplica el motor. Aviso INTERNO al dueño (SSE), no depende de WhatsApp.
+        cron(avisos_pagar, minute={10, 40}, run_at_startup=False),
         # Pagos (ADR 0013): conciliación por polling cada 5 min (links pagados → estado + SSE).
         cron(conciliar_cobros, minute=set(range(2, 60, 5)), run_at_startup=False),
         # Postventa (plan §2.6): cada hora; la espera tras el evento y el dedup los aplica el motor.

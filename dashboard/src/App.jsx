@@ -35,6 +35,7 @@ import TabAgenda from './tabs/TabAgenda.jsx'
 import TabConversaciones from './tabs/TabConversaciones.jsx'
 import TabConocimiento from './tabs/TabConocimiento.jsx'
 import TabCartera from './tabs/TabCartera.jsx'
+import TabCuentasPorPagar from './tabs/TabCuentasPorPagar.jsx'
 import TabPedidos from './tabs/TabPedidos.jsx'
 import { ROUTES } from './routes.jsx'
 
@@ -60,6 +61,7 @@ const TABS = {
   '/conversaciones': TabConversaciones,
   '/conocimiento': TabConocimiento,
   '/cartera': TabCartera,
+  '/cuentas-por-pagar': TabCuentasPorPagar,
   '/pedidos': TabPedidos,
 }
 import { bootConfig } from './lib/config.js'

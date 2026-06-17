@@ -21,7 +21,7 @@ OPCIONALES: frozenset[str] = frozenset({
     "pos_electronico",
     "compras_fiscal", "honorarios", "fiados", "mayorista", "ventas_voz", "bot_telegram",
     "multi_vendedor", "pack_agenda", "pack_faq", "pack_cobranza", "pack_pedidos", "pack_ventas",
-    "pack_reservas", "pack_postventa", "canal_whatsapp", "pagos_online",
+    "pack_reservas", "pack_postventa", "pack_pagar", "canal_whatsapp", "pagos_online",
 })
 
 # feature → conjunto-requisito en modo OR: basta UNA del conjunto para satisfacer la dependencia.
@@ -44,6 +44,9 @@ DEPENDENCIAS: dict[str, frozenset[str]] = {
     "pack_ventas": frozenset({"pos"}),
     # Reservas (plan §2.7): la variante noches DEL motor de agenda (citas/recursos/config).
     "pack_reservas": frozenset({"pack_agenda"}),
+    # Pagar (ADR 0019): aviso interno al dueño de cuentas por pagar. Su fuente es `facturas_proveedores`,
+    # que escribe el módulo proveedores (alta de factura + abonos); ese módulo vive tras `pos`.
+    "pack_pagar": frozenset({"pos"}),
 }
 
 

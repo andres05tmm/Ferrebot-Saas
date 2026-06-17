@@ -5,6 +5,7 @@ Cubre: factura nace pendiente, abono recalcula el saldo, abonos que saldan → '
 404/422 del abono, resumen, admin-only, y la foto (con un fake de Cloudinary → URL; sin Cloudinary →
 503). NUNCA hay red real.
 """
+from datetime import timedelta
 from decimal import Decimal
 
 import httpx
@@ -15,7 +16,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.auth import Principal, get_current_user
 from core.auth.features import get_capacidades
+from core.config.timezone import today_co
 from core.db.session import get_tenant_db
+from modules.pagar.repository import SqlPagarRepository
+from modules.pagar.service import PagarService
 from modules.proveedores.router import get_cloudinary_client, router as proveedores_router
 
 
@@ -82,7 +86,8 @@ async def test_crear_factura_nace_pendiente(tenant):
     assert body == {
         "id": "FAC-001", "proveedor": "Ferre Mayorista", "descripcion": None,
         "total": "100000.00", "pagado": "0.00", "pendiente": "100000.00",
-        "estado": "pendiente", "fecha": "2026-06-05", "foto_url": None, "foto_nombre": None,
+        "estado": "pendiente", "fecha": "2026-06-05", "fecha_vencimiento": None,
+        "foto_url": None, "foto_nombre": None,
     }
 
 
@@ -272,3 +277,78 @@ async def test_subir_foto_sin_cloudinary_503(tenant):
             files={"file": ("soporte.jpg", b"datos", "image/jpeg")},
         )
     assert r.status_code == 503, r.text
+
+
+# ---- fecha_vencimiento (pack_pagar, opcional + backward-compatible) ---------
+async def test_crear_factura_persiste_fecha_vencimiento(tenant):
+    async with AsyncSession(tenant.engine) as s:
+        uid = await _seed_usuario(s)
+        await s.commit()
+    async with _cliente(_app(tenant, user_id=uid)) as c:
+        r = await c.post(
+            "/api/v1/proveedores/facturas",
+            json=_factura(fecha="2026-06-05", fecha_vencimiento="2026-07-05"),
+        )
+        assert r.status_code == 201, r.text
+        assert r.json()["fecha_vencimiento"] == "2026-07-05"
+        lista = await c.get("/api/v1/proveedores/facturas")   # se persiste y vuelve en el listado
+    assert lista.json()[0]["fecha_vencimiento"] == "2026-07-05"
+
+
+async def test_crear_factura_sin_vencimiento_queda_null(tenant):
+    """Backward-compatible: sin el campo, la factura entra con vencimiento NULL (comportamiento actual)."""
+    async with AsyncSession(tenant.engine) as s:
+        uid = await _seed_usuario(s)
+        await s.commit()
+    async with _cliente(_app(tenant, user_id=uid)) as c:
+        r = await c.post("/api/v1/proveedores/facturas", json=_factura())
+    assert r.status_code == 201 and r.json()["fecha_vencimiento"] is None
+
+
+async def test_vencimiento_anterior_a_fecha_es_422(tenant):
+    async with AsyncSession(tenant.engine) as s:
+        uid = await _seed_usuario(s)
+        await s.commit()
+    async with _cliente(_app(tenant, user_id=uid)) as c:
+        r = await c.post(
+            "/api/v1/proveedores/facturas",
+            json=_factura(fecha="2026-06-05", fecha_vencimiento="2026-06-01"),
+        )
+    assert r.status_code == 422, r.text
+
+
+async def test_motor_pagar_usa_fecha_vencimiento_capturada(tenant):
+    """End-to-end: el vencimiento capturado en proveedores manda en el motor de pagar — el vencimiento
+    efectivo es el capturado, NO el derivado (`fecha + plazo_default_dias`, que daría hoy+30: lejano)."""
+    async with AsyncSession(tenant.engine) as s:
+        uid = await _seed_usuario(s)
+        await s.commit()
+    hoy = today_co()
+    vence = hoy + timedelta(days=2)
+    async with _cliente(_app(tenant, user_id=uid)) as c:
+        r = await c.post("/api/v1/proveedores/facturas", json=_factura(
+            fecha=hoy.isoformat(), fecha_vencimiento=vence.isoformat()))
+        assert r.status_code == 201, r.text
+
+    async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
+        cuentas = await PagarService(SqlPagarRepository(s)).cuentas_por_pagar(hoy)
+    cuenta = next(x for x in cuentas if x.factura_id == "FAC-001")
+    assert cuenta.vencimiento_efectivo == vence            # usa la capturada, no la derivada
+    assert cuenta.dias_para_vencer == 2 and cuenta.por_vencer and not cuenta.vencida
+
+
+async def test_aislamiento_factura_con_vencimiento_no_cruza_tenant(tenant_factory):
+    empresa_a = await tenant_factory()
+    empresa_b = await tenant_factory()
+    async with AsyncSession(empresa_a.engine) as s:
+        uid = await _seed_usuario(s)
+        await s.commit()
+    async with _cliente(_app(empresa_a, user_id=uid)) as c:
+        r = await c.post(
+            "/api/v1/proveedores/facturas",
+            json=_factura(fecha_vencimiento="2026-07-05"),
+        )
+        assert r.status_code == 201, r.text
+    async with _cliente(_app(empresa_b, user_id=1)) as c:
+        lista_b = await c.get("/api/v1/proveedores/facturas")
+    assert lista_b.json() == []   # B nunca ve la factura (ni su vencimiento) de A

@@ -38,7 +38,8 @@ class ProveedoresService:
             raise FacturaProveedorDuplicada(datos.id)
         return await self._repo.crear_factura(
             factura_id=datos.id, proveedor=datos.proveedor, descripcion=datos.descripcion,
-            total=datos.total, fecha=datos.fecha or today_co(), usuario_id=usuario_id,
+            total=datos.total, fecha=datos.fecha or today_co(),
+            fecha_vencimiento=datos.fecha_vencimiento, usuario_id=usuario_id,
         )
 
     async def registrar_abono(self, datos: AbonoCrear) -> FacturaProveedorLeer:

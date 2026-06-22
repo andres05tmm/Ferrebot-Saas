@@ -28,6 +28,7 @@ from ai.dispatcher import Dispatcher, Recursos, Respuesta
 from ai.envelope import Contexto
 from ai.ports import ProductoCatalogo
 from core.llm.base import ToolCall
+from modules.inventario.normalizacion import normalizar_terminos
 from modules.inventario.precios import (
     EsquemaPrecio,
     _fraccion_que_coincide,
@@ -141,6 +142,18 @@ def quitar_unidad_inicial(texto: str) -> str:
     return " ".join(resto)
 
 
+_RE_DE_MEDIDA = re.compile(r"\bde (?=\d)")
+
+
+def quitar_de_medida(slug: str) -> str:
+    """Quita "de" cuando antecede a una MEDIDA numérica del slug: "tornillo drywall de 6x1" →
+    "tornillo drywall 6x1" (el catálogo es "TORNILLO DRYWALL 6X1"). Se usa SOLO como reintento de
+    resolución, DESPUÉS de probar el slug original: así un producto cuyo nombre SÍ lleva "de N"
+    ("tornillo de 5/16") casa directo y no se rompe, y uno donde el vendedor agregó "de" casa al
+    reintentar. `producto_exacto` exige match único, así que el reintento nunca adivina."""
+    return _RE_DE_MEDIDA.sub("", slug)
+
+
 def _fraccion(numerador: str, denominador: str) -> Decimal | None:
     try:
         return Decimal(numerador) / Decimal(denominador)
@@ -194,7 +207,10 @@ def analizar(texto: str, *, ignorar_para_nombre: bool = False) -> Analisis:
     """
     if not texto or not texto.strip():
         return CaeAlModelo("vacio")
-    norm = _norm_basico(texto)
+    # Normalización universal de términos (typos/abreviaturas del oficio: tiner→thinner, waype→wayper,
+    # s.c.→sin cabeza, t-1→t1) ANTES de parsear/resolver. Multi-tenant: solo materiales genéricos; los
+    # alias de producto/marca de un tenant van en la tabla `aliases` (datos). No toca cantidad/precio.
+    norm = normalizar_terminos(_norm_basico(texto))
     if (motivo := _motivo_deshabilitado(texto, norm, ignorar_para_nombre=ignorar_para_nombre)) is not None:
         return CaeAlModelo(motivo)
     parsed = _parsear_cantidad(norm)
@@ -280,6 +296,12 @@ class Bypass:
             sin_unidad = quitar_unidad_inicial(analisis.producto)
             if sin_unidad and sin_unidad != analisis.producto:
                 prod = await self._catalogo.producto_exacto(sin_unidad)
+        if prod is None:
+            # Reintento: "de" antes de una medida ("tornillo drywall de 6x1" → "...6x1"). Después del
+            # slug original, para no romper nombres que SÍ llevan "de N". producto_exacto exige único.
+            sin_de = quitar_de_medida(analisis.producto)
+            if sin_de != analisis.producto:
+                prod = await self._catalogo.producto_exacto(sin_de)
         if prod is None:
             return None                          # no exacto → al modelo (sin adivinar)
         # Escalonado (mayorista por umbral): el motor de precios YA resuelve bajo/sobre umbral de forma

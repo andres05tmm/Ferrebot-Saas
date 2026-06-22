@@ -113,9 +113,9 @@ DESPACHO: tuple[CasoDespacho, ...] = (
     _ev("4 tornillos caja", [(10, "4")], ("entero",)),
     _ev("2 galones de thinner", [(13, "2")], ("unidad",)),   # quita unidad de empaque y resuelve
     _ev("3 cemento", [(11, "3")], ("escalonado",)),          # mayorista por umbral: lo resuelve el motor
+    _ev("3 drywal", [(14, "3")], ("typo",)),     # typo UNIVERSAL de drywall → normalizador lo corrige
     # --- deferidos al modelo (el bypass NO adivina) ---
-    _df("3 vnilo", ("typo",)),                  # typo de producto → sin match exacto
-    _df("3 drywal", ("typo",)),                 # typo de "drywall"
+    _df("3 vnilo", ("typo",)),                  # typo de producto del tenant (no universal) → sin match
     _df("5 martillo", ("no_existe",)),          # producto ausente del catálogo
     _df("1/4 lija", ("fraccion", "no_catalogo")),  # fracción no configurada en el producto
     _df("cuanto vale el vinilo", ("consulta",)),

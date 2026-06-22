@@ -61,13 +61,30 @@ _ALIAS_ORDENADO: list[tuple[re.Pattern[str], str]] = [
     for termino, canon in sorted(_ALIAS_UNIVERSAL.items(), key=lambda kv: -len(kv[0]))
 ]
 
-# NOTA wayper (kilo vs unidad): el typo waype/waiper/guayper→wayper se corrige arriba (alias). La
-# DESAMBIGUACIÓN kilo/unidad para "wayper blanco" PELADO (sin "kilo" ni "unidad") está PENDIENTE de
-# decisión del owner: la regla del CÓDIGO del bot viejo dice "pelado = unidad", pero los DATOS reales
-# (ventas registradas) muestran "wayper blanco" pelado → producto KILO. Ambos defaults arriesgan un
-# error de valor 14x, así que NO se asume: hoy el bypass resuelve por match exacto (pelado → el
-# producto cuyo nombre es exactamente "wayper blanco", el de kilo) y los casos con "unidad"/"kilo"
-# explícitos resuelven solos. Cuando el owner confirme el default, se agrega aquí el resolver.
+# Wayper (paño de limpieza): se vende por KILO o por UNIDAD, en blanco o de color, con productos
+# distintos en el catálogo ("WAYPER BLANCO" kg vs "WAYPER BLANCO UNIDAD"). Regla CONFIRMADA por el
+# owner: el número pelado SIN palabra de peso = UNIDAD ("2 wayper blanco" = 2 und = $1.400, NO 2 kg);
+# kilo SOLO si se menciona ("1 kilo de wayper blanco"). Sin color = blanco por defecto. Apunta al
+# nombre canónico para que el match exacto distinga el producto-unidad del producto-kilo y evita un
+# error de valor 14x en producción. (Los casos "1 WAYPER BLANCO"→kilo del corpus reconstruido son
+# artefacto: la frase perdió el "kilo" que tecleó el vendedor; no se persiguen.) Los patrones
+# consumen un "unidad" final OPCIONAL para ser idempotentes.
+_RE_WAYPER = re.compile(r"\bwayper(?:\s+unidad)?\b")
+_RE_PESO = re.compile(r"\b(?:kilos?|kg|libras?|gramos?|gr)\b")
+_RE_WAYPER_COLOR = re.compile(r"\bwayper\s+de\s+color(?:\s+unidad)?\b")
+_RE_WAYPER_BLANCO = re.compile(r"\bwayper\s+(?:blanc[oa]|white|normal)(?:\s+unidad)?\b")
+
+
+def _resolver_wayper(texto: str) -> str:
+    """kilo vs unidad + color → nombre canónico del producto wayper (regla confirmada por el owner)."""
+    if not _RE_WAYPER.search(texto):
+        return texto
+    sufijo = "" if _RE_PESO.search(texto) else " unidad"   # sin peso mencionado = unidad
+    # Más específico primero, con placeholder para no recapturar la forma ya reescrita.
+    texto = _RE_WAYPER_COLOR.sub("__WPC__", texto)
+    texto = _RE_WAYPER_BLANCO.sub("__WPB__", texto)
+    texto = _RE_WAYPER.sub("__WPB__", texto)               # genérico sin color → blanco por defecto
+    return texto.replace("__WPC__", f"wayper de color{sufijo}").replace("__WPB__", f"wayper blanco{sufijo}")
 
 
 def _abreviaturas(texto: str) -> str:
@@ -97,4 +114,5 @@ def normalizar_terminos(texto: str) -> str:
     texto = _abreviaturas(texto)
     for patron, canon in _ALIAS_ORDENADO:
         texto = patron.sub(canon, texto)
+    texto = _resolver_wayper(texto)               # después de los alias (waype→wayper ya aplicado)
     return " ".join(texto.split())

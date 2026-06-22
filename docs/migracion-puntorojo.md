@@ -284,3 +284,19 @@ El export muestra tablas/campos de FerreBot **sin destino** en `schema.md`. Para
 - **Aislamiento:** correr el test de `.claude/rules/testing.md` (empresa A nunca ve B) con Punto Rojo como tenant real.
 
 > Mantener `ferrebot_export/` fuera de git si contiene rutas/datos sensibles (revisar `.gitignore`). El dump es solo-estructura, pero por higiene no se versiona junto al código.
+
+## 10. Corte de webhook (cutover a producción)
+
+El bot vive en `POST /tg/{slug}` y valida el header `X-Telegram-Bot-Api-Secret-Token` (tiempo constante) contra el secret cifrado del control DB; la deduplicación de updates es por Redis (un `update_id` repetido no re-ejecuta). El corte mueve la entrega de Telegram del bot viejo (FerreBot) al endpoint nuevo. **Operación de producción que mueve tráfico real: la ejecuta el owner/operador, no el asistente.**
+
+**Pre-requisitos:** §7 1–5 completos, paridad §9 verde, bot+dashboard desplegados, smoke en staging OK, **acierto del bypass medido ≥ bot viejo** (rig `tests/evals/replay/`).
+
+**Procedimiento (ventana de bajo tráfico):**
+1. **Congelar el viejo:** avisar al vendedor y/o `deleteWebhook` del bot en FerreBot (deja de recibir). Anotar el último `update_id`/consecutivo para conciliar.
+2. **Apuntar el nuevo:** `setWebhook` del MISMO token de Telegram de Punto Rojo a `https://<host>/tg/puntorojo` con `secret_token=<el secret cifrado en control DB>` y `allowed_updates` mínimos (message/callback_query). `getWebhookInfo` para confirmar URL + `pending_update_count` y que no haya `last_error`.
+3. **Smoke en vivo:** desde una cuenta de prueba, "1 vinilo" → el bot nuevo responde y la venta queda registrada en el tenant; reenviar el MISMO update y verificar que NO duplica (dedup Redis + `idempotency_key`).
+4. **Verificar observabilidad:** logs con `tenant_id`/`request_id`, dashboard/SSE recibe la venta, sin errores 5xx ni timeouts.
+
+**Rollback:** mientras NO se hayan emitido facturas DIAN nuevas, el corte es reversible: `setWebhook` de vuelta al endpoint de FerreBot. Las **facturas/DS DIAN ya emitidas NO se revierten** (histórico fiscal): si ya hubo emisión real, no hacer rollback ciego — conciliar consecutivos antes. Disparadores de rollback: 5xx sostenidos, no llegan updates (`getWebhookInfo.last_error`), o registros con totales fuera de tolerancia.
+
+**Post-corte:** monitorear 24–48 h (errores, latencia p95, % bypass vs modelo, rieles que preguntaron). Mantener FerreBot apagado pero restaurable hasta confirmar estabilidad.

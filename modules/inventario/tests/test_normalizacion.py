@@ -50,21 +50,12 @@ def test_normalizador_no_toca_de_antes_de_medida():
     assert normalizar_terminos("tornillos drywall de 6x1") == "tornillos drywall de 6x1"
 
 
-@pytest.mark.parametrize("entrada,esperado", [
-    # sin palabra de peso → UNIDAD (número pelado = unidades, no kilos): evita un error de valor grande
-    ("2 wayper blanco", "2 wayper blanco unidad"),
-    ("2 waype blanco", "2 wayper blanco unidad"),     # typo + unidad
-    ("2 wayper", "2 wayper blanco unidad"),           # sin color → blanco por defecto
-    ("1 wayper de color", "1 wayper de color unidad"),
-    # con palabra de peso → KILO (no se añade "unidad"; el bypass resuelve el producto-kilo)
-    ("medio kilo wayper de color", "medio kilo wayper de color"),
-    ("3 kilos wayper blanco", "3 kilos wayper blanco"),
-    ("1 libra wayper", "1 libra wayper blanco"),      # peso + sin color → blanco kilo
-    # idempotente: ya canonizado no duplica el sufijo
-    ("2 wayper blanco unidad", "2 wayper blanco unidad"),
-])
-def test_resolver_wayper_kilo_vs_unidad(entrada, esperado):
-    assert normalizar_terminos(entrada) == esperado
+def test_typo_wayper_se_corrige_sin_desambiguar_kilo_unidad():
+    # El typo se corrige (waype→wayper); la desambiguación kilo/unidad del pelado queda al match
+    # exacto/modelo (pendiente de decisión del owner), por eso NO se añade "unidad" aquí.
+    assert normalizar_terminos("2 waype blanco") == "2 wayper blanco"
+    assert normalizar_terminos("3 waiper de color") == "3 wayper de color"
+    assert normalizar_terminos("guayper") == "wayper"
 
 
 def test_no_toca_terminos_correctos():

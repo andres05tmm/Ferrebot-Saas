@@ -9,7 +9,13 @@ Fix: normalizar plurales en el slug y, si el match falla, reintentar quitando la
 from decimal import Decimal
 from types import SimpleNamespace
 
-from ai.bypass import Bypass, ProductoBypass, normalizar_slug, quitar_unidad_inicial
+from ai.bypass import (
+    Bypass,
+    ProductoBypass,
+    normalizar_slug,
+    quitar_de_medida,
+    quitar_unidad_inicial,
+)
 from ai.envelope import Contexto
 from modules.inventario.precios import EsquemaPrecio, FraccionPrecio
 
@@ -103,3 +109,37 @@ async def test_preparar_singulariza_tornillos():
     prep = await Bypass(cat, dispatcher=None).preparar("3 tornillos", _ctx(), _recursos())
     assert prep is not None
     assert prep.tool_call.arguments["items"] == [{"producto_id": 9, "cantidad": Decimal("3")}]
+
+
+# --------------------------- "de" antes de medida + typos ------------------
+
+def test_quitar_de_medida_solo_antes_de_numero():
+    assert quitar_de_medida("tornillo drywall de 6x1") == "tornillo drywall 6x1"
+    assert quitar_de_medida("chazo de 3 8") == "chazo 3 8"
+    # "de <palabra>" no se toca (eso lo maneja quitar_unidad_inicial).
+    assert quitar_de_medida("galon de thinner") == "galon de thinner"
+
+
+async def test_preparar_reintenta_quitando_de_antes_de_medida():
+    # El vendedor dice "tornillos drywall de 6x1"; el catálogo es "tornillo drywall 6x1".
+    cat = _FakeCatalogo({"tornillo drywall 6x1": _prod(40, "tornillo drywall 6x1")})
+    prep = await Bypass(cat, dispatcher=None).preparar("3 tornillos drywall de 6x1", _ctx(), _recursos())
+    assert prep is not None
+    assert prep.tool_call.arguments["items"][0]["producto_id"] == 40
+    assert cat.consultados[-1] == "tornillo drywall 6x1"   # reintentó sin "de"
+
+
+async def test_preparar_nombre_con_de_medida_resuelve_directo_sin_romper():
+    # Un producto cuyo NOMBRE sí lleva "de N" matchea con el slug original (el reintento no lo rompe).
+    cat = _FakeCatalogo({"tornillo de 5 16": _prod(41, "tornillo de 5 16")})
+    prep = await Bypass(cat, dispatcher=None).preparar("4 tornillo de 5/16", _ctx(), _recursos())
+    assert prep is not None
+    assert prep.tool_call.arguments["items"][0]["producto_id"] == 41
+    assert cat.consultados[0] == "tornillo de 5 16"        # casó al primer intento
+
+
+async def test_preparar_corrige_typo_universal_tiner_thinner():
+    cat = _FakeCatalogo({"thinner": _prod(42, "thinner")})
+    prep = await Bypass(cat, dispatcher=None).preparar("2 tiner", _ctx(), _recursos())
+    assert prep is not None
+    assert prep.tool_call.arguments["items"][0]["producto_id"] == 42

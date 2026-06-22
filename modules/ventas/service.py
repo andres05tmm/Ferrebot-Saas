@@ -47,6 +47,9 @@ class ProductoPrecio:
     precio_bajo_umbral: Decimal | None = None
     precio_sobre_umbral: Decimal | None = None
     fracciones: tuple[FraccionPrecio, ...] = field(default_factory=tuple)
+    # Unidad de venta del catálogo: "Unidad" (default) o sub-unidad de granel ("GRM"/"Cms") que el
+    # motor de precios usa para cobrar por gramo/cm (puntillas, lija esmeril). Ver precios.py.
+    unidad_medida: str = "Unidad"
 
     def esquema(self) -> EsquemaPrecio:
         """Arma el esquema que consume el motor de precios (modules.inventario)."""
@@ -56,6 +59,7 @@ class ProductoPrecio:
             precio_bajo_umbral=self.precio_bajo_umbral,
             precio_sobre_umbral=self.precio_sobre_umbral,
             fracciones=self.fracciones,
+            unidad_medida=self.unidad_medida,
         )
 
 

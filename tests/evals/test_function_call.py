@@ -6,8 +6,9 @@ LLM (en CI las claves de proveedor van vacías). Tres planos:
   - PARSEO    → `ai.bypass.analizar`: el texto se vuelve intención de venta o cae al modelo con un
                 motivo estable (typos de cantidad, plurales, fracciones, gates de desactivación).
   - DESPACHO  → `ai.bypass.Bypass.intentar`: el camino rápido emite `registrar_venta` con los
-                `items` exactos, o defiere al modelo (typo de producto, escalonado, fracción
-                inexistente, consulta, cliente). Es el gate del ~60 % de ventas sin IA.
+                `items` exactos, o defiere al modelo (typo de producto, fracción inexistente, consulta,
+                cliente). El escalonado/mayorista por umbral lo resuelve el motor y ya no se difiere. Es
+                el gate del ~60 % de ventas sin IA.
   - CONTRATO  → `ai.dispatcher.Dispatcher.ejecutar`: un `ToolCall` "gold" (el que el modelo debería
                 emitir para gasto/fiado con montos coloquiales) valida, gatea por capacidad/confirmación
                 y ejecuta. El mapeo lenguaje-natural→args del LLM vivo se evalúa aparte (con claves).

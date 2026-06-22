@@ -240,6 +240,7 @@ class SqlVentasRepository:
             precio_bajo_umbral=prod.precio_bajo_umbral,
             precio_sobre_umbral=prod.precio_sobre_umbral,
             fracciones=fracciones,
+            unidad_medida=prod.unidad_medida,
         )
 
     async def lock_inventario(self, producto_id: int) -> Decimal | None:

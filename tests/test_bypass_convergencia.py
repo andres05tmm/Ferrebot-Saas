@@ -57,6 +57,15 @@ ESCALONADO = ProductoPrecio(id=11, nombre="cemento", precio_venta=Decimal("20000
                             precio_umbral=Decimal("10"), precio_bajo_umbral=Decimal("20000"),
                             precio_sobre_umbral=Decimal("18000"))
 LIJA = ProductoPrecio(id=12, nombre="lija", precio_venta=Decimal("2000"), iva=0, activo=True)  # sin fracciones
+# Granel: puntilla por gramo (caja 500 g, precio_venta = precio de la caja) y lija esmeril por cm
+# (precio_venta por 100 cm). El motor cobra exacto vía unidad_medida (no cantidad×precio_venta).
+PUNTILLA_GRM = ProductoPrecio(id=15, nombre="puntilla 1 sin cabeza", precio_venta=Decimal("7000"),
+                              iva=0, activo=True, unidad_medida="GRM")
+LIJA_ESMERIL = ProductoPrecio(id=16, nombre="lija esmeril n36", precio_venta=Decimal("22000"),
+                              iva=0, activo=True, unidad_medida="Cms")
+# Producto cuyo nombre lleva "para <Palabra capitalizada>": NO es un cliente ("para Juan").
+BROCA_MURO = ProductoPrecio(id=17, nombre="Broca para Muro 1/4", precio_venta=Decimal("5000"),
+                            iva=0, activo=True)
 
 
 def _pb(p: ProductoPrecio) -> ProductoBypass:
@@ -214,7 +223,6 @@ async def test_match_emite_toolcall_normalizado_y_no_llama_servicio():
     "fiado 2 vinilo",          # cliente/crédito
     "cuanto vale el vinilo",   # consulta
     "cambia el precio",        # modificación
-    "2 vinilo, 3 puntillas",   # multiproducto
     "2 taladro",               # producto no exacto (no está en catálogo)
 ])
 async def test_no_match_cae_al_modelo_no_ejecuta(frase):
@@ -226,12 +234,83 @@ async def test_no_match_cae_al_modelo_no_ejecuta(frase):
     assert disp.recibido is None       # no ejecutó nada
 
 
-async def test_escalonado_cae_al_modelo():
+async def test_multiproducto_all_or_nothing():
+    # Multi-producto (coma/salto): si TODOS los ítems resuelven, registra UNA venta con todas las
+    # líneas; si alguno no, defiere TODO (no registra parcial). Anti-alucinación all-or-nothing.
+    s = _setup([VINILO, PUNTILLAS])
+    res = await s.bypass.intentar("2 vinilo, 3 puntillas", _ctx(key="multi-ok"), s.recursos)
+    assert isinstance(res, Resultado)
+    items = {(l.producto_id, l.cantidad) for l in s.repo.ultimo_header.lineas}
+    assert items == {(7, Decimal("2")), (9, Decimal("3"))}
+
+    # Un ítem inexistente → defiere todo, NO registra el otro.
+    s2 = _setup([VINILO, PUNTILLAS])
+    res2 = await s2.bypass.intentar("2 vinilo, 5 taladro", _ctx(key="multi-no"), s2.recursos)
+    assert res2 is None
+    assert s2.repo.creadas == 0
+
+
+async def test_escalonado_lo_resuelve_el_motor():
+    # Mayorista por umbral: el bypass ya NO difiere; el motor de precios computa bajo/sobre umbral
+    # de forma determinista (precios.py). cemento: umbral=10, bajo=20000, sobre=18000.
     s = _setup([ESCALONADO])
-    disp = _FakeDispatcher(Resultado(data={}, resumen="x"))
-    bypass = Bypass(s.cat_bypass, disp)
-    assert await bypass.intentar("3 cemento", _ctx(), s.recursos) is None
-    assert disp.recibido is None
+    res = await s.bypass.intentar("3 cemento", _ctx(key="esc-bajo"), s.recursos)
+    assert isinstance(res, Resultado)                         # registrada por el bypass, no diferida
+    assert s.repo.ultimo_header.total == Decimal("60000.00")  # 3 < umbral(10) → bajo 20000 ×3
+
+    s2 = _setup([ESCALONADO])
+    res2 = await s2.bypass.intentar("12 cemento", _ctx(key="esc-sobre"), s2.recursos)
+    assert isinstance(res2, Resultado)
+    assert s2.repo.ultimo_header.total == Decimal("216000.00")  # 12 >= umbral(10) → sobre 18000 ×12
+
+
+async def test_granel_grm_registra_por_gramo_no_millones():
+    # "500 puntilla 1 sin cabeza" = 500 g = 1 caja → $7000 (NO 500 × 7000 = 3.5M). Anti-alucinación:
+    # el bypass registra el total exacto del granel, sin sobre-registro grosero.
+    s = _setup([PUNTILLA_GRM])
+    res = await s.bypass.intentar("500 puntilla 1 sin cabeza", _ctx(key="grm-1"), s.recursos)
+    assert isinstance(res, Resultado)
+    assert s.repo.ultimo_header.total == Decimal("7000.00")
+
+
+async def test_granel_cms_registra_por_centimetro():
+    # "30 lija esmeril n36" = 30 cm → 30 × (22000/100) = $6600 (NO 30 × 22000 = 660k).
+    s = _setup([LIJA_ESMERIL])
+    res = await s.bypass.intentar("30 lija esmeril n36", _ctx(key="cms-1"), s.recursos)
+    assert isinstance(res, Resultado)
+    assert s.repo.ultimo_header.total == Decimal("6600.00")
+
+
+async def test_granel_grm_modo_caja_es_paquete_no_gramos():
+    # "2 cajas puntilla..." = 2 PAQUETES (la presentación normal), no 2 gramos: 2 × precio_caja.
+    s = _setup([PUNTILLA_GRM])               # precio caja (500 g) = 7000
+    res = await s.bypass.intentar("2 cajas puntilla 1 sin cabeza", _ctx(key="caja-2"), s.recursos)
+    assert isinstance(res, Resultado)
+    assert s.repo.ultimo_header.total == Decimal("14000.00")
+
+
+async def test_granel_grm_media_caja():
+    s = _setup([PUNTILLA_GRM])
+    res = await s.bypass.intentar("media caja puntilla 1 sin cabeza", _ctx(key="caja-media"), s.recursos)
+    assert isinstance(res, Resultado)
+    assert s.repo.ultimo_header.total == Decimal("3500.00")   # 0.5 caja → 250 g → 0.5 × 7000
+
+
+async def test_para_en_nombre_de_producto_resuelve_no_es_cliente():
+    # "Broca para Muro" lleva "para Muro" (palabra capitalizada) en el NOMBRE: no es un cliente.
+    # El bypass reintenta catalog-aware y registra el producto.
+    s = _setup([BROCA_MURO])
+    res = await s.bypass.intentar("1 Broca para Muro 1/4", _ctx(key="para-prod"), s.recursos)
+    assert isinstance(res, Resultado)
+    assert s.repo.ultimo_header.total == Decimal("5000.00")
+
+
+async def test_para_cliente_real_sigue_difiriendo():
+    # "para Pedro" NO es un producto: el slug no resuelve → defiere al modelo (que enlaza el cliente).
+    s = _setup([VINILO, BROCA_MURO])
+    res = await s.bypass.intentar("2 vinilo para Pedro", _ctx(key="para-cli"), s.recursos)
+    assert res is None
+    assert s.repo.creadas == 0
 
 
 async def test_fraccion_inexistente_en_catalogo_cae_al_modelo():

@@ -33,6 +33,17 @@ eval-*.md
 eval-*.json
 # Respaldos de prod (los .dump llevan datos reales + secretos cifrados) — nunca commitear.
 backups/
+# Replay del eval: el CÓDIGO del rig (runner/extractores/tests/seed) sí se versiona, pero los datos
+# REALES del tenant (catálogo/corpus reconstruidos del dump) y los reportes de corrida NO (precios
+# reales del cliente). Se regeneran con `extraer_catalogo.py`/`extraer_corpus.py` desde el dump local.
+tests/evals/replay/catalogo_*.json
+tests/evals/replay/corpus_puntorojo.jsonl
+tests/evals/replay/corpus_mensajes.jsonl
+tests/evals/replay/reporte*.json
+/reporte_*.json
+/catalogo_*.json
+/pytest_*.txt
+/unidades_tmp.txt
 # CodeGraph: indice local de codigo (SQLite, se reconstruye con `codegraph init`).
 .codegraph/
 # Varios

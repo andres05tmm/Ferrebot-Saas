@@ -7,8 +7,9 @@ Tres datasets, cada uno apuntando a un plano distinto del runtime híbrido (bypa
                    parsing de fracciones (`1/2`, `1-1/2`, "medio") y los gates que desactivan el bypass.
   2. `DESPACHO`  → `ai.bypass.Bypass.intentar` contra un catálogo fijo: texto → `ToolCall`
                    `registrar_venta` con `items=[{producto_id, cantidad}]` EXACTOS, o deferido al modelo
-                   (typo de producto, escalonado, fracción inexistente, consulta, cliente). Este es el
-                   gate de precisión de la llamada del camino determinista (~60 % de las ventas).
+                   (typo de producto, fracción inexistente, consulta, cliente). El escalonado/mayorista
+                   por umbral lo resuelve el motor de precios y YA NO se difiere. Este es el gate de
+                   precisión de la llamada del camino determinista (~60 % de las ventas).
   3. `CONTRATO`  → `ai.dispatcher.Dispatcher.ejecutar` con un `ToolCall` "gold" (el que el MODELO
                    debería emitir para intenciones que el bypass NO maneja: gasto/fiado con montos
                    coloquiales como "20mil"). Verifica el CONTRATO de la función (la herramienta existe,
@@ -111,11 +112,11 @@ DESPACHO: tuple[CasoDespacho, ...] = (
     _ev("2 1/2 manguera", [(8, "2"), (8, "0.5")], ("fraccion", "mixta")),
     _ev("4 tornillos caja", [(10, "4")], ("entero",)),
     _ev("2 galones de thinner", [(13, "2")], ("unidad",)),   # quita unidad de empaque y resuelve
+    _ev("3 cemento", [(11, "3")], ("escalonado",)),          # mayorista por umbral: lo resuelve el motor
     # --- deferidos al modelo (el bypass NO adivina) ---
     _df("3 vnilo", ("typo",)),                  # typo de producto → sin match exacto
     _df("3 drywal", ("typo",)),                 # typo de "drywall"
     _df("5 martillo", ("no_existe",)),          # producto ausente del catálogo
-    _df("3 cemento", ("escalonado",)),          # precio escalonado por umbral
     _df("1/4 lija", ("fraccion", "no_catalogo")),  # fracción no configurada en el producto
     _df("cuanto vale el vinilo", ("consulta",)),
     _df("2 vinilo fiado", ("cliente",)),

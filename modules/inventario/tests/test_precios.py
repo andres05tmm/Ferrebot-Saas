@@ -1,10 +1,14 @@
 """Motor de precios: una rama por esquema (ferrebot-logica-portar.md §3)."""
 from decimal import Decimal
 
+import pytest
+
 from modules.inventario.precios import (
     EsquemaPrecio,
     FraccionPrecio,
     obtener_precio_para_cantidad,
+    regla_para_cantidad,
+    unidades_por_paquete,
 )
 
 
@@ -96,3 +100,58 @@ def test_umbral_incompleto_no_activa_escalonado():
     total, pu = obtener_precio_para_cantidad(esquema, Decimal("12"))
     assert total == Decimal("12000.00")
     assert pu == Decimal("1000")
+
+
+# --- Esquema 3: sub-unidad / granel (puntillas GRM, lija esmeril Cms) ---------
+
+@pytest.mark.parametrize("unidad,esperado", [
+    ("GRM", Decimal("500")), ("grm", Decimal("500")), ("Gramos", Decimal("500")),
+    ("Cms", Decimal("100")), ("CMS", Decimal("100")),
+    ("Unidad", None), ("Galón", None), ("", None), (None, None),
+])
+def test_unidades_por_paquete(unidad, esperado):
+    assert unidades_por_paquete(unidad) == esperado
+
+
+def test_granel_grm_cobra_por_gramo():
+    # Puntilla: la caja trae 500 g y precio_venta es el precio de la caja. "500 puntilla" = 500 g = 1 caja.
+    esquema = EsquemaPrecio(precio_venta=Decimal("7500"), unidad_medida="GRM")
+    total, pu = obtener_precio_para_cantidad(esquema, Decimal("500"))
+    assert total == Decimal("7500.00")            # antes el bug: 500 * 7500 = 3.75M
+    assert pu == Decimal("15")                    # 7500 / 500 = $15 por gramo
+
+
+def test_granel_grm_menudeo_y_multicaja():
+    esquema = EsquemaPrecio(precio_venta=Decimal("7500"), unidad_medida="GRM")
+    assert obtener_precio_para_cantidad(esquema, Decimal("250"))[0] == Decimal("3750.00")    # media caja
+    assert obtener_precio_para_cantidad(esquema, Decimal("1000"))[0] == Decimal("15000.00")  # 2 cajas
+    assert obtener_precio_para_cantidad(esquema, Decimal("100"))[0] == Decimal("1500.00")    # 100 g
+
+
+def test_granel_cms_cobra_por_centimetro():
+    # Lija esmeril: se cobra por cm; precio_venta está expresado por 100 cm. Esmeril 36 = $220/cm.
+    esquema = EsquemaPrecio(precio_venta=Decimal("22000"), unidad_medida="Cms")
+    assert obtener_precio_para_cantidad(esquema, Decimal("100"))[0] == Decimal("22000.00")  # 1 m
+    assert obtener_precio_para_cantidad(esquema, Decimal("10"))[0] == Decimal("2200.00")    # 10 cm
+    assert obtener_precio_para_cantidad(esquema, Decimal("30"))[0] == Decimal("6600.00")    # 30 cm
+    # Se acopla a CUALQUIER cantidad de cm que pida el cliente (no solo múltiplos de 100/10).
+    assert obtener_precio_para_cantidad(esquema, Decimal("11"))[0] == Decimal("2420.00")
+
+
+def test_granel_etiqueta_regla():
+    assert regla_para_cantidad(EsquemaPrecio(precio_venta=Decimal("7500"), unidad_medida="GRM"),
+                               Decimal("500")) == "subunidad"
+    assert regla_para_cantidad(EsquemaPrecio(precio_venta=Decimal("7500")), Decimal("3")) == "simple"
+
+
+def test_escalonado_tiene_prioridad_sobre_subunidad():
+    # Un producto con umbral Y unidad de granel: el escalonado gana (se evalúa primero). Caso defensivo:
+    # en datos reales no coexisten, pero el orden de esquemas debe ser estable.
+    esquema = EsquemaPrecio(
+        precio_venta=Decimal("7500"), unidad_medida="GRM",
+        precio_umbral=Decimal("10"), precio_bajo_umbral=Decimal("7500"),
+        precio_sobre_umbral=Decimal("7000"),
+    )
+    total, pu = obtener_precio_para_cantidad(esquema, Decimal("5"))
+    assert pu == Decimal("7500")                  # escalonado bajo umbral, NO ÷500
+    assert total == Decimal("37500.00")

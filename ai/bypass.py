@@ -5,7 +5,8 @@ Convergencia (entregable 5.3): cuando el bypass hace match, **no llama a `VentaS
 (rieles + RBAC + idempotencia). No hay rama de lógica duplicada (ai-tools.md §6.3).
 
 La *match-logic* se queda aquí: `analizar` (texto → producto + componentes de cantidad) +
-`producto_exacto` (catálogo) + los gates `tiene_escalonado` / `_fraccion_que_coincide`. Si algo no
+`producto_exacto` (catálogo) + el gate `_fraccion_que_coincide` (una fracción sin precio cae al
+modelo). El escalonado/mayorista lo resuelve el motor de precios y NO se difiere. Si algo no
 resuelve, `intentar` devuelve `None` = CaeAlModelo (el turno va al modelo por el loop del agente).
 La cantidad se descompone en componentes (entero=precio simple, fracción=precio de fracción) y cada
 componente es un ítem del `ToolCall`; así una mixta `1-1/2` da `precio_unidad×1 + fraccion[½]` exacto
@@ -249,8 +250,9 @@ class Bypass:
     ) -> tuple[ProductoBypass, tuple[Decimal, ...]] | None:
         """Match común a `intentar`/`preparar`: texto → (producto exacto, componentes) o None.
 
-        Aplica los gates (no exacto / escalonado / fracción inexistente → None) y, al acertar,
-        deposita el producto en `recursos.resueltos` (decisión #5b) para que R1 no relea Postgres."""
+        Aplica los gates (no exacto / fracción inexistente → None; el escalonado lo resuelve el motor)
+        y, al acertar, deposita el producto en `recursos.resueltos` (decisión #5b) para que R1 no relea
+        Postgres."""
         analisis = analizar(texto)
         if isinstance(analisis, CaeAlModelo):
             return None                          # no-match → el turno cae al modelo
@@ -264,8 +266,9 @@ class Bypass:
                 prod = await self._catalogo.producto_exacto(sin_unidad)
         if prod is None:
             return None                          # no exacto → al modelo (sin adivinar)
-        if prod.esquema.tiene_escalonado:
-            return None                          # mayorista por umbral → al modelo
+        # Escalonado (mayorista por umbral): el motor de precios YA resuelve bajo/sobre umbral de forma
+        # determinista (precios.py), así que el bypass lo cubre sin caer al modelo. Antes se difería; el
+        # cálculo es el mismo que usaría el dispatcher, sin precio del usuario (R2 no corre).
         for cantidad in analisis.componentes:
             if cantidad % 1 != 0 and _fraccion_que_coincide(prod.esquema, cantidad) is None:
                 return None                      # fracción inexistente en el catálogo → al modelo

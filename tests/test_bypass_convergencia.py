@@ -223,7 +223,6 @@ async def test_match_emite_toolcall_normalizado_y_no_llama_servicio():
     "fiado 2 vinilo",          # cliente/crédito
     "cuanto vale el vinilo",   # consulta
     "cambia el precio",        # modificación
-    "2 vinilo, 3 puntillas",   # multiproducto
     "2 taladro",               # producto no exacto (no está en catálogo)
 ])
 async def test_no_match_cae_al_modelo_no_ejecuta(frase):
@@ -233,6 +232,22 @@ async def test_no_match_cae_al_modelo_no_ejecuta(frase):
 
     assert await bypass.intentar(frase, _ctx(), s.recursos) is None
     assert disp.recibido is None       # no ejecutó nada
+
+
+async def test_multiproducto_all_or_nothing():
+    # Multi-producto (coma/salto): si TODOS los ítems resuelven, registra UNA venta con todas las
+    # líneas; si alguno no, defiere TODO (no registra parcial). Anti-alucinación all-or-nothing.
+    s = _setup([VINILO, PUNTILLAS])
+    res = await s.bypass.intentar("2 vinilo, 3 puntillas", _ctx(key="multi-ok"), s.recursos)
+    assert isinstance(res, Resultado)
+    items = {(l.producto_id, l.cantidad) for l in s.repo.ultimo_header.lineas}
+    assert items == {(7, Decimal("2")), (9, Decimal("3"))}
+
+    # Un ítem inexistente → defiere todo, NO registra el otro.
+    s2 = _setup([VINILO, PUNTILLAS])
+    res2 = await s2.bypass.intentar("2 vinilo, 5 taladro", _ctx(key="multi-no"), s2.recursos)
+    assert res2 is None
+    assert s2.repo.creadas == 0
 
 
 async def test_escalonado_lo_resuelve_el_motor():

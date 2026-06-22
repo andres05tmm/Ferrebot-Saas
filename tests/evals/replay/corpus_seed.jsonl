@@ -12,7 +12,7 @@
 {"frase": "2 galones de thinner", "espera": "venta", "items": [[13, "2"]], "total": "60000.00", "categoria": "unidad_empaque", "fuente": "seed"}
 {"frase": "3 cemento", "espera": "venta", "items": [[11, "3"]], "total": "60000.00", "categoria": "escalonado", "fuente": "seed"}
 {"frase": "1/4 lija", "espera": "defiere", "categoria": "fraccion_inexistente", "fuente": "seed"}
-{"frase": "2 vinilo, 3 puntilla", "espera": "defiere", "categoria": "multiproducto", "fuente": "seed"}
+{"frase": "2 vinilo, 3 puntilla", "espera": "venta", "items": [[7, "2"], [9, "3"]], "total": "49000.00", "categoria": "multiproducto", "fuente": "seed"}
 {"frase": "cuanto vale el vinilo", "espera": "defiere", "categoria": "consulta", "fuente": "seed"}
 {"frase": "2 vinilo fiado", "espera": "defiere", "categoria": "cliente_credito", "fuente": "seed"}
 {"frase": "cambia el precio del vinilo", "espera": "defiere", "categoria": "modificacion", "fuente": "seed"}

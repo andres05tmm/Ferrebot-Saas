@@ -56,6 +56,9 @@ _TOKENS_MODIF = {"cambia", "quita", "agrega", "borra", "corrige", "cancela", "ol
 _RE_PARA_NOMBRE = re.compile(r"\bpara\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+")
 
 # --- Patrones de cantidad (orden importa: mixta antes que simple) ------------
+# Separa un mensaje multi-producto en ítems ("3 tornillo, 2 chazo" / saltos de línea).
+_RE_SEPARADOR_ITEMS = re.compile(r"[,\n]")
+
 _RE_MIXTA_NUM = re.compile(r"^(\d+)\s*[- ]\s*(\d+)/(\d+)\s+(.+)$")
 _RE_MIXTA_ESCRITA = re.compile(rf"^(\d+)\s+y\s+({_PALABRAS_FRAC})\s+(.+)$")
 _RE_FRAC_NUM = re.compile(r"^(\d+)/(\d+)\s+(.+)$")
@@ -338,6 +341,33 @@ class Bypass:
         """Cada componente → un ítem `{producto_id, cantidad}` (sin `precio_unitario`: manda el catálogo)."""
         return [{"producto_id": producto_id, "cantidad": cantidad} for cantidad in componentes]
 
+    async def _resolver_items(
+        self, texto: str, recursos: Recursos
+    ) -> list[tuple[ProductoBypass, tuple[Decimal, ...]]] | None:
+        """Resuelve uno o VARIOS productos (separados por coma/salto) → lista de (producto, componentes).
+
+        Multi-producto ALL-OR-NOTHING (anti-alucinación): parte el texto y resuelve cada segmento como
+        venta simple; si ALGUNO no casa a un producto exacto (o trae cliente/consulta/precio), devuelve
+        None y TODO cae al modelo —nunca registra una parte y adivina el resto—. Un solo segmento sigue
+        el camino simple intacto. Cada `_resolver_match` deposita su producto en `recursos.resueltos`."""
+        segmentos = [s.strip() for s in _RE_SEPARADOR_ITEMS.split(texto) if s.strip()]
+        if len(segmentos) <= 1:
+            match = await self._resolver_match(texto, recursos)
+            return [match] if match is not None else None
+        resueltos: list[tuple[ProductoBypass, tuple[Decimal, ...]]] = []
+        for seg in segmentos:
+            match = await self._resolver_match(seg, recursos)
+            if match is None:
+                return None                      # un ítem no bypasseable → todo al modelo
+            resueltos.append(match)
+        return resueltos
+
+    def _items_multi(self, resueltos: list[tuple[ProductoBypass, tuple[Decimal, ...]]]) -> list[dict]:
+        items: list[dict] = []
+        for prod, componentes in resueltos:
+            items.extend(self._items(componentes, prod.id))
+        return items
+
     async def preparar(
         self, texto: str, ctx: Contexto, recursos: Recursos
     ) -> VentaPreparada | None:
@@ -346,16 +376,15 @@ class Bypass:
         Hace el MISMO match que `intentar` pero NO ejecuta: arma el `ToolCall` sin `metodo_pago` (lo
         fija el botón) y calcula el resumen con `obtener_precio_para_cantidad` (read-only, sin mutar).
         """
-        match = await self._resolver_match(texto, recursos)
-        if match is None:
+        resueltos = await self._resolver_items(texto, recursos)
+        if resueltos is None:
             return None
-        prod, componentes = match
         tool_call = ToolCall(
-            id=f"bypass:{prod.id}",
+            id=f"bypass:{'-'.join(str(p.id) for p, _ in resueltos)}",
             name="registrar_venta",
-            arguments={"items": self._items(componentes, prod.id)},   # SIN metodo_pago
+            arguments={"items": self._items_multi(resueltos)},   # SIN metodo_pago
         )
-        return VentaPreparada(tool_call=tool_call, resumen=_resumen_venta(prod, componentes))
+        return VentaPreparada(tool_call=tool_call, resumen=_resumen_venta_multi(resueltos))
 
     async def intentar(self, texto: str, ctx: Contexto, recursos: Recursos) -> Respuesta | None:
         """Match → ToolCall normalizado → dispatcher.ejecutar. None = CaeAlModelo (no-match).
@@ -364,15 +393,15 @@ class Bypass:
         R1 no relea Postgres, y construye `ToolCall(registrar_venta, items=[{producto_id, cantidad}])`
         sin `precio_unitario` (el catálogo es la fuente de verdad → R2 no corre). El `origen` y la
         `idempotency_key` los toma el handler de `ctx` (la API es la misma para bypass y modelo).
+        Soporta multi-producto (coma/salto) all-or-nothing vía `_resolver_items`.
         """
-        match = await self._resolver_match(texto, recursos)
-        if match is None:
+        resueltos = await self._resolver_items(texto, recursos)
+        if resueltos is None:
             return None
-        prod, componentes = match
         tool_call = ToolCall(
-            id=f"bypass:{prod.id}",
+            id=f"bypass:{'-'.join(str(p.id) for p, _ in resueltos)}",
             name="registrar_venta",
-            arguments={"items": self._items(componentes, prod.id), "metodo_pago": "efectivo"},
+            arguments={"items": self._items_multi(resueltos), "metodo_pago": "efectivo"},
         )
         return await self._dispatcher.ejecutar(tool_call, ctx, recursos)
 
@@ -388,6 +417,20 @@ def _resumen_venta(prod: ProductoBypass, componentes: tuple[Decimal, ...]) -> st
         total_linea, _ = obtener_precio_para_cantidad(prod.esquema, cantidad)
         total += total_linea
         lineas.append(f"{_fmt_cantidad(cantidad)} {prod.nombre} = ${_fmt_money(total_linea)}")
+    lineas.append(f"Total: ${_fmt_money(total)}")
+    lineas.append("¿Con qué se paga?")
+    return "\n".join(lineas)
+
+
+def _resumen_venta_multi(resueltos: list[tuple[ProductoBypass, tuple[Decimal, ...]]]) -> str:
+    """Resumen read-only de una venta multi-producto: una línea por componente de cada ítem + total."""
+    lineas: list[str] = []
+    total = Decimal("0")
+    for prod, componentes in resueltos:
+        for cantidad in componentes:
+            total_linea, _ = obtener_precio_para_cantidad(prod.esquema, cantidad)
+            total += total_linea
+            lineas.append(f"{_fmt_cantidad(cantidad)} {prod.nombre} = ${_fmt_money(total_linea)}")
     lineas.append(f"Total: ${_fmt_money(total)}")
     lineas.append("¿Con qué se paga?")
     return "\n".join(lineas)

@@ -266,6 +266,21 @@ async def test_granel_cms_registra_por_centimetro():
     assert s.repo.ultimo_header.total == Decimal("6600.00")
 
 
+async def test_granel_grm_modo_caja_es_paquete_no_gramos():
+    # "2 cajas puntilla..." = 2 PAQUETES (la presentación normal), no 2 gramos: 2 × precio_caja.
+    s = _setup([PUNTILLA_GRM])               # precio caja (500 g) = 7000
+    res = await s.bypass.intentar("2 cajas puntilla 1 sin cabeza", _ctx(key="caja-2"), s.recursos)
+    assert isinstance(res, Resultado)
+    assert s.repo.ultimo_header.total == Decimal("14000.00")
+
+
+async def test_granel_grm_media_caja():
+    s = _setup([PUNTILLA_GRM])
+    res = await s.bypass.intentar("media caja puntilla 1 sin cabeza", _ctx(key="caja-media"), s.recursos)
+    assert isinstance(res, Resultado)
+    assert s.repo.ultimo_header.total == Decimal("3500.00")   # 0.5 caja → 250 g → 0.5 × 7000
+
+
 async def test_para_en_nombre_de_producto_resuelve_no_es_cliente():
     # "Broca para Muro" lleva "para Muro" (palabra capitalizada) en el NOMBRE: no es un cliente.
     # El bypass reintenta catalog-aware y registra el producto.

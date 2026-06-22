@@ -142,6 +142,13 @@ def quitar_unidad_inicial(texto: str) -> str:
     return " ".join(resto)
 
 
+def unidad_inicial(texto: str) -> str | None:
+    """La palabra de unidad con que empieza el slug (o None). Permite saber QUÉ unidad se quitó —p. ej.
+    "caja" para los granel: "2 cajas puntilla" son 2 paquetes, no 2 gramos—."""
+    palabras = texto.split()
+    return palabras[0] if palabras and palabras[0] in _UNIDADES_INICIALES else None
+
+
 _RE_DE_MEDIDA = re.compile(r"\bde (?=\d)")
 
 
@@ -304,17 +311,28 @@ class Bypass:
                 prod = await self._catalogo.producto_exacto(sin_de)
         if prod is None:
             return None                          # no exacto → al modelo (sin adivinar)
+
+        componentes = analisis.componentes
+        # Caja de granel por gramo (puntilla): "2 cajas puntilla" son 2 PAQUETES (cajas), no 2 gramos.
+        # Para un producto GRM el motor cobra por gramo (÷ tamaño de paquete), así que N cajas = N ×
+        # tamaño_paquete gramos → el total queda N × precio_caja (la caja completa, no migajas). Solo
+        # GRM: para Cms ("lija esmeril") la "caja" no aplica.
+        paquete = prod.esquema.unidades_por_paquete
+        if (paquete is not None and prod.esquema.unidad_medida.strip().lower() in {"grm", "gramos"}
+                and unidad_inicial(analisis.producto) in {"caja", "cajas"}):
+            componentes = tuple(c * paquete for c in componentes)
+
         # Escalonado (mayorista por umbral): el motor de precios YA resuelve bajo/sobre umbral de forma
         # determinista (precios.py), así que el bypass lo cubre sin caer al modelo. Antes se difería; el
         # cálculo es el mismo que usaría el dispatcher, sin precio del usuario (R2 no corre).
-        for cantidad in analisis.componentes:
+        for cantidad in componentes:
             if cantidad % 1 != 0 and _fraccion_que_coincide(prod.esquema, cantidad) is None:
                 return None                      # fracción inexistente en el catálogo → al modelo
 
         recursos.resueltos[prod.id] = ProductoCatalogo(
             id=prod.id, nombre=prod.nombre, activo=True, esquema=prod.esquema
         )
-        return prod, analisis.componentes
+        return prod, componentes
 
     def _items(self, componentes: tuple[Decimal, ...], producto_id: int) -> list[dict]:
         """Cada componente → un ítem `{producto_id, cantidad}` (sin `precio_unitario`: manda el catálogo)."""

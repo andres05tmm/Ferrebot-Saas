@@ -148,10 +148,14 @@ def _fraccion(numerador: str, denominador: str) -> Decimal | None:
         return None
 
 
-def _motivo_deshabilitado(original: str, norm: str) -> str | None:
+def _motivo_deshabilitado(original: str, norm: str, *, ignorar_para_nombre: bool = False) -> str | None:
     if "," in original or "\n" in original:
         return "multiproducto"
-    if _RE_PARA_NOMBRE.search(original):
+    # "para <Nombre propio>" (mayúscula) suele ser un cliente ("2 tornillo para Juan"), pero también
+    # aparece DENTRO de nombres de producto ("Broca para Muro", "Plato para Disco"). El bypass lo
+    # reintenta catalog-aware (`ignorar_para_nombre`): si "para X" resuelve a un producto exacto, es
+    # producto; si no, defiere como cliente. Ver `_resolver_match`.
+    if not ignorar_para_nombre and _RE_PARA_NOMBRE.search(original):
         return "cliente_nombre"
     if any(frase in norm for frase in _FRASES_CLIENTE):
         return "cliente_credito"
@@ -182,12 +186,16 @@ def _parsear_cantidad(norm: str) -> tuple[list[Decimal], str] | None:
     return None
 
 
-def analizar(texto: str) -> Analisis:
-    """Texto libre → intent de venta simple o `CaeAlModelo` (decisión pura, sin BD)."""
+def analizar(texto: str, *, ignorar_para_nombre: bool = False) -> Analisis:
+    """Texto libre → intent de venta simple o `CaeAlModelo` (decisión pura, sin BD).
+
+    `ignorar_para_nombre` desactiva SOLO el gate "para <Nombre>" (para el reintento catalog-aware del
+    bypass: un nombre de producto con "para X" no es un cliente). El resto de gates siguen activos.
+    """
     if not texto or not texto.strip():
         return CaeAlModelo("vacio")
     norm = _norm_basico(texto)
-    if (motivo := _motivo_deshabilitado(texto, norm)) is not None:
+    if (motivo := _motivo_deshabilitado(texto, norm, ignorar_para_nombre=ignorar_para_nombre)) is not None:
         return CaeAlModelo(motivo)
     parsed = _parsear_cantidad(norm)
     if parsed is None:
@@ -255,7 +263,15 @@ class Bypass:
         Postgres."""
         analisis = analizar(texto)
         if isinstance(analisis, CaeAlModelo):
-            return None                          # no-match → el turno cae al modelo
+            # Excepción catalog-aware al gate "para <Nombre>": un nombre de producto puede llevar
+            # "para X" (Broca para Muro, Plato para Disco) y NO ser un cliente. Reparseamos ignorando
+            # ese gate y exigimos match EXACTO único: si resuelve, es producto; si no, defiere igual
+            # (cliente real como "2 vinilo para Pedro" → sin producto → al modelo). No relaja nada más.
+            if analisis.motivo != "cliente_nombre":
+                return None                      # otros gates (cliente/consulta/modif/multi) → al modelo
+            analisis = analizar(texto, ignorar_para_nombre=True)
+            if isinstance(analisis, CaeAlModelo):
+                return None
 
         prod = await self._catalogo.producto_exacto(analisis.producto)
         if prod is None:

@@ -63,6 +63,9 @@ PUNTILLA_GRM = ProductoPrecio(id=15, nombre="puntilla 1 sin cabeza", precio_vent
                               iva=0, activo=True, unidad_medida="GRM")
 LIJA_ESMERIL = ProductoPrecio(id=16, nombre="lija esmeril n36", precio_venta=Decimal("22000"),
                               iva=0, activo=True, unidad_medida="Cms")
+# Producto cuyo nombre lleva "para <Palabra capitalizada>": NO es un cliente ("para Juan").
+BROCA_MURO = ProductoPrecio(id=17, nombre="Broca para Muro 1/4", precio_venta=Decimal("5000"),
+                            iva=0, activo=True)
 
 
 def _pb(p: ProductoPrecio) -> ProductoBypass:
@@ -261,6 +264,23 @@ async def test_granel_cms_registra_por_centimetro():
     res = await s.bypass.intentar("30 lija esmeril n36", _ctx(key="cms-1"), s.recursos)
     assert isinstance(res, Resultado)
     assert s.repo.ultimo_header.total == Decimal("6600.00")
+
+
+async def test_para_en_nombre_de_producto_resuelve_no_es_cliente():
+    # "Broca para Muro" lleva "para Muro" (palabra capitalizada) en el NOMBRE: no es un cliente.
+    # El bypass reintenta catalog-aware y registra el producto.
+    s = _setup([BROCA_MURO])
+    res = await s.bypass.intentar("1 Broca para Muro 1/4", _ctx(key="para-prod"), s.recursos)
+    assert isinstance(res, Resultado)
+    assert s.repo.ultimo_header.total == Decimal("5000.00")
+
+
+async def test_para_cliente_real_sigue_difiriendo():
+    # "para Pedro" NO es un producto: el slug no resuelve → defiere al modelo (que enlaza el cliente).
+    s = _setup([VINILO, BROCA_MURO])
+    res = await s.bypass.intentar("2 vinilo para Pedro", _ctx(key="para-cli"), s.recursos)
+    assert res is None
+    assert s.repo.creadas == 0
 
 
 async def test_fraccion_inexistente_en_catalogo_cae_al_modelo():

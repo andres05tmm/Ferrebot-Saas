@@ -28,8 +28,12 @@ _TOLERANCIA_FRACCION = Decimal("0.01")
 #   GRM/Gramos: puntillas — la caja trae 500 gramos; `precio_venta` = precio de la caja (puntorojo).
 #   Cms:        lija esmeril — se cobra por cm; `precio_venta` está expresado por 100 cm.
 # El 500 está portado de `bot-ventas-ferreteria/bypass.py` (`_PESO_CAJA_GR`); el 100 (cm) es la
-# convención del negocio confirmada por el owner. Universal (no por-tenant): la señal por-producto la
-# da `unidad_medida`; estas son convenciones del oficio. Normalización lo case-insensitiviza.
+# convención del negocio confirmada por el owner. La señal por-producto la da `unidad_medida` (DATA);
+# estas son convenciones del oficio ferretero (caja de puntilla ≈ 500 g, lija esmeril a $/100 cm).
+# Normalización lo case-insensitiviza. CAVEAT de escalabilidad: el supuesto "GRM/Gramos→500, Cms→100"
+# asume que `precio_venta` de esos productos es del PAQUETE, no por sub-unidad. Al onboardear otro
+# tenant ferretero hay que validar que cumple (un producto ya cobrado por-gramo con unidad "gramos"
+# se sub-registraría 500×). Si algún tenant difiere, migrar este mapa a config por-empresa.
 _UNIDADES_POR_PAQUETE: dict[str, Decimal] = {
     "grm": Decimal("500"),
     "gramos": Decimal("500"),
@@ -105,6 +109,9 @@ def obtener_precio_para_cantidad(
     # Granel: `precio_venta` es el precio del paquete; la cantidad viene en la sub-unidad. El precio
     # por sub-unidad (precio_venta/unidades) NO se cuantiza —es informativo y de baja magnitud—; el
     # total sí. "500 puntilla" (GRM, caja=500g) → 7500*500/500 = 7500; "30 lija esmeril" (Cms) → /100.
+    # Nota de orden: la fracción (esquema 2) se evalúa antes; por construcción del catálogo los
+    # productos granel NO llevan filas de `fracciones` (se cobran por sub-unidad, no por fracción de
+    # paquete), así que ambos esquemas son mutuamente excluyentes y no compiten.
     unidades = esquema.unidades_por_paquete
     if unidades is not None and unidades > 0:
         return (

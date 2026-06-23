@@ -123,12 +123,28 @@ _UNIDADES_INICIALES = frozenset({
 })
 
 
+# Notación de lija: el "número de grano" puede llegar de muchas formas — pelado ("lija 60",
+# "lija esmeril 60"), con almohadilla ("lija #60"), con n pegado/suelto ("lija n60", "lija n 60") o
+# como lo guarda el catálogo ("Lija N°60"). Canonizamos CUALQUIERA a "lija [esmeril] nN" (sin espacio,
+# la forma del viejo `_slug`: `#120 → n120`). Como `normalizar_slug` se aplica TAMBIÉN a los nombres
+# del catálogo, ambos lados convergen a la misma forma y el match exacto case ("Lija N°60" y "lija 60"
+# → "lija n60"). Solo toca frases que empiezan en "lija": "lija esmeril 60" (por cm) y "lija 60" (por
+# hoja) resuelven a productos DISTINTOS —la palabra "esmeril" decide cuál—, así que la conserva.
+_RE_LIJA_GRANO = re.compile(r"\blija\b(\s+esmeril)?\s+n?\s*(\d+)\b")
+
+
+def _canonizar_lija(texto: str) -> str:
+    """`lija [esmeril] <n>` / `lija [esmeril] n <n>` → `lija [esmeril] n<n>` (forma del catálogo)."""
+    return _RE_LIJA_GRANO.sub(lambda m: f"lija{m.group(1) or ''} n{m.group(2)}", texto)
+
+
 def normalizar_slug(texto: str) -> str:
     """Slug del producto: normaliza, lija `#120 → n120`, limpia especiales y singulariza plurales
     (bypass.py:111, `_slug`)."""
     base = re.sub(r"#\s*(\d+)", r"n\1", _norm_basico(texto))
     base = re.sub(r"[^a-z0-9 ]", " ", base)
     base = _singularizar(" ".join(base.split()))
+    base = _canonizar_lija(base)
     return " ".join(base.split())
 
 

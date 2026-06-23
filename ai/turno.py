@@ -155,6 +155,17 @@ def construir_system_prompt(entidades: dict[str, dict], *, hoy: date | None = No
         "claramente y pregunta cuánto cobrar, en vez de inventarlo.",
         "El inventario en cero o negativo NO impide registrar una venta: este negocio es informal y "
         "vende aunque el conteo marque cero. Registra la venta de todas formas.",
+        "Lija: la palabra 'esmeril' decide el producto. 'lija N' (sin 'esmeril') es lija normal, se "
+        "vende por hoja/unidad. 'lija esmeril N' es otro producto y se vende por CENTÍMETRO: el "
+        "cliente pide los cm. Necesitas SIEMPRE el número de grano (N°36, 60, 80 o 100) y, para la "
+        "esmeril, también los cm. Si falta el número o los cm, PREGÚNTALO (¿N°36, 60, 80 o 100? / "
+        "¿cuántos centímetros?); nunca registres una lija ni calcules su valor a mano sin esos datos: "
+        "usa consultar_producto.",
+        "Vinilos y cuñetes: cuánto valen depende del TIPO (Tipo 1/2/3, abreviado T1/T2/T3 o solo "
+        "'t'), NO del color. Para saber su valor, consulta por el tipo (p. ej. consultar_producto "
+        "con 'vinilo t1') y responde el valor del tipo SIN enumerar colores. Si no sabes el tipo, "
+        "pregunta '¿Tipo 1, 2 o 3?', nunca por el color. El color solo importa al registrar la venta "
+        "(para descontar el inventario).",
     ]
     bloque = _bloque_contexto(entidades)
     if bloque:

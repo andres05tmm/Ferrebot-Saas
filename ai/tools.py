@@ -9,6 +9,7 @@ Los rieles (producto/precio/confirmación) NO viven aquí: los corre el despacha
 el handler (ADR 0005, decisión c). Aquí solo está el cableado herramienta→servicio y el mapeo de
 errores de dominio a los códigos estables del envelope.
 """
+import re
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from decimal import Decimal
@@ -271,14 +272,108 @@ async def _consultar_ventas_dia(
     )
 
 
+# Token de TIPO en un nombre de producto (vinilo/cuñete por tipo): "Tipo 2" / "T2" / "T 2" → "2".
+# El precio de estas familias depende del TIPO, no del color (docs/goal-mejoras-lija-vinilo.md, Bug 2);
+# detectar el tipo permite colapsar la consulta de valor por tipo en vez de enumerar colores. Genérico
+# (no nombra "vinilo"): cualquier familia que use la notación "Tipo N"/"TN" se beneficia; las que no
+# llevan token de tipo siguen el camino de enumerar candidatos (no se tocan).
+_RE_TIPO = re.compile(r"\b(?:tipo\s*|t\s?)(\d)\b")
+
+
+def _token_tipo(nombre: str) -> str | None:
+    """El dígito del tipo si el nombre lo declara ("...Tipo 2..."/"...T2..."), o None."""
+    m = _RE_TIPO.search(nombre.lower())
+    return m.group(1) if m else None
+
+
+def _prefijo_comun(nombres: list[str]) -> str:
+    """Prefijo común palabra-a-palabra de varios nombres ("Vinilo Davinci T1 Azul", "...T1 Negro"
+    → "Vinilo Davinci T1"). Sirve de etiqueta del TIPO sin el color que los diferencia."""
+    palabras = [n.split() for n in nombres]
+    comun: list[str] = []
+    for grupo in zip(*palabras):
+        if len(set(grupo)) == 1:
+            comun.append(grupo[0])
+        else:
+            break
+    return " ".join(comun) or nombres[0]
+
+
+def _detalle_fracciones(prod) -> str:
+    if not prod.fracciones:
+        return ""
+    fracs = ", ".join(f"{fr.etiqueta} ${fr.precio_total}" for fr in prod.fracciones)
+    return f" Fracciones: {fracs}."
+
+
+def _resultado_producto(p) -> Resultado:
+    """Sobre de un único producto resuelto: valor + unidad + fracciones (stock solo en data)."""
+    return Resultado(
+        data={
+            "id": p.id, "nombre": p.nombre, "unidad_medida": p.unidad_medida,
+            "precio": str(p.precio), "stock": str(p.stock),
+            "fracciones": [
+                {"etiqueta": fr.etiqueta, "precio_total": str(fr.precio_total)} for fr in p.fracciones
+            ],
+        },
+        resumen=f"{p.nombre} ({p.unidad_medida}): ${p.precio}.{_detalle_fracciones(p)}",
+    )
+
+
+def _colapsar_por_tipo(nombre_consultado: str, matches: list) -> Resultado | None:
+    """Consulta de valor de una familia por TIPO (vinilo/cuñetes): None si no aplica (→ enumerar).
+
+    Solo actúa si TODOS los candidatos declaran un tipo (T1/T2/T3). Si comparten tipo y valor,
+    responde ese valor SIN listar colores; si hay varios tipos, pregunta por TIPO (nunca por color).
+    Un set con algún candidato sin tipo (p. ej. "Vinilo ICO") cae al camino de enumerar (devuelve None).
+    """
+    tipos = [_token_tipo(m.nombre) for m in matches]
+    if any(t is None for t in tipos):
+        return None
+    grupos: dict[str, list] = {}
+    for tipo, m in zip(tipos, matches):
+        grupos.setdefault(tipo, []).append(m)
+
+    if len(grupos) == 1:
+        if len({m.precio for m in matches}) != 1:
+            return None                              # mismo tipo pero valores distintos → enumerar
+        rep = max(matches, key=lambda m: len(m.fracciones))   # el más completo para las fracciones
+        etiqueta = _prefijo_comun([m.nombre for m in matches])
+        return Resultado(
+            data={
+                "tipo": etiqueta, "precio": str(rep.precio), "unidad_medida": rep.unidad_medida,
+                "fracciones": [
+                    {"etiqueta": fr.etiqueta, "precio_total": str(fr.precio_total)}
+                    for fr in rep.fracciones
+                ],
+                "candidatos": [{"id": m.id, "nombre": m.nombre} for m in matches],
+            },
+            resumen=f"{etiqueta} ({rep.unidad_medida}): ${rep.precio}.{_detalle_fracciones(rep)}",
+        )
+
+    # Varios tipos → preguntar por TIPO (no por color). Una opción por tipo, con su valor.
+    opciones = []
+    for tipo in sorted(grupos):
+        ms = grupos[tipo]
+        etiqueta = _prefijo_comun([m.nombre for m in ms])
+        opciones.append({"tipo": tipo, "etiqueta": etiqueta, "precio": str(ms[0].precio)})
+    texto = ", ".join(f"Tipo {o['tipo']} ${o['precio']}" for o in opciones)
+    pregunta = "¿" + " o ".join(f"Tipo {o['tipo']}" for o in opciones) + "?"
+    return Resultado(
+        data={"opciones_por_tipo": opciones},
+        resumen=f"El valor de «{nombre_consultado}» depende del tipo: {texto}. {pregunta}",
+    )
+
+
 async def _consultar_producto(
     args: ConsultarProductoArgs, ctx: Contexto, deps: Deps
 ) -> Resultado | ErrorTool:
     """Valor de un producto por su nombre. Solo lectura (espejo de `riel_producto`):
 
-    0 coincidencias → ErrorTool recuperable; varias → enumera los candidatos y pregunta cuál; una →
-    devuelve el valor (y sus fracciones). El stock va solo en `data` (es una consulta de valor; el
-    stock en el resumen es ruido y, además, en cero no debe sugerir que no se puede vender).
+    0 coincidencias → ErrorTool recuperable; una → devuelve el valor (y sus fracciones). Varias: si
+    son variantes de TIPO de la misma familia (vinilo/cuñetes), colapsa por tipo/valor (responde el
+    valor sin listar colores, o pregunta por TIPO); si no, enumera los candidatos y pregunta cuál. El
+    stock va solo en `data` (es una consulta de valor; en cero no debe sugerir que no se puede vender).
     """
     matches = await deps.ventas.buscar_producto_por_nombre(args.nombre)
     if not matches:
@@ -288,28 +383,15 @@ async def _consultar_producto(
             recuperable=True,
         )
     if len(matches) > 1:
+        por_tipo = _colapsar_por_tipo(args.nombre, matches)
+        if por_tipo is not None:
+            return por_tipo
         nombres = ", ".join(m.nombre for m in matches)
         return Resultado(
             data={"candidatos": [{"id": m.id, "nombre": m.nombre} for m in matches]},
             resumen=f"Hay varios productos que coinciden con «{args.nombre}»: {nombres}. ¿Cuál?",
         )
-    p = matches[0]
-    # Con fracciones se enumeran (etiqueta + precio) para que el modelo responda cualquier fracción;
-    # sin fracciones, el resumen queda simple.
-    detalle = ""
-    if p.fracciones:
-        fracs = ", ".join(f"{fr.etiqueta} ${fr.precio_total}" for fr in p.fracciones)
-        detalle = f" Fracciones: {fracs}."
-    return Resultado(
-        data={
-            "id": p.id, "nombre": p.nombre, "unidad_medida": p.unidad_medida,
-            "precio": str(p.precio), "stock": str(p.stock),
-            "fracciones": [
-                {"etiqueta": fr.etiqueta, "precio_total": str(fr.precio_total)} for fr in p.fracciones
-            ],
-        },
-        resumen=f"{p.nombre} ({p.unidad_medida}): ${p.precio}.{detalle}",
-    )
+    return _resultado_producto(matches[0])
 
 
 # --- Tabla del catálogo ------------------------------------------------------

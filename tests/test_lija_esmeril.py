@@ -48,13 +48,13 @@ async def _registrar(frase: str):
 @pytest.mark.parametrize(
     "entrada, esperado",
     [
-        ("lija 60", "lija n 60"),                    # pelado → forma del catálogo
-        ("lija esmeril 60", "lija esmeril n 60"),    # conserva "esmeril" (producto distinto)
-        ("lija #60", "lija n 60"),                   # almohadilla
-        ("Lija N°60", "lija n 60"),                  # como lo guarda el catálogo
-        ("Lija Esmeril N°36", "lija esmeril n 36"),
-        ("lija n60", "lija n 60"),                   # n pegado
-        ("lija 1000", "lija n 1000"),                # grano de varios dígitos
+        ("lija 60", "lija n60"),                     # pelado → forma del catálogo
+        ("lija esmeril 60", "lija esmeril n60"),     # conserva "esmeril" (producto distinto)
+        ("lija #60", "lija n60"),                    # almohadilla (paridad con el viejo _slug)
+        ("Lija N°60", "lija n60"),                   # como lo guarda el catálogo
+        ("Lija Esmeril N°36", "lija esmeril n36"),
+        ("lija n 60", "lija n60"),                   # n suelto
+        ("lija 1000", "lija n1000"),                 # grano de varios dígitos
     ],
 )
 def test_canoniza_notacion_de_grano(entrada, esperado):

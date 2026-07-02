@@ -116,6 +116,10 @@ def _cliente_anthropic(api_key: str) -> Cliente:
             raise LLMError(
                 "SDK 'anthropic' no instalado; inyecta un `client` (en pruebas) o agrégalo a deps"
             ) from exc
-        resp = await AsyncAnthropic(api_key=api_key).messages.create(**payload)
+        try:
+            resp = await AsyncAnthropic(api_key=api_key).messages.create(**payload)
+        except Exception as exc:  # traduce el error del SDK a la excepción canónica (retry-able o no)
+            from core.llm.resiliencia import clasificar_excepcion
+            raise clasificar_excepcion(exc) from exc
         return resp.model_dump()
     return _call

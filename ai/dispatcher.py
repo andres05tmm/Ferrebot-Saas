@@ -35,7 +35,9 @@ from ai.rieles import (
 from ai.tools import CATALOGO, POR_NOMBRE, Deps, RegistrarVentaArgs, Tool
 from core.auth.rbac import satisface
 from core.llm.base import ToolCall
-from core.llm.factory import ConfigStore, KeyStore, LLMResuelto, PlataformaLLM, Turno, get_llm
+from core.llm.factory import (
+    ConfigStore, KeyStore, LLMResuelto, PlataformaLLM, Turno, get_llm_con_fallback,
+)
 from core.logging import get_logger
 from core.money import cuantizar
 from modules.inventario.precios import obtener_precio_para_cantidad
@@ -80,7 +82,8 @@ class Dispatcher:
     async def seleccionar_proveedor(
         self, empresa_id: int, *, turno: Turno = Turno.WORKER
     ) -> LLMResuelto:
-        return await get_llm(
+        # Con resiliencia (ADR 0023): retry ante transitorios + respaldo si está configurado.
+        return await get_llm_con_fallback(
             empresa_id, turno=turno, config_store=self._config_store,
             key_store=self._key_store, plataforma=self._plataforma,
         )

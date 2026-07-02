@@ -29,7 +29,7 @@ from core.config.timezone import now_co
 from core.db.session import control_session, tenant_session
 from core.db.urls import tenant_url
 from core.events.publisher import publish
-from core.llm.factory import PlataformaLLM, Turno, get_llm
+from core.llm.factory import PlataformaLLM, Turno, get_llm_con_fallback
 from core.llm.stores import ControlLLMConfigStore, ControlLLMKeyStore
 from core.logging import get_logger
 from core.observability import init_sentry
@@ -176,7 +176,8 @@ def _construir_agente(settings) -> AgenteWa:
     config_store, key_store = _ConfigControl(), _KeyControl(settings.secrets_master_key)
 
     async def resolver_llm(tenant_id: int, turno: Turno):
-        return await get_llm(
+        # Con resiliencia (ADR 0023): retry ante transitorios + respaldo si está configurado.
+        return await get_llm_con_fallback(
             tenant_id, turno=turno, config_store=config_store, key_store=key_store,
             plataforma=plataforma,
         )

@@ -37,6 +37,7 @@ from ai.cotizaciones_tools import (
     exponer_catalogo as exponer_cotizaciones,
 )
 from ai.envelope import Contexto, ErrorTool, Resultado
+from ai.saneamiento import revisar as revisar_entrada
 from ai.faq_tools import (
     FaqDeps,
     POR_NOMBRE as FAQ_POR_NOMBRE,
@@ -97,6 +98,10 @@ log = get_logger("wa.agent")
 
 # Mensaje amable si el modelo o el canal fallan (nunca se expone el error interno).
 FALLBACK = "Disculpa, tuve un problema para atenderte. ¿Puedes intentarlo de nuevo en un momento?"
+
+# Mensaje fijo cuando el saneamiento bloquea el TEXTO entrante (inyección, texto desmesurado…):
+# amable y genérico — sin detallar el motivo (no se le da retroalimentación al atacante).
+RECHAZO_ENTRADA = "No puedo procesar ese mensaje. ¿Me dices en otras palabras en qué te ayudo?"
 
 # Tope de iteraciones modelo↔herramientas por mensaje (agendar puede encadenar varias consultas).
 _MAX_ITERS = 6
@@ -302,7 +307,19 @@ def exponer_runtime(ctx: Contexto) -> list[ToolSpec]:
 async def ejecutar_runtime(
     tool_call: Any, ctx: Contexto, deps: RuntimeDeps
 ) -> Resultado | ErrorTool:
-    """Despacha la herramienta al pack que la define (transversales o packs de dominio)."""
+    """Despacha la herramienta al pack que la define (transversales o packs de dominio).
+
+    Saneamiento PRIMERO (ADR 0023): la misma malla ligera del dispatcher del bot interno
+    (`ai.saneamiento`) corre aquí sobre los args crudos — el canal público es el más expuesto a
+    inyección de instrucciones y valores absurdos. Bloqueado → `ErrorTool` sin tocar ningún pack.
+    """
+    motivo = revisar_entrada(tool_call.arguments)
+    if motivo is not None:
+        log.warning(
+            "wa_saneamiento_bloqueo", tenant_id=ctx.tenant_id, tool=tool_call.name,
+            motivo=motivo.detalle, recuperable=motivo.recuperable,
+        )
+        return ErrorTool("validacion", motivo.detalle, recuperable=motivo.recuperable)
     if tool_call.name in HANDOFF_POR_NOMBRE:
         return await handoff_ejecutar(tool_call, ctx, deps.handoff)
     if tool_call.name in FAQ_POR_NOMBRE:
@@ -472,6 +489,7 @@ class AgenteWa:
         """
         texto = FALLBACK
         pausado = False
+        bloqueado = False
         try:
             capacidades = await self._capacidades(tenant.id)
             ctx = Contexto(
@@ -496,6 +514,19 @@ class AgenteWa:
                     # Pausa del agente: si está en manos de un humano, no se corre el LLM (regla del runtime).
                     if await conversaciones.esta_en_humano(mensaje.telefono):
                         pausado = True
+                        continue
+                    # Saneamiento del TEXTO entrante (ADR 0023): la inyección llega por el mensaje,
+                    # no solo por args de tools. Bloqueado → respuesta fija amable SIN correr el LLM
+                    # y sin envenenar la memoria; el hilo del inbox sí registra ambos lados.
+                    motivo = revisar_entrada({"texto": mensaje.texto})
+                    if motivo is not None:
+                        bloqueado = True
+                        texto = RECHAZO_ENTRADA
+                        log.warning(
+                            "wa_texto_bloqueado", tenant_id=tenant.id,
+                            motivo=motivo.detalle, recuperable=motivo.recuperable,
+                        )
+                        await repo_conv.agregar_mensaje(mensaje.telefono, "saliente", "bot", texto)
                         continue
                     repo = SqlAgendaRepository(session)
                     cfg = await repo.obtener_config()
@@ -539,7 +570,10 @@ class AgenteWa:
                 await self._memoria.anexar_usuario(tenant.id, mensaje.telefono, mensaje.texto)
                 log.info("wa_conversacion_en_humano_pausada", tenant_id=tenant.id)
                 return ""
-            await self._memoria.guardar(tenant.id, mensaje.telefono, historial, mensaje.texto, texto)
+            if not bloqueado:
+                await self._memoria.guardar(
+                    tenant.id, mensaje.telefono, historial, mensaje.texto, texto
+                )
         except Exception:  # noqa: BLE001 — fallback elegante: nunca exponer el error interno al cliente
             log.exception("wa_agente_error", tenant_id=tenant.id)
             texto = FALLBACK

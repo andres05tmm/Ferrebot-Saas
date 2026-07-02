@@ -83,6 +83,13 @@ class Settings(BaseSettings):
     llm_model_worker: str = "gpt-4o-mini"
     llm_model_orquestador: str = "gpt-4o"
 
+    # Resiliencia LLM (ADR 0023): retry ante transitorios (kill-switch en caliente) y proveedor de
+    # respaldo opcional con SUS modelos ("" = sin respaldo; los nombres no cruzan entre vendors).
+    llm_retry_habilitado: bool = True
+    llm_fallback_provider: str = ""
+    llm_fallback_model_worker: str = ""
+    llm_fallback_model_orquestador: str = ""
+
     # Canal WhatsApp vía Kapso (BSP). Credenciales de PLATAFORMA: una sola cuenta Kapso atiende a
     # todos los tenants (el tenant se resuelve por phone_number_id en el control DB, tabla wa_numeros).
     # `kapso_webhook_secret` valida la firma HMAC de los webhooks entrantes; `kapso_api_key` autentica

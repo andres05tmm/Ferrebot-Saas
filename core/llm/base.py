@@ -13,6 +13,14 @@ class LLMError(Exception):
     """Base de errores de la capa LLM."""
 
 
+class LLMTransitorio(LLMError):
+    """Fallo transitorio del proveedor (429, 5xx, timeout, conexión): reintentable con backoff."""
+
+
+class LLMPermanente(LLMError):
+    """Fallo permanente (4xx de petición, auth): reintentar no lo arregla; no se reintenta."""
+
+
 class ProveedorDesconocido(LLMError):
     """El nombre de proveedor no está en el registry."""
 

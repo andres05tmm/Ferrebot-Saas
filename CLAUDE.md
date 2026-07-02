@@ -63,6 +63,7 @@ python -m tools.migrate_tenants            # aplica a todas las empresas
 | Facturación DIAN (estados, reintentos) | `docs/facturacion-dian.md` |
 | Operar (provisioning, migraciones, restore) | `docs/runbook.md` |
 | Dar de alta una empresa | `docs/onboarding-tenant.md` |
+| Plantillas de manifiesto por vertical (peluquería, etc.) | `docs/plantillas-verticales.md` |
 | Manifiesto de tenant + provisionador de un paso | `docs/adr/0007-manifiesto-tenant-y-provisionador.md` · `tools/provision_from_manifest.py` |
 | Superficie pública Melquiadez (landing, sign-in, demos, switch Kapso) | `docs/plan-melquiadez-superficie-publica.md` |
 | Reglas de desarrollo | `.claude/rules/` |

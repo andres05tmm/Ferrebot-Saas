@@ -1,0 +1,96 @@
+# Manifiesto de tenant DEMO — peluquería "Studio Mane" (vertical peluquería/salón). Ver ADR 0007.
+# Es también la PLANTILLA del carril contable de servicios (ADR 0021/0022): agenda + caja + ventas
+# SIN pos ni inventario — la peluquería ve Caja/Gastos/Ventas junto a su Agenda, cobra la cita con
+# un clic (venta + arqueo) y vende productos de mostrador sin llevar stock.
+# Provisionable por:  python -m tools.provision_from_manifest --from tools/onboarding/peluqueria-demo.manifest.example.yaml
+version: 1
+
+identidad:
+  slug: peluqueria-demo
+  nombre: "Studio Mane Peluquería"
+  nit: "901400400-4"
+  rubro: "peluquería"                 # persona del bot de operación (config_empresa.rubro)
+
+admin:
+  nombre: "Maira (Dueña)"
+  email: "admin@peluqueria-demo.melquiadez.com"
+
+identidades:
+  - email: "demo+peluqueria-demo@melquiadez.com"
+    nombre: "Visitante Demo"
+    rol: "vendedor"
+
+plan:
+  nombre: "Demo Peluquería"
+  # Carril contable de servicios (ADR 0021): features FINAS explícitas, sin el meta-pack `pos` →
+  # el dashboard muestra Caja/Gastos/Ventas junto a Agenda, sin kárdex/compras/proveedores.
+  features: ["pack_agenda", "pack_faq", "canal_whatsapp", "caja", "ventas"]
+features_override: {}
+
+branding:
+  preset: "lienzo"                    # violeta genérico (navaja es la barbería; el salón va claro).
+  nombre_comercial: "Studio Mane"
+
+secretos: {}
+config: {}
+
+packs:
+  agenda:
+    config:
+      zona_horaria: "America/Bogota"
+      intervalo_slots_min: 30
+      anticipacion_minima_min: 60
+      ventana_maxima_dias: 30
+      politica_cancelacion_horas: 4
+      modo_confirmacion: "auto"
+      capacidad_por_slot: 1
+      recordatorios_horas: [24, 2]
+      corte_riesgo_horas: 2
+      persona: "Eres la asistente de Studio Mane. Hablas cercano y amable; confirmas siempre el servicio, la estilista, la fecha y el nombre antes de agendar."
+
+    servicios:
+      - { nombre: "Corte de dama",          duracion_min: 45,  precio: 35000, buffer_despues_min: 10, categoria: "Corte" }
+      - { nombre: "Corte de caballero",     duracion_min: 30,  precio: 22000, buffer_despues_min: 5,  categoria: "Corte" }
+      - { nombre: "Cepillado / brushing",   duracion_min: 40,  precio: 28000, buffer_despues_min: 5,  categoria: "Peinado" }
+      - { nombre: "Tinte raíz",             duracion_min: 90,  precio: 85000, buffer_despues_min: 15, categoria: "Color" }
+      - { nombre: "Mechas / balayage",      duracion_min: 150, precio: 180000, buffer_despues_min: 15, categoria: "Color" }
+      - { nombre: "Keratina",               duracion_min: 120, precio: 150000, buffer_despues_min: 15, categoria: "Tratamiento" }
+      - { nombre: "Manicure",               duracion_min: 40,  precio: 25000, buffer_despues_min: 5,  categoria: "Uñas" }
+      - { nombre: "Pedicure",               duracion_min: 50,  precio: 30000, buffer_despues_min: 10, categoria: "Uñas" }
+
+    recursos:
+      - nombre: "Maira"
+        tipo: "profesional"
+        presta: ["Corte de dama", "Cepillado / brushing", "Tinte raíz", "Mechas / balayage", "Keratina"]
+        disponibilidad:
+          - { dias: [0, 1, 2, 3, 4], franjas: ["09:00-13:00", "14:00-18:00"] }
+          - { dias: [5],            franjas: ["09:00-15:00"] }
+      - nombre: "Leidy"
+        tipo: "profesional"
+        presta: ["Corte de dama", "Corte de caballero", "Cepillado / brushing", "Manicure", "Pedicure"]
+        disponibilidad:
+          - { dias: [1, 2, 3, 4, 5], franjas: ["10:00-14:00", "15:00-19:00"] }
+
+  # Productos de MOSTRADOR (la peluquería revende shampoo/tratamientos): catálogo del pack `ventas`
+  # (sección `pos` por compat, ADR 0021). SIN stock_inicial: sin la feature `inventario` no se lleva
+  # kárdex; la venta descuenta stock lógico que nadie mira (control permisivo).
+  pos:
+    productos:
+      - { codigo: "SH-KER", nombre: "Shampoo keratina 500ml",     unidad_medida: "unidad", precio_venta: 48000, iva: 19 }
+      - { codigo: "AC-ARG", nombre: "Aceite de argán 60ml",       unidad_medida: "unidad", precio_venta: 62000, iva: 19 }
+      - { codigo: "TR-HID", nombre: "Tratamiento hidratante 300g", unidad_medida: "unidad", precio_venta: 38000, iva: 19 }
+      - { codigo: "ES-TER", nombre: "Protector térmico 250ml",    unidad_medida: "unidad", precio_venta: 45000, iva: 19 }
+    aliases: []
+
+  faq:
+    entradas:
+      - { titulo: "¿Dónde están?", contenido: "Carrera 8 #22-15, local 3 (frente al parque). Parqueadero en la esquina.", orden: 1 }
+      - { titulo: "¿Atienden sin cita?", contenido: "Sí, por orden de llegada si hay silla libre; para color y keratina siempre con cita.", orden: 2 }
+      - { titulo: "Formas de pago", contenido: "Efectivo, transferencia (Nequi/Bancolombia) y datáfono.", orden: 3 }
+      - { titulo: "¿Cuánto dura el balayage?", contenido: "Entre 2 y 3 horas según el largo. Te agendamos el bloque completo.", orden: 4 }
+
+canal:
+  whatsapp:
+    phone_number_id: "demo-peluqueria-0001"
+    numero: null
+    waba_id: null

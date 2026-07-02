@@ -28,7 +28,7 @@ def _efectivas(m: Manifiesto) -> frozenset[str]:
     return capacidades_completas(_features_efectivas(plan_features, m.features_override))
 
 
-DEMOS = ["barberia-demo", "restaurante-demo", "hotel-demo"]
+DEMOS = ["barberia-demo", "restaurante-demo", "hotel-demo", "peluqueria-demo"]
 
 
 @pytest.mark.parametrize("slug", DEMOS)
@@ -36,6 +36,8 @@ def test_demo_parsea_y_valida(slug: str):
     m = cargar_manifiesto(_ruta(slug))
     validar(m)  # no lanza
     assert m.identidad.slug == slug
+    # Toda plantilla declara su rubro (persona del bot; sin él caería al prompt ferretero).
+    assert m.identidad.rubro
     # Cada demo trae su identidad demo no-admin (rol vendedor) con el email demo+<slug>@melquiadez.com.
     demo = [i for i in m.identidades if i.email == f"demo+{slug}@melquiadez.com"]
     assert len(demo) == 1 and demo[0].rol == "vendedor"
@@ -48,7 +50,9 @@ def test_demo_parsea_y_valida(slug: str):
 def test_barberia_es_agenda_pura():
     m = cargar_manifiesto(_ruta("barberia-demo"))
     efectivas = _efectivas(m)
+    # Sin el meta-pack `pos`; su contable de servicios son las finas caja+ventas (ADR 0021).
     assert "pack_agenda" in efectivas and "pos" not in efectivas
+    assert {"caja", "ventas"} <= efectivas and "inventario" not in efectivas
     assert m.packs.agenda is not None
     assert len(m.packs.agenda.recursos) == 3                     # 3 barberos
     assert len(m.packs.agenda.servicios) >= 5
@@ -68,6 +72,21 @@ def test_restaurante_tiene_menu_pos_y_pedidos():
     # (ADR 0021: hereda el loader del catálogo; `pos` expande a la fina en el set efectivo).
     flags = {p.flag for p in packs_activos(efectivas | {"clientes", "reportes"})}
     assert {"ventas", "pack_pedidos"} <= flags
+
+
+def test_peluqueria_es_el_carril_contable_de_servicios():
+    # ADR 0021/0022: agenda + finas caja/ventas SIN pos ni inventario — el "contable configurable".
+    m = cargar_manifiesto(_ruta("peluqueria-demo"))
+    features = set(m.plan.features)
+    assert {"pack_agenda", "caja", "ventas"} <= features
+    assert "pos" not in features and "inventario" not in features
+    # Servicios con precio (cobrables con un clic, ADR 0022) y mostrador sin stock_inicial.
+    assert m.packs.agenda is not None
+    assert all(s.precio and s.precio > 0 for s in m.packs.agenda.servicios)
+    assert m.packs.pos is not None and len(m.packs.pos.productos) >= 3
+    efectivas = _efectivas(m)
+    assert "ventas" in efectivas          # habilita la sección packs.pos sin el meta-pack
+    assert m.identidad.rubro == "peluquería"
 
 
 def test_hotel_es_reservas_sobre_agenda():

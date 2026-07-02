@@ -11,6 +11,7 @@ identidad:
   slug: restaurante-demo
   nombre: "Brasa Parrilla"
   nit: "901200200-2"
+  rubro: "restaurante"
 
 admin:
   nombre: "Doña Marta"

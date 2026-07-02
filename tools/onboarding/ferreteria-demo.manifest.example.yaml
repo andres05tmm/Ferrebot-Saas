@@ -8,6 +8,7 @@ identidad:
   slug: ferreteria-demo
   nombre: "Ferretería Demo"
   nit: "901222333-4"
+  rubro: "ferretería"
 
 admin:
   nombre: "Don José"

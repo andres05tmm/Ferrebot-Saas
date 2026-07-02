@@ -11,6 +11,7 @@ identidad:
   slug: hotel-demo
   nombre: "Hotel Brisa"
   nit: "901300300-3"
+  rubro: "hotel"
 
 admin:
   nombre: "Recepción Brisa"

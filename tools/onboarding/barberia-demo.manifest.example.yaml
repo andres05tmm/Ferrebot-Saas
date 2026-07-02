@@ -7,6 +7,7 @@ identidad:
   slug: barberia-demo
   nombre: "El Patio Barbería"
   nit: "901100100-1"
+  rubro: "barbería"
 
 admin:
   nombre: "Andrés (El Patrón)"
@@ -23,7 +24,9 @@ plan:
   # upserta planes.limites por nombre, ver cargar_plan_features), así que dos tenants con el mismo
   # nombre de plan comparten features. Cada vertical demo necesita su propio set → su propio plan.
   nombre: "Demo Barbería"
-  features: ["pack_agenda", "pack_faq", "canal_whatsapp"]
+  # `caja` + `ventas` (finas, sin `pos`): demo del carril contable de servicios (ADR 0021/0022) —
+  # la barbería ve Caja/Gastos/Ventas junto a su agenda y cobra la cita con un clic.
+  features: ["pack_agenda", "pack_faq", "canal_whatsapp", "caja", "ventas"]
 features_override: {}
 
 branding:

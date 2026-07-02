@@ -93,3 +93,11 @@ usan — principio de `feature-flags.md`); el aislamiento; los packs de servicio
 2. ¿`clientes` y `reportes` realmente transversales, o también van al pack POS? (Una clínica sí quiere
    "clientes"=pacientes y "reportes"; me inclino a dejarlos en núcleo.)
 3. Nombre del pack: `pos` vs `retail` vs `ventas_pos`.
+
+## Enmienda (2026-07-01)
+
+La decisión abierta #1 quedó resuelta por el **ADR 0021**: el pack `pos` se PARTIÓ en las features
+finas `ventas` / `caja` / `inventario`, y `pos` sobrevive como **meta-pack que expande** (sin
+migración de flags; los tenants con `pos` no cambian). La regla de familias de este ADR la refina el
+ADR 0021 §D6: un tenant de servicios con finas EXPLÍCITAS (peluquería con `caja`+`ventas`) sí ve su
+contabilidad junto a la agenda; el arrastre histórico del meta-pack sigue suprimido.

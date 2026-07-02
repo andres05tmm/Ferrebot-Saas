@@ -7,6 +7,7 @@ identidad:
   slug: clinica-demo
   nombre: "Clínica Demo"
   nit: "900999999-9"
+  rubro: "clínica"
 
 admin:
   nombre: "Dra. García"

@@ -5,30 +5,39 @@
  * (clientes, reportes) siempre llega, así que sus rutas quedan visibles; el resto (POS, fiscal, packs
  * de servicios) solo si su capacidad está activa.
  *
- * ADR 0008: el POS dejó de ser núcleo; el retail vive tras el pack `pos`.
+ * ADR 0008: el POS dejó de ser núcleo. ADR 0021: el pack se PARTIÓ en features finas — `ventas`
+ * (ventas + catálogo), `caja` (caja + gastos) e `inventario` (stock + compras + proveedores) — y
+ * `pos` quedó como meta-pack que las expande (el backend ya entrega el set expandido; aquí se
+ * re-expande fail-safe).
  *
- * ADR 0018 — DOS FAMILIAS de dashboard. El flag `pos` ya no basta para decidir qué portada y qué tabs
- * ve un tenant, porque packs de servicio reusan el catálogo POS (un restaurante con `pack_pedidos`
- * tiene `pos` por dependencia, pero NO es una ferretería). Discriminamos por FAMILIA:
- *   - Ferretería / retail: tiene `pos` y NINGÚN pack de atención a cliente. Ve el cockpit `/hoy`, las
- *     rutas de retail (ventas, caja, inventario, compras, proveedores, gastos) y los reportes POS
- *     (top-productos, kárdex, historial).
- *   - Atención a cliente / servicios: tiene algún pack de servicio (`pack_agenda`, `pack_pedidos`,
- *     `pack_reservas`). Su portada es la del agente (`/inicio` o `/pedidos`) y NO ve el retail aunque
- *     arrastre `pos` por dependencia.
+ * ADR 0018 (refinado por ADR 0021 §D6) — DOS FAMILIAS de dashboard. Una ruta contable es visible si
+ * su feature FINA está activa y NO se trata de un tenant de atención-a-cliente cuyo retail llegó por
+ * arrastre del meta-pack: `finaActiva && !(esAtencionCliente && features.includes('pos'))`. Así:
+ *   - Ferretería / retail (`pos`, sin packs de servicio): ve el cockpit `/hoy` y todo el retail.
+ *   - Servicios con `pos` por arrastre (restaurante con `pack_pedidos`): retail oculto, como antes.
+ *   - Servicios con finas EXPLÍCITAS (peluquería con `caja`+`ventas`, sin `pos`): ve su contabilidad
+ *     (Caja/Gastos/Ventas) junto a su agenda — el carril contable de servicios.
  * `esAtencionCliente` es el discriminador de familia; `resolveHomePath` elige la portada por vertical.
  */
 import { createContext, useContext } from 'react'
+
+// Meta-pack `pos` → finas (espeja core/tenancy/catalogo.META_PACKS). El backend expande en /config;
+// esta re-expansión es fail-safe (tests, cachés viejos durante un deploy).
+const META_POS = ['ventas', 'caja', 'inventario']
+
+function expandirPos(features = []) {
+  if (!features.includes('pos')) return features
+  return [...new Set([...features, ...META_POS])]
+}
 
 // Packs de SERVICIO (atención a cliente): el discriminador de FAMILIA de dashboard (ADR 0018). Un tenant
 // con cualquiera de estos es de servicios —aunque tenga `pos` por dependencia (p. ej. el menú de un
 // restaurante reusa el catálogo POS)— y por tanto NO ve el dashboard de retail.
 const PACKS_ATENCION_CLIENTE = ['pack_agenda', 'pack_pedidos', 'pack_reservas']
 
-// Rutas RETAIL/CONTABLES: la familia ferretería. Visibles solo con `pos` Y sin packs de atención a
-// cliente (ADR 0018). Incluye la portada POS `/hoy` y los reportes POS-específicos. `/historial` NO
-// está aquí: es transversal a las dos familias (ventas en POS, pedidos/citas/reservas en servicios) y
-// lleva su propia condición en isRouteEnabled.
+// Rutas RETAIL/CONTABLES. Cada una se gatea por su feature FINA (ADR 0021) con la regla de supresión
+// de familia (ver isRouteEnabled). `/historial` NO está aquí: es transversal a las dos familias
+// (ventas en POS, pedidos/citas/reservas en servicios) y lleva su propia condición en isRouteEnabled.
 const RUTAS_RETAIL = new Set([
   '/hoy', '/ventas', '/caja', '/inventario', '/compras', '/proveedores', '/gastos',
   '/top-productos', '/kardex',
@@ -36,19 +45,20 @@ const RUTAS_RETAIL = new Set([
 
 // Ruta → capacidad requerida (catalogo.py). Las rutas NO listadas son núcleo → siempre visibles
 // (hoy: /clientes, /resultados). `/inicio` es la portada de servicios: se resuelve aparte
-// (resolveHomePath), no por inclusión de una feature. Las rutas de RUTAS_RETAIL llevan condición
-// compuesta (pos Y no-atención) en isRouteEnabled; su entrada `pos` aquí queda de referencia.
+// (resolveHomePath), no por inclusión de una feature. Las rutas de RUTAS_RETAIL llevan además la
+// regla de supresión de familia (ADR 0021 §D6) en isRouteEnabled.
 export const RUTA_FEATURE = {
-  // POS (pack `pos`, ADR 0008). La portada POS `/hoy` también se gatea por `pos` (Fase 1).
+  // Contable/retail por feature fina (ADR 0021). El cockpit `/hoy` es la experiencia integrada de
+  // ferretería: sigue siendo del meta-pack `pos`.
   '/hoy': 'pos',
-  '/ventas': 'pos',
-  '/caja': 'pos',
-  '/inventario': 'pos',
-  '/compras': 'pos',
-  '/proveedores': 'pos',
-  '/gastos': 'pos',
-  '/top-productos': 'pos',
-  '/kardex': 'pos',
+  '/ventas': 'ventas',
+  '/caja': 'caja',
+  '/gastos': 'caja',
+  '/inventario': 'inventario',
+  '/compras': 'inventario',
+  '/proveedores': 'inventario',
+  '/kardex': 'inventario',
+  '/top-productos': 'ventas',
   // `/historial` es transversal (POS y servicios) → condición propia en isRouteEnabled, no aquí.
   // Fiscal
   '/facturacion': 'facturacion_electronica',
@@ -89,15 +99,20 @@ export function resolveHomePath(features = []) {
 
 /** ¿La ruta está habilitada según las features efectivas? Núcleo (sin requisito) → siempre true. */
 export function isRouteEnabled(path, features = []) {
+  const feats = expandirPos(features)
   // Las dos portadas son excluyentes: solo la portada resuelta queda visible en el nav.
-  if (path === '/inicio') return resolveHomePath(features) === '/inicio'
-  // `/historial` es transversal a las dos familias (ADR 0018): el POS ve el historial de ventas y la
-  // familia de servicios el suyo por vertical (pedidos/citas/reservas). Visible con `pos` O con packs.
-  if (path === '/historial') return features.includes('pos') || esAtencionCliente(features)
-  // Familia ferretería (ADR 0018): el retail/contable solo es visible con `pos` Y sin packs de servicio.
-  if (RUTAS_RETAIL.has(path)) return features.includes('pos') && !esAtencionCliente(features)
+  if (path === '/inicio') return resolveHomePath(feats) === '/inicio'
+  // `/historial` es transversal a las dos familias (ADR 0018): quien registra ventas ve su historial
+  // y la familia de servicios el suyo por vertical (pedidos/citas/reservas).
+  if (path === '/historial') return feats.includes('ventas') || esAtencionCliente(feats)
+  // Retail/contable (ADR 0021 §D6): feature fina activa, salvo el arrastre histórico del meta-pack
+  // en tenants de servicios (restaurante con `pos` por dependencia NO ve caja/kárdex de ferretería).
+  if (RUTAS_RETAIL.has(path)) {
+    const finaActiva = feats.includes(RUTA_FEATURE[path])
+    return finaActiva && !(esAtencionCliente(feats) && feats.includes('pos'))
+  }
   const requerida = RUTA_FEATURE[path]
-  return !requerida || features.includes(requerida)
+  return !requerida || feats.includes(requerida)
 }
 
 const FeaturesContext = createContext([])

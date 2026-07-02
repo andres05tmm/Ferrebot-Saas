@@ -3,7 +3,10 @@
  * rotular la UI del panel: el backend es la fuente de verdad y revalida catálogo + dependencias.
  */
 export const FEATURES_OPCIONALES = [
-  ['pos', 'POS (ventas/inventario/caja)'],
+  ['pos', 'POS completo (meta-pack: ventas+caja+inventario)'],
+  ['ventas', 'Ventas + catálogo'],
+  ['caja', 'Caja + gastos'],
+  ['inventario', 'Inventario + compras + proveedores'],
   ['facturacion_electronica', 'Facturación electrónica'],
   ['documento_soporte', 'Documento soporte'],
   ['notas_electronicas', 'Notas electrónicas'],

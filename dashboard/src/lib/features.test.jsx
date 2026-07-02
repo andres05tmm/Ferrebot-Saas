@@ -20,10 +20,17 @@ const SERVICIOS = ['pack_agenda', 'pack_faq', 'canal_whatsapp']
 const POS = ['pos', 'facturacion_electronica']
 
 describe('gating del pack pos', () => {
-  it('todas las rutas POS están gateadas por la capacidad `pos`', () => {
-    for (const ruta of RUTAS_POS) {
-      expect(RUTA_FEATURE[ruta]).toBe('pos')
-    }
+  it('cada ruta retail está gateada por su feature FINA (ADR 0021)', () => {
+    expect(RUTA_FEATURE['/ventas']).toBe('ventas')
+    expect(RUTA_FEATURE['/top-productos']).toBe('ventas')
+    expect(RUTA_FEATURE['/caja']).toBe('caja')
+    expect(RUTA_FEATURE['/gastos']).toBe('caja')
+    expect(RUTA_FEATURE['/inventario']).toBe('inventario')
+    expect(RUTA_FEATURE['/compras']).toBe('inventario')
+    expect(RUTA_FEATURE['/proveedores']).toBe('inventario')
+    expect(RUTA_FEATURE['/kardex']).toBe('inventario')
+    // El cockpit integrado de ferretería sigue siendo del meta-pack.
+    expect(RUTA_FEATURE['/hoy']).toBe('pos')
   })
 
   it('las rutas POS están OCULTAS sin la capacidad `pos`', () => {
@@ -173,5 +180,59 @@ describe('dos familias de dashboard (ADR 0018)', () => {
   it('/historial oculto sin `pos` ni packs de servicio', () => {
     expect(isRouteEnabled('/historial', [])).toBe(false)
     expect(isRouteEnabled('/historial', ['facturacion_electronica'])).toBe(false)
+  })
+})
+
+// ── ADR 0021 — partición del pack `pos`: carril contable de servicios ────────────────────────────
+// Una peluquería activa `caja`+`ventas` EXPLÍCITAS (sin `pos`): ve su contabilidad junto a la agenda.
+// El arrastre histórico (`pos` en tenants de servicios) sigue suprimido como en ADR 0018.
+describe('features finas: contable de servicios (ADR 0021)', () => {
+  const PELUQUERIA = ['pack_agenda', 'pack_faq', 'canal_whatsapp', 'caja', 'ventas']
+
+  it('peluquería (agenda + caja + ventas, sin pos): ve su contabilidad', () => {
+    expect(isRouteEnabled('/caja', PELUQUERIA)).toBe(true)
+    expect(isRouteEnabled('/gastos', PELUQUERIA)).toBe(true)
+    expect(isRouteEnabled('/ventas', PELUQUERIA)).toBe(true)
+    expect(isRouteEnabled('/historial', PELUQUERIA)).toBe(true)
+    expect(isRouteEnabled('/agenda', PELUQUERIA)).toBe(true)
+    // Top-productos viene con `ventas`: sus servicios/productos más vendidos.
+    expect(isRouteEnabled('/top-productos', PELUQUERIA)).toBe(true)
+  })
+
+  it('peluquería: NO ve inventario/compras/kárdex ni el cockpit /hoy', () => {
+    for (const ruta of ['/inventario', '/compras', '/proveedores', '/kardex', '/hoy']) {
+      expect(isRouteEnabled(ruta, PELUQUERIA)).toBe(false)
+    }
+  })
+
+  it('peluquería: su home sigue siendo /inicio (agenda manda)', () => {
+    expect(resolveHomePath(PELUQUERIA)).toBe('/inicio')
+    expect(isRouteEnabled('/inicio', PELUQUERIA)).toBe(true)
+  })
+
+  it('solo `caja`: ve caja/gastos y nada más del retail', () => {
+    expect(isRouteEnabled('/caja', ['caja'])).toBe(true)
+    expect(isRouteEnabled('/gastos', ['caja'])).toBe(true)
+    for (const ruta of ['/ventas', '/inventario', '/compras', '/hoy', '/historial']) {
+      expect(isRouteEnabled(ruta, ['caja'])).toBe(false)
+    }
+  })
+
+  it('compat: el set expandido que entrega el backend para `pos` se comporta igual que `pos`', () => {
+    const EXPANDIDO = ['pos', 'ventas', 'caja', 'inventario']
+    for (const ruta of ['/hoy', '/ventas', '/caja', '/inventario', '/compras', '/gastos', '/kardex']) {
+      expect(isRouteEnabled(ruta, EXPANDIDO)).toBe(true)
+      expect(isRouteEnabled(ruta, ['pos'])).toBe(true)
+    }
+    expect(resolveHomePath(EXPANDIDO)).toBe('/hoy')
+  })
+
+  it('compat servicios: restaurante con el set expandido sigue SIN ver retail', () => {
+    const RESTAURANTE_EXP = ['pos', 'ventas', 'caja', 'inventario', 'pack_pedidos', 'canal_whatsapp']
+    for (const ruta of ['/hoy', '/caja', '/inventario', '/gastos', '/ventas']) {
+      expect(isRouteEnabled(ruta, RESTAURANTE_EXP)).toBe(false)
+    }
+    expect(isRouteEnabled('/pedidos', RESTAURANTE_EXP)).toBe(true)
+    expect(isRouteEnabled('/historial', RESTAURANTE_EXP)).toBe(true)
   })
 })

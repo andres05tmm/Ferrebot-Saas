@@ -26,7 +26,7 @@ describe('CrearTenantForm (arma manifiesto + encola + polling)', () => {
     fireEvent.change(screen.getByLabelText('Nombre'), { target: { value: 'Clínica X' } })
     fireEvent.change(screen.getByLabelText('NIT'), { target: { value: 'NIT-9' } })
     fireEvent.change(screen.getByLabelText('Email del admin'), { target: { value: 'due@x.co' } })
-    fireEvent.click(screen.getByLabelText('POS (ventas/inventario/caja)'))
+    fireEvent.click(screen.getByLabelText('POS completo (meta-pack: ventas+caja+inventario)'))
     fireEvent.click(screen.getByRole('button', { name: 'Crear empresa' }))
 
     // POST con el manifiesto armado.

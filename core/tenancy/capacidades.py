@@ -11,9 +11,15 @@ import json
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.tenancy.catalogo import expandir_metapacks
+
 
 class ControlCapacidades:
-    """Features efectivas = features del plan ± overrides de `empresa_features` (feature-flags §)."""
+    """Features efectivas = features del plan ± overrides de `empresa_features` (feature-flags §).
+
+    El set devuelto viene con los meta-packs EXPANDIDOS (`pos` → ventas/caja/inventario, conservando
+    `pos`): todos los consumidores (gate del API, bot, worker, superadmin) ven las features finas.
+    """
 
     def __init__(self, session: AsyncSession) -> None:
         self._s = session
@@ -44,4 +50,4 @@ class ControlCapacidades:
                 efectivas.add(feature)
             else:
                 efectivas.discard(feature)
-        return frozenset(efectivas)
+        return expandir_metapacks(frozenset(efectivas))

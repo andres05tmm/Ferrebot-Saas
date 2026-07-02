@@ -13,10 +13,12 @@ NUCLEO: frozenset[str] = frozenset({
     "clientes", "reportes",
 })
 
-# Opcionales: se activan por plan/override. `pos` (ADR 0008 §D1) agrupa el retail —ventas, inventario,
-# caja, gastos, compras, proveedores— en un solo pack grueso (se podrá partir luego sin reescribir).
+# Opcionales: se activan por plan/override. El retail se partió en features finas (ventas/caja/
+# inventario); `pos` sobrevive como META-PACK que expande a las tres (compat: los tenants con `pos`
+# en su plan siguen viendo todo el retail sin migración de flags).
 OPCIONALES: frozenset[str] = frozenset({
     "pos",
+    "ventas", "caja", "inventario",
     "facturacion_electronica", "documento_soporte", "notas_electronicas", "libro_iva",
     "pos_electronico",
     "compras_fiscal", "honorarios", "fiados", "mayorista", "ventas_voz", "bot_telegram",
@@ -24,8 +26,31 @@ OPCIONALES: frozenset[str] = frozenset({
     "pack_reservas", "pack_postventa", "pack_pagar", "canal_whatsapp", "pagos_online",
 })
 
+# Meta-packs: un flag grueso que EXPANDE a features finas. La expansión conserva el flag meta en el
+# set (el gating de familia del dashboard —ADR 0018— y los checks legados siguen leyendo `pos`).
+# Semántica: el meta-pack SIEMPRE implica sus finas; para activar un subconjunto se usan las finas
+# directamente (un override que apague una fina bajo `pos` activo no surte efecto).
+#   - ventas: registrar/consultar ventas + catálogo de productos (una peluquería vende shampoo
+#     sin llevar stock).
+#   - caja: caja + gastos (arqueo híbrido: degrada a 0 ventas_efectivo si no hay `ventas`).
+#   - inventario: stock/kárdex/ajustes + compras + proveedores (mutan stock juntos).
+META_PACKS: dict[str, frozenset[str]] = {
+    "pos": frozenset({"ventas", "caja", "inventario"}),
+}
+
+
+def expandir_metapacks(features: frozenset[str]) -> frozenset[str]:
+    """Set con los meta-packs expandidos a sus finas (conserva el flag meta). PURO e idempotente."""
+    expandido = set(features)
+    for meta, finas in META_PACKS.items():
+        if meta in features:
+            expandido |= finas
+    return frozenset(expandido)
+
+
 # feature → conjunto-requisito en modo OR: basta UNA del conjunto para satisfacer la dependencia.
-# `fiados` (vender a crédito) y `mayorista` (precio mayorista) no existen sin el pack de ventas → `pos`.
+# Las dependencias apuntan a las features FINAS; `pos` las satisface porque la validación corre
+# sobre el set expandido. `fiados` (vender a crédito) y `mayorista` no existen sin `ventas`.
 DEPENDENCIAS: dict[str, frozenset[str]] = {
     "notas_electronicas": frozenset({"facturacion_electronica"}),
     "libro_iva": frozenset({"facturacion_electronica", "compras_fiscal"}),
@@ -34,19 +59,21 @@ DEPENDENCIAS: dict[str, frozenset[str]] = {
     # (la venta de mostrador que cierra). La capa fiscal sigue transversal (ADR 0008).
     "pos_electronico": frozenset({"facturacion_electronica"}),
     "ventas_voz": frozenset({"bot_telegram"}),
-    "fiados": frozenset({"pos"}),
-    "mayorista": frozenset({"pos"}),
+    "fiados": frozenset({"ventas"}),
+    "mayorista": frozenset({"ventas"}),
+    # El stock es DE productos del catálogo, que vive tras `ventas`.
+    "inventario": frozenset({"ventas"}),
     # Cobranza (ADR 0015): la cartera v1 ES el saldo de fiados (el motor lee `clientes.saldo_fiado`).
     "pack_cobranza": frozenset({"fiados"}),
-    # Pedidos (ADR 0016): el menú ES el catálogo del POS (productos + inventario, solo lectura).
-    "pack_pedidos": frozenset({"pos"}),
-    # Cotizaciones hacia afuera (ADR 0017): cotiza el catálogo y los precios del POS.
-    "pack_ventas": frozenset({"pos"}),
+    # Pedidos (ADR 0016): el menú ES el catálogo del POS (productos, solo lectura) → `ventas`.
+    "pack_pedidos": frozenset({"ventas"}),
+    # Cotizaciones hacia afuera (ADR 0017): cotiza el catálogo y los precios → `ventas`.
+    "pack_ventas": frozenset({"ventas"}),
     # Reservas (plan §2.7): la variante noches DEL motor de agenda (citas/recursos/config).
     "pack_reservas": frozenset({"pack_agenda"}),
     # Pagar (ADR 0019): aviso interno al dueño de cuentas por pagar. Su fuente es `facturas_proveedores`,
-    # que escribe el módulo proveedores (alta de factura + abonos); ese módulo vive tras `pos`.
-    "pack_pagar": frozenset({"pos"}),
+    # que escribe el módulo proveedores (alta de factura + abonos); ese módulo vive tras `inventario`.
+    "pack_pagar": frozenset({"inventario"}),
 }
 
 
@@ -56,18 +83,21 @@ def es_feature_valida(nombre: str) -> bool:
 
 
 def capacidades_completas(efectivas: frozenset[str]) -> frozenset[str]:
-    """NUCLEO ∪ efectivas: el núcleo siempre está activo, se sumen o no las efectivas del plan."""
-    return NUCLEO | efectivas
+    """NUCLEO ∪ efectivas con meta-packs expandidos: el núcleo siempre está activo."""
+    return NUCLEO | expandir_metapacks(efectivas)
 
 
 def validar_dependencias(features: frozenset[str]) -> list[str]:
     """Errores de dependencia: features activas cuyo requisito (OR) no se cumple. Vacía = ok.
 
-    Cada error describe la feature y el conjunto-requisito del que falta al menos uno.
+    Expande los meta-packs ANTES de validar (fail-safe: `pos` satisface las dependencias sobre
+    sus finas aunque el llamador pase el set sin expandir). Cada error describe la feature y el
+    conjunto-requisito del que falta al menos uno.
     """
+    expandidas = expandir_metapacks(features)
     errores: list[str] = []
     for feature, requisitos in DEPENDENCIAS.items():
-        if feature in features and requisitos.isdisjoint(features):
+        if feature in expandidas and requisitos.isdisjoint(expandidas):
             opciones = " o ".join(sorted(requisitos))
             errores.append(f"'{feature}' requiere {opciones}")
     return errores

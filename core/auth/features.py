@@ -16,14 +16,17 @@ from fastapi import Depends, HTTPException, Request, status
 from core.db.session import control_session
 from core.tenancy.capacidades import ControlCapacidades
 from core.tenancy.capacidades_cache import CapacidadesCache, capacidades_cache
+from core.tenancy.catalogo import expandir_metapacks
 
 
 def verificar_feature(feature: str, capacidades: frozenset[str]) -> None:
     """Lanza HTTPException(404) si `feature` no está en `capacidades` (feature-flags.md). PURO.
 
-    Mensaje genérico: no revelar que la feature existe pero está deshabilitada (como si no existiera).
+    Expande los meta-packs fail-safe (ADR 0021): `pos` satisface las finas aunque el llamador pase
+    un set sin expandir (p. ej. overrides de test). Mensaje genérico: no revelar que la feature
+    existe pero está deshabilitada (como si no existiera).
     """
-    if feature not in capacidades:
+    if feature not in expandir_metapacks(capacidades):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Recurso no disponible")
 
 

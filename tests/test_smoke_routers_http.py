@@ -19,7 +19,7 @@ from core.auth.features import get_capacidades
 from core.db.session import get_tenant_db
 from modules.caja.router import router as caja_router
 from modules.fiados.router import router as fiados_router
-from modules.inventario.router import router as inventario_router
+from modules.inventario.router import router_catalogo
 from modules.ventas.router import router as ventas_router
 
 
@@ -47,7 +47,7 @@ def _cliente(app: FastAPI) -> httpx.AsyncClient:
 async def test_inventario_listar_productos(tenant, seed_producto):
     async with AsyncSession(tenant.engine) as s:
         await seed_producto(s)
-    app = _app(inventario_router, tenant)
+    app = _app(router_catalogo, tenant)
     async with _cliente(app) as c:
         r = await c.get("/api/v1/productos")
     assert r.status_code == 200, r.text

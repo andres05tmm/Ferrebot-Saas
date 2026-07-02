@@ -1,7 +1,7 @@
 """Routers de caja (`/caja/*`) y gastos (`/gastos`). RBAC: vendedor (api-contract.md).
 
-Pack `pos` (ADR 0008): caja y gastos dejaron de ser núcleo; sin la capacidad `pos`, ambos routers
-responden 404. La lógica vive en CajaService; aquí se valida, se resuelve permiso y se mapea a HTTP.
+Feature fina `caja` (ADR 0021, antes pack `pos`): sin la capacidad, ambos routers responden 404.
+La lógica vive en CajaService; aquí se valida, se resuelve permiso y se mapea a HTTP.
 """
 from datetime import datetime
 
@@ -24,8 +24,8 @@ from modules.caja.schemas import (
 )
 from modules.caja.service import CajaService
 
-router = APIRouter(tags=["caja"], dependencies=[Depends(require_feature("pos"))])
-gastos_router = APIRouter(tags=["gastos"], dependencies=[Depends(require_feature("pos"))])
+router = APIRouter(tags=["caja"], dependencies=[Depends(require_feature("caja"))])
+gastos_router = APIRouter(tags=["gastos"], dependencies=[Depends(require_feature("caja"))])
 
 
 def _service(session: AsyncSession) -> CajaService:

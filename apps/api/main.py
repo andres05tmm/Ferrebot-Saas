@@ -43,7 +43,7 @@ from modules.pagar.router import router as pagar_router
 from modules.pagos.router import router as pagos_router
 from modules.pedidos.router import router as pedidos_router
 from modules.fiados.router import router as fiados_router
-from modules.inventario.router import router as inventario_router
+from modules.inventario.router import router as inventario_router, router_catalogo as catalogo_router
 from modules.postventa.router import router as postventa_router
 from modules.proveedores.router import router as proveedores_router
 from modules.reportes_agente.router import router as reportes_agente_router
@@ -152,7 +152,8 @@ def create_app(spa_dist: Path | None = None) -> FastAPI:
     app.include_router(auth_reset_router, prefix="/api/v1")   # set-password / reset por token (ADR 0009)
     app.include_router(admin_router, prefix="/api/v1")        # panel super-admin, cross-tenant (ADR 0010)
     app.include_router(ventas_router, prefix="/api/v1")
-    app.include_router(inventario_router, prefix="/api/v1")
+    app.include_router(catalogo_router, prefix="/api/v1")    # /productos* — feature `ventas` (ADR 0021)
+    app.include_router(inventario_router, prefix="/api/v1")  # /inventario/* — feature `inventario`
     app.include_router(caja_router, prefix="/api/v1")
     app.include_router(gastos_router, prefix="/api/v1")
     app.include_router(fiados_router, prefix="/api/v1")

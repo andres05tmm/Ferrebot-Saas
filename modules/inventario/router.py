@@ -1,7 +1,8 @@
-"""Router de catálogo e inventario (api-contract.md). Lecturas: vendedor; ajuste: admin.
+"""Routers de catálogo (`/productos*`) e inventario (`/inventario/*`). Lecturas: vendedor; ajuste: admin.
 
-Pack `pos` (ADR 0008): el inventario dejó de ser núcleo; sin la capacidad `pos`, todo el router
-responde 404. La lógica vive en InventarioService; aquí solo se valida y se mapea a HTTP.
+Partición del pack `pos` (ADR 0021): el catálogo de productos vive tras la feature `ventas` (una
+peluquería vende shampoo sin llevar stock) y el stock/kárdex/ajustes tras `inventario`; `pos`
+(meta-pack) satisface ambas por expansión. La lógica vive en InventarioService.
 """
 from decimal import Decimal
 
@@ -32,14 +33,17 @@ from modules.inventario.schemas import (
 )
 from modules.inventario.service import InventarioService
 
-router = APIRouter(tags=["inventario"], dependencies=[Depends(require_feature("pos"))])
+# Catálogo de productos: va con `ventas` (los packs pedidos/cotizaciones solo necesitan catálogo).
+router_catalogo = APIRouter(tags=["catalogo"], dependencies=[Depends(require_feature("ventas"))])
+# Stock, kárdex y ajustes: solo para quien lleva inventario.
+router = APIRouter(tags=["inventario"], dependencies=[Depends(require_feature("inventario"))])
 
 
 def _service(session: AsyncSession) -> InventarioService:
     return InventarioService(SqlInventarioRepository(session))
 
 
-@router.get("/productos", response_model=list[ProductoLeer])
+@router_catalogo.get("/productos", response_model=list[ProductoLeer])
 async def listar_productos(
     q: str | None = Query(default=None, description="Búsqueda fuzzy/FTS de 3 capas"),
     categoria: str | None = None,
@@ -63,7 +67,7 @@ async def listar_productos(
     return [ProductoLeer.model_validate(p) for p in productos]
 
 
-@router.post("/productos", response_model=ProductoLeer, status_code=status.HTTP_201_CREATED)
+@router_catalogo.post("/productos", response_model=ProductoLeer, status_code=status.HTTP_201_CREATED)
 async def crear_producto(
     payload: ProductoCrear,
     session: AsyncSession = Depends(get_tenant_db),
@@ -78,7 +82,7 @@ async def crear_producto(
     return ProductoLeer.model_validate(producto)
 
 
-@router.get("/productos/categorias", response_model=list[str])
+@router_catalogo.get("/productos/categorias", response_model=list[str])
 async def listar_categorias(
     session: AsyncSession = Depends(get_tenant_db),
     _user: Principal = Depends(require_role("vendedor")),
@@ -88,7 +92,7 @@ async def listar_categorias(
     return await SqlInventarioRepository(session).categorias_distinct()
 
 
-@router.get("/productos/{producto_id}", response_model=ProductoLeer)
+@router_catalogo.get("/productos/{producto_id}", response_model=ProductoLeer)
 async def obtener_producto(
     producto_id: int,
     session: AsyncSession = Depends(get_tenant_db),
@@ -100,7 +104,7 @@ async def obtener_producto(
     return ProductoLeer.model_validate(producto)
 
 
-@router.put("/productos/{producto_id}", response_model=ProductoLeer)
+@router_catalogo.put("/productos/{producto_id}", response_model=ProductoLeer)
 async def actualizar_producto(
     producto_id: int,
     payload: ProductoActualizar,
@@ -118,7 +122,7 @@ async def actualizar_producto(
     return ProductoLeer.model_validate(producto)
 
 
-@router.delete("/productos/{producto_id}")
+@router_catalogo.delete("/productos/{producto_id}")
 async def eliminar_producto(
     producto_id: int,
     session: AsyncSession = Depends(get_tenant_db),
@@ -132,7 +136,7 @@ async def eliminar_producto(
     return {"producto_id": producto_id, "activo": False}
 
 
-@router.get("/productos/{producto_id}/precio", response_model=PrecioLeer)
+@router_catalogo.get("/productos/{producto_id}/precio", response_model=PrecioLeer)
 async def precio_producto(
     producto_id: int,
     cantidad: Decimal = Query(gt=0),

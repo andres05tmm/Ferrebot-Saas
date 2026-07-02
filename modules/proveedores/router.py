@@ -28,7 +28,7 @@ from modules.proveedores.schemas import (
 )
 from modules.proveedores.service import ProveedoresService
 
-router = APIRouter(tags=["proveedores"], dependencies=[Depends(require_feature("pos"))])
+router = APIRouter(tags=["proveedores"], dependencies=[Depends(require_feature("inventario"))])
 
 
 def _service(session: AsyncSession) -> ProveedoresService:

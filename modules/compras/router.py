@@ -17,7 +17,7 @@ from modules.compras.repository import SqlComprasRepository
 from modules.compras.schemas import CompraCrear, CompraLeer
 from modules.compras.service import ComprasService
 
-router = APIRouter(tags=["compras"], dependencies=[Depends(require_feature("pos"))])
+router = APIRouter(tags=["compras"], dependencies=[Depends(require_feature("inventario"))])
 
 
 def _service(session: AsyncSession) -> ComprasService:

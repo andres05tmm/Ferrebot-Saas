@@ -94,9 +94,9 @@ async def libro_iva(
 @router.get(
     "/reportes/top-productos",
     response_model=list[TopProducto],
-    # POS-específico (ranking de productos): gateado por `pos` (ADR 0008). El resto de reportes
+    # Ranking de productos: gateado por la feature fina `ventas` (ADR 0021). El resto de reportes
     # —resumen ("Hoy"), serie/totales, resultados financieros— es núcleo y degrada a ceros sin ventas.
-    dependencies=[Depends(require_feature("pos"))],
+    dependencies=[Depends(require_feature("ventas"))],
 )
 async def top_productos(
     desde: date | None = Query(default=None),

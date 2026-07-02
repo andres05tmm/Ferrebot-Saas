@@ -30,8 +30,8 @@ from modules.ventas.repository import SqlVentasRepository
 from modules.ventas.schemas import VentaConLineas, VentaCrear, VentaLeer
 from modules.ventas.service import VentaService
 
-# Pack `pos` (ADR 0008): sin la capacidad, todo el router responde 404 (como los demás packs).
-router = APIRouter(tags=["ventas"], dependencies=[Depends(require_feature("pos"))])
+# Feature fina `ventas` (ADR 0021, antes pack `pos`): sin la capacidad, todo el router responde 404.
+router = APIRouter(tags=["ventas"], dependencies=[Depends(require_feature("ventas"))])
 
 
 def get_ventas_repo(session: AsyncSession = Depends(get_tenant_db)) -> SqlVentasRepository:

@@ -20,12 +20,13 @@ from core.auth import Principal, get_current_user
 from core.auth.features import get_capacidades
 from core.db.session import get_tenant_db
 from core.events.hub import event_hub
-from modules.inventario.router import router as inventario_router
+from modules.inventario.router import router as inventario_router, router_catalogo
 
 
 def _app(tenant, *, user_id: int, rol: str = "admin") -> FastAPI:
-    """App con el router de inventario y overrides de auth + sesión (que hace commit)."""
+    """App con los routers de catálogo e inventario y overrides de auth + sesión (que hace commit)."""
     app = FastAPI()
+    app.include_router(router_catalogo, prefix="/api/v1")
     app.include_router(inventario_router, prefix="/api/v1")
 
     async def _db():

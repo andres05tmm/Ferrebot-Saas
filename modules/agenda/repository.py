@@ -78,6 +78,8 @@ class AgendaRepo(Protocol):
     async def citas_de_cliente(self, telefono: str) -> list[Cita]: ...
     async def cita_por_key(self, idempotency_key: str) -> Cita | None: ...
     async def cita_por_id(self, cita_id: int) -> Cita | None: ...
+    async def cita_para_cobro(self, cita_id: int) -> Cita | None: ...
+    async def vincular_venta(self, cita: Cita, venta_id: int) -> Cita: ...
     async def lock_recurso(self, recurso_id: int) -> None: ...
     async def crear_cita(self, datos: CitaCrear, *, estado: str, fin: datetime) -> Cita: ...
     async def reprogramar_cita(self, cita: Cita, *, inicio: datetime, fin: datetime) -> Cita: ...
@@ -317,6 +319,22 @@ class SqlAgendaRepository:
 
     async def cita_por_id(self, cita_id: int) -> Cita | None:
         return await self._s.get(Cita, cita_id)
+
+    async def cita_para_cobro(self, cita_id: int) -> Cita | None:
+        """La cita bajo `SELECT … FOR UPDATE`: serializa cobros concurrentes de la MISMA cita
+        (ADR 0022 §D3). El segundo cobro espera el commit del primero y ve `venta_id` ya puesto."""
+        return (
+            await self._s.execute(select(Cita).where(Cita.id == cita_id).with_for_update())
+        ).scalar_one_or_none()
+
+    async def vincular_venta(self, cita: Cita, venta_id: int) -> Cita:
+        """Vincula el cobro (misma transacción que la venta): venta_id + cobrada_en + `cumplida`."""
+        cita.venta_id = venta_id
+        cita.cobrada_en = datetime.now(COLOMBIA_TZ)
+        cita.estado = "cumplida"
+        await self._s.flush()
+        await publish(self._s, "cita_cobrada", {"cita_id": cita.id, "venta_id": venta_id})
+        return cita
 
     async def lock_recurso(self, recurso_id: int) -> None:
         """Toma el lock transaccional del recurso: serializa los agendamientos de ese recurso.

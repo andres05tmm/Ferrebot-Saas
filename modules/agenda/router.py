@@ -14,12 +14,13 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import date
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.auth import Principal, require_role
 from core.auth.features import require_feature
 from core.db.session import get_tenant_db
+from modules.agenda.cobro import CitaNoCobrable, cobrar_cita
 from modules.agenda.errors import (
     AgendaError,
     CitaInexistente,
@@ -33,13 +34,18 @@ from modules.agenda.errors import (
 )
 from modules.agenda.gcal import calendar_client_por_defecto
 from modules.agenda.repository import SqlAgendaRepository
+from modules.facturacion.pos_hook import encolar_cierre_pos
+from modules.ventas.repository import SqlVentasRepository
+from modules.ventas.service import VentaService
 from modules.agenda.schemas import (
     AgendaConfigCrear,
     AgendaConfigLeer,
     BloqueoCrear,
     BloqueoLeer,
+    CitaCobrar,
     CitaLeer,
     CitaManualCrear,
+    CobroLeer,
     DisponibilidadCrear,
     DisponibilidadLeer,
     ReagendarPayload,
@@ -77,7 +83,8 @@ def _a_http(exc: AgendaError) -> HTTPException:
             status.HTTP_409_CONFLICT,
             {"detail": str(exc), "alternativas": [a.isoformat() for a in exc.alternativas]},
         )
-    if isinstance(exc, (CitaNoModificable, ReagendarNoPermitido, FueraDePoliticaCancelacion)):
+    if isinstance(exc, (CitaNoModificable, ReagendarNoPermitido, FueraDePoliticaCancelacion,
+                        CitaNoCobrable)):
         return HTTPException(status.HTTP_409_CONFLICT, str(exc))
     if isinstance(exc, RecursoNoPrestaServicio):
         return HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
@@ -391,6 +398,42 @@ async def cancelar_cita(
     """Cancela una cita desde el dashboard (sin la política de cancelación del cliente)."""
     with _mapear():
         return await service.cancelar_negocio(cita_id)
+
+
+@router.post(
+    "/citas/{cita_id}/cobrar",
+    response_model=CobroLeer,
+    status_code=status.HTTP_201_CREATED,
+    # ADR 0022 §D6: el cobro crea una VENTA → exige además la feature fina `ventas` (ADR 0021).
+    dependencies=[Depends(require_feature("ventas"))],
+)
+async def cobrar_cita_dashboard(
+    cita_id: int,
+    payload: CitaCobrar,
+    request: Request,
+    response: Response,
+    session: AsyncSession = Depends(get_tenant_db),
+    user: Principal = Depends(require_role("vendedor")),
+) -> CobroLeer:
+    """Cobra la cita: venta con línea varia + vínculo idempotente (misma sesión = misma transacción).
+
+    Reintento/ya cobrada → 200 con `replay=true` (misma venta). Tras el cobro se encola el cierre
+    fiscal según capacidades del tenant (best-effort: nunca rompe el cobro), como en POST /ventas.
+    """
+    with _mapear():
+        res = await cobrar_cita(
+            cita_id,
+            repo=SqlAgendaRepository(session),
+            ventas=VentaService(SqlVentasRepository(session)),
+            usuario_id=user.user_id,
+            metodo_pago=payload.metodo_pago,
+            precio_override=payload.precio_override,
+        )
+    if res.replay:
+        response.status_code = status.HTTP_200_OK
+    else:
+        await encolar_cierre_pos(request, session, res.venta_id)
+    return CobroLeer(venta_id=res.venta_id, total=res.total, replay=res.replay)
 
 
 @router.post("/citas/{cita_id}/reagendar", response_model=CitaLeer)

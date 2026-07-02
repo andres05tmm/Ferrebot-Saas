@@ -17,6 +17,23 @@ ModoConfirmacion = Literal["auto", "manual"]
 AnticipoTipo = Literal["porcentaje", "fijo"]
 
 
+# --- cobro de cita (ADR 0022) -------------------------------------------------
+# `fiado` queda fuera de v1 (requiere cliente_id del POS; la identidad de agenda es el teléfono).
+CobroMetodoPago = Literal["efectivo", "transferencia", "datafono"]
+
+
+class CitaCobrar(BaseModel):
+    metodo_pago: CobroMetodoPago
+    # Override del precio del servicio (p. ej. reservas por noches, ADR 0022 §D6).
+    precio_override: Decimal | None = Field(default=None, gt=0)
+
+
+class CobroLeer(BaseModel):
+    venta_id: int
+    total: Decimal
+    replay: bool  # True = la cita ya estaba cobrada; misma venta, sin duplicar
+
+
 # --- servicios ---------------------------------------------------------------
 class ServicioCrear(BaseModel):
     nombre: str = Field(min_length=1)
@@ -192,6 +209,9 @@ class CitaLeer(BaseModel):
     recordatorio_enviado_en: datetime | None
     notas: str | None
     idempotency_key: str | None
+    # Cobro (ADR 0022): venta vinculada y cuándo se cobró; NULL = sin cobrar (la UI decide el botón).
+    venta_id: int | None = None
+    cobrada_en: datetime | None = None
     gcal_event_id: str | None
     creada_en: datetime
 

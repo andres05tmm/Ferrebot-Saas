@@ -7,8 +7,9 @@
  */
 import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
-import { CalendarPlus, ChevronLeft, ChevronRight, MessageCircle, Monitor, Check, X, AlertTriangle, BellRing } from 'lucide-react'
+import { Banknote, CalendarPlus, ChevronLeft, ChevronRight, MessageCircle, Monitor, Check, X, AlertTriangle, BellRing } from 'lucide-react'
 import { api } from '@/lib/api.js'
+import { useFeatures } from '@/lib/features.jsx'
 import { useFetch } from '@/components/shared.jsx'
 import { useRealtimeEvent } from '@/components/RealtimeProvider.jsx'
 import { Card } from '@/components/ui/card.jsx'
@@ -49,6 +50,10 @@ export default function SeccionCitas() {
   const [estado, setEstado] = useState('')
   const [recursoId, setRecursoId] = useState('')
   const [creando, setCreando] = useState(false)
+  const [cobrando, setCobrando] = useState(null)   // cita seleccionada para cobrar (ADR 0022)
+  const features = useFeatures()
+  // El cobro exige la feature `ventas` (el meta-pack `pos` la trae expandida desde /config).
+  const puedeCobrar = features.includes('ventas') || features.includes('pos')
 
   const recursosQ = useFetch('/agenda/recursos')
   const serviciosQ = useFetch('/agenda/servicios')
@@ -62,7 +67,7 @@ export default function SeccionCitas() {
   const pendQ = useFetch(`/agenda/citas?estado=pendiente&desde=${hoyCO()}&hasta=${masDiasCO(30)}`)
 
   const refrescar = () => { citasQ.refetch(); pendQ.refetch() }
-  useRealtimeEvent(['cita_agendada', 'cita_estado', 'cita_reagendada', 'cita_confirmacion', 'reconnected'], refrescar)
+  useRealtimeEvent(['cita_agendada', 'cita_estado', 'cita_reagendada', 'cita_confirmacion', 'cita_cobrada', 'reconnected'], refrescar)
 
   const nombreServicio = useMemo(() => Object.fromEntries(servicios.map(s => [s.id, s.nombre])), [servicios])
   const citasDia = (Array.isArray(citasQ.data) ? citasQ.data : []).filter(c => !estado || c.estado === estado)
@@ -85,11 +90,19 @@ export default function SeccionCitas() {
         />
       )}
 
+      {cobrando && (
+        <CobrarCitaForm
+          cita={cobrando} servicios={servicios}
+          onClose={() => setCobrando(null)} onCobrada={() => { setCobrando(null); refrescar() }}
+        />
+      )}
+
       <div className="flex flex-col xl:flex-row gap-3 items-start">
         <Card className="flex-1 w-full p-0 overflow-hidden shadow-sm">
           <Calendario
             loading={citasQ.loading || recursosQ.loading}
             recursos={recursosVisibles} citas={citasDia} nombreServicio={nombreServicio} dia={dia}
+            onCobrar={puedeCobrar ? setCobrando : null}
           />
         </Card>
         <AccionRequerida pendientes={pendientes} nombreServicio={nombreServicio} refrescar={refrescar} />
@@ -136,7 +149,7 @@ function BarraSuperior({ dia, setDia, estado, setEstado, recursoId, setRecursoId
 }
 
 // ── Calendario: columna de horas + columnas por recurso ──────────────────────
-function Calendario({ loading, recursos, citas, nombreServicio, dia }) {
+function Calendario({ loading, recursos, citas, nombreServicio, dia, onCobrar }) {
   const porRecurso = useMemo(() => {
     const m = {}
     for (const c of citas) (m[c.recurso_id] ||= []).push(c)
@@ -181,6 +194,7 @@ function Calendario({ loading, recursos, citas, nombreServicio, dia }) {
           {recursos.map(r => (
             <ColumnaRecurso
               key={r.id} recurso={r} citas={porRecurso[r.id] || []} nombreServicio={nombreServicio}
+              onCobrar={onCobrar}
             />
           ))}
 
@@ -198,19 +212,25 @@ function Calendario({ loading, recursos, citas, nombreServicio, dia }) {
   )
 }
 
-function ColumnaRecurso({ recurso, citas, nombreServicio }) {
+function ColumnaRecurso({ recurso, citas, nombreServicio, onCobrar }) {
   return (
     <div className="flex-1 min-w-[170px] relative border-l border-border-subtle" aria-label={`Columna ${recurso.nombre}`}>
       {/* Líneas de hora */}
       {HORAS.map((h, i) => (
         <div key={h} className="absolute left-0 right-0 border-t border-border-subtle/60" style={{ top: i * HORA_PX }} />
       ))}
-      {citas.map(c => <BloqueCita key={c.id} cita={c} servicio={nombreServicio[c.servicio_id]} />)}
+      {citas.map(c => (
+        <BloqueCita key={c.id} cita={c} servicio={nombreServicio[c.servicio_id]} onCobrar={onCobrar} />
+      ))}
     </div>
   )
 }
 
-function BloqueCita({ cita, servicio }) {
+// ¿La cita admite cobro? Estados cobrables sin venta vinculada (ADR 0022 §D4).
+const ESTADOS_COBRABLES = new Set(['pendiente', 'confirmada', 'cumplida'])
+const esCobrable = (c) => !c.venta_id && ESTADOS_COBRABLES.has(c.estado)
+
+function BloqueCita({ cita, servicio, onCobrar }) {
   const ini = minutosCO(cita.inicio)
   const fin = Math.max(minutosCO(cita.fin), ini + 15)
   const top = Math.max(((ini - HORA_INICIO * 60) / 60) * HORA_PX, 0)
@@ -241,7 +261,75 @@ function BloqueCita({ cita, servicio }) {
         <span className="truncate">{cita.cliente_nombre}</span>
       </div>
       {alto > 52 && <div className="text-[11px] text-muted-foreground truncate">{servicio || `#${cita.servicio_id}`}</div>}
+      {cita.venta_id ? (
+        <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-success">
+          <Check className="size-3" /> Cobrada
+        </span>
+      ) : (onCobrar && esCobrable(cita) && alto > 52 && (
+        <button
+          onClick={(e) => { e.stopPropagation(); onCobrar(cita) }}
+          aria-label={`Cobrar cita ${cita.id}`}
+          className="mt-0.5 inline-flex items-center gap-1 rounded-sm bg-primary/10 text-primary px-1.5 py-0.5 text-[10px] font-semibold hover:bg-primary/20"
+        >
+          <Banknote className="size-3" /> Cobrar
+        </button>
+      ))}
     </div>
+  )
+}
+
+// ── Cobro de cita (ADR 0022): venta + arqueo, sin doble digitación ───────────
+function CobrarCitaForm({ cita, servicios, onClose, onCobrada }) {
+  const servicio = servicios.find(s => s.id === cita.servicio_id)
+  const [metodo, setMetodo] = useState('efectivo')
+  const [precio, setPrecio] = useState(servicio?.precio ?? '')
+  const [enviando, setEnviando] = useState(false)
+  const precioServicio = servicio?.precio != null
+
+  async function cobrar() {
+    const monto = Number(precio)
+    if (!monto || monto <= 0) { toast.error('Indica el precio a cobrar'); return }
+    setEnviando(true)
+    try {
+      const body = { metodo_pago: metodo }
+      // Solo mandar override si difiere del precio del servicio (o si el servicio no tiene precio).
+      if (!precioServicio || Number(servicio.precio) !== monto) body.precio_override = monto
+      const res = await api(`/agenda/citas/${cita.id}/cobrar`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      if (res.ok) {
+        const d = await res.json().catch(() => ({}))
+        toast.success(d.replay ? 'Esta cita ya estaba cobrada' : `Cobrada: venta #${d.venta_id}`)
+        onCobrada()
+      } else if (res.status === 409) {
+        const d = await res.json().catch(() => ({}))
+        toast.error(d?.detail || 'La cita no se puede cobrar')
+      } else { toast.error('No se pudo cobrar') }
+    } catch { toast.error('Error de conexión') } finally { setEnviando(false) }
+  }
+
+  return (
+    <Card className="p-3.5">
+      <h3 className="text-sm font-semibold mb-1">Cobrar cita — {cita.cliente_nombre}</h3>
+      <p className="text-[12px] text-muted-foreground mb-3">
+        {servicio?.nombre || `Servicio #${cita.servicio_id}`} · {fmtFechaCO(cita.inicio)}
+      </p>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        <select value={metodo} onChange={e => setMetodo(e.target.value)} aria-label="Método de pago"
+          className="h-9 px-2 rounded-md border border-border bg-surface text-sm capitalize">
+          {['efectivo', 'transferencia', 'datafono'].map(m => <option key={m} value={m}>{m}</option>)}
+        </select>
+        <Input type="number" min="1" value={precio} onChange={e => setPrecio(e.target.value)}
+          placeholder="Precio" aria-label="Precio a cobrar" className="h-9" />
+      </div>
+      <div className="flex justify-end gap-2 mt-3">
+        <Button variant="ghost" onClick={onClose}>Cancelar</Button>
+        <Button onClick={cobrar} disabled={enviando}>
+          <Banknote className="size-4" /> {enviando ? 'Cobrando…' : 'Cobrar'}
+        </Button>
+      </div>
+    </Card>
   )
 }
 

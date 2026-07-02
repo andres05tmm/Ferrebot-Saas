@@ -202,6 +202,10 @@ class VentaService:
         venta = await self._repo.crear_venta(header)
         return ResultadoVenta(venta=venta, replay=False)
 
+    async def obtener_venta(self, venta_id: int) -> VentaLeer | None:
+        """Cabecera de una venta por id (solo lectura; la usa el replay del cobro de cita, ADR 0022)."""
+        return await self._repo.obtener_cabecera(venta_id)
+
     # --- Lecturas para el agente IA (solo lectura; no mutan) -------------------
     async def listar_dia(self, *, vendedor_id: int | None) -> list[VentaLeer]:
         """Ventas de HOY (Colombia). `vendedor_id` acota a un vendedor; None = todas. Solo lectura.

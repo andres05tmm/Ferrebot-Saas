@@ -204,6 +204,10 @@ class Cita(TenantBase):
     recordatorio_enviado_en: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     notas: Mapped[str | None] = mapped_column(Text)
     idempotency_key: Mapped[str | None] = mapped_column(Text, unique=True)
+    # Cobro de la cita (ADR 0022): la venta que registró el cobro (UNIQUE parcial en la migración
+    # 0027 — una cita, una venta) y cuándo se cobró. NULL = aún sin cobrar.
+    venta_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("ventas.id"))
+    cobrada_en: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # Id del evento espejo en Google Calendar (NULL si el sync está apagado o aún no se escribió).
     gcal_event_id: Mapped[str | None] = mapped_column(Text)
     creada_en: Mapped[datetime] = mapped_column(

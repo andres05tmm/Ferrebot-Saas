@@ -94,6 +94,12 @@ class CapacidadesStore(Protocol):
     async def efectivas(self, empresa_id: int) -> frozenset[str]: ...
 
 
+class RubroStore(Protocol):
+    """Rubro del negocio (`config_empresa.rubro`): parametriza la persona del bot. None = fallback."""
+
+    async def rubro(self, empresa_id: int) -> str | None: ...
+
+
 class DedupStore(Protocol):
     """Dedup de updates (Redis). Telegram reintenta el webhook si no recibe 200 a tiempo."""
 
@@ -177,3 +183,5 @@ class BotDeps:
     procesar: TurnoHandler
     # Maneja callbacks (botones). Opcional: un despliegue sin botones deja el flujo de texto intacto.
     procesar_callback: CallbackHandler | None = None
+    # Rubro por empresa (persona del bot). Opcional: None → prompt ferretero histórico (fallback).
+    rubro: RubroStore | None = None

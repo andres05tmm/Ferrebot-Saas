@@ -100,6 +100,18 @@ class CapacidadesControl:
             return await ControlCapacidades(s).efectivas(empresa_id)
 
 
+class RubroControl:
+    """Satisface `ports.RubroStore`. Por llamada: `cargar_rubro(s, eid)` sobre una sesión de control
+    fresca (mismo patrón per-call que CapacidadesControl; un update de bot tolera la lectura extra)."""
+
+    def __init__(self, abrir_control: ControlSession) -> None:
+        self._abrir = abrir_control
+
+    async def rubro(self, empresa_id: int) -> str | None:
+        async with self._abrir() as s:
+            return await cargar_rubro(s, empresa_id)
+
+
 class ConfigControl:
     """Satisface `core.llm.factory.ConfigStore`. Por llamada: `ControlLLMConfigStore(s).overrides(eid)`."""
 
@@ -228,4 +240,5 @@ def construir_deps(
         recursos=recursos,
         procesar=procesar,
         procesar_callback=procesar_callback,
+        rubro=RubroControl(abrir_control),
     )

@@ -33,6 +33,8 @@ _CLAVES_SECRETAS = ("telegram_token", "telegram_webhook_secret", "matias_email",
 _CLAVES_CONFIG = (
     "matias_base_url", "matias_resolution", "matias_prefix", "matias_notes", "matias_city_id",
     "matias_ambiente", "control_stock_estricto",
+    # Persona del bot por vertical (la lee core.tenancy.config_empresa.cargar_rubro).
+    "rubro",
 )
 # Cloudinary (bloque `cloudinary` del onboarding): api_key/api_secret CIFRADOS, cloud_name en claro.
 # (clave en el JSON → clave en secretos_empresa) — las lee `cargar_config_cloudinary`.

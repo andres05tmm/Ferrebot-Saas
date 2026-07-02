@@ -153,6 +153,8 @@ async def manejar_update(
                 idempotency_key=clave_idempotencia(tenant.id, update_id),
                 request_id=rid,
                 capacidades=await deps.capacidades.efectivas(tenant.id),
+                # Rubro del negocio (persona del prompt); None = fallback ferretero histórico.
+                rubro=(await deps.rubro.rubro(tenant.id)) if deps.rubro is not None else None,
             )
             if isinstance(update, CallbackBot):
                 if deps.procesar_callback is None:

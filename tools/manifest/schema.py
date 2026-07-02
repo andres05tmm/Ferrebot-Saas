@@ -70,6 +70,9 @@ class Identidad(_Base):
     # Requerido: empresas.nit es NOT NULL + UNIQUE en el control DB; un NIT ausente debe fallar como
     # error de validación limpio (Fase 1), no como violación NOT NULL al insertar (Fase 3).
     nit: str
+    # Rubro del negocio ("ferretería", "peluquería", "restaurante"…): parametriza la persona del bot
+    # de operación (config_empresa.rubro). Opcional: sin rubro, el bot usa el fallback ferretero.
+    rubro: str | None = None
 
     @field_validator("slug")
     @classmethod

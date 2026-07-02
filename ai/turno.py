@@ -127,46 +127,81 @@ class BypassPort(Protocol):
 BypassFactory = Callable[[AsyncSession], BypassPort | None]
 
 
-def construir_system_prompt(entidades: dict[str, dict], *, hoy: date | None = None) -> str:
-    """System prompt mínimo (helper puro): persona de asistente de ventas + fecha de HOY en
-    zona Colombia + bloque "Contexto reciente" con las entidades recordadas (si existen).
+# Reglas de dominio FERRETERO del prompt (nombre base con ejemplos del oficio, fracciones no
+# proporcionales, stock informal, lija, vinilos). Solo entran cuando el rubro es ferretería (o no
+# hay rubro configurado: fallback histórico — Punto Rojo no cambia ni un byte).
+_LINEAS_FERRETERIA = [
+    "Cuando consultes o registres un producto, búscalo por su nombre base (el sustantivo "
+    "principal), sin cantidades, fracciones ni unidades de empaque: de 'medio galón de thinner' "
+    "busca 'thinner'; de 'galón de esmalte blanco' busca 'esmalte blanco'. Si no aparece, "
+    "reintenta con un término más corto o más general antes de rendirte.",
+    "Para saber cuánto cuesta un producto, una cantidad o una fracción, usa SIEMPRE la "
+    "herramienta consultar_producto. NUNCA calcules el valor de una fracción dividiendo el del "
+    "galón o de la unidad entera: las fracciones no valen proporcional (un 1/2 no es la mitad "
+    "del entero). Si la herramienta no devuelve un valor para la fracción que piden, dilo "
+    "claramente y pregunta cuánto cobrar, en vez de inventarlo.",
+    "El inventario en cero o negativo NO impide registrar una venta: este negocio es informal y "
+    "vende aunque el conteo marque cero. Registra la venta de todas formas.",
+    "Lija: la palabra 'esmeril' decide el producto. 'lija N' (sin 'esmeril') es lija normal, se "
+    "vende por hoja/unidad. 'lija esmeril N' es otro producto y se vende por CENTÍMETRO: el "
+    "cliente pide los cm. Necesitas SIEMPRE el número de grano (N°36, 60, 80 o 100) y, para la "
+    "esmeril, también los cm. Si falta el número o los cm, PREGÚNTALO (¿N°36, 60, 80 o 100? / "
+    "¿cuántos centímetros?); nunca registres una lija ni calcules su valor a mano sin esos datos: "
+    "usa consultar_producto.",
+    "Vinilos y cuñetes: cuánto valen depende del TIPO (Tipo 1/2/3, abreviado T1/T2/T3 o solo "
+    "'t'), NO del color. Para saber su valor, consulta por el tipo (p. ej. consultar_producto "
+    "con 'vinilo t1') y responde el valor del tipo SIN enumerar colores. Si no sabes el tipo, "
+    "pregunta '¿Tipo 1, 2 o 3?', nunca por el color. El color solo importa al registrar la venta "
+    "(para descontar el inventario).",
+]
 
+
+def _es_ferreteria(rubro: str | None) -> bool:
+    """None (sin configurar) o el rubro ferretero explícito → prompt ferretero histórico."""
+    if rubro is None:
+        return True
+    plano = rubro.strip().lower().replace("í", "i")
+    return plano in ("ferreteria", "ferretería")
+
+
+def construir_system_prompt(
+    entidades: dict[str, dict], *, rubro: str | None = None, hoy: date | None = None
+) -> str:
+    """System prompt mínimo (helper puro): persona por RUBRO del negocio (config_empresa) + fecha
+    de HOY en zona Colombia + bloque "Contexto reciente" con las entidades recordadas (si existen).
+
+    `rubro=None` → prompt ferretero EXACTO de siempre (fallback: los tenants sin rubro configurado
+    no cambian). Con otro rubro, la intro se parametriza y las reglas ferreteras no entran.
     PROHIBIDO meter el inventario o los valores monetarios del negocio: el modelo los obtiene
     por herramientas (tool-calling), no por el prompt.
     """
     hoy = hoy or today_co()
-    lineas = [
+    ferreteria = _es_ferreteria(rubro)
+    intro = (
         "Eres el asistente de ventas de una ferretería. Atiendes en español, de forma breve y "
-        "concreta, y ayudas a registrar ventas, gastos, fiados y consultas del negocio.",
+        "concreta, y ayudas a registrar ventas, gastos, fiados y consultas del negocio."
+        if ferreteria
+        else f"Eres el asistente de operación de una {rubro.strip()}. Atiendes en español, de forma "
+        "breve y concreta, y ayudas al equipo a registrar ventas, gastos y consultas del negocio."
+    )
+    lineas = [
+        intro,
         f"Fecha de hoy (Colombia): {hoy.isoformat()}.",
         "Para cualquier dato del negocio usa las herramientas disponibles; nunca inventes valores.",
         "Escribe siempre en texto plano para Telegram, con tono profesional y cordial. No uses "
         "Markdown ni símbolos de formato: nada de asteriscos, guiones bajos, almohadillas ni "
         "viñetas. Si necesitas enumerar opciones, sepáralas en renglones con frases completas. "
         "Usa emojis con moderación, solo si aportan claridad.",
-        "Cuando consultes o registres un producto, búscalo por su nombre base (el sustantivo "
-        "principal), sin cantidades, fracciones ni unidades de empaque: de 'medio galón de thinner' "
-        "busca 'thinner'; de 'galón de esmalte blanco' busca 'esmalte blanco'. Si no aparece, "
-        "reintenta con un término más corto o más general antes de rendirte.",
-        "Para saber cuánto cuesta un producto, una cantidad o una fracción, usa SIEMPRE la "
-        "herramienta consultar_producto. NUNCA calcules el valor de una fracción dividiendo el del "
-        "galón o de la unidad entera: las fracciones no valen proporcional (un 1/2 no es la mitad "
-        "del entero). Si la herramienta no devuelve un valor para la fracción que piden, dilo "
-        "claramente y pregunta cuánto cobrar, en vez de inventarlo.",
-        "El inventario en cero o negativo NO impide registrar una venta: este negocio es informal y "
-        "vende aunque el conteo marque cero. Registra la venta de todas formas.",
-        "Lija: la palabra 'esmeril' decide el producto. 'lija N' (sin 'esmeril') es lija normal, se "
-        "vende por hoja/unidad. 'lija esmeril N' es otro producto y se vende por CENTÍMETRO: el "
-        "cliente pide los cm. Necesitas SIEMPRE el número de grano (N°36, 60, 80 o 100) y, para la "
-        "esmeril, también los cm. Si falta el número o los cm, PREGÚNTALO (¿N°36, 60, 80 o 100? / "
-        "¿cuántos centímetros?); nunca registres una lija ni calcules su valor a mano sin esos datos: "
-        "usa consultar_producto.",
-        "Vinilos y cuñetes: cuánto valen depende del TIPO (Tipo 1/2/3, abreviado T1/T2/T3 o solo "
-        "'t'), NO del color. Para saber su valor, consulta por el tipo (p. ej. consultar_producto "
-        "con 'vinilo t1') y responde el valor del tipo SIN enumerar colores. Si no sabes el tipo, "
-        "pregunta '¿Tipo 1, 2 o 3?', nunca por el color. El color solo importa al registrar la venta "
-        "(para descontar el inventario).",
     ]
+    if ferreteria:
+        lineas.extend(_LINEAS_FERRETERIA)
+    else:
+        lineas.append(
+            "Cuando consultes o registres un producto o servicio, búscalo por su nombre base, sin "
+            "cantidades ni unidades. Para saber cuánto cuesta, usa SIEMPRE la herramienta "
+            "consultar_producto; si no devuelve un valor, dilo claramente y pregunta cuánto cobrar, "
+            "en vez de inventarlo.",
+        )
     bloque = _bloque_contexto(entidades)
     if bloque:
         lineas.append(bloque)
@@ -413,7 +448,7 @@ def crear_turno_handler(
         memoria_svc = memoria(session)
         historial = await memoria_svc.cargar_historial(update.chat_id)        # best-effort
         entidades = await memoria_svc.leer_entidades(update.chat_id)          # best-effort
-        system = construir_system_prompt(entidades)
+        system = construir_system_prompt(entidades, rubro=ctx.rubro)
         recursos_turno = crear_recursos(session)                              # fresco por turno
 
         # Bypass (Paso A: ventas): camino rápido sin IA, ANTES del modelo. None/False = CaeAlModelo.

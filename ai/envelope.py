@@ -32,6 +32,9 @@ class Contexto:
     request_id: str | None = None
     capacidades: frozenset[str] = frozenset()  # features efectivas de la empresa
     confirmado: bool = False              # True si el usuario ya confirmó (riel de confirmación)
+    # Rubro del negocio ("ferretería", "peluquería"…) desde config_empresa: parametriza la persona
+    # del bot de operación (construir_system_prompt). None = fallback ferretero histórico.
+    rubro: str | None = None
     # Identidad del cliente en canales de cara al público (WhatsApp): la inyecta el adaptador de
     # canal desde el número que escribe, NUNCA el modelo. Las herramientas de agenda acotan sus
     # acciones a ESTE teléfono; el modelo no puede pasar otro ni ver citas ajenas.

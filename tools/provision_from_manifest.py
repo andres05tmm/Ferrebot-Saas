@@ -51,7 +51,9 @@ def _datos_base(m: Manifiesto) -> dict:
         "plan": {"nombre": m.plan.nombre, "features": list(m.plan.features)} if m.plan else None,
         "features_override": dict(m.features_override),
         "secretos": dict(m.secretos),
-        "config": dict(m.config),
+        # `identidad.rubro` viaja como config no secreta (config_empresa.rubro): la lee el bot para
+        # la persona del prompt. Un `config.rubro` explícito del manifiesto gana sobre la identidad.
+        "config": ({"rubro": m.identidad.rubro} if m.identidad.rubro else {}) | dict(m.config),
         "branding": {
             "preset": m.branding.preset,
             "color_primario": m.branding.color_primario,

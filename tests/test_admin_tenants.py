@@ -119,7 +119,8 @@ async def test_superadmin_lista_tenants(monkeypatch):
             "plan": None, "features": [], "wa_numero": None,
         }
         assert pr["plan"] == "Núcleo"
-        assert pr["features"] == ["fiados", "pos"]      # plan {pos} + override {fiados} efectivas, ordenadas
+        # plan {pos} + override {fiados}, con el meta-pack EXPANDIDO a las finas (ADR 0021), ordenadas.
+        assert pr["features"] == ["caja", "fiados", "inventario", "pos", "ventas"]
         assert pr["wa_numero"] == "PN-PR"
         assert pr["estado"] == "activa"
     finally:

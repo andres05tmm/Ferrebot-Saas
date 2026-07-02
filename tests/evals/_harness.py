@@ -208,7 +208,8 @@ def construir(productos=PRODUCTOS, *, confirmar=True) -> Harness:
 
 
 def ctx_eval(
-    *, key="eval-1", confirmado=False, rol="vendedor", capacidades=frozenset()
+    *, key="eval-1", confirmado=False, rol="vendedor",
+    capacidades=frozenset({"ventas", "caja"}),   # contexto retail contable (ADR 0021)
 ) -> Contexto:
     return Contexto(
         tenant_id=1, usuario_id=5, rol=rol, origen="bot",

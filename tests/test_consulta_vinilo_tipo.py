@@ -31,7 +31,7 @@ class _FakeVentaService:
 def _ctx():
     from ai.envelope import Contexto
     return Contexto(tenant_id=1, usuario_id=42, rol="vendedor", origen="bot",
-                    capacidades=frozenset({"bot_telegram"}))
+                    capacidades=frozenset({"bot_telegram", "ventas"}))
 
 
 def _deps(svc):

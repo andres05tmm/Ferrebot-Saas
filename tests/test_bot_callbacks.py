@@ -163,7 +163,7 @@ class _FakeVentaPendientes:
 
 def _ctx():
     return Contexto(tenant_id=1, usuario_id=42, rol="vendedor", origen="bot",
-                    idempotency_key="key-1", capacidades=frozenset({"bot_telegram"}))
+                    idempotency_key="key-1", capacidades=frozenset({"bot_telegram", "ventas", "caja"}))
 
 
 def _update(texto="3 vinilo", chat_id=555):

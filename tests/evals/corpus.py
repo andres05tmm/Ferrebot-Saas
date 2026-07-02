@@ -130,9 +130,11 @@ class CasoContrato:
     frase_origen: str              # la frase de mostrador que el modelo traduciría a este ToolCall
     tool: str
     args: dict
-    # Contexto del turno (algunas herramientas exigen capacidad/confirmación).
+    # Contexto del turno (algunas herramientas exigen capacidad/confirmación). El default es el
+    # contexto retail contable (ADR 0021: venta/gasto van tras `ventas`/`caja`); los casos que
+    # prueban el corte por capacidad lo estrechan explícitamente.
     confirmado: bool = False
-    capacidades: frozenset[str] = frozenset()
+    capacidades: frozenset[str] = frozenset({"ventas", "caja"})
     # Resultado esperado del despachador: "resultado" | "confirmar" | "error".
     espera: str = "resultado"
     evento: str | None = None      # si espera=resultado y la herramienta muta

@@ -52,7 +52,7 @@ def _recursos(session: AsyncSession) -> Recursos:
 def _ctx(tenant_id: int, usuario_id: int) -> Contexto:
     return Contexto(
         tenant_id=tenant_id, usuario_id=usuario_id, rol="vendedor", origen="bot",
-        idempotency_key=None, capacidades=frozenset(),
+        idempotency_key=None, capacidades=frozenset({"ventas", "caja"}),
     )
 
 

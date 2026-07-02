@@ -138,7 +138,7 @@ def _recursos(*, ventas_repo=None, caja_abierta=True, umbrales=None, catalogo=No
     return rec, vrepo
 
 
-def _ctx(rol="vendedor", capacidades=frozenset({"fiados"}), confirmado=False, key=None):
+def _ctx(rol="vendedor", capacidades=frozenset({"ventas", "caja", "fiados"}), confirmado=False, key=None):
     return Contexto(
         tenant_id=1, usuario_id=1, rol=rol, origen="bot",
         idempotency_key=key, capacidades=capacidades, confirmado=confirmado,
@@ -165,14 +165,27 @@ class _FakeKeyStore:
 
 # --------------------------- Catálogo expuesto (RBAC + capacidades) -------
 def test_catalogo_oculta_fiados_si_no_hay_capacidad():
-    visibles = {t.name for t in _disp().exponer_catalogo(_ctx(capacidades=frozenset()))}
+    visibles = {t.name for t in _disp().exponer_catalogo(_ctx(capacidades=frozenset({"ventas", "caja"})))}
     assert "registrar_venta" in visibles and "crear_cliente" in visibles
     assert "registrar_fiado" not in visibles and "abonar_fiado" not in visibles
 
 
 def test_catalogo_incluye_fiados_con_capacidad():
-    visibles = {t.name for t in _disp().exponer_catalogo(_ctx(capacidades=frozenset({"fiados"})))}
+    visibles = {t.name for t in _disp().exponer_catalogo(_ctx(capacidades=frozenset({"ventas", "fiados"})))}
     assert {"registrar_fiado", "abonar_fiado"} <= visibles
+
+
+def test_catalogo_oculta_venta_y_gasto_sin_features_finas():
+    # ADR 0021: sin `ventas`/`caja` (tenant de servicios puro) el modelo NO ve las tools contables.
+    visibles = {t.name for t in _disp().exponer_catalogo(_ctx(capacidades=frozenset()))}
+    assert "registrar_venta" not in visibles and "registrar_gasto" not in visibles
+    assert "consultar_producto" not in visibles and "consultar_ventas_dia" not in visibles
+    assert "crear_cliente" in visibles                       # núcleo: siempre
+
+
+def test_catalogo_con_metapack_pos_ve_todo_el_retail():
+    visibles = {t.name for t in _disp().exponer_catalogo(_ctx(capacidades=frozenset({"pos"})))}
+    assert {"registrar_venta", "registrar_gasto", "consultar_producto", "consultar_ventas_dia"} <= visibles
 
 
 def test_catalogo_visible_helper_filtra_por_rol():

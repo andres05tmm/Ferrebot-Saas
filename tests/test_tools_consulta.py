@@ -85,14 +85,14 @@ def _prod(id_, nombre, precio="1000", stock="5", unidad="Unidad", fracciones=())
 def test_consultar_ventas_dia_registrada_read_only():
     t = POR_NOMBRE["consultar_ventas_dia"]
     assert t in CATALOGO
-    assert t.rol_min == "vendedor" and t.feature is None
+    assert t.rol_min == "vendedor" and t.feature == "ventas"   # feature fina (ADR 0021)
     assert t.valida_productos is False and t.confirmable is False   # solo lectura
 
 
 def test_consultar_producto_registrada_read_only():
     t = POR_NOMBRE["consultar_producto"]
     assert t in CATALOGO
-    assert t.rol_min == "vendedor" and t.feature is None
+    assert t.rol_min == "vendedor" and t.feature == "ventas"   # feature fina (ADR 0021)
     assert t.valida_productos is False and t.confirmable is False   # solo lectura
 
 

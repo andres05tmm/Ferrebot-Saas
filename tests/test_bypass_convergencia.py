@@ -196,7 +196,7 @@ def _setup(productos, *, confirmar=True) -> _Setup:
 def _ctx(key="idem-1", confirmado=False) -> Contexto:
     return Contexto(
         tenant_id=1, usuario_id=5, rol="vendedor", origen="bot",
-        idempotency_key=key, capacidades=frozenset(), confirmado=confirmado,
+        idempotency_key=key, capacidades=frozenset({"ventas", "caja"}), confirmado=confirmado,
     )
 
 

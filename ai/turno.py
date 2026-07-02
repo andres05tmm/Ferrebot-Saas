@@ -418,7 +418,9 @@ def crear_turno_handler(
 
         # Bypass (Paso A: ventas): camino rápido sin IA, ANTES del modelo. None/False = CaeAlModelo.
         # Con `pendientes`, el bypass NO ejecuta: ofrece método de pago con botones (R3-bot).
-        if crear_bypass is not None and texto and await _resolver_por_bypass(
+        # Gate por capacidad (ADR 0021): el bypass REGISTRA ventas → sin la feature `ventas` (o su
+        # meta-pack `pos`) queda inerte y el turno cae al modelo, que tampoco tendrá esa tool.
+        if crear_bypass is not None and texto and ctx.tiene_capacidad("ventas") and await _resolver_por_bypass(
             crear_bypass, texto=texto, ctx=ctx, session=session, recursos_turno=recursos_turno,
             notificador=notificador, memoria_svc=memoria_svc, chat_id=update.chat_id,
             pendientes=pendientes,

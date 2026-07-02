@@ -14,6 +14,8 @@ para exponer/ocultar herramientas; no re-consulta el control DB por herramienta.
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
+from core.tenancy.catalogo import expandir_metapacks
+
 # Códigos de error estables (ai-tools.md §3). El modelo decide repreguntar según `recuperable`.
 EstadoIdempotente = Literal["aplicada", "duplicada"] | None
 
@@ -36,8 +38,12 @@ class Contexto:
     cliente_telefono: str | None = None
 
     def tiene_capacidad(self, feature: str | None) -> bool:
-        """Núcleo (`feature is None`) siempre disponible; lo demás según el set efectivo."""
-        return feature is None or feature in self.capacidades
+        """Núcleo (`feature is None`) siempre disponible; lo demás según el set efectivo.
+
+        Expande meta-packs fail-safe (ADR 0021): `pos` satisface ventas/caja/inventario aunque el
+        set llegue sin expandir (el control DB ya lo entrega expandido; esto cubre cachés viejas).
+        """
+        return feature is None or feature in expandir_metapacks(self.capacidades)
 
 
 @dataclass(frozen=True, slots=True)

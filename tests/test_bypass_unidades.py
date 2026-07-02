@@ -41,7 +41,7 @@ def _prod(id_, nombre, precio="1000", fracciones=()):
 
 def _ctx():
     return Contexto(tenant_id=1, usuario_id=1, rol="vendedor", origen="bot",
-                    idempotency_key="k", capacidades=frozenset())
+                    idempotency_key="k", capacidades=frozenset({"ventas"}))
 
 
 def _recursos():

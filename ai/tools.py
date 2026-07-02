@@ -425,13 +425,13 @@ CATALOGO: tuple[Tool, ...] = (
     Tool(
         nombre="registrar_venta",
         descripcion="Registra una venta. El backend calcula totales e IVA; nunca envíes totales.",
-        args_model=RegistrarVentaArgs, rol_min="vendedor", feature=None,
+        args_model=RegistrarVentaArgs, rol_min="vendedor", feature="ventas",
         handler=_registrar_venta, valida_productos=True,
     ),
     Tool(
         nombre="registrar_gasto",
         descripcion="Registra un gasto (egreso de caja). Requiere caja abierta.",
-        args_model=RegistrarGastoArgs, rol_min="vendedor", feature=None,
+        args_model=RegistrarGastoArgs, rol_min="vendedor", feature="caja",
         handler=_registrar_gasto, confirmable=True,
     ),
     Tool(
@@ -455,13 +455,13 @@ CATALOGO: tuple[Tool, ...] = (
     Tool(
         nombre="consultar_ventas_dia",
         descripcion="Consulta el resumen de ventas de hoy (cantidad y total). Solo lectura.",
-        args_model=ConsultarVentasDiaArgs, rol_min="vendedor", feature=None,
+        args_model=ConsultarVentasDiaArgs, rol_min="vendedor", feature="ventas",
         handler=_consultar_ventas_dia,   # read-only: valida_productos/confirmable = False (defaults)
     ),
     Tool(
         nombre="consultar_producto",
         descripcion="Consulta el precio y el stock de un producto por su nombre. Solo lectura.",
-        args_model=ConsultarProductoArgs, rol_min="vendedor", feature=None,
+        args_model=ConsultarProductoArgs, rol_min="vendedor", feature="ventas",
         handler=_consultar_producto,     # read-only: valida_productos/confirmable = False (defaults)
     ),
 )

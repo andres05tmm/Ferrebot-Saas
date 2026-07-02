@@ -125,9 +125,10 @@ def _pp(id_, nombre, precio="1000") -> ProductoPrecio:
 _SESSION = object()
 
 
-def _ctx() -> Contexto:
+def _ctx(capacidades: frozenset[str] = frozenset({"bot_telegram", "ventas"})) -> Contexto:
+    # El bypass registra ventas → requiere la feature fina `ventas` (ADR 0021); el default la trae.
     return Contexto(tenant_id=1, usuario_id=42, rol="vendedor", origen="bot",
-                    capacidades=frozenset({"bot_telegram"}))
+                    capacidades=capacidades)
 
 
 def _update(texto="3 vinilo", chat_id=555) -> UpdateBot:
@@ -185,6 +186,37 @@ async def test_bypass_excepcion_no_tumba_el_turno_cae_al_modelo():
 
     assert disp.selecciones == 1 and ejecutar.llamadas == 1       # cayó al modelo
     assert notif.enviados == [(555, "respuesta del modelo")]
+
+
+async def test_bypass_sin_capacidad_ventas_queda_inerte_y_cae_al_modelo():
+    # Invariante (ADR 0021): sin la feature `ventas`, el bypass NO puede registrar ventas — ni se
+    # intenta. El turno cae al modelo (que tampoco tendrá la tool registrar_venta en su catálogo).
+    bypass = _FakeBypass(Resultado(data={}, resumen="Venta #1 registrada."))
+    disp = _SpyDispatcher()
+    ejecutar = _FakeEjecutar(RespuestaAgente(texto="respuesta del modelo", ruta="texto"))
+    notif = _FakeNotificador()
+    handler = _handler(bypass=bypass, dispatcher=disp, ejecutar=ejecutar, memoria=_FakeMemoria())
+
+    ctx = _ctx(capacidades=frozenset({"bot_telegram", "pack_agenda"}))   # sin ventas ni pos
+    await handler(_update("3 vinilo"), ctx, _SESSION, notif)
+
+    assert bypass.llamado_con is None                            # el bypass NI se intentó
+    assert disp.selecciones == 1 and ejecutar.llamadas == 1      # cayó al modelo
+    assert notif.enviados == [(555, "respuesta del modelo")]
+
+
+async def test_bypass_con_metapack_pos_ejecuta():
+    # Compat: `pos` (meta-pack) satisface `ventas` por expansión — Punto Rojo sigue igual.
+    bypass = _FakeBypass(Resultado(data={}, resumen="Venta #1 registrada."))
+    disp = _SpyDispatcher()
+    ejecutar = _FakeEjecutar(RespuestaAgente(texto="(modelo)", ruta="texto"))
+    notif = _FakeNotificador()
+    handler = _handler(bypass=bypass, dispatcher=disp, ejecutar=ejecutar, memoria=_FakeMemoria())
+
+    await handler(_update("3 vinilo"), _ctx(capacidades=frozenset({"bot_telegram", "pos"})), _SESSION, notif)
+
+    assert notif.enviados == [(555, "Venta #1 registrada.")]
+    assert disp.selecciones == 0 and ejecutar.llamadas == 0
 
 
 def test_wiring_arma_bypass_no_none():

@@ -58,11 +58,18 @@ def test_ejemplo_pos_parsea_y_valida_ok():
 
 
 def test_pos_sin_flag_pos_falla():
-    # Datos de pos declarados pero la feature `pos` no está activa → incoherencia (falla cerrado).
+    # Datos de pos declarados sin `ventas` ni `pos` activos → incoherencia (falla cerrado, ADR 0021).
     datos = _datos_ejemplo()
     datos["plan"]["features"] = []  # quita pos
-    with pytest.raises(ErrorManifiesto, match="pos no está activa"):
+    with pytest.raises(ErrorManifiesto, match="ni la feature ventas ni el pack pos"):
         validar(_manifiesto(datos))
+
+
+def test_pos_con_feature_fina_ventas_valida_ok():
+    # ADR 0021: la sección packs.pos también la habilita la feature fina `ventas` (sin el meta-pack).
+    datos = _datos_ejemplo()
+    datos["plan"]["features"] = ["ventas"]
+    validar(_manifiesto(datos))  # no lanza
 
 
 def test_precio_venta_no_positivo_falla():
@@ -263,16 +270,21 @@ async def test_pos_paridad_filas_esperadas(tenant):
 
 
 def test_pos_registrado_con_loader():
-    # El registro ya NO tiene loader=None para pos: el provisionador correrá cargar_pos.
-    assert PACKS["pos"].loader is cargar_pos
+    # ADR 0021: el loader declarativo del catálogo cuelga de la feature fina `ventas` (no hay entrada
+    # `pos` en el registry: el meta-pack expande, así el loader corre UNA vez).
+    assert "pos" not in PACKS
+    assert PACKS["ventas"].loader is cargar_pos
+    assert PACKS["ventas"].seccion == "pos"          # sigue leyendo la sección YAML packs.pos
 
 
 def test_provisionador_rutea_la_seccion_pos():
-    # Wiring (auto-revisión): el provisionador resuelve flag 'pos' → m.packs.pos y lo activa cuando la
-    # feature está. Cierra el punto de integración entre el loader nuevo y el orquestador existente.
+    # Wiring (auto-revisión): el provisionador resuelve el pack `ventas` → m.packs.pos (campo
+    # `seccion`) y lo activa con la fina o con el meta-pack YA EXPANDIDO en el set efectivo.
+    from core.tenancy.catalogo import expandir_metapacks
     from tools.manifest.packs.registry import packs_activos
     from tools.provision_from_manifest import _seccion_pack
 
     manifiesto = cargar_manifiesto(_EJEMPLO)
-    assert _seccion_pack(manifiesto, "pos") is manifiesto.packs.pos
-    assert "pos" in [p.flag for p in packs_activos(frozenset({"pos"}))]
+    assert _seccion_pack(manifiesto, PACKS["ventas"]) is manifiesto.packs.pos
+    assert "ventas" in [p.flag for p in packs_activos(frozenset({"ventas"}))]
+    assert "ventas" in [p.flag for p in packs_activos(expandir_metapacks(frozenset({"pos"})))]

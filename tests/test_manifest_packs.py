@@ -102,11 +102,13 @@ async def test_cargar_faq_siembra_y_es_idempotente(tenant):
 
 
 def test_packs_activos_filtra_por_set_efectivo():
-    # PURO (sin BD): el registro expone solo los packs cuyo flag está activo.
+    # PURO (sin BD): el registro expone solo los packs cuyo flag está activo. Desde ADR 0021
+    # `ventas` ES un pack (hereda el loader del catálogo POS); `canal_whatsapp` no lo es.
     activos = packs_activos(frozenset({"pack_agenda", "ventas", "canal_whatsapp"}))
-    assert [p.flag for p in activos] == ["pack_agenda"]
+    assert {p.flag for p in activos} == {"ventas", "pack_agenda"}
 
     ambos = packs_activos(frozenset({"pack_agenda", "pack_faq"}))
     assert {p.flag for p in ambos} == {"pack_agenda", "pack_faq"}
 
-    assert packs_activos(frozenset({"ventas"})) == []
+    assert [p.flag for p in packs_activos(frozenset({"ventas"}))] == ["ventas"]
+    assert packs_activos(frozenset({"canal_whatsapp"})) == []

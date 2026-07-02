@@ -19,19 +19,37 @@ from tools.manifest.packs.pos import cargar_pos
 class Pack:
     flag: str                                          # feature del catálogo (core/tenancy/catalogo.py)
     # (manifiesto.packs.<nombre>, conn) -> conteos. `None` = pack ESTRUCTURAL: sus tablas las crea la
-    # migración del esquema y no tiene datos declarativos por sembrar (p. ej. `pos`).
+    # migración del esquema y no tiene datos declarativos por sembrar (p. ej. `caja`).
     loader: Callable[..., dict[str, int]] | None
     tablas: tuple[str, ...]                             # tablas del pack (para el smoke de verificación)
+    # Sección del manifiesto que alimenta el loader; `None` = convención flag.removeprefix("pack_").
+    # Permite que la feature fina `ventas` siga leyendo la sección YAML `packs.pos` (compat ADR 0021).
+    seccion: str | None = None
 
 
 PACKS: dict[str, Pack] = {
-    # `pos` (ADR 0008 + 0011 §D3): pack grueso de retail. Loader declarativo `cargar_pos` (ADR 0011):
-    # siembra catálogo (productos, fracciones, aliases) e inventario de apertura desde el manifiesto.
-    # Las tablas las crea la migración del esquema; el loader solo puebla las del catálogo declarativo.
-    "pos": Pack(
-        flag="pos",
+    # Partición del retail (ADR 0021): la feature fina `ventas` hereda el loader declarativo del pack
+    # `pos` (ADR 0011: catálogo —productos, fracciones, aliases— e inventario de apertura). La sección
+    # YAML sigue llamándose `packs.pos` (compat con manifiestos existentes y onboarding-magico). NO
+    # existe entrada `pos`: el meta-pack expande a las finas en el set efectivo, así el loader corre
+    # UNA vez. Si el manifiesto declara `stock_inicial` sin la feature `inventario`, la siembra es
+    # inofensiva (la tabla existe en todo tenant; ver feature-flags.md).
+    "ventas": Pack(
+        flag="ventas",
         loader=cargar_pos,
-        tablas=("ventas", "inventario", "caja", "gastos", "compras", "proveedores", "productos"),
+        seccion="pos",
+        tablas=("ventas", "productos", "productos_fracciones", "aliases"),
+    ),
+    # Packs ESTRUCTURALES de la partición: sin datos declarativos propios; tablas para el smoke.
+    "caja": Pack(
+        flag="caja",
+        loader=None,
+        tablas=("caja", "caja_movimientos", "gastos"),
+    ),
+    "inventario": Pack(
+        flag="inventario",
+        loader=None,
+        tablas=("inventario", "movimientos_inventario", "compras", "proveedores"),
     ),
     "pack_agenda": Pack(
         flag="pack_agenda",

@@ -69,9 +69,11 @@ def _efectivas(m: Manifiesto) -> frozenset[str]:
     return capacidades_completas(_features_efectivas(plan_features, m.features_override))
 
 
-def _seccion_pack(m: Manifiesto, flag: str):
-    """Sección del manifiesto que alimenta un pack: 'pack_agenda' → m.packs.agenda, etc."""
-    return getattr(m.packs, flag.removeprefix("pack_"))
+def _seccion_pack(m: Manifiesto, pack) -> object:
+    """Sección del manifiesto que alimenta un pack: `pack.seccion` explícita (p. ej. `ventas` lee
+    `packs.pos`, ADR 0021) o la convención 'pack_agenda' → m.packs.agenda."""
+    nombre = pack.seccion or pack.flag.removeprefix("pack_")
+    return getattr(m.packs, nombre)
 
 
 def _cargar_packs(m: Manifiesto, conn_url: str, efectivas: frozenset[str]) -> None:
@@ -84,7 +86,7 @@ def _cargar_packs(m: Manifiesto, conn_url: str, efectivas: frozenset[str]) -> No
             for pack in activos:
                 if pack.loader is None:
                     continue  # pack estructural (p. ej. `pos`): sus tablas las crea la migración, sin datos
-                seccion = _seccion_pack(m, pack.flag)
+                seccion = _seccion_pack(m, pack)
                 if seccion is None:
                     continue  # flag activo sin datos declarados: válido, el negocio los carga luego
                 pack.loader(seccion, conn)
@@ -108,7 +110,7 @@ def _resumen(conn_url: str, efectivas: frozenset[str], slug: str, phone_number_i
             partes.append(f"{_count(conn, 'disponibilidad')} disponibilidad")
         if "pack_faq" in efectivas:
             partes.append(f"{_count(conn, 'conocimiento')} faq")
-        if "pos" in efectivas:
+        if "ventas" in efectivas:   # feature fina (ADR 0021); `pos` la satisface por expansión
             partes.append(f"{_count(conn, 'productos')} productos")
         if "pack_pedidos" in efectivas:
             partes.append(f"{_count(conn, 'zonas_domicilio')} zonas")

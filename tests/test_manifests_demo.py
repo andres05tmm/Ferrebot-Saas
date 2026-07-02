@@ -10,6 +10,7 @@ from pathlib import Path
 
 import pytest
 
+from core.tenancy.catalogo import capacidades_completas
 from tools.manifest import Manifiesto, cargar_manifiesto, validar
 from tools.manifest.packs.registry import packs_activos
 from tools.provision_tenant import _features_efectivas
@@ -22,8 +23,9 @@ def _ruta(slug: str) -> Path:
 
 
 def _efectivas(m: Manifiesto) -> frozenset[str]:
+    # Espeja el camino real del provisionador: NUCLEO ∪ (plan ± overrides) con meta-packs expandidos.
     plan_features = list(m.plan.features) if m.plan else []
-    return _features_efectivas(plan_features, m.features_override)
+    return capacidades_completas(_features_efectivas(plan_features, m.features_override))
 
 
 DEMOS = ["barberia-demo", "restaurante-demo", "hotel-demo"]
@@ -62,9 +64,10 @@ def test_restaurante_tiene_menu_pos_y_pedidos():
     assert m.packs.pedidos is not None and len(m.packs.pedidos.zonas) >= 1
     # IVA de los ítems = 0 (impoconsumo aparte); el validador solo admite 0/5/19.
     assert all(p.iva in {0, 5, 19} for p in m.packs.pos.productos)
-    # pack_pedidos corre como pack con loader (config + zonas); pos siembra el menú.
+    # pack_pedidos corre como pack con loader (config + zonas); el menú lo siembra el pack `ventas`
+    # (ADR 0021: hereda el loader del catálogo; `pos` expande a la fina en el set efectivo).
     flags = {p.flag for p in packs_activos(efectivas | {"clientes", "reportes"})}
-    assert {"pos", "pack_pedidos"} <= flags
+    assert {"ventas", "pack_pedidos"} <= flags
 
 
 def test_hotel_es_reservas_sobre_agenda():

@@ -72,8 +72,10 @@ def _errores_coherencia(manifiesto: Manifiesto, efectivas: frozenset[str]) -> li
     if faq is not None and faq.entradas and "pack_faq" not in efectivas:
         errores.append("packs.faq declarado pero la feature pack_faq no está activa")
     pos = manifiesto.packs.pos
-    if pos is not None and (pos.productos or pos.aliases) and "pos" not in efectivas:
-        errores.append("packs.pos declarado pero la feature pos no está activa")
+    # ADR 0021: la sección `packs.pos` (catálogo) la consume la feature fina `ventas`; el meta-pack
+    # `pos` la satisface por expansión (el set efectivo ya viene expandido).
+    if pos is not None and (pos.productos or pos.aliases) and "ventas" not in efectivas:
+        errores.append("packs.pos declarado pero ni la feature ventas ni el pack pos están activos")
     pedidos = manifiesto.packs.pedidos
     if pedidos is not None and pedidos.zonas and "pack_pedidos" not in efectivas:
         errores.append("packs.pedidos declarado pero la feature pack_pedidos no está activa")

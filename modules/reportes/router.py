@@ -14,12 +14,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.auth import Principal, get_filtro_efectivo, require_role
 from core.auth.features import require_feature
 from core.db.session import get_tenant_db
+from modules.reportes.consolidacion import (
+    ConsolidacionIVAService,
+    SqlConsolidacionRepository,
+)
 from modules.reportes.repository import SqlReportesRepository
 from modules.reportes.schemas import (
     EstadoResultados,
     LibroIVA,
     PuntoSerie,
     ResumenDia,
+    SaldoBimestral,
     TopProducto,
     TotalesVentas,
 )
@@ -89,6 +94,43 @@ async def libro_iva(
     """Libro IVA del rango (default mes). Admin-only; gateado por la feature `libro_iva`. Solo cruza
     datos existentes (ventas vs compras fiscales): NO emite ni consulta a la DIAN."""
     return await ReportesService(repo).libro_iva(desde=desde, hasta=hasta)
+
+
+def get_consolidacion_repo(
+    session: AsyncSession = Depends(get_tenant_db),
+) -> SqlConsolidacionRepository:
+    """Repo de consolidación de IVA sobre la sesión del tenant (overridable en test)."""
+    return SqlConsolidacionRepository(session)
+
+
+@router.post(
+    "/reportes/iva/consolidar",
+    response_model=SaldoBimestral,
+    dependencies=[Depends(require_feature("libro_iva"))],
+)
+async def consolidar_iva(
+    anio: int = Query(ge=2000, le=2100),
+    bimestre: int = Query(ge=1, le=6),
+    repo: SqlConsolidacionRepository = Depends(get_consolidacion_repo),
+    _user: Principal = Depends(require_role("admin")),
+) -> SaldoBimestral:
+    """Materializa el Libro IVA + el saldo del bimestre (ADR 0027). Idempotente: reprocesar no duplica.
+    Admin-only; gateado por la feature `libro_iva`. Solo cruza datos existentes; no toca la DIAN."""
+    return await ConsolidacionIVAService(repo).consolidar_bimestre(anio=anio, bimestre=bimestre)
+
+
+@router.get(
+    "/reportes/iva-saldos",
+    response_model=list[SaldoBimestral],
+    dependencies=[Depends(require_feature("libro_iva"))],
+)
+async def listar_iva_saldos(
+    anio: int | None = Query(default=None),
+    repo: SqlConsolidacionRepository = Depends(get_consolidacion_repo),
+    _user: Principal = Depends(require_role("admin")),
+) -> list[SaldoBimestral]:
+    """Saldos bimestrales de IVA ya consolidados (todos, o los del año dado). Admin-only, feature `libro_iva`."""
+    return await ConsolidacionIVAService(repo).listar_saldos(anio=anio)
 
 
 @router.get(

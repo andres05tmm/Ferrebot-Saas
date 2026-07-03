@@ -16,7 +16,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.config.timezone import rango_dia_co, today_co
 from modules.caja.repository import SqlCajaRepository
 from modules.caja.service import CajaService
-from modules.devoluciones.errors import CajaRequerida, DevolucionConflicto
+from modules.devoluciones.errors import (
+    CajaRequerida,
+    DevolucionConflicto,
+    DevolucionExcedeVenta,
+    NadaPorDevolver,
+)
+from modules.ventas.errors import VentaConDevolucion
 from modules.devoluciones.repository import SqlDevolucionesRepository
 from modules.devoluciones.schemas import DevolucionCrear, DevolucionLineaCrear
 from modules.devoluciones.service import DevolucionesService
@@ -315,3 +321,110 @@ async def test_aislamiento_multitenant(tenant_factory):
         assert (
             await s.execute(text("SELECT count(*) FROM movimientos_inventario WHERE tipo='DEVOLUCION'"))
         ).scalar_one() == 0
+
+
+# --- INVARIANTE: sobre-devolución bloqueada (acumulado entre devoluciones) ----
+async def test_sobre_devolucion_acumulada_409(tenant):
+    """Dos devoluciones con keys distintas no pueden exceder lo vendido: la segunda que se pasa → 409."""
+    async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
+        uid = await _usuario(s)
+        pid = await _producto(s, stock="100")
+        await CajaService(SqlCajaRepository(s)).abrir(usuario_id=uid, saldo_inicial=Decimal("0"))
+        venta = (await VentaService(SqlVentasRepository(s)).registrar_venta(_venta(pid, "5"), vendedor_id=uid)).venta
+        await s.commit()
+
+    async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
+        await _svc(s).devolver(
+            DevolucionCrear(venta_id=venta.id, lineas=[DevolucionLineaCrear(producto_id=pid, cantidad=Decimal("3"))]),
+            usuario_id=uid,
+        )
+        await s.commit()
+
+    # Quedan 2 por devolver: pedir 3 más excede (3 + 3 > 5).
+    async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
+        with pytest.raises(DevolucionExcedeVenta):
+            await _svc(s).devolver(
+                DevolucionCrear(venta_id=venta.id, lineas=[DevolucionLineaCrear(producto_id=pid, cantidad=Decimal("3"))]),
+                usuario_id=uid,
+            )
+        await s.rollback()
+    assert await _stock(tenant.engine, pid) == Decimal("98.000")   # 95 + 3; la segunda no tocó nada
+
+
+async def test_payload_con_producto_duplicado_agrega_cantidades(tenant):
+    """Dos líneas del mismo producto en el payload SUMAN: 3 + 3 > 5 vendidos → 409 (no dos por 3)."""
+    async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
+        uid = await _usuario(s)
+        pid = await _producto(s, stock="100")
+        await CajaService(SqlCajaRepository(s)).abrir(usuario_id=uid, saldo_inicial=Decimal("0"))
+        venta = (await VentaService(SqlVentasRepository(s)).registrar_venta(_venta(pid, "5"), vendedor_id=uid)).venta
+        await s.commit()
+
+    async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
+        with pytest.raises(DevolucionExcedeVenta):
+            await _svc(s).devolver(
+                DevolucionCrear(
+                    venta_id=venta.id,
+                    lineas=[
+                        DevolucionLineaCrear(producto_id=pid, cantidad=Decimal("3")),
+                        DevolucionLineaCrear(producto_id=pid, cantidad=Decimal("3")),
+                    ],
+                ),
+                usuario_id=uid,
+            )
+        await s.rollback()
+
+
+async def test_total_tras_parcial_devuelve_solo_el_remanente(tenant):
+    """La devolución total después de una parcial reintegra SOLO lo que queda (no vuelve a pagar todo)."""
+    async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
+        uid = await _usuario(s)
+        pid = await _producto(s, precio="20000", stock="100")
+        await CajaService(SqlCajaRepository(s)).abrir(usuario_id=uid, saldo_inicial=Decimal("0"))
+        venta = (await VentaService(SqlVentasRepository(s)).registrar_venta(_venta(pid, "5"), vendedor_id=uid)).venta
+        await s.commit()
+
+    async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
+        await _svc(s).devolver(
+            DevolucionCrear(venta_id=venta.id, lineas=[DevolucionLineaCrear(producto_id=pid, cantidad=Decimal("2"))]),
+            usuario_id=uid,
+        )
+        await s.commit()
+
+    async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
+        res = await _svc(s).devolver(DevolucionCrear(venta_id=venta.id), usuario_id=uid)
+        await s.commit()
+        assert res.devolucion.total == Decimal("60000.00")   # remanente: 3 × 20000
+
+    assert await _stock(tenant.engine, pid) == Decimal("100.000")   # todo re-ingresado, ni una unidad más
+
+    # Tercera devolución (total otra vez): ya no queda nada → 409.
+    async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
+        with pytest.raises(NadaPorDevolver):
+            await _svc(s).devolver(DevolucionCrear(venta_id=venta.id), usuario_id=uid)
+        await s.rollback()
+
+
+# --- INVARIANTE: la devolución bloquea borrar/editar la venta (409, no FK 500) --
+async def test_borrar_venta_con_devolucion_da_409_legible(tenant):
+    async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
+        uid = await _usuario(s)
+        pid = await _producto(s, stock="100")
+        await CajaService(SqlCajaRepository(s)).abrir(usuario_id=uid, saldo_inicial=Decimal("0"))
+        venta = (await VentaService(SqlVentasRepository(s)).registrar_venta(_venta(pid, "3"), vendedor_id=uid)).venta
+        await s.commit()
+
+    async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
+        await _svc(s).devolver(
+            DevolucionCrear(venta_id=venta.id, lineas=[DevolucionLineaCrear(producto_id=pid, cantidad=Decimal("1"))]),
+            usuario_id=uid,
+        )
+        await s.commit()
+
+    async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
+        with pytest.raises(VentaConDevolucion):
+            await VentaService(SqlVentasRepository(s)).borrar_venta(venta.id, user_id=uid, es_admin=True)
+        await s.rollback()
+
+    async with AsyncSession(tenant.engine) as s:
+        assert (await s.execute(text("SELECT count(*) FROM ventas WHERE id=:v"), {"v": venta.id})).scalar_one() == 1

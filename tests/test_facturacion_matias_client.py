@@ -144,6 +144,41 @@ async def test_emitir_factura_rechazo():
     assert res.ok is False and "Rechazado" in res.error_msg
 
 
+def _client_5xx(status: int, *, json_body: bool = True) -> MatiasClient:
+    """Cliente cuyo endpoint de emisión (FE y POS) responde `status` (login sigue OK)."""
+
+    def _call(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/auth/login"):
+            return httpx.Response(200, json={"token": "TKN", "expires_in": 3600})
+        if json_body:
+            return httpx.Response(status, json={"success": False, "message": "Server Error"})
+        return httpx.Response(status, text="<html>Bad Gateway</html>")
+
+    http = httpx.AsyncClient(transport=httpx.MockTransport(_call), base_url=_CRED.base_url)
+    return MatiasClient(_CRED, client=http)
+
+
+async def test_emitir_factura_5xx_es_error_transitorio():
+    """Un 500 con body JSON NO es un rechazo de negocio: categoria 'error' (reintentable), nunca
+    'rechazada' (terminal: la política no reintenta y el reconciliador no la barre)."""
+    res = await _client_5xx(500).emitir_factura({"document_number": "1024"})
+    assert res.ok is False and res.categoria == "error"
+    assert "500" in res.error_msg
+    assert res.raw == {"success": False, "message": "Server Error"}
+
+
+async def test_emitir_factura_5xx_body_no_json():
+    res = await _client_5xx(502, json_body=False).emitir_factura({"document_number": "1024"})
+    assert res.ok is False and res.categoria == "error"
+    assert "502" in res.error_msg and res.raw is None
+
+
+async def test_emitir_pos_5xx_es_error_transitorio():
+    res = await _client_5xx(503).emitir_pos({"prefix": "POS"})
+    assert res.ok is False and res.categoria == "error"
+    assert "503" in res.error_msg
+
+
 def test_parsear_estado_variantes():
     aceptada = _parsear_estado({"is_valid": True, "XmlDocumentKey": "a" * 40})
     assert aceptada.categoria == "aceptada" and aceptada.cufe == "a" * 40

@@ -5,7 +5,8 @@ de la política (E4a) y persiste el estado que ella dicta: aceptada / rechazada 
 error (reintentable hasta `MAX_INTENTOS`, luego dead-letter). En RED los tests de `emitir` fallan por
 NotImplementedError; `crear_pendiente` y el helper puro siguen verdes.
 """
-from datetime import datetime, timezone
+from dataclasses import replace
+from datetime import date, datetime, time, timezone
 from decimal import Decimal
 
 from modules.facturacion.matias_client import EmisionResultado
@@ -99,15 +100,18 @@ class _FakeRepo:
 
 
 class _FakeMatias:
-    """MatiasClient fake: city_id canned y emitir_factura canned/excepción; registra si se llamó."""
+    """MatiasClient fake: city_id canned/excepción y emitir_factura canned/excepción; registra si se llamó."""
 
-    def __init__(self, *, resultado=None, excepcion=None, city="149"):
+    def __init__(self, *, resultado=None, excepcion=None, city="149", city_excepcion=None):
         self._resultado = resultado
         self._excepcion = excepcion
         self._city = city
+        self._city_excepcion = city_excepcion
         self.emitir_llamado = False
 
     async def city_id(self, dane_code):
+        if self._city_excepcion is not None:
+            raise self._city_excepcion
         return self._city
 
     async def emitir_factura(self, payload):
@@ -178,6 +182,18 @@ async def test_emitir_excepcion_transporte():
     assert d.estado == "error" and d.reintentar is True
 
 
+async def test_emitir_fallo_city_id_marca_error_sin_propagar():
+    """Contrato "emitir no lanza": si `/cities` falla, la factura queda en error REINTENTABLE
+    (marcar_error + intentos+1), no en pendiente eterna ni con la excepción propagada al worker."""
+    repo = _FakeRepo(factura=_factura(intentos=0))
+    matias = _FakeMatias(city_excepcion=RuntimeError("MATIAS /cities caído"))
+    d = await _svc(repo, matias).emitir(1)            # no propaga
+    assert d.estado == "error" and d.reintentar is True
+    assert repo._facturas[1].estado == "error"
+    assert repo._facturas[1].intentos == 1
+    assert matias.emitir_llamado is False             # nunca llegó a /invoice
+
+
 async def test_emitir_idempotente_si_aceptada():
     repo = _FakeRepo(factura=_factura(estado="aceptada", cufe=_CUFE))
     matias = _FakeMatias(resultado=EmisionResultado(ok=True, cufe="b" * 40, categoria="aceptada"))
@@ -195,3 +211,12 @@ def test_construir_factura_input():
     assert fi.emision.resolution_number == "18760000001"
     assert fi.cliente.city_id_matias == "149"
     assert len(fi.items) == 1
+
+
+def test_construir_factura_input_fecha_nocturna_en_hora_colombia():
+    """Venta a las 19:01 hora Colombia = 00:01 UTC del día SIGUIENTE (así llega el TIMESTAMPTZ):
+    la factura debe llevar fecha/hora Colombia, no la fecha UTC (facturaría al día siguiente)."""
+    datos = replace(_DATOS, fecha=datetime(2026, 6, 5, 0, 1, tzinfo=timezone.utc))
+    fi = _construir_factura_input(datos, _CONFIG, consecutivo=7, city_id_matias="149")
+    assert fi.emision.fecha == date(2026, 6, 4)
+    assert fi.emision.hora == time(19, 1)

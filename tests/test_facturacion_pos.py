@@ -99,9 +99,20 @@ def test_armar_payload_pos_time_sin_microsegundos():
     datos = replace(_DATOS, fecha=datetime(2026, 6, 9, 20, 35, 47, 123456, tzinfo=timezone.utc))
     pos = _construir_pos_input(datos, _config(), city_id_matias="149")
     payload = ubl.armar_payload_pos(pos)
-    assert payload["time"] == "20:35:47"
+    assert payload["time"] == "15:35:47"                          # 20:35:47 UTC → hora Colombia
     assert re.fullmatch(r"\d{2}:\d{2}:\d{2}", payload["time"])    # sin punto decimal ni zona
-    assert payload["date"] == "2026-06-09"                        # date intacto (Y-m-d)
+    assert payload["date"] == "2026-06-09"                        # mismo día en Colombia (Y-m-d)
+
+
+def test_armar_payload_pos_fecha_nocturna_en_hora_colombia():
+    """Venta a las 19:01 hora Colombia (00:01 UTC del día SIGUIENTE): el POS lleva la fecha Colombia,
+    no la fecha UTC del timestamp (una venta nocturna no puede quedar facturada al día siguiente)."""
+    from dataclasses import replace
+    datos = replace(_DATOS, fecha=datetime(2026, 6, 10, 0, 1, 0, tzinfo=timezone.utc))
+    pos = _construir_pos_input(datos, _config(), city_id_matias="149")
+    payload = ubl.armar_payload_pos(pos)
+    assert payload["date"] == "2026-06-09"
+    assert payload["time"] == "19:01:00"
 
 
 def test_pos_completa_false_si_falta_campo_obligatorio():

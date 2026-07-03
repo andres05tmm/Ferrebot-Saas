@@ -14,7 +14,11 @@ from typing import Protocol
 
 from core.config.timezone import now_co
 from core.logging import get_logger
-from modules.compras_fiscal.errors import CompraFiscalInexistente, CufeNoImportado
+from modules.compras_fiscal.errors import (
+    CompraFiscalInexistente,
+    CufeNoImportado,
+    EventoRadianYaResuelto,
+)
 from modules.compras_fiscal.repository import SqlComprasFiscalRepository
 from modules.compras_fiscal.schemas import CompraFiscalLeer
 
@@ -69,17 +73,24 @@ class RadianService:
         """Acepta la factura: envía 032 (recibo) y 033 (aceptación expresa) → estado 'aceptada'.
 
         Requiere el CUFE ya importado (409 si falta). 404 si no existe. Fallo MATIAS → error + ok=False.
+        Idempotencia PARCIAL del par: `evento_032_at` se persiste apenas el 032 sale bien — si el 033
+        falla, el reintento NO reenvía el 032 (un evento DIAN real no se duplica). Una fiscal ya
+        'aceptada'/'reclamada' rechaza el reenvío (409).
         """
         fiscal = await self._repo.obtener(fiscal_id)
         if fiscal is None:
             raise CompraFiscalInexistente(fiscal_id)
+        if fiscal.evento_estado in ("aceptada", "reclamada"):
+            raise EventoRadianYaResuelto(fiscal_id, fiscal.evento_estado)
         if not fiscal.cufe_proveedor:
             raise CufeNoImportado(fiscal_id)
         cufe = fiscal.cufe_proveedor
         try:
-            r32 = await self._matias.enviar_evento(cufe, "032", "Recibo del bien o servicio")
-            if not r32.ok:
-                return await self._fallo(fiscal_id, r32.error_msg), False
+            if fiscal.evento_032_at is None:
+                r32 = await self._matias.enviar_evento(cufe, "032", "Recibo del bien o servicio")
+                if not r32.ok:
+                    return await self._fallo(fiscal_id, r32.error_msg), False
+                fiscal = await self._repo.set_radian(fiscal_id, evento_032_at=now_co())
             r33 = await self._matias.enviar_evento(cufe, "033", "Aceptación expresa")
             if not r33.ok:
                 return await self._fallo(fiscal_id, r33.error_msg), False
@@ -87,7 +98,7 @@ class RadianService:
             log.warning("radian_aceptar_fallo_transporte", fiscal_id=fiscal_id, exc_info=True)
             return await self._fallo(fiscal_id, "fallo de transporte MATIAS"), False
         actualizada = await self._repo.set_radian(
-            fiscal_id, evento_032_at=now_co(), evento_033_at=now_co(),
+            fiscal_id, evento_033_at=now_co(),
             evento_estado="aceptada", evento_error=None,
         )
         return actualizada, True
@@ -100,6 +111,8 @@ class RadianService:
         fiscal = await self._repo.obtener(fiscal_id)
         if fiscal is None:
             raise CompraFiscalInexistente(fiscal_id)
+        if fiscal.evento_estado in ("aceptada", "reclamada"):
+            raise EventoRadianYaResuelto(fiscal_id, fiscal.evento_estado)
         if not fiscal.cufe_proveedor:
             raise CufeNoImportado(fiscal_id)
         try:

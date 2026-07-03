@@ -27,3 +27,13 @@ class CufeNoImportado(ComprasFiscalError):
     def __init__(self, fiscal_id: int) -> None:
         super().__init__(f"La compra fiscal {fiscal_id} no tiene CUFE importado: impórtalo primero")
         self.fiscal_id = fiscal_id
+
+
+class EventoRadianYaResuelto(ComprasFiscalError):
+    """La factura ya está en un estado RADIAN terminal (aceptada/reclamada): re-aceptarla o
+    reclamarla enviaría eventos DIAN reales duplicados o contradictorios (→ 409)."""
+
+    def __init__(self, fiscal_id: int, estado: str) -> None:
+        super().__init__(f"La compra fiscal {fiscal_id} ya está '{estado}': no admite otro evento RADIAN")
+        self.fiscal_id = fiscal_id
+        self.estado = estado

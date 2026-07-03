@@ -11,7 +11,7 @@ import { Loader2 } from 'lucide-react'
 import { Card } from '@/components/ui/card.jsx'
 import { Input } from '@/components/ui/input.jsx'
 import { Button } from '@/components/ui/button.jsx'
-import { api, apiJson } from '@/lib/api.js'
+import { api, apiJson } from '@/lib/api'
 import { FEATURES_OPCIONALES } from './features.js'
 
 const TERMINALES = new Set(['ok', 'error'])

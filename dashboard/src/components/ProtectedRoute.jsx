@@ -11,7 +11,7 @@
  * si está expirado, api.js intercepta el 401 y redirige a /login.
  */
 import { Navigate } from 'react-router-dom'
-import { getToken } from '@/lib/api.js'
+import { getToken } from '@/lib/api'
 import { landingLoginUrlForHost, handoffNav } from '@/lib/handoff.js'
 
 export default function ProtectedRoute({ children }) {

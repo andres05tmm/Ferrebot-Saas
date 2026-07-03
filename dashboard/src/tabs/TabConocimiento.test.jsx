@@ -5,7 +5,7 @@ import { MemoryRouter } from 'react-router-dom'
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 
 import { isRouteEnabled } from '@/lib/features.jsx'
-import { USER_KEY } from '@/lib/api.js'
+import { USER_KEY } from '@/lib/api'
 import TabConocimiento from './TabConocimiento.jsx'
 
 function jsonResp(data, status = 200) { return { ok: status < 400, status, json: async () => data } }

@@ -10,7 +10,7 @@ import { useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { Loader2 } from 'lucide-react'
 import { Card } from '@/components/ui/card.jsx'
-import { api } from '@/lib/api.js'
+import { api } from '@/lib/api'
 
 const MIN_PASSWORD = 8
 

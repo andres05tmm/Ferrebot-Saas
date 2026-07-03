@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useAuth } from './useAuth.js'
-import { redirector } from '@/lib/api.js'
+import { redirector } from '@/lib/api'
 
 beforeEach(() => {
   localStorage.clear()

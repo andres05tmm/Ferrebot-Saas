@@ -9,7 +9,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Loader2 } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth.js'
-import { apiJson } from '@/lib/api.js'
+import { apiJson } from '@/lib/api'
 import { Button } from '@/components/ui/button.jsx'
 import { Card } from '@/components/ui/card.jsx'
 import CrearTenantForm from './CrearTenantForm.jsx'

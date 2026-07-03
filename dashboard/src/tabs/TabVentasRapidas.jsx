@@ -8,7 +8,7 @@
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { Plus, Search, Trash2, X } from 'lucide-react'
-import { api, apiJson } from '@/lib/api.js'
+import { api, apiJson } from '@/lib/api'
 import { cop } from '@/components/shared.jsx'
 import { useFeatures } from '@/lib/features.jsx'
 import { Card } from '@/components/ui/card.jsx'

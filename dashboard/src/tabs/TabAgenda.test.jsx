@@ -12,7 +12,7 @@ vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), message: v
 import { toast } from 'sonner'
 import { FeaturesProvider } from '@/lib/features.jsx'
 import { isRouteEnabled } from '@/lib/features.jsx'
-import { USER_KEY } from '@/lib/api.js'
+import { USER_KEY } from '@/lib/api'
 import TabAgenda from './TabAgenda.jsx'
 
 function jsonResp(data, status = 200) { return { ok: status < 400, status, json: async () => data } }

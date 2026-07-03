@@ -6,7 +6,7 @@
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { Plus, Trash2, Power } from 'lucide-react'
-import { api } from '@/lib/api.js'
+import { api } from '@/lib/api'
 import { useFetch } from '@/components/shared.jsx'
 import { Card } from '@/components/ui/card.jsx'
 import { Input } from '@/components/ui/input.jsx'

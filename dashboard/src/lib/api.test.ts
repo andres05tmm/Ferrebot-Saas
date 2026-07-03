@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { api, buildAuthHeaders, redirector } from './api.js'
+import { api, buildAuthHeaders, redirector } from './api'
 
 const realLocation = window.location
 

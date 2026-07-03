@@ -13,7 +13,7 @@
  */
 import { useEffect, useRef } from 'react'
 import { fetchEventSource } from '@microsoft/fetch-event-source'
-import { buildAuthHeaders, getToken, limpiarSesion, redirector } from '@/lib/api.js'
+import { buildAuthHeaders, getToken, limpiarSesion, redirector } from '@/lib/api'
 
 const EVENTS_URL = '/api/v1/events'
 const BACKOFF_MAX = 30_000

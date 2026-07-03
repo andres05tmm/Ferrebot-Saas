@@ -1,0 +1,18 @@
+# Corpus de la ruta LLM (agente WhatsApp de cara al público): elección de herramienta por pack.
+# Formato: {"frase": ..., "espera_tool": <tool>, "categoria": ...}  |  {"frase": ..., "espera": "handoff"|"texto", ...}
+# Se evalúa con un proveedor INYECTADO (fake en tests, real en corridas manuales). No versiona datos.
+{"frase": "¿a cómo tienes el bulto de cemento?", "espera_tool": "cotizar_producto", "categoria": "cotizaciones"}
+{"frase": "necesito una cotización de 10 láminas de drywall", "espera_tool": "cotizar_producto", "categoria": "cotizaciones"}
+{"frase": "agrégame también 5 tarros de pintura a la cotización", "espera_tool": "agregar_a_cotizacion", "categoria": "cotizaciones"}
+{"frase": "listo, esa es toda la cotización, mándamela", "espera_tool": "emitir_cotizacion", "categoria": "cotizaciones"}
+{"frase": "¿cuánto debo de mi cuenta?", "espera_tool": "mi_saldo", "categoria": "cobranza"}
+{"frase": "te pago el viernes sin falta", "espera_tool": "prometer_pago", "categoria": "cobranza"}
+{"frase": "ya hice el pago, aquí te mando el comprobante", "espera_tool": "reportar_pago", "categoria": "cobranza"}
+{"frase": "no me manden más mensajes de cobro por favor", "espera_tool": "no_mas_recordatorios", "categoria": "cobranza"}
+{"frase": "¿qué tienen en el menú de hoy?", "espera_tool": "ver_menu", "categoria": "pedidos"}
+{"frase": "quiero pedir dos hamburguesas para llevar", "espera_tool": "armar_pedido", "categoria": "pedidos"}
+{"frase": "confirma mi pedido, pago en efectivo, calle 5 #10-20", "espera_tool": "confirmar_pedido", "categoria": "pedidos"}
+{"frase": "¿en qué va mi pedido?", "espera_tool": "estado_mi_pedido", "categoria": "pedidos"}
+{"frase": "quiero hablar con una persona de verdad", "espera": "handoff", "categoria": "handoff"}
+{"frase": "esto es un desastre, exijo un reembolso ya", "espera": "handoff", "categoria": "handoff"}
+{"frase": "muchas gracias, eso era todo", "espera": "texto", "categoria": "cortesia"}

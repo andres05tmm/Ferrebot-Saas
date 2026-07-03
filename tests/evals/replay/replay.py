@@ -233,8 +233,10 @@ def _pct(num: int, den: int) -> str:
     return f"{(100.0 * num / den):5.1f}%" if den else "  n/a"
 
 
-def imprimir_reporte(cats: dict, glob: dict, filas: list[dict], umbral: float) -> None:
-    print("\n== REPLAY · acierto del bot (ruta bypass) ==\n")
+def imprimir_reporte(
+    cats: dict, glob: dict, filas: list[dict], umbral: float, *, titulo: str = "ruta bypass"
+) -> None:
+    print(f"\n== REPLAY · acierto del bot ({titulo}) ==\n")
     print(f"  {'categoría':<22} {'n':>4} {'ok':>4} {'acierto':>8} {'peligro':>8} {'equivoc':>8}")
     print(f"  {'-' * 22} {'-' * 4} {'-' * 4} {'-' * 8} {'-' * 8} {'-' * 8}")
     for nombre in sorted(cats):
@@ -270,15 +272,15 @@ def main(argv: "list[str] | None" = None) -> int:
     ap.add_argument("--catalogo", default=None,
                     help="catalogo.json del tenant (de extraer_catalogo.py). Si falta, usa el catálogo del harness.")
     ap.add_argument("--route", choices=["bypass", "llm"], default="bypass",
-                    help="ruta a evaluar. 'llm' aún no cableada (ver README).")
+                    help="ruta a evaluar: 'bypass' (determinista) o 'llm' (elección de tool del agente WA).")
     ap.add_argument("--umbral", type=float, default=0.95, help="acierto mínimo para salir con código 0")
     ap.add_argument("--json-out", default=None, help="vuelca el reporte detallado a un JSON (para comparar paridad)")
+    ap.add_argument("--judge", action="store_true",
+                    help="ruta llm: activa el LLM-as-judge del texto libre (opt-in; requiere key). Off por defecto.")
     args = ap.parse_args(argv)
 
     if args.route == "llm":
-        print("La ruta 'llm' aún no está cableada en este runner. Requiere tenant sembrado + clave de "
-              "proveedor; ver el README de este paquete (sección 'Ruta LLM'). Usa --route bypass por ahora.")
-        return 2
+        return _main_llm(args)
 
     corpus = cargar_corpus(args.corpus)
     sin_etiqueta = sum(1 for c in corpus if c.get("espera") == "?")
@@ -306,6 +308,62 @@ def main(argv: "list[str] | None" = None) -> int:
 def _catalogo_harness():
     from tests.evals._harness import PRODUCTOS
     return PRODUCTOS
+
+
+def _proveedor_real_o_none():
+    """Proveedor LLM de plataforma (para corridas manuales). None si no hay key configurada.
+
+    La ruta LLM NUNCA se ejecuta con proveedor real en CI: los tests llaman al harness
+    (`tests/evals/replay/llm_route.py`) con un proveedor scripteado. Aquí, en el CLI manual, se
+    resuelve el proveedor por defecto de plataforma con su key del entorno.
+    """
+    from core.config import get_settings
+    from core.llm.factory import LLMResuelto, PlataformaLLM
+    from core.llm import registry
+
+    plataforma = PlataformaLLM.desde_settings(get_settings())
+    key = plataforma.keys.get(plataforma.provider)
+    if not key:
+        return None
+    clase = registry.obtener_clase(plataforma.provider)
+    return LLMResuelto(
+        provider=clase(api_key=key), model=plataforma.model_orquestador,
+        provider_nombre=plataforma.provider,
+    )
+
+
+def _main_llm(args) -> int:
+    """Ruta LLM del CLI (manual): corre el corpus WA contra el proveedor real de plataforma.
+
+    Requiere una key de proveedor en el entorno (nunca se corre con API real en CI). El LLM-as-judge
+    es opt-in con `--judge`; sin él, el juez está desactivado (solo se evalúa la elección de tool).
+    """
+    import asyncio
+
+    from tests.evals.replay.llm_route import JuezDesactivado, cargar_corpus_llm, correr_llm
+
+    corpus = cargar_corpus_llm(args.corpus)
+    if not corpus:
+        print(f"corpus LLM sin casos: {args.corpus}")
+        return 2
+    proveedor = _proveedor_real_o_none()
+    if proveedor is None:
+        print("La ruta 'llm' del CLI requiere una key de proveedor en el entorno (ANTHROPIC/OPENAI). "
+              "Los tests la ejercen con un proveedor scripteado (ver tests/evals/replay/llm_route.py).")
+        return 2
+    juez = JuezDesactivado()
+    if args.judge:
+        print("  --judge pedido pero el juez real aún no se cablea al CLI; se usa el juez desactivado.")
+    filas = asyncio.run(correr_llm(corpus, proveedor, juez=juez))
+    cats, glob = agregar(filas)
+    imprimir_reporte(cats, glob, filas, args.umbral, titulo="ruta llm (agente WA)")
+    if args.json_out:
+        reporte = {"global": glob, "categorias": cats, "filas": filas, "umbral": args.umbral}
+        pathlib.Path(args.json_out).write_text(
+            json.dumps(reporte, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+    acierto = glob["ok"] / glob["n"] if glob["n"] else 0.0
+    return 0 if (acierto >= args.umbral and glob["peligrosos"] == 0) else 1
 
 
 if __name__ == "__main__":

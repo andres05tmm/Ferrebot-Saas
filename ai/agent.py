@@ -62,6 +62,9 @@ class RespuestaAgente:
     tool: str | None = None         # herramienta ejecutada (o None)
     # ToolCall a confirmar (solo en la rama `Confirmar`); el handler lo guarda para el re-despacho.
     confirmacion_pendiente: ToolCall | None = None
+    # Payload del `Resultado` de la herramienta (solo en la rama de éxito): fuente del writer de
+    # `memoria_entidades` (ADR 0024). None en las demás rutas (texto/riel/error).
+    data: dict | None = None
 
 
 class Ejecutor(Protocol):
@@ -111,6 +114,7 @@ async def ejecutar_turno(
         return _final(RespuestaAgente(
             texto=texto_de_respuesta(resultado), ruta="tool", evento=resultado.evento,
             idempotente=resultado.idempotente, generaciones=1, tool=call.name,
+            data=resultado.data,
         ))
 
     # ErrorTool no recuperable → mensaje directo, sin 2ª generación.

@@ -61,6 +61,7 @@ from apps.bot.ports import (
 )
 from core.config.timezone import today_co
 from core.llm.factory import LLMResuelto, Turno
+from core.llm.gobierno import Gobierno
 from core.llm.medicion import CostosStore, ProveedorMedido
 from core.logging import get_logger
 from core.voz.filtros import es_transcripcion_silencio
@@ -408,6 +409,7 @@ def crear_turno_handler(
     confirm: ConfirmStore | None = None,
     crear_bypass: BypassFactory | None = None,
     pendientes: VentaPendienteStore | None = None,
+    gobierno: Gobierno | None = None,
 ) -> TurnoHandler:
     """Captura el dispatcher + stores (+ voz, opcional) y devuelve el `TurnoHandler` del webhook.
 
@@ -462,6 +464,18 @@ def crear_turno_handler(
         ):
             return
 
+        # Gobierno de agentes (ADR 0024): rate-limit + presupuesto ANTES de gastar la llamada al modelo.
+        # El bypass (arriba) no pasa por aquí: es determinista y barato. Cortado → mensaje amable y fin.
+        if gobierno is not None:
+            decision = await gobierno.evaluar(ctx.tenant_id, update.chat_id)
+            if not decision.permitido:
+                log.info(
+                    "gobierno_turno_cortado", chat_id=update.chat_id,
+                    corte=decision.corte.value if decision.corte else None,
+                )
+                await notificador.responder(update.chat_id, decision.mensaje or MENSAJE_RESPALDO)
+                return
+
         try:
             base = await dispatcher.seleccionar_proveedor(ctx.tenant_id, turno=turno)
             proveedor = LLMResuelto(
@@ -496,8 +510,33 @@ def crear_turno_handler(
             )
         except Exception:
             log.warning("turno_persistencia_fallo", chat_id=update.chat_id, exc_info=True)
+        # Writer de memoria_entidades (ADR 0024): recuerda la última entidad mencionada (cliente/
+        # producto) a partir de la `data` del Resultado. Best-effort: jamás afecta la respuesta.
+        await _recordar_entidades(memoria_svc, update.chat_id, respuesta)
 
     return handler
+
+
+# Mapeo tool→entidad del writer de memoria (ADR 0024): conservador, solo tools con `data` inequívoca.
+# `consultar_producto` fija el último producto; `crear_cliente` fija el último cliente.
+_ENTIDAD_POR_TOOL: dict[str, str] = {
+    "consultar_producto": TIPO_ULTIMO_PRODUCTO,
+    "crear_cliente": TIPO_ULTIMO_CLIENTE,
+}
+
+
+async def _recordar_entidades(
+    memoria_svc: MemoriaService, chat_id: int, respuesta: RespuestaAgente
+) -> None:
+    """Persiste la entidad recordada del turno (id + nombre) si la tool y su `data` la identifican."""
+    tipo = _ENTIDAD_POR_TOOL.get(respuesta.tool or "")
+    data = respuesta.data or {}
+    if tipo is None or not data.get("id") or not data.get("nombre"):
+        return
+    try:
+        await memoria_svc.recordar_entidad(chat_id, tipo, {"id": data["id"], "nombre": data["nombre"]})
+    except Exception:
+        log.warning("memoria_recordar_entidad_fallo", chat_id=chat_id, tipo=tipo, exc_info=True)
 
 
 def _con_metodo_pago(tool_call: ToolCall, metodo: str) -> ToolCall:

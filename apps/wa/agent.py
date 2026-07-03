@@ -72,6 +72,7 @@ from apps.wa.kapso import KapsoSender, MensajeWa
 from core.config.timezone import now_co
 from core.llm.base import Message, ToolSpec
 from core.llm.factory import LLMResuelto, Turno
+from core.llm.gobierno import Gobierno
 from core.logging import get_logger
 from core.tenancy.context import ResolvedTenant
 from modules.agenda.gcal import CalendarPort
@@ -469,6 +470,7 @@ class AgenteWa:
         turno: Turno = Turno.ORQUESTADOR,
         gcal: CalendarPort | None = None,
         resolver_psp: ResolverPsp | None = None,
+        gobierno: Gobierno | None = None,
     ) -> None:
         self._abrir_tenant = abrir_tenant
         self._resolver_llm = resolver_llm
@@ -480,6 +482,8 @@ class AgenteWa:
         self._gcal = gcal
         # PSP OPCIONAL por tenant (ADR 0013): habilita el link de cobro al confirmar un pedido.
         self._resolver_psp = resolver_psp
+        # Gobierno OPCIONAL (ADR 0024): rate-limit + presupuesto por empresa ANTES de correr el LLM.
+        self._gobierno = gobierno
 
     async def atender(self, mensaje: MensajeWa, tenant: ResolvedTenant) -> str:
         """Corre el bucle del agente y responde. Devuelve el texto enviado (para observabilidad/tests).
@@ -490,6 +494,7 @@ class AgenteWa:
         texto = FALLBACK
         pausado = False
         bloqueado = False
+        cortado = False
         try:
             capacidades = await self._capacidades(tenant.id)
             ctx = Contexto(
@@ -528,6 +533,20 @@ class AgenteWa:
                         )
                         await repo_conv.agregar_mensaje(mensaje.telefono, "saliente", "bot", texto)
                         continue
+                    # Gobierno de agentes (ADR 0024): rate-limit + presupuesto ANTES de correr el LLM.
+                    # Cortado → respuesta amable fija SIN llamar al modelo; se registra en el inbox y no
+                    # se escribe la memoria (el corte no es parte del hilo de la conversación).
+                    if self._gobierno is not None:
+                        decision = await self._gobierno.evaluar(tenant.id, mensaje.telefono)
+                        if not decision.permitido:
+                            cortado = True
+                            texto = decision.mensaje or FALLBACK
+                            log.info(
+                                "wa_gobierno_cortado", tenant_id=tenant.id,
+                                corte=decision.corte.value if decision.corte else None,
+                            )
+                            await repo_conv.agregar_mensaje(mensaje.telefono, "saliente", "bot", texto)
+                            continue
                     repo = SqlAgendaRepository(session)
                     cfg = await repo.obtener_config()
                     proveedor = await self._resolver_llm(tenant.id, self._turno)
@@ -570,7 +589,7 @@ class AgenteWa:
                 await self._memoria.anexar_usuario(tenant.id, mensaje.telefono, mensaje.texto)
                 log.info("wa_conversacion_en_humano_pausada", tenant_id=tenant.id)
                 return ""
-            if not bloqueado:
+            if not bloqueado and not cortado:
                 await self._memoria.guardar(
                     tenant.id, mensaje.telefono, historial, mensaje.texto, texto
                 )

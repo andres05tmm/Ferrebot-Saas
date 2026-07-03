@@ -7,7 +7,7 @@ vi.mock('@microsoft/fetch-event-source', () => ({
   fetchEventSource: vi.fn(() => Promise.resolve()),
 }))
 import { fetchEventSource } from '@microsoft/fetch-event-source'
-import { redirector } from '@/lib/api.js'
+import { redirector } from '@/lib/api'
 import { useRealtime } from './useRealtime.js'
 
 function opts() {

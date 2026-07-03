@@ -10,7 +10,7 @@ vi.mock('@/components/RealtimeProvider.jsx', () => ({
 }))
 
 import TabPedidos from './TabPedidos.jsx'
-import { USER_KEY } from '@/lib/api.js'
+import { USER_KEY } from '@/lib/api'
 
 const PEDIDOS = [
   { id: 1, cliente_nombre: 'Ana', cliente_telefono: '3001112233', direccion: 'Cra 1 # 2-3',

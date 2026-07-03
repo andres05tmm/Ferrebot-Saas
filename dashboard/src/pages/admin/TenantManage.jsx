@@ -13,7 +13,7 @@ import { Card } from '@/components/ui/card.jsx'
 import { Input } from '@/components/ui/input.jsx'
 import { Button } from '@/components/ui/button.jsx'
 import { Badge } from '@/components/ui/badge.jsx'
-import { api } from '@/lib/api.js'
+import { api } from '@/lib/api'
 import { FEATURES_OPCIONALES } from './features.js'
 
 export default function TenantManage({ tenant, onCambio }) {

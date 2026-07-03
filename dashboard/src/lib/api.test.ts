@@ -1,11 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { api, buildAuthHeaders, redirector } from './api.js'
+import { api, buildAuthHeaders, redirector } from './api'
 
 const realLocation = window.location
 
 // Sustituye window.location por un doble con el host + path deseados (jsdom no deja reasignar
 // hostname directo). currentHostname (handoff) lee hostname; el guard anti-bucle de api() lee pathname.
-function setHost(hostname, pathname = '/hoy') {
+function setHost(hostname: string, pathname = '/hoy') {
   Object.defineProperty(window, 'location', {
     configurable: true,
     value: { ...realLocation, hostname, pathname, replace: vi.fn() },
@@ -114,7 +114,7 @@ describe('api wrapper', () => {
 
   // Doble de Response para los 403: clone() devuelve algo cuyo json() resuelve al body dado (o lanza,
   // simulando una respuesta sin JSON). api() solo clona en 403, así que el resto de casos no lo necesita.
-  function res403(detail) {
+  function res403(detail?: string) {
     const json = detail === undefined
       ? () => Promise.reject(new Error('no json'))
       : () => Promise.resolve({ detail })

@@ -10,7 +10,7 @@
  * preset, solo se aplican sus tokens. Con fallbacks: un /config viejo SIN tokens no rompe nada (cae al
  * comportamiento de antes: solo --color-primary). Corre SOLO autenticado (detrás de ProtectedRoute).
  */
-import { apiJson } from './api.js'
+import { apiJson } from './api'
 
 // Default pre-/sin-branding = oro Melquiadez (la plataforma), no el rojo de un tenant. Un tenant
 // (p. ej. Punto Rojo) recupera su color porque viaja como color_primario explícito en /config.

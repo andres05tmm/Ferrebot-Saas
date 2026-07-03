@@ -14,7 +14,7 @@
  * Las env VITE_LANDING_ORIGIN / VITE_BASE_DOMAIN, si están, ganan como override explícito. En dev local
  * (localhost / IP / un solo label) no se deriva base domain → no hay landing → el dashboard usa su /login.
  */
-import { TOKEN_KEY } from './api.js'
+import { TOKEN_KEY } from './api'
 
 // Labels que NO son tenants — ESPEJA core/tenancy/resolver.py LABELS_RESERVADOS. `app.melquiadez.com`
 // (entrada de clientes) no tiene slug, así que su rebote a la landing va SIN `next`.

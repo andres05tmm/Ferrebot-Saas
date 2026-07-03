@@ -2,7 +2,7 @@
 // Formatters, detector móvil, componentes de estado tokenizados y el hook de datos
 // `useFetch` (reintroducido en E6 sobre lib/api.js: Bearer + X-Tenant-Slug centralizados).
 import { useCallback, useEffect, useState } from 'react'
-import { apiJson } from '@/lib/api.js'
+import { apiJson } from '@/lib/api'
 
 // ── useFetch — GET por api.js con estado loading/error y refetch() ───────────
 // `deps` controla cuándo re-pedir (p. ej. [refreshKey] del shell). Los tabs llaman a refetch()

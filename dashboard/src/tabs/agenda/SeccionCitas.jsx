@@ -8,7 +8,7 @@
 import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { Banknote, CalendarPlus, ChevronLeft, ChevronRight, MessageCircle, Monitor, Check, X, AlertTriangle, BellRing } from 'lucide-react'
-import { api } from '@/lib/api.js'
+import { api } from '@/lib/api'
 import { useFeatures } from '@/lib/features.jsx'
 import { useFetch } from '@/components/shared.jsx'
 import { useRealtimeEvent } from '@/components/RealtimeProvider.jsx'

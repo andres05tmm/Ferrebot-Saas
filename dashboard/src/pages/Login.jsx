@@ -15,7 +15,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { Loader2 } from 'lucide-react'
 import { Card } from '@/components/ui/card.jsx'
 import { useAuth } from '@/hooks/useAuth.js'
-import { TOKEN_KEY } from '@/lib/api.js'
+import { TOKEN_KEY } from '@/lib/api'
 import { landingLoginUrlForHost, handoffNav } from '@/lib/handoff.js'
 
 export default function Login() {

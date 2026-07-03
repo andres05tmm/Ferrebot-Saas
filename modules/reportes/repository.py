@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import func, select
+from sqlalchemy import case as sa_case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules.caja.models import Gasto
@@ -33,7 +33,7 @@ class AgregadoResultados:
     """Insumos crudos del estado de resultados de un rango (el servicio deriva utilidades)."""
 
     ingresos: Decimal       # suma de subtotal (sin IVA) de ventas NO anuladas
-    costo_ventas: Decimal   # suma(costo_unitario × cantidad) de movimientos SALIDA (NULL = 0)
+    costo_ventas: Decimal   # Σ SALIDA(costo×cant) − Σ DEVOLUCION(costo×cant), costo NULL = 0
     gastos: Decimal         # suma de gastos del rango
 
 
@@ -131,8 +131,10 @@ class SqlReportesRepository:
         """Insumos del P&L del rango: ingresos (sin IVA), costo de ventas exacto y gastos.
 
         Ingresos = Σ subtotal de ventas completadas (el IVA es traslado, no ingreso). Costo de ventas =
-        Σ(costo_unitario × cantidad) de movimientos SALIDA; un costo NULL (ventas previas al threading)
-        cuenta como 0. Gastos = Σ monto de gastos del rango. Es del negocio completo (sin scoping).
+        Σ(costo_unitario × cantidad) de movimientos SALIDA MENOS los DEVOLUCION (ADR 0026: una devolución
+        re-ingresa mercancía al costo del snapshot original → revierte su COGS, sin distorsión por el
+        promedio del día); un costo NULL (ventas previas al threading) cuenta como 0. Gastos = Σ monto de
+        gastos del rango. Es del negocio completo (sin scoping).
         """
         ingresos = (
             await self._s.execute(
@@ -146,18 +148,24 @@ class SqlReportesRepository:
         fecha_cogs = func.coalesce(
             MovimientoInventario.fecha_operacion, MovimientoInventario.creado_en
         )
+        # Signo por tipo: SALIDA suma al COGS, DEVOLUCION lo revierte (contra-COGS al costo snapshot).
+        signo = sa_case(
+            (MovimientoInventario.tipo == "DEVOLUCION", -1),
+            else_=1,
+        )
         costo_ventas = (
             await self._s.execute(
                 select(
                     func.coalesce(
                         func.sum(
-                            MovimientoInventario.cantidad
+                            signo
+                            * MovimientoInventario.cantidad
                             * func.coalesce(MovimientoInventario.costo_unitario, 0)
                         ),
                         0,
                     )
                 ).where(
-                    MovimientoInventario.tipo == "SALIDA",
+                    MovimientoInventario.tipo.in_(("SALIDA", "DEVOLUCION")),
                     fecha_cogs >= inicio,
                     fecha_cogs <= fin,
                 )

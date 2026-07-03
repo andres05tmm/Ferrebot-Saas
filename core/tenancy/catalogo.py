@@ -24,6 +24,9 @@ OPCIONALES: frozenset[str] = frozenset({
     "compras_fiscal", "honorarios", "fiados", "mayorista", "ventas_voz", "bot_telegram",
     "multi_vendedor", "pack_agenda", "pack_faq", "pack_cobranza", "pack_pedidos", "pack_ventas",
     "pack_reservas", "pack_postventa", "pack_pagar", "canal_whatsapp", "pagos_online",
+    # Contable C (ADR 0027): retenciones/INC editables por tenant + libros auxiliar/mayor. Opt-in,
+    # sin dependencias duras (un negocio puede retener sin FE; los libros derivan de datos existentes).
+    "retenciones", "libros_contables",
 })
 
 # Meta-packs: un flag grueso que EXPANDE a features finas. La expansión conserva el flag meta en el

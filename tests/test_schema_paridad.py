@@ -32,6 +32,8 @@ _TABLAS_ESPERADAS: frozenset[str] = frozenset({
     "cobros",   # frente de pagos (0021, ADR 0013)
     "postventa_config", "postventa_envios", "encuestas_respuestas",   # pack postventa (0023)
     "pagar_config", "pagar_avisos",   # pack pagar (0026, ADR 0019): config + dedup de avisos al dueño
+    "config_retenciones",       # catálogo tributario editable (0032, ADR 0027)
+    "retenciones_documento",    # renglones de retención/INC por documento (0033, ADR 0027)
 })
 
 

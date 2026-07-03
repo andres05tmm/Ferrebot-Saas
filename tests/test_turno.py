@@ -305,3 +305,49 @@ async def test_factory_arma_recursos_nuevo_por_turno():
     assert creados[0] is not creados[1]
     recursos_pasados = [kw["recursos"] for kw in ejecutar.llamadas]
     assert recursos_pasados == creados
+
+
+# --------------------- writer de memoria_entidades (ADR 0024) --------------
+
+def _respuesta_tool(tool, data) -> RespuestaAgente:
+    return RespuestaAgente(texto="Listo.", ruta="tool", tool=tool, data=data)
+
+
+async def test_writer_recuerda_ultimo_producto_de_consultar_producto():
+    memoria = FakeMemoria()
+    ejecutar = FakeEjecutar(_respuesta_tool("consultar_producto", {"id": 3, "nombre": "Martillo"}))
+    handler = _handler(memoria=memoria, costos=FakeCostos(), ejecutar=ejecutar)
+
+    await handler(_update(), _ctx(), _SESSION, FakeNotificador())
+
+    assert memoria.recordadas == [(555, TIPO_ULTIMO_PRODUCTO, {"id": 3, "nombre": "Martillo"})]
+
+
+async def test_writer_recuerda_ultimo_cliente_de_crear_cliente():
+    memoria = FakeMemoria()
+    ejecutar = FakeEjecutar(_respuesta_tool("crear_cliente", {"id": 7, "nombre": "Ana", "creado": True}))
+    handler = _handler(memoria=memoria, costos=FakeCostos(), ejecutar=ejecutar)
+
+    await handler(_update(), _ctx(), _SESSION, FakeNotificador())
+
+    assert memoria.recordadas == [(555, TIPO_ULTIMO_CLIENTE, {"id": 7, "nombre": "Ana"})]
+
+
+async def test_writer_no_recuerda_en_respuesta_de_texto():
+    memoria = FakeMemoria()
+    ejecutar = FakeEjecutar(_respuesta("solo texto"))   # ruta texto: sin tool ni data
+    handler = _handler(memoria=memoria, costos=FakeCostos(), ejecutar=ejecutar)
+
+    await handler(_update(), _ctx(), _SESSION, FakeNotificador())
+
+    assert memoria.recordadas == []
+
+
+async def test_writer_ignora_tool_sin_entidad_mapeada():
+    memoria = FakeMemoria()
+    ejecutar = FakeEjecutar(_respuesta_tool("registrar_gasto", {"gasto_id": 1, "monto": "5000"}))
+    handler = _handler(memoria=memoria, costos=FakeCostos(), ejecutar=ejecutar)
+
+    await handler(_update(), _ctx(), _SESSION, FakeNotificador())
+
+    assert memoria.recordadas == []

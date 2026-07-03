@@ -31,8 +31,9 @@ async def test_tenant_upgrade_downgrade_limpio(tenant):
     # handoff (conversacion_estado, 0009_conversaciones) + 1 del pack cobranza
     # (promesa_estado, 0017_cobranza) + 1 del pack pedidos (pedido_estado, 0019) + 1 del pack
     # ventas/cotizaciones (cotizacion_estado, 0020) + 1 de pagos (cobro_estado, 0021) + 2 del inbox
-    # de conversación (mensaje_direccion, mensaje_autor, 0024_conversacion_mensajes). Total: 24.
-    assert enums == 24
+    # de conversación (mensaje_direccion, mensaje_autor, 0024_conversacion_mensajes) = 24, + 1 de la
+    # conciliación bancaria (conciliacion_estado, 0035, ADR 0028). Total: 25.
+    assert enums == 25
 
     await tenant.engine.dispose()
     downgrade_tenant(tenant.url, "base")

@@ -24,13 +24,15 @@ export default function CommandPalette({ open, setOpen, onRefresh }) {
         e.preventDefault()
         setOpen(o => !o)
       } else if (mod && e.key.toLowerCase() === 'n') {
+        // Solo si el tenant tiene la feature de ventas: en verticales de servicios no hay POS.
+        if (!isRouteEnabled('/ventas', features)) return
         e.preventDefault()
         navigate('/ventas')
       }
     }
     window.addEventListener('keydown', fn)
     return () => window.removeEventListener('keydown', fn)
-  }, [setOpen, navigate])
+  }, [setOpen, navigate, features])
 
   function run(fn) {
     setOpen(false)

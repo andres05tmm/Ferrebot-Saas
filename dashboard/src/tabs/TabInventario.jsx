@@ -5,7 +5,7 @@
  * con confirmación) y ajuste de stock (POST /inventario/ajuste). El vendedor sigue en solo-lectura.
  * Live: re-fetch ante inventario_actualizado / reconnected.
  */
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import { toast } from 'sonner'
 import { Pencil, Plus, Search, SlidersHorizontal, Trash2 } from 'lucide-react'
@@ -31,18 +31,26 @@ export default function TabInventario() {
   const [loading, setLoading] = useState(true)
   const [editando, setEditando] = useState(null) // null | 'nuevo' | producto
 
+  // Secuencia de la última búsqueda lanzada: una respuesta que llega tarde (de una query vieja)
+  // se descarta en vez de pisar los resultados de la query vigente.
+  const seqRef = useRef(0)
+
   const cargar = useCallback(async (busqueda, off, append) => {
+    const seq = ++seqRef.current
     setLoading(true)
     // activo=true: los productos inactivos (soft-deleted) no salen en el listado por defecto.
     const params = new URLSearchParams({ limite: String(LIMITE), offset: String(off), activo: 'true' })
     if (busqueda) params.set('q', busqueda)
     try {
       const data = await apiJson(`/productos?${params.toString()}`)
+      if (seq !== seqRef.current) return
       const lista = Array.isArray(data) ? data : []
       setProductos(prev => (append ? [...prev, ...lista] : lista))
       setHayMas(lista.length === LIMITE)
+    } catch {
+      if (seq === seqRef.current) toast.error('No se pudo cargar el inventario')
     } finally {
-      setLoading(false)
+      if (seq === seqRef.current) setLoading(false)
     }
   }, [])
 

@@ -6,7 +6,7 @@
  * Cada panel maneja su loading/empty (un fallo no rompe el resto). Live: re-fetch ante venta/caja/gasto/
  * inventario/reconnected. Datos por api.js.
  */
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useOutletContext } from 'react-router-dom'
 import {
   AreaChart, Area, ResponsiveContainer, CartesianGrid, XAxis, YAxis, Tooltip,
@@ -36,9 +36,18 @@ export default function TabHoy() {
   const { refreshKey } = useOutletContext() ?? {}
   const deps = [refreshKey]
 
-  // Rango/fecha de HOY en Colombia (para gastos y top-productos del día).
-  const rangoHoy = useMemo(() => rangoHoyCO(), [refreshKey])
-  const hoyStr = useMemo(() => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' }), [refreshKey])
+  // Rango/fecha de HOY en Colombia (para gastos y top-productos del día). `diaCO` avanza solo al
+  // cruzar medianoche Colombia: sin él, los re-fetch por SSE seguirían pidiendo la fecha de ayer.
+  const [diaCO, setDiaCO] = useState(() => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' }))
+  useEffect(() => {
+    const t = setInterval(() => {
+      const d = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
+      setDiaCO(prev => (prev === d ? prev : d))
+    }, 60_000)
+    return () => clearInterval(t)
+  }, [])
+  const rangoHoy = useMemo(() => rangoHoyCO(), [refreshKey, diaCO])
+  const hoyStr = diaCO
 
   const resumenQ = useFetch('/reportes/resumen', deps)
   const serieQ = useFetch('/reportes/serie-ventas?dias=30', deps)

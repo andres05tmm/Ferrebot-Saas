@@ -69,12 +69,24 @@ class SqlProveedoresRepository:
         self, *, factura_id: str, monto: Decimal, fecha: date
     ) -> FacturaProveedorLeer:
         """Inserta el abono y recalcula pagado/pendiente/estado de la factura (en la misma tx)."""
+        leer, _ = await self.crear_abono_devolver_id(factura_id=factura_id, monto=monto, fecha=fecha)
+        return leer
+
+    async def crear_abono_devolver_id(
+        self, *, factura_id: str, monto: Decimal, fecha: date
+    ) -> tuple[FacturaProveedorLeer, int]:
+        """Como `crear_abono_y_recalcular`, pero devuelve también el id del abono creado.
+
+        Lo usa el flujo gasto→CxP (ADR 0028): el gasto guarda ese id (`gastos.abono_proveedor_id`)
+        para que sea su ÚNICO abono (candado anti-duplicación). Misma tx: recálculo consistente.
+        """
         orm = (
             await self._s.execute(
                 select(FacturaProveedor).where(FacturaProveedor.id == factura_id).with_for_update()
             )
         ).scalar_one()
-        self._s.add(AbonoProveedor(factura_id=factura_id, monto=monto, fecha=fecha))
+        abono = AbonoProveedor(factura_id=factura_id, monto=monto, fecha=fecha)
+        self._s.add(abono)
         await self._s.flush()
 
         pagado = (
@@ -92,7 +104,7 @@ class SqlProveedoresRepository:
         orm.pendiente = pendiente
         orm.estado = "pagada" if pendiente <= 0 else "pendiente"
         await self._s.flush()
-        return FacturaProveedorLeer.model_validate(orm)
+        return FacturaProveedorLeer.model_validate(orm), abono.id
 
     async def listar(self, *, estado: str | None = None) -> list[FacturaProveedorLeer]:
         stmt = select(FacturaProveedor)

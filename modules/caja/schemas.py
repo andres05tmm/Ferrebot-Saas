@@ -27,6 +27,10 @@ class GastoCrear(BaseModel):
     categoria: GastoCategoria
     monto: Decimal = Field(gt=0)
     concepto: str | None = None
+    # Vínculo opcional a cuentas por pagar (ADR 0028): a quién se le pagó y qué factura salda este
+    # gasto. Con `factura_proveedor_id`, el gasto genera SU único abono (no se registra otro aparte).
+    proveedor_id: int | None = None
+    factura_proveedor_id: str | None = None
 
 
 class CajaLeer(BaseModel):
@@ -64,4 +68,7 @@ class GastoLeer(BaseModel):
     concepto: str | None
     caja_id: int | None
     usuario_id: int | None
+    proveedor_id: int | None = None
+    factura_proveedor_id: str | None = None
+    abono_proveedor_id: int | None = None
     creado_en: datetime

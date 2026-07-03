@@ -14,7 +14,7 @@ from httpx import ASGITransport
 from core.auth import decode_token
 from core.auth.passwords import hash_password
 from core.tenancy.identidades_repo import Identidad
-from modules.auth.login_email import get_directorio, get_lockout, router
+from modules.auth.login_email import get_directorio, get_lockout, get_lockout_ip, router
 
 _HASH_OK = hash_password("clave-correcta")
 
@@ -55,11 +55,16 @@ class _FakeLockout:
         self.fallos.pop(clave, None)
 
 
-def _app(directorio: _FakeDirectorio, lockout: _FakeLockout) -> FastAPI:
+def _app(
+    directorio: _FakeDirectorio, lockout: _FakeLockout, lockout_ip: _FakeLockout | None = None
+) -> FastAPI:
     app = FastAPI()
     app.include_router(router, prefix="/api/v1")
     app.dependency_overrides[get_directorio] = lambda: directorio
     app.dependency_overrides[get_lockout] = lambda: lockout
+    # Cubo por IP: permisivo por defecto (tope alto) para que los tests de email no lo pisen.
+    li = lockout_ip or _FakeLockout(max_intentos=1000)
+    app.dependency_overrides[get_lockout_ip] = lambda: li
     return app
 
 
@@ -144,3 +149,53 @@ async def test_ya_bloqueado_responde_429_sin_verificar():
     app = _app(_FakeDirectorio([_ident()]), lockout)
     r = await _login(app, "ana@clinica.co", "clave-correcta")
     assert r.status_code == 429
+
+
+# --- cubo por IP (anti password-spraying) ------------------------------------
+
+async def test_spraying_por_ip_bloquea_429_aunque_rote_emails():
+    """Una IP probando contraseñas contra MUCHOS emails: el cubo por email nunca llega a su tope,
+    pero el cubo por IP sí — el intento N+1 responde 429 aunque el email sea nuevo."""
+    lockout_email = _FakeLockout(max_intentos=5)
+    lockout_ip = _FakeLockout(max_intentos=3)
+    app = _app(_FakeDirectorio([]), lockout_email, lockout_ip)
+
+    async with _cliente(app) as c:
+        for i in range(3):   # 3 fallos desde la misma IP, cada uno con un email DISTINTO
+            r = await c.post(
+                "/api/v1/auth/login/password",
+                json={"email": f"victima{i}@x.co", "password": "adivinada"},
+                headers={"X-Forwarded-For": "9.9.9.9"},
+            )
+            assert r.status_code == 401
+        r = await c.post(
+            "/api/v1/auth/login/password",
+            json={"email": "victima99@x.co", "password": "adivinada"},
+            headers={"X-Forwarded-For": "9.9.9.9"},
+        )
+    assert r.status_code == 429   # bloqueado por IP, no por email
+    assert max(lockout_email.fallos.values()) == 1   # ningún email llegó a su tope
+
+
+async def test_login_ok_resetea_solo_el_cubo_de_email():
+    """El éxito resetea el cubo del email (usuario legítimo que se equivocó) pero NO el de IP:
+    un spraying con una credencial válida a mano no puede limpiar su contador."""
+    lockout_email = _FakeLockout(max_intentos=5)
+    lockout_ip = _FakeLockout(max_intentos=30)
+    app = _app(_FakeDirectorio([_ident()]), lockout_email, lockout_ip)
+
+    async with _cliente(app) as c:
+        await c.post(
+            "/api/v1/auth/login/password",
+            json={"email": "ana@clinica.co", "password": "mala"},
+            headers={"X-Forwarded-For": "9.9.9.9"},
+        )
+        r = await c.post(
+            "/api/v1/auth/login/password",
+            json={"email": "ana@clinica.co", "password": "clave-correcta"},
+            headers={"X-Forwarded-For": "9.9.9.9"},
+        )
+    assert r.status_code == 200
+    assert "ana@clinica.co" in lockout_email.reseteos   # el cubo del email se limpia
+    assert lockout_ip.reseteos == []                    # el de IP expira solo por TTL
+    assert lockout_ip.fallos.get("ip:9.9.9.9") == 1

@@ -14,7 +14,7 @@
  * Las env VITE_LANDING_ORIGIN / VITE_BASE_DOMAIN, si están, ganan como override explícito. En dev local
  * (localhost / IP / un solo label) no se deriva base domain → no hay landing → el dashboard usa su /login.
  */
-import { TOKEN_KEY } from './api.js'
+import { TOKEN_KEY, USER_KEY } from './api.js'
 
 // Labels que NO son tenants — ESPEJA core/tenancy/resolver.py LABELS_RESERVADOS. `app.melquiadez.com`
 // (entrada de clientes) no tiene slug, así que su rebote a la landing va SIN `next`.
@@ -64,7 +64,9 @@ function isIpAddress(host) {
 /**
  * consumeTokenFromHash — handoff de ENTRADA. Si la URL trae `#token=...`, guarda el token y limpia el
  * fragmento con history.replaceState (NO pushState → jamás entra al historial), preservando path+query.
- * Si ya había sesión, el token del fragmento la REEMPLAZA. Devuelve true si consumió un token.
+ * Si ya había sesión, el token del fragmento la REEMPLAZA — incluida la identidad (`ferrebot_user`):
+ * un usuario viejo no puede sobrevivir al token nuevo (el boot la rehidrata desde GET /config).
+ * Devuelve true si consumió un token.
  *
  * Debe correr ANTES de montar el router/cualquier fetch (se llama en main.jsx, antes de createRoot).
  */
@@ -74,7 +76,10 @@ export function consumeTokenFromHash(win = window) {
   const params = new URLSearchParams(hash.replace(/^#/, ''))
   const token = params.get('token')
   if (!token) return false
-  try { win.localStorage.setItem(TOKEN_KEY, token) } catch {}
+  try {
+    win.localStorage.setItem(TOKEN_KEY, token)
+    win.localStorage.removeItem(USER_KEY)   // la identidad de la sesión anterior no aplica al token nuevo
+  } catch {}
   // Limpia SOLO el fragmento (deja path + query intactos). replaceState → no deja rastro en el historial.
   const { pathname, search } = win.location
   win.history.replaceState(null, '', `${pathname}${search}`)

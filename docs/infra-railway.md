@@ -92,6 +92,7 @@ Plataforma (mismas en `api`/`bot`/`worker`, cambia `SERVICE_TYPE`). Por empresa 
 | Variable | Servicios | Nota |
 |---|---|---|
 | `SERVICE_TYPE` | todos | `api` \| `bot` \| `worker` |
+| `ENTORNO` | todos | `production` en Railway: activa el fail-fast que aborta el arranque si `SECRET_KEY`/`SECRETS_MASTER_KEY` quedaron en su default de dev |
 | `CONTROL_DATABASE_URL` | todos | Apunta al **PgBouncer** (no a Postgres directo) |
 | `TENANTS_PGBOUNCER_URL` | api, bot, worker | Host de PgBouncer para construir URLs de tenant |
 | `TENANTS_DIRECT_URL` | api, worker | Conexión **directa** a Postgres para `LISTEN` (SSE) y `CREATE DATABASE` |

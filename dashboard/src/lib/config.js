@@ -10,7 +10,7 @@
  * preset, solo se aplican sus tokens. Con fallbacks: un /config viejo SIN tokens no rompe nada (cae al
  * comportamiento de antes: solo --color-primary). Corre SOLO autenticado (detrás de ProtectedRoute).
  */
-import { apiJson } from './api.js'
+import { apiJson, USER_KEY } from './api.js'
 
 // Default pre-/sin-branding = oro Melquiadez (la plataforma), no el rojo de un tenant. Un tenant
 // (p. ej. Punto Rojo) recupera su color porque viaja como color_primario explícito en /config.
@@ -89,6 +89,12 @@ export function applyTheming(branding) {
 export async function bootConfig() {
   const config = await apiJson('/config')
   applyTheming(config.branding)
+  // Persiste la identidad del boot: el handoff landing→dashboard solo trae `#token=` (sin usuario),
+  // así que `ferrebot_user` {id, rol, tenant} se rehidrata aquí desde GET /config. Sin esto, isAdmin()
+  // y el gating por rol quedan rotos tras entrar por la landing (useAuth lee USER_KEY).
+  if (config.usuario) {
+    try { localStorage.setItem(USER_KEY, JSON.stringify(config.usuario)) } catch {}
+  }
   return {
     features: config.features || [],
     branding: config.branding || { color_primario: COLOR_PRIMARY_DEFAULT },

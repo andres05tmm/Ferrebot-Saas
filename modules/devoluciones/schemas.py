@@ -18,8 +18,8 @@ class DevolucionCrear(BaseModel):
     venta_id: int
     motivo: str | None = None
     idempotency_key: str | None = None
-    # None = total; lista = parcial (solo líneas de catálogo).
-    lineas: list[DevolucionLineaCrear] | None = None
+    # None = total; lista = parcial (solo líneas de catálogo; vacía no es una devolución válida).
+    lineas: list[DevolucionLineaCrear] | None = Field(default=None, min_length=1)
 
 
 class DevolucionDetalleLeer(BaseModel):

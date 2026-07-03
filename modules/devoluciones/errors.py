@@ -14,11 +14,33 @@ class VentaNoEncontrada(DevolucionError):
 
 
 class LineaNoVendida(DevolucionError):
-    """Se intenta devolver un producto que la venta no incluye, o más de lo vendido (→ 422)."""
+    """Se intenta devolver un producto que la venta no incluye (→ 422)."""
 
     def __init__(self, producto_id: int) -> None:
-        super().__init__(f"El producto {producto_id} no está en la venta o excede lo vendido")
+        super().__init__(f"El producto {producto_id} no está en la venta")
         self.producto_id = producto_id
+
+
+class DevolucionExcedeVenta(DevolucionError):
+    """La cantidad a devolver (esta solicitud + devoluciones previas) excede lo vendido (→ 409).
+
+    Sin este guard, dos devoluciones con keys distintas podrían re-ingresar más stock del vendido y
+    reintegrar el dinero dos veces. El acumulado por producto se valida contra `devoluciones_detalle`."""
+
+    def __init__(self, producto_id: int) -> None:
+        super().__init__(
+            f"La cantidad a devolver del producto {producto_id} excede lo vendido "
+            "(contando devoluciones previas)"
+        )
+        self.producto_id = producto_id
+
+
+class NadaPorDevolver(DevolucionError):
+    """La venta ya fue devuelta por completo: no queda cantidad por reintegrar (→ 409)."""
+
+    def __init__(self, venta_id: int) -> None:
+        super().__init__(f"La venta {venta_id} ya no tiene nada por devolver")
+        self.venta_id = venta_id
 
 
 class DevolucionConflicto(DevolucionError):

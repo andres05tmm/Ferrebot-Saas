@@ -126,7 +126,7 @@ class GobiernoStore(Protocol):
     """Puerto de las compuertas atómicas (lo implementa `RedisGobierno`; los tests lo falsean)."""
 
     async def permitir_rate(
-        self, tenant_id: int, usuario_id: int, limite: int, ventana_s: int
+        self, tenant_id: int, usuario_id: int | str, limite: int, ventana_s: int
     ) -> bool: ...
 
     async def reservar_presupuesto(
@@ -167,7 +167,7 @@ class RedisGobierno:
         return self._client or _cliente_redis(self._url)
 
     async def permitir_rate(
-        self, tenant_id: int, usuario_id: int, limite: int, ventana_s: int
+        self, tenant_id: int, usuario_id: int | str, limite: int, ventana_s: int
     ) -> bool:
         key = f"llm:rl:{tenant_id}:{usuario_id}"
         r = await self._c().eval(_LUA_RATE, 1, key, str(limite), str(ventana_s))
@@ -210,7 +210,7 @@ class Gobierno:
         self._plataforma = plataforma
         self._config_store = config_store
 
-    async def evaluar(self, tenant_id: int, usuario_id: int) -> Decision:
+    async def evaluar(self, tenant_id: int, usuario_id: int | str) -> Decision:
         if not self._plataforma.habilitado:            # kill-switch de plataforma (en caliente)
             return Decision.permitir()
         politica = await self._politica(tenant_id)

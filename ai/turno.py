@@ -61,6 +61,7 @@ from apps.bot.ports import (
 )
 from core.config.timezone import today_co
 from core.llm.factory import LLMResuelto, Turno
+from core.llm.gobierno import Gobierno
 from core.llm.medicion import CostosStore, ProveedorMedido
 from core.logging import get_logger
 from core.voz.filtros import es_transcripcion_silencio
@@ -408,6 +409,7 @@ def crear_turno_handler(
     confirm: ConfirmStore | None = None,
     crear_bypass: BypassFactory | None = None,
     pendientes: VentaPendienteStore | None = None,
+    gobierno: Gobierno | None = None,
 ) -> TurnoHandler:
     """Captura el dispatcher + stores (+ voz, opcional) y devuelve el `TurnoHandler` del webhook.
 
@@ -461,6 +463,18 @@ def crear_turno_handler(
             pendientes=pendientes,
         ):
             return
+
+        # Gobierno de agentes (ADR 0024): rate-limit + presupuesto ANTES de gastar la llamada al modelo.
+        # El bypass (arriba) no pasa por aquí: es determinista y barato. Cortado → mensaje amable y fin.
+        if gobierno is not None:
+            decision = await gobierno.evaluar(ctx.tenant_id, update.chat_id)
+            if not decision.permitido:
+                log.info(
+                    "gobierno_turno_cortado", chat_id=update.chat_id,
+                    corte=decision.corte.value if decision.corte else None,
+                )
+                await notificador.responder(update.chat_id, decision.mensaje or MENSAJE_RESPALDO)
+                return
 
         try:
             base = await dispatcher.seleccionar_proveedor(ctx.tenant_id, turno=turno)

@@ -72,6 +72,27 @@ class TotalesVentas(BaseModel):
     mes: Decimal
 
 
+class CuentaMayor(BaseModel):
+    """Un renglón del Libro Mayor: total por cuenta/concepto en el período (ADR 0027, sin PUC formal).
+
+    `naturaleza` agrupa el concepto (ingreso/egreso/impuesto/retencion) mientras no exista el PUC (F8).
+    """
+
+    concepto: str
+    naturaleza: str
+    total: Decimal
+
+
+class MovimientoAuxiliar(BaseModel):
+    """Un movimiento del Libro Auxiliar: el detalle documento a documento detrás del Mayor (ADR 0027)."""
+
+    fecha: date
+    concepto: str
+    naturaleza: str
+    referencia: str
+    valor: Decimal
+
+
 class TopProducto(BaseModel):
     """Una fila del ranking de productos por cantidad e ingreso en un rango."""
 

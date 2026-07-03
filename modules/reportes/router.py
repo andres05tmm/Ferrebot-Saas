@@ -18,10 +18,13 @@ from modules.reportes.consolidacion import (
     ConsolidacionIVAService,
     SqlConsolidacionRepository,
 )
+from modules.reportes.libros import LibrosService, SqlLibrosRepository
 from modules.reportes.repository import SqlReportesRepository
 from modules.reportes.schemas import (
+    CuentaMayor,
     EstadoResultados,
     LibroIVA,
+    MovimientoAuxiliar,
     PuntoSerie,
     ResumenDia,
     SaldoBimestral,
@@ -94,6 +97,42 @@ async def libro_iva(
     """Libro IVA del rango (default mes). Admin-only; gateado por la feature `libro_iva`. Solo cruza
     datos existentes (ventas vs compras fiscales): NO emite ni consulta a la DIAN."""
     return await ReportesService(repo).libro_iva(desde=desde, hasta=hasta)
+
+
+def get_libros_repo(session: AsyncSession = Depends(get_tenant_db)) -> SqlLibrosRepository:
+    """Repo de libros contables sobre la sesión del tenant (overridable en test)."""
+    return SqlLibrosRepository(session)
+
+
+@router.get(
+    "/reportes/libro-mayor",
+    response_model=list[CuentaMayor],
+    dependencies=[Depends(require_feature("libros_contables"))],
+)
+async def libro_mayor(
+    desde: date | None = Query(default=None),
+    hasta: date | None = Query(default=None),
+    repo: SqlLibrosRepository = Depends(get_libros_repo),
+    _user: Principal = Depends(require_role("admin")),
+) -> list[CuentaMayor]:
+    """Libro Mayor del rango (default mes): total por cuenta/concepto. Admin-only, feature `libros_contables`."""
+    return await LibrosService(repo).mayor(desde=desde, hasta=hasta)
+
+
+@router.get(
+    "/reportes/libro-auxiliar",
+    response_model=list[MovimientoAuxiliar],
+    dependencies=[Depends(require_feature("libros_contables"))],
+)
+async def libro_auxiliar(
+    desde: date | None = Query(default=None),
+    hasta: date | None = Query(default=None),
+    concepto: str | None = Query(default=None),
+    repo: SqlLibrosRepository = Depends(get_libros_repo),
+    _user: Principal = Depends(require_role("admin")),
+) -> list[MovimientoAuxiliar]:
+    """Libro Auxiliar del rango (default mes): detalle documento a documento, filtrable por `concepto`."""
+    return await LibrosService(repo).auxiliar(desde=desde, hasta=hasta, concepto=concepto)
 
 
 def get_consolidacion_repo(

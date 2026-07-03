@@ -90,6 +90,9 @@ class _VentasRepo:
     async def buscar_por_idempotency(self, key):
         return self._por_key.get(key)
 
+    async def obtener(self, venta_id):
+        return None   # sin detalle: el guard de idempotencia compara solo la cabecera
+
     async def obtener_producto(self, pid):
         return self._productos.get(pid)
 

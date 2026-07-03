@@ -35,16 +35,25 @@ class ControlWaResolver:
 
 
 class RedisWaDedup:
-    """Dedup por id de mensaje (global): `SET NX EX wa:dedup:{message_id}`. Cliente Redis perezoso."""
+    """Dedup por id de mensaje (global): `SET NX EX wa:dedup:{message_id}`. Cliente Redis perezoso
+    (se crea al primer uso y se cachea en la instancia: el pool de redis-py multiplexa)."""
 
     def __init__(self, *, url: str, client: Any | None = None) -> None:
         self._url = url
         self._client = client
 
+    def _redis(self) -> Any:
+        if self._client is None:
+            self._client = _cliente_redis(self._url)
+        return self._client
+
     async def marcar_si_nuevo(self, message_id: str) -> bool:
-        cliente = self._client or _cliente_redis(self._url)
-        marcado = await cliente.set(f"wa:dedup:{message_id}", "1", nx=True, ex=_TTL_DEDUP)
+        marcado = await self._redis().set(f"wa:dedup:{message_id}", "1", nx=True, ex=_TTL_DEDUP)
         return bool(marcado)
+
+    async def desmarcar(self, message_id: str) -> None:
+        """Libera la marca (encolado fallido): el reintento del proveedor sí se procesa."""
+        await self._redis().delete(f"wa:dedup:{message_id}")
 
 
 class ProcesadorAgente:

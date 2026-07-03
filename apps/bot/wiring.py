@@ -34,6 +34,7 @@ from core.db.session import control_session, tenant_session
 from core.llm.factory import PlataformaLLM, Turno
 from core.llm.stores import ControlLLMConfigStore, ControlLLMKeyStore
 from core.tenancy.cache import control_cache
+from core.tenancy.config_empresa import cargar_rubro
 from core.tenancy.context import ResolvedTenant
 from core.tenancy.control_repo import resolve_tenant_by_slug
 from modules.caja.repository import SqlCajaRepository
@@ -155,10 +156,13 @@ def _crear_recursos_factory(config: ConfigControl) -> Callable[[AsyncSession], R
     umbrales = ControlUmbralesStore(config)
 
     def crear_recursos(session: AsyncSession) -> Recursos:
+        fiados = FiadosService(SqlFiadosRepository(session))
         deps = Deps(
-            ventas=VentaService(SqlVentasRepository(session)),
+            # `fiados` compartido: una venta con metodo_pago=fiado crea su cargo en el ledger
+            # dentro de la misma transacción (VentaService.registrar_venta).
+            ventas=VentaService(SqlVentasRepository(session), fiados=fiados),
             caja=CajaService(SqlCajaRepository(session)),
-            fiados=FiadosService(SqlFiadosRepository(session)),
+            fiados=fiados,
             clientes=ClientesService(SqlClientesRepository(session)),
             # Cierre fiscal de mostrador (ADR 0012 D2): atado a la sesión del turno; encola la emisión POS
             # tras commitear (enqueue perezoso por `redis_url`). Inerte si la empresa no tiene el flag.

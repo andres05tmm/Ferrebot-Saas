@@ -88,3 +88,36 @@ async def test_para_concurrente_misma_empresa_carga_una_vez():
 
     assert b1 is b2
     assert llamadas == [1]                     # una sola carga pese a la concurrencia
+
+
+async def test_ttl_vencido_recarga_credenciales():
+    # Con el TTL vencido, `para` vuelve a cargar: una rotación de credenciales en el control DB
+    # se recoge sin reiniciar el bot.
+    cargador = CargadorFake({1: _creds(1)})
+    recursos = RecursosBot(cargar=cargador, ttl=0.0)
+
+    b1 = await recursos.para(1)
+    b2 = await recursos.para(1)
+
+    assert b1 is not b2
+    assert cargador.llamadas == [1, 1]
+
+
+async def test_lock_por_empresa_no_bloquea_a_las_demas():
+    # Una carga lenta de la empresa 1 no debe frenar a la empresa 2 (lock POR empresa).
+    evento = asyncio.Event()
+
+    async def cargar(empresa_id: int) -> Credenciales:
+        if empresa_id == 1:
+            await evento.wait()
+        return _creds(empresa_id)
+
+    recursos = RecursosBot(cargar=cargar)
+    t1 = asyncio.create_task(recursos.para(1))
+    await asyncio.sleep(0)                     # la empresa 1 queda retenida dentro de SU lock
+
+    b2 = await asyncio.wait_for(recursos.para(2), timeout=1.0)   # no espera el lock de la 1
+
+    evento.set()
+    b1 = await t1
+    assert b1 is not b2

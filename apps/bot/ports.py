@@ -107,6 +107,10 @@ class DedupStore(Protocol):
         """True si el update es nuevo (se marca y se procesa); False si ya se vio (descartar)."""
         ...
 
+    async def desmarcar(self, tenant_id: int, update_id: int) -> None:
+        """Libera la marca (procesamiento fallido): el reintento de Telegram sí se procesa."""
+        ...
+
 
 class UsuariosBotRepo(Protocol):
     """Mapeo telegram_id → usuario, sobre la sesión del tenant."""

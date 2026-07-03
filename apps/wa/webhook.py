@@ -92,7 +92,14 @@ async def manejar_mensaje(
             cliente_telefono=mensaje.telefono,
             request_id=rid,
         )
-        await deps.procesar(mensaje, ctx)
+        try:
+            await deps.procesar(mensaje, ctx)
+        except Exception:
+            # Encolado fallido: se DESMARCA el dedup para que el reintento de Kapso sí procese
+            # (sin esto el reintento caería como duplicado y el mensaje se perdería para siempre).
+            log.exception("wa_encolado_error", message_id=mensaje.message_id)
+            await deps.dedup.desmarcar(mensaje.message_id)
+            raise
         log.info("wa_mensaje_procesado", message_id=mensaje.message_id)
         return ResultadoWa(AccionWa.PROCESADO, 200, ctx)
     finally:

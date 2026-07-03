@@ -25,7 +25,12 @@ from modules.clientes.schemas import ClienteCrear
 from modules.clientes.service import ClientesService
 from modules.fiados.errors import ClienteInexistente, FiadoInexistente, SobreAbono
 from modules.fiados.service import FiadosService
-from modules.ventas.errors import LineaInvalida, ProductoNoEncontrado, StockInsuficiente
+from modules.ventas.errors import (
+    IdempotenciaConflicto,
+    LineaInvalida,
+    ProductoNoEncontrado,
+    StockInsuficiente,
+)
 from modules.ventas.schemas import MetodoPago, VentaCrear, VentaDetalleCrear
 from modules.ventas.service import VentaService
 
@@ -162,6 +167,11 @@ async def _registrar_venta(args: RegistrarVentaArgs, ctx: Contexto, deps: Deps) 
         return ErrorTool("producto_no_encontrado", str(exc), recuperable=True)
     except LineaInvalida as exc:
         return ErrorTool("validacion", str(exc), recuperable=True)
+    except ClienteInexistente as exc:
+        # Venta fiada: el cargo al ledger valida el cliente en la misma transacción.
+        return ErrorTool("cliente_no_encontrado", str(exc), recuperable=True)
+    except IdempotenciaConflicto as exc:
+        return ErrorTool("idempotencia_conflicto", str(exc), recuperable=False)
     v = res.venta
     # Cierre fiscal de mostrador (ADR 0012 D2): este handler es la convergencia de TODO el canal del bot
     # (bypass, confirmación y modelo re-despachan aquí). Solo en venta NUEVA; idempotente y excluyente

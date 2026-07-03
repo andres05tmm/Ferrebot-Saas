@@ -57,6 +57,7 @@ class FakeCapacidades:
 class FakeDedup:
     def __init__(self, ya_vistos=()):
         self.vistos = set(ya_vistos)            # set de (tenant_id, update_id)
+        self.desmarcados: list[tuple[int, int]] = []
 
     async def marcar_si_nuevo(self, tenant_id: int, update_id: int) -> bool:
         clave = (tenant_id, update_id)
@@ -64,6 +65,10 @@ class FakeDedup:
             return False
         self.vistos.add(clave)
         return True
+
+    async def desmarcar(self, tenant_id: int, update_id: int) -> None:
+        self.vistos.discard((tenant_id, update_id))
+        self.desmarcados.append((tenant_id, update_id))
 
 
 class FakeNotificador:
@@ -286,6 +291,72 @@ async def test_update_duplicado_no_se_reprocesa():
     assert res.status == 200
     assert sesion.entradas == 0          # un duplicado no abre la sesión del tenant
     assert procesar.llamadas == []
+
+
+async def test_fallo_de_procesamiento_no_quema_el_dedup():
+    # Si el turno falla (BD caída, LLM colgado), la marca de dedup se borra: el reintento
+    # del webhook de Telegram procesa el mensaje (at-least-once; el doble procesamiento en
+    # la ventana de carrera lo cubre la idempotency_key de dominio).
+    class ProcesarQueFalla:
+        async def __call__(self, update, ctx, session, notificador):
+            raise RuntimeError("BD caída")
+
+    dedup = FakeDedup()
+    deps = make_deps(dedup=dedup, procesar=ProcesarQueFalla())
+
+    with pytest.raises(RuntimeError):
+        await manejar_update("puntorojo", SECRET, _payload_texto(update_id=100), deps)
+
+    assert (1, 100) not in dedup.vistos
+    assert dedup.desmarcados == [(1, 100)]
+
+    # El reintento del proveedor SÍ procesa (mismo dedup, procesamiento sano).
+    procesar = SpyProcesar()
+    deps_reintento = make_deps(dedup=dedup, procesar=procesar)
+    res = await manejar_update("puntorojo", SECRET, _payload_texto(update_id=100), deps_reintento)
+
+    assert res.accion is Accion.PROCESADO
+    assert len(procesar.llamadas) == 1
+
+
+async def test_fallo_al_desmarcar_no_enmascara_el_error_original():
+    # Si Redis también falla al desmarcar, el error original del turno sigue subiendo (500 →
+    # Telegram reintenta); el DEL fallido solo se loguea.
+    class ProcesarQueFalla:
+        async def __call__(self, update, ctx, session, notificador):
+            raise RuntimeError("BD caída")
+
+    class DedupDesmarcarRoto(FakeDedup):
+        async def desmarcar(self, tenant_id: int, update_id: int) -> None:
+            raise ConnectionError("redis caído")
+
+    deps = make_deps(dedup=DedupDesmarcarRoto(), procesar=ProcesarQueFalla())
+
+    with pytest.raises(RuntimeError, match="BD caída"):
+        await manejar_update("puntorojo", SECRET, _payload_texto(update_id=100), deps)
+
+
+async def test_callback_sin_update_id_se_ignora_sin_error():
+    # Un callback_query sin `update_id` en el nivel superior no debe reventar con KeyError (500):
+    # se trata como update ignorado, sin tocar dedup ni la sesión del tenant.
+    dedup = FakeDedup()
+    sesion = FakeSesionTenant()
+    procesar_cb = SpyProcesar()
+    deps = make_deps(dedup=dedup, abrir_sesion=sesion, procesar_callback=procesar_cb)
+    payload = {
+        "callback_query": {
+            "id": "cb-1", "from": {"id": 555},
+            "message": {"chat": {"id": 555}}, "data": "pago:efectivo",
+        },
+    }
+
+    res = await manejar_update("puntorojo", SECRET, payload, deps)
+
+    assert res.accion is Accion.UPDATE_IGNORADO
+    assert res.status == 200
+    assert dedup.vistos == set()
+    assert sesion.entradas == 0
+    assert procesar_cb.llamadas == []
 
 
 # -------------------------- autorización del usuario ----------------------

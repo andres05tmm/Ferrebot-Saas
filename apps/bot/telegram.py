@@ -24,6 +24,13 @@ class TelegramError(Exception):
     """Fallo de la Bot API (no-2xx, `ok: false` o respuesta sin los campos esperados)."""
 
 
+class TelegramHTTPError(TelegramError):
+    """Fallo HTTP contra Telegram con la URL redactada: solo método y status/tipo de error.
+
+    Las excepciones de httpx llevan la URL completa (incluye el bot token) en el mensaje; esta
+    clase las reemplaza SIN encadenar (`from None`) para que el token no suba a logs/Sentry."""
+
+
 class ClienteTelegram(Protocol):
     """Borde HTTP de Telegram: un método JSON (`call`) y una descarga binaria (`download`).
 
@@ -94,17 +101,28 @@ def _cliente_telegram(bot_token: str) -> ClienteTelegram:
             import httpx
 
             url = f"https://api.telegram.org/bot{bot_token}/{metodo}"
-            async with httpx.AsyncClient() as cliente:
-                resp = await cliente.post(url, json=payload)
+            try:
+                async with httpx.AsyncClient() as cliente:
+                    resp = await cliente.post(url, json=payload)
+            except httpx.HTTPError as exc:
+                log.warning("telegram_http_error", metodo=metodo, error=type(exc).__name__)
+                raise TelegramHTTPError(f"{metodo}: {type(exc).__name__}") from None
             return resp.json()
 
         async def download(self, url: str) -> bytes:
             import httpx
 
             log.info("telegram_descarga_archivo")   # nunca la URL: lleva el token
-            async with httpx.AsyncClient() as cliente:
-                resp = await cliente.get(url)
-            resp.raise_for_status()
+            try:
+                async with httpx.AsyncClient() as cliente:
+                    resp = await cliente.get(url)
+                resp.raise_for_status()
+            except httpx.HTTPStatusError as exc:
+                log.warning("telegram_descarga_error", status=exc.response.status_code)
+                raise TelegramHTTPError(f"GET archivo: HTTP {exc.response.status_code}") from None
+            except httpx.HTTPError as exc:
+                log.warning("telegram_descarga_error", error=type(exc).__name__)
+                raise TelegramHTTPError(f"GET archivo: {type(exc).__name__}") from None
             return resp.content
 
     return _HttpxCliente()

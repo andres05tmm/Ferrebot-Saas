@@ -20,14 +20,15 @@ describe('ventaVariaSchema', () => {
 describe('zodResolver (adaptador zod → react-hook-form)', () => {
   it('devuelve values coaccionados y sin errores cuando valida', async () => {
     const resolver = zodResolver(ventaVariaSchema)
-    const out = await resolver({ descripcion: 'Cinta', cantidad: '2', precio_unitario: '1200' }, undefined, {})
+    // Valores crudos del <input> (strings) que zod coacciona; el resolver los recibe sin tipar.
+    const out = await resolver({ descripcion: 'Cinta', cantidad: '2', precio_unitario: '1200' } as never, undefined, {} as never)
     expect(out.errors).toEqual({})
     expect(out.values).toEqual({ descripcion: 'Cinta', cantidad: 2, precio_unitario: 1200 })
   })
 
   it('mapea los issues de zod a errors por campo cuando falla', async () => {
     const resolver = zodResolver(ventaVariaSchema)
-    const out = await resolver({ descripcion: '', cantidad: '0', precio_unitario: '1' }, undefined, {})
+    const out = await resolver({ descripcion: '', cantidad: '0', precio_unitario: '1' } as never, undefined, {} as never)
     expect(out.values).toEqual({})
     expect(out.errors.descripcion?.message).toBe('La descripción es obligatoria')
     expect(out.errors.cantidad?.message).toBe('La cantidad debe ser mayor a 0')

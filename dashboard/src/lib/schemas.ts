@@ -5,24 +5,26 @@
  * `zodResolver(schema)` a `useForm` de react-hook-form. Los formularios existentes NO se migran.
  */
 import { z } from 'zod'
-import type { Resolver } from 'react-hook-form'
+import type { FieldErrors, FieldValues, Resolver } from 'react-hook-form'
 
 // Adapta un schema zod al contrato de `resolver` de react-hook-form, sin depender de
 // @hookform/resolvers (una dependencia menos). Válido para formularios planos (sin anidamiento
 // profundo), que es lo que usamos. En caso de éxito devuelve los datos ya coaccionados por zod.
-export function zodResolver<Schema extends z.ZodType>(schema: Schema): Resolver<z.infer<Schema>> {
+export function zodResolver<T extends FieldValues>(schema: z.ZodType<T>): Resolver<T> {
   return async (values) => {
     const result = schema.safeParse(values)
     if (result.success) {
       return { values: result.data, errors: {} }
     }
-    const errors: Record<string, { type: string; message: string }> = {}
+    const errors: FieldErrors<T> = {}
     for (const issue of result.error.issues) {
       const key = issue.path.map(String).join('.') || 'root'
       // Primer error por campo gana (como hace RHF por defecto).
-      if (!errors[key]) errors[key] = { type: String(issue.code), message: issue.message }
+      if (!(key in errors)) {
+        ;(errors as Record<string, unknown>)[key] = { type: String(issue.code), message: issue.message }
+      }
     }
-    return { values: {}, errors } as ReturnType<Resolver<z.infer<Schema>>> extends Promise<infer R> ? R : never
+    return { values: {}, errors }
   }
 }
 

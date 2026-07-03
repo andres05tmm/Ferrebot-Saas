@@ -23,6 +23,7 @@ from modules.ventas.errors import (
     OperacionNoAutorizada,
     ProductoNoEncontrado,
     StockInsuficiente,
+    VentaConDevolucion,
     VentaConFacturaViva,
     VentaNoEncontrada,
     VentaNoEsDeHoy,
@@ -152,6 +153,7 @@ class VentasRepo(Protocol):
     async def obtener_cabecera(self, venta_id: int) -> VentaLeer | None: ...
     async def obtener(self, venta_id: int) -> VentaConLineas | None: ...
     async def tiene_factura_viva(self, venta_id: int) -> bool: ...
+    async def tiene_devolucion(self, venta_id: int) -> bool: ...
     async def borrar_venta(self, venta_id: int) -> None: ...
     async def revertir_lineas(self, venta_id: int) -> None: ...
     async def aplicar_edicion(self, venta_id: int, edicion: EdicionVenta) -> VentaConLineas | None: ...
@@ -293,7 +295,9 @@ class VentaService:
 
         En orden: existe (VentaNoEncontrada/404) → es de HOY Colombia (VentaNoEsDeHoy/409) → permiso,
         admin o vendedor dueño (OperacionNoAutorizada/403) → sin factura electrónica viva
-        (VentaConFacturaViva/409). `accion` ("borrar"/"editar") solo ajusta el mensaje del error.
+        (VentaConFacturaViva/409) → sin devolución registrada (VentaConDevolucion/409, ADR 0026: la
+        devolución ya movió stock y dinero; borrar/reescribir la venta dejaría eso colgando).
+        `accion` ("borrar"/"editar") solo ajusta el mensaje del error.
         """
         venta = await self._repo.obtener_cabecera(venta_id)
         if venta is None:
@@ -304,6 +308,8 @@ class VentaService:
             raise OperacionNoAutorizada(venta_id, accion=accion)
         if await self._repo.tiene_factura_viva(venta_id):
             raise VentaConFacturaViva(venta_id, accion=accion)
+        if await self._repo.tiene_devolucion(venta_id):
+            raise VentaConDevolucion(venta_id, accion=accion)
         return venta
 
     async def borrar_venta(self, venta_id: int, *, user_id: int, es_admin: bool) -> int:

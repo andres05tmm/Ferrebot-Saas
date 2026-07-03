@@ -4,7 +4,7 @@
 > (más allá de lo fiscal/POS) y elevar el **frontend del dashboard de agentes** con propuestas de
 > diseño white-label para mostrar a clientes. Acompaña (no reemplaza) a `roadmap.md`,
 > `roadmap-superficies-web.md`, `whatsapp-agentes-arquitectura.md` y `pack-agenda-citas.md`.
-> Las propuestas de diseño viven en `design-propuestas/`.
+> Las propuestas de diseño viven en `docs/design/propuestas/`.
 
 ---
 
@@ -148,7 +148,7 @@ El dashboard actual (React + `DESIGN.md`) hereda el tema rojo POS de Punto Rojo.
 TabConversaciones y TabConocimiento existen pero sin identidad propia: una clínica ve la estética
 de una ferretería. El white-label hoy es "un color primario", no un tema.
 
-### Decisión de diseño: 3 propuestas navegables (en `design-propuestas/`)
+### Decisión de diseño: 3 propuestas navegables (en `docs/design/propuestas/`)
 
 | Propuesta | Vertical demo | Lenguaje visual |
 |---|---|---|

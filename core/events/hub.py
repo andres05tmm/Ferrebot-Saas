@@ -65,7 +65,15 @@ class _TenantListener:
         for queue in tuple(self._subscribers):   # snapshot: robusto si el set cambia
             try:
                 queue.put_nowait(payload)
-            except Exception:  # noqa: BLE001 — cola llena/cerrada de un suscriptor: no frenar al resto
+            except asyncio.QueueFull:
+                # Suscriptor zombie (no consume): se descarta lo más viejo para acotar memoria.
+                # El cliente SSE tolera huecos (cada evento refresca el estado completo del tab).
+                try:
+                    queue.get_nowait()
+                    queue.put_nowait(payload)
+                except Exception:  # noqa: BLE001
+                    log.warning("listener_cola_llena", tenant_id=self._tenant_id)
+            except Exception:  # noqa: BLE001 — cola cerrada de un suscriptor: no frenar al resto
                 log.warning("listener_cola_error", tenant_id=self._tenant_id)
 
     def _on_terminacion(self, _conn) -> None:
@@ -159,7 +167,9 @@ class TenantEventHub:
         self._lock = asyncio.Lock()
 
     async def subscribe(self, tenant_id: int, dsn: str) -> asyncio.Queue[str]:
-        queue: asyncio.Queue[str] = asyncio.Queue()
+        # maxsize acota la memoria de un suscriptor que no consume (conexión SSE zombie);
+        # en cola llena `_on_notify` descarta el evento más viejo.
+        queue: asyncio.Queue[str] = asyncio.Queue(maxsize=256)
         async with self._lock:
             listener = self._listeners.get(tenant_id)
             if listener is None:

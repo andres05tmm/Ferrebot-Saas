@@ -1,6 +1,7 @@
 """Alembic env del esquema de NEGOCIO. La URL destino llega por parámetro (tenancy.md §7).
 
-Orden: -x db_url=... > env ALEMBIC_TENANT_URL. Se normaliza a driver sync (psycopg).
+Orden: -x db_url=... > sqlalchemy.url del Config (lo setea tools/_alembic.py, seguro ante
+concurrencia) > env ALEMBIC_TENANT_URL (fallback CLI). Se normaliza a driver sync (psycopg).
 """
 import os
 from logging.config import fileConfig
@@ -19,9 +20,15 @@ target_metadata = None  # migraciones a mano (materializan schema.md)
 
 def _url() -> str:
     x_args = context.get_x_argument(as_dictionary=True)
-    raw = x_args.get("db_url") or os.environ.get("ALEMBIC_TENANT_URL")
+    raw = (
+        x_args.get("db_url")
+        or config.get_main_option("sqlalchemy.url")   # lo setea tools/_alembic.py (per-call)
+        or os.environ.get("ALEMBIC_TENANT_URL")
+    )
     if not raw:
-        raise RuntimeError("Falta la URL del tenant: usa -x db_url=... o ALEMBIC_TENANT_URL")
+        raise RuntimeError(
+            "Falta la URL del tenant: usa -x db_url=..., tools/_alembic o ALEMBIC_TENANT_URL"
+        )
     return to_sync(raw)
 
 

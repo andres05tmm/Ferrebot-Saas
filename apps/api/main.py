@@ -35,6 +35,7 @@ from modules.compras_fiscal.router import router as compras_fiscal_router
 from modules.config.router import router as config_router
 from modules.conversaciones.router import router as conversaciones_router
 from modules.cotizaciones.router import router as cotizaciones_router
+from modules.devoluciones.router import router as devoluciones_router
 from modules.facturacion.router import router as facturacion_router
 from modules.facturacion.webhook import crear_router_matias
 from modules.facturacion.webhook_wiring import construir_webhook_matias_deps
@@ -152,6 +153,7 @@ def create_app(spa_dist: Path | None = None) -> FastAPI:
     app.include_router(auth_reset_router, prefix="/api/v1")   # set-password / reset por token (ADR 0009)
     app.include_router(admin_router, prefix="/api/v1")        # panel super-admin, cross-tenant (ADR 0010)
     app.include_router(ventas_router, prefix="/api/v1")
+    app.include_router(devoluciones_router, prefix="/api/v1")  # devoluciones + nota crédito (ADR 0026)
     app.include_router(catalogo_router, prefix="/api/v1")    # /productos* — feature `ventas` (ADR 0021)
     app.include_router(inventario_router, prefix="/api/v1")  # /inventario/* — feature `inventario`
     app.include_router(caja_router, prefix="/api/v1")

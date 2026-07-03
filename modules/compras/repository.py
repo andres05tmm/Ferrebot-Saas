@@ -12,6 +12,7 @@ from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.events import publish
+from core.money import cuantizar
 from modules.compras.models import Compra, CompraDetalle, Proveedor
 from modules.compras.schemas import CompraLeer
 from modules.inventario.models import Inventario, MovimientoInventario
@@ -24,6 +25,24 @@ class ItemCompra:
     producto_id: int
     cantidad: Decimal
     costo: Decimal
+
+
+def _promedio_ponderado(
+    stock_prev: Decimal, promedio_actual: Decimal | None, cantidad: Decimal, costo: Decimal
+) -> Decimal:
+    """Promedio ponderado móvil (ADR 0025): (stock·promedio + cantidad·costo) / (stock + cantidad).
+
+    Función pura. `promedio_actual` NULL (producto sin costo previo) → el promedio arranca en el costo
+    de esta compra. El stock previo negativo (modo permisivo) se trata como 0: un inventario en rojo no
+    aporta valor promediable. Si el denominador no es positivo (p. ej. cantidad 0) se cae al costo de la
+    compra para evitar división por cero. El resultado se cuantiza a centavos (core.money).
+    """
+    base = promedio_actual if promedio_actual is not None else costo
+    stock_eff = stock_prev if stock_prev > 0 else Decimal("0")
+    denom = stock_eff + cantidad
+    if denom <= 0:
+        return cuantizar(costo)
+    return cuantizar((stock_eff * base + cantidad * costo) / denom)
 
 
 @dataclass(frozen=True, slots=True)
@@ -114,17 +133,27 @@ class SqlComprasRepository:
                     cantidad=it.cantidad, costo=it.costo,
                 )
             )
-            await self._sumar_stock(it.producto_id, it.cantidad)
+            # Lock del producto ANTES de leer stock/promedio: serializa compras concurrentes del mismo
+            # producto (sin lost update del promedio, ADR 0025). Orden de locks productos→inventario.
+            promedio_actual = await self._lock_costo_promedio(it.producto_id)
+            stock_prev = await self._sumar_stock(it.producto_id, it.cantidad)
+            nuevo_promedio = _promedio_ponderado(
+                stock_prev, promedio_actual, it.cantidad, it.costo
+            )
             self._s.add(
                 MovimientoInventario(
                     producto_id=it.producto_id, tipo="ENTRADA", cantidad=it.cantidad,
                     costo_unitario=it.costo, referencia=f"compra:{compra.id}", usuario_id=usuario_id,
+                    fecha_operacion=fecha,
                 )
             )
-            # Fija el costo de compra del producto al de esta compra (no toca el costo de ventas pasadas).
+            # Fija el último costo de compra Y recalcula el promedio ponderado móvil (no toca el costo
+            # ya snapshoteado en ventas pasadas).
             await self._s.execute(
-                text("UPDATE productos SET precio_compra = :c WHERE id = :p"),
-                {"c": it.costo, "p": it.producto_id},
+                text(
+                    "UPDATE productos SET precio_compra = :c, costo_promedio = :cp WHERE id = :p"
+                ),
+                {"c": it.costo, "cp": nuevo_promedio, "p": it.producto_id},
             )
 
         await self._s.flush()
@@ -134,8 +163,23 @@ class SqlComprasRepository:
         await publish(self._s, "inventario_actualizado", {"compra_id": compra.id, "accion": "compra"})
         return await self._leer(compra.id)
 
-    async def _sumar_stock(self, producto_id: int, cantidad: Decimal) -> None:
-        """Suma `cantidad` al stock del producto (crea la fila de inventario si no existía)."""
+    async def _lock_costo_promedio(self, producto_id: int) -> Decimal | None:
+        """Bloquea la fila del producto (FOR UPDATE) y devuelve su `costo_promedio` actual (o NULL).
+
+        El lock serializa las compras concurrentes del mismo producto: el promedio se lee y reescribe
+        dentro de la sección crítica, sin lost update (ADR 0025)."""
+        return (
+            await self._s.execute(
+                text("SELECT costo_promedio FROM productos WHERE id = :p FOR UPDATE"),
+                {"p": producto_id},
+            )
+        ).scalar_one_or_none()
+
+    async def _sumar_stock(self, producto_id: int, cantidad: Decimal) -> Decimal:
+        """Suma `cantidad` al stock del producto (crea la fila si no existía). Devuelve el stock PREVIO.
+
+        El stock previo (0 si la fila no existía) alimenta el promedio ponderado. Lee bajo FOR UPDATE
+        para leer-modificar-escribir sin carreras."""
         existe = (
             await self._s.execute(
                 select(Inventario.stock_actual)
@@ -147,11 +191,12 @@ class SqlComprasRepository:
             self._s.add(
                 Inventario(producto_id=producto_id, stock_actual=cantidad, stock_minimo=Decimal("0"))
             )
-        else:
-            await self._s.execute(
-                text("UPDATE inventario SET stock_actual = stock_actual + :c WHERE producto_id = :p"),
-                {"c": cantidad, "p": producto_id},
-            )
+            return Decimal("0")
+        await self._s.execute(
+            text("UPDATE inventario SET stock_actual = stock_actual + :c WHERE producto_id = :p"),
+            {"c": cantidad, "p": producto_id},
+        )
+        return existe
 
     async def _leer(self, compra_id: int) -> CompraLeer:
         fila = (

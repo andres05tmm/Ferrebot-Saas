@@ -196,7 +196,7 @@ class SqlVentasRepository:
             self._s.add(MovimientoInventario(
                 producto_id=ln.producto_id, tipo="SALIDA", cantidad=ln.cantidad,
                 costo_unitario=ln.costo_unitario, referencia=f"venta:{venta.id}",
-                usuario_id=venta.vendedor_id,
+                usuario_id=venta.vendedor_id, fecha_operacion=venta.fecha,
             ))
         await self._s.flush()
 
@@ -236,6 +236,7 @@ class SqlVentasRepository:
         return ProductoPrecio(
             id=prod.id, nombre=prod.nombre, precio_venta=prod.precio_venta,
             iva=prod.iva, activo=prod.activo, precio_compra=prod.precio_compra,
+            costo_promedio=prod.costo_promedio,
             precio_umbral=prod.precio_umbral,
             precio_bajo_umbral=prod.precio_bajo_umbral,
             precio_sobre_umbral=prod.precio_sobre_umbral,
@@ -332,7 +333,7 @@ class SqlVentasRepository:
             self._s.add(MovimientoInventario(
                 producto_id=ln.producto_id, tipo="SALIDA", cantidad=ln.cantidad,
                 costo_unitario=ln.costo_unitario, referencia=f"venta:{venta.id}",
-                usuario_id=header.vendedor_id,
+                usuario_id=header.vendedor_id, fecha_operacion=venta.fecha,
             ))
         await self._s.flush()
 

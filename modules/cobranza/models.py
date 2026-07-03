@@ -16,6 +16,29 @@ from core.db.base import TenantBase
 
 MONEY = Numeric(12, 2)
 
+
+class CuentaCobro(TenantBase):
+    """Cuenta de cobro (honorarios/servicios) — tenant 0001, mapeada por ADR 0025.
+
+    Documento de cobro previo al documento soporte DIAN (`documentos_soporte.cuenta_cobro_id`).
+    `cliente_id` referencia `clientes.id` (FK en la base; columna plana en el ORM para no acoplar
+    el grafo de mappers entre módulos, mismo criterio que el resto de tablas huérfanas).
+    """
+
+    __tablename__ = "cuentas_cobro"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    consecutivo: Mapped[int | None] = mapped_column(BigInteger)
+    numero_display: Mapped[str | None] = mapped_column(Text)
+    periodo: Mapped[str | None] = mapped_column(Text)
+    concepto: Mapped[str | None] = mapped_column(Text)
+    valor: Mapped[Decimal | None] = mapped_column(MONEY)
+    cliente_id: Mapped[int | None] = mapped_column(BigInteger)
+    enviado_telegram: Mapped[bool | None] = mapped_column(Boolean, default=False)
+    creado_en: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
 promesa_estado = PgEnum(
     "vigente", "cumplida", "incumplida", "reemplazada", name="promesa_estado", create_type=False
 )

@@ -141,6 +141,11 @@ class SqlReportesRepository:
                 )
             )
         ).scalar_one()
+        # COGS anclado a la fecha de la venta origen (ADR 0025): `fecha_operacion` (snapshot de la
+        # fecha de la venta al crear la SALIDA); cae a `creado_en` para movimientos previos a la 0029.
+        fecha_cogs = func.coalesce(
+            MovimientoInventario.fecha_operacion, MovimientoInventario.creado_en
+        )
         costo_ventas = (
             await self._s.execute(
                 select(
@@ -153,8 +158,8 @@ class SqlReportesRepository:
                     )
                 ).where(
                     MovimientoInventario.tipo == "SALIDA",
-                    MovimientoInventario.creado_en >= inicio,
-                    MovimientoInventario.creado_en <= fin,
+                    fecha_cogs >= inicio,
+                    fecha_cogs <= fin,
                 )
             )
         ).scalar_one()

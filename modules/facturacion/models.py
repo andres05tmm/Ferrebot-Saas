@@ -4,14 +4,17 @@ Tabla de negocio sin `empresa_id`: la base ES la frontera del tenant. El consecu
 SEQUENCE `fe_factura_consecutivo_seq` (no `MAX()+1`); `idempotency_key` UNIQUE da la idempotencia
 de emisión. Espejo de `modules/ventas/models.py`.
 """
-from datetime import datetime
+from datetime import date, datetime
+from decimal import Decimal
 
-from sqlalchemy import BigInteger, DateTime, SmallInteger, Text, func
+from sqlalchemy import BigInteger, Date, DateTime, Numeric, SmallInteger, Text, func
 from sqlalchemy.dialects.postgresql import ENUM as PgEnum
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from core.db.base import TenantBase
+
+MONEY = Numeric(12, 2)
 
 fe_tipo_enum = PgEnum(
     "factura", "documento_soporte", "nota_credito", "nota_debito", "pos",
@@ -46,3 +49,63 @@ class FacturaElectronica(TenantBase):
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
     emitido_en: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+# Cross-tabla (factura_id, cuenta_cobro_id): columnas planas BigInteger sin ForeignKey en el ORM —
+# la FK vive en la base (tenant 0001). Mismo criterio que `FacturaElectronica.venta_id`: no acoplar el
+# grafo de mappers entre módulos. Estos modelos (ADR 0025) mapean tablas que existían sin ORM.
+
+
+class NotaElectronica(TenantBase):
+    """Nota crédito/débito electrónica asociada a una factura (tenant 0001)."""
+
+    __tablename__ = "notas_electronicas"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    factura_id: Mapped[int | None] = mapped_column(BigInteger)
+    tipo: Mapped[str] = mapped_column(fe_tipo_enum, nullable=False)
+    motivo: Mapped[str | None] = mapped_column(Text)
+    cufe: Mapped[str | None] = mapped_column(Text)
+    estado: Mapped[str] = mapped_column(fe_estado_enum, nullable=False, default="pendiente")
+    creado_en: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class DocumentoSoporte(TenantBase):
+    """Documento soporte (compras a no obligados a facturar) — DIAN (tenant 0001).
+
+    `idempotency_key` UNIQUE da la idempotencia de emisión; el consecutivo sale de la SEQUENCE
+    `ds_consecutivo_seq`. `cuenta_cobro_id` referencia la cuenta de cobro que lo originó (FK en la base).
+    """
+
+    __tablename__ = "documentos_soporte"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    consecutivo: Mapped[str | None] = mapped_column(Text)
+    fecha: Mapped[date | None] = mapped_column(Date)
+    valor: Mapped[Decimal | None] = mapped_column(MONEY)
+    cude: Mapped[str | None] = mapped_column(Text)
+    estado_dian: Mapped[str | None] = mapped_column(Text)
+    cuenta_cobro_id: Mapped[int | None] = mapped_column(BigInteger)
+    idempotency_key: Mapped[str | None] = mapped_column(Text, unique=True)
+    intentos: Mapped[int] = mapped_column(SmallInteger, nullable=False, default=0)
+    creado_en: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    emitido_en: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class EventoDian(TenantBase):
+    """Bitácora de eventos DIAN por factura (envío, acuse, aceptación...) — tenant 0001."""
+
+    __tablename__ = "eventos_dian"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    factura_id: Mapped[int | None] = mapped_column(BigInteger)
+    evento: Mapped[str | None] = mapped_column(Text)
+    estado: Mapped[str | None] = mapped_column(Text)
+    payload: Mapped[dict | None] = mapped_column(JSONB)
+    creado_en: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )

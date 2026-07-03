@@ -81,6 +81,27 @@ async def test_estricto_vende_mas_que_stock_409(tenant, seed_producto):
         assert (await s.execute(text("SELECT count(*) FROM ventas"))).scalar_one() == 0   # nada registrado
 
 
+async def test_producto_sin_fila_inventario_vende_y_registra_salida(tenant, seed_producto):
+    """Producto migrado sin fila en `inventario` (datos de ETL): la venta NO revienta con KeyError;
+    crea la fila (stock honesto en negativo) y SIEMPRE registra el movimiento SALIDA (regla #7)."""
+    async with AsyncSession(tenant.engine) as s:
+        uid, pid = await seed_producto(s, precio="10000", iva=19, stock="5")
+        await s.execute(text("DELETE FROM inventario WHERE producto_id=:p"), {"p": pid})
+        await s.commit()
+
+    app = _app(tenant, user_id=uid, estricto=False)
+    async with _cliente(app) as c:
+        r = await c.post("/api/v1/ventas", json={"metodo_pago": "efectivo", "lineas": [{"producto_id": pid, "cantidad": 3}]})
+    assert r.status_code == 201, r.text
+
+    async with AsyncSession(tenant.engine) as s:
+        assert (await s.execute(text("SELECT count(*) FROM ventas"))).scalar_one() == 1
+        tipo = (await s.execute(text("SELECT tipo FROM movimientos_inventario WHERE producto_id=:p"), {"p": pid})).scalar_one()
+        assert tipo == "SALIDA"
+        stock = (await s.execute(text("SELECT stock_actual FROM inventario WHERE producto_id=:p"), {"p": pid})).scalar_one()
+        assert stock == -3   # la fila se crea al vuelo con el faltante honesto
+
+
 # ---- Reader: cargar_control_stock_estricto (control DB) --------------------
 async def test_cargar_control_stock_estricto_default_y_true(monkeypatch):
     name = f"test_control_stock_{uuid.uuid4().hex[:12]}"

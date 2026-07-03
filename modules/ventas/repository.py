@@ -191,7 +191,7 @@ class SqlVentasRepository:
         for ln in edicion.lineas:
             if not ln.descontar_stock or ln.producto_id is None:
                 continue
-            inv = self._locked[ln.producto_id]
+            inv = self._inventario_para_descontar(ln.producto_id)
             inv.stock_actual = inv.stock_actual - ln.cantidad
             self._s.add(MovimientoInventario(
                 producto_id=ln.producto_id, tipo="SALIDA", cantidad=ln.cantidad,
@@ -253,6 +253,17 @@ class SqlVentasRepository:
             return None
         self._locked[producto_id] = inv
         return inv.stock_actual
+
+    def _inventario_para_descontar(self, producto_id: int) -> Inventario:
+        """Fila de inventario bloqueada por `lock_inventario`; si el producto no la tiene (datos
+        migrados por ETL), se crea al vuelo en cero — el descuento la deja en negativo honesto
+        (modo permisivo) y el movimiento SALIDA se registra igual (regla #7)."""
+        inv = self._locked.get(producto_id)
+        if inv is None:
+            inv = Inventario(producto_id=producto_id, stock_actual=Decimal("0"), stock_minimo=Decimal("0"))
+            self._s.add(inv)
+            self._locked[producto_id] = inv
+        return inv
 
     async def stock_sin_lock(self, producto_id: int) -> Decimal | None:
         """Stock actual SIN bloquear la fila: lectura para CONSULTA (nunca para vender).
@@ -327,7 +338,7 @@ class SqlVentasRepository:
         for ln in header.lineas:
             if not ln.descontar_stock or ln.producto_id is None:
                 continue
-            inv = self._locked[ln.producto_id]
+            inv = self._inventario_para_descontar(ln.producto_id)
             inv.stock_actual = inv.stock_actual - ln.cantidad
             self._s.add(MovimientoInventario(
                 producto_id=ln.producto_id, tipo="SALIDA", cantidad=ln.cantidad,

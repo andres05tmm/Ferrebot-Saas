@@ -328,10 +328,15 @@ class SqlAgendaRepository:
         ).scalar_one_or_none()
 
     async def vincular_venta(self, cita: Cita, venta_id: int) -> Cita:
-        """Vincula el cobro (misma transacción que la venta): venta_id + cobrada_en + `cumplida`."""
+        """Vincula el cobro (misma transacción que la venta): venta_id + cobrada_en; `cumplida` SOLO
+        si la cita ya empezó. Un cobro ANTICIPADO no la marca cumplida: `cumplida` es terminal y deja
+        de ocupar agenda (`_ESTADOS_ACTIVOS`) — el slot pagado quedaría libre para otra reserva y la
+        reconfirmación anti-no-show la perdería. El cobro queda registrado en venta_id/cobrada_en."""
+        ahora = datetime.now(COLOMBIA_TZ)
         cita.venta_id = venta_id
-        cita.cobrada_en = datetime.now(COLOMBIA_TZ)
-        cita.estado = "cumplida"
+        cita.cobrada_en = ahora
+        if cita.inicio <= ahora:
+            cita.estado = "cumplida"
         await self._s.flush()
         await publish(self._s, "cita_cobrada", {"cita_id": cita.id, "venta_id": venta_id})
         return cita

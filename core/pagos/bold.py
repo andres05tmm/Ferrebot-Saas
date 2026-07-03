@@ -20,6 +20,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from core.money import cuantizar
 from core.pagos.ports import EstadoCobro, LinkCobro, SolicitudCobro
 
 BASE_URL_DEFAULT = "https://integrations.api.bold.co"
@@ -56,9 +57,15 @@ class BoldClient:
         self._timeout = timeout
 
     async def crear_link(self, solicitud: SolicitudCobro) -> LinkCobro:
+        # COP no maneja centavos en Bold: el monto viaja como entero, sin pasar por float
+        # (float(Decimal) introduce error de representación binaria). Un monto con centavos
+        # sería un bug aguas arriba: mejor reventar aquí que cobrar distinto a lo pedido.
+        monto = cuantizar(solicitud.monto)
+        if monto != monto.to_integral_value():
+            raise ErrorBold(f"monto COP con centavos no soportado por Bold: {monto}")
         cuerpo: dict[str, Any] = {
             "amount_type": "CLOSE",
-            "amount": {"currency": "COP", "total_amount": float(solicitud.monto), "tip_amount": 0},
+            "amount": {"currency": "COP", "total_amount": int(monto), "tip_amount": 0},
             "reference": solicitud.referencia[:60],
             "description": solicitud.descripcion[:100],
         }

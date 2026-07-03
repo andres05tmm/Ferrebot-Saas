@@ -47,25 +47,25 @@ class CotizacionesService:
     def __init__(self, repo: SqlCotizacionesRepository) -> None:
         self._repo = repo
 
-    async def _resolver(self, texto: str) -> int:
-        """Texto del cliente → producto_id por el buscador real. Lanza con sugerencias si no resuelve."""
+    async def _resolver(self, texto: str) -> tuple[int, str]:
+        """Texto del cliente → (producto_id, nombre) por el buscador real, en UNA sola búsqueda
+        (repetirla para sacar el nombre podía no repetir el candidato → StopIteration). Lanza con
+        sugerencias si no resuelve."""
         resultado = await self._repo.buscar_producto(texto)
         resuelto = next((c for c in resultado.coincidencias if not c.sugerencia), None)
         if resuelto is None:
             sugerencias = [c.nombre for c in resultado.coincidencias][:3]
             raise ProductoNoResuelto(texto, sugerencias)
-        return resuelto.producto_id
+        return resuelto.producto_id, resuelto.nombre
 
     # --- consulta de precio (sin carrito) ----------------------------------------
     async def cotizar(self, texto: str, cantidad: Decimal = Decimal("1")) -> PrecioCotizado:
-        producto_id = await self._resolver(texto)
+        producto_id, nombre = await self._resolver(texto)
         try:
             precio = await self._repo.calcular_precio(producto_id, cantidad)
         except ProductoInexistente as exc:
             raise ProductoNoResuelto(texto, []) from exc
         config = await self._repo.obtener_config()
-        resultado = await self._repo.buscar_producto(texto)
-        nombre = next(c.nombre for c in resultado.coincidencias if c.producto_id == producto_id)
         return PrecioCotizado(
             producto_id=producto_id, nombre=nombre, cantidad=cantidad,
             precio_unitario=precio.precio_unitario, total=precio.total, regla=precio.regla,
@@ -81,10 +81,8 @@ class CotizacionesService:
         if cotizacion is None:
             cotizacion = await self._repo.crear_abierta(telefono, idempotency_key=idempotency_key)
         for item in items:
-            producto_id = await self._resolver(item.producto)
+            producto_id, nombre = await self._resolver(item.producto)
             precio = await self._repo.calcular_precio(producto_id, item.cantidad)
-            resultado = await self._repo.buscar_producto(item.producto)
-            nombre = next(c.nombre for c in resultado.coincidencias if c.producto_id == producto_id)
             cotizacion = await self._repo.upsert_item(
                 cotizacion, producto_id=producto_id, nombre=nombre, cantidad=item.cantidad,
                 precio_unitario=precio.precio_unitario, subtotal=precio.total,
@@ -95,7 +93,7 @@ class CotizacionesService:
         cotizacion = await self._repo.abierta_de(telefono)
         if cotizacion is None:
             raise CarritoVacio()
-        producto_id = await self._resolver(texto)
+        producto_id, _ = await self._resolver(texto)
         if not await self._repo.quitar_item(cotizacion, producto_id):
             raise ProductoNoResuelto(texto, [])
         return cotizacion

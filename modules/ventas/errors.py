@@ -15,6 +15,18 @@ class ProductoNoEncontrado(VentaError):
         self.producto_id = producto_id
 
 
+class IdempotenciaConflicto(VentaError):
+    """Misma `idempotency_key` reusada con un payload distinto (líneas/cliente/método de pago).
+
+    No se reintenta ni se duplica: la key ya identifica otra venta. El router lo mapea a 409
+    (mismo contrato que compras).
+    """
+
+    def __init__(self, key: str) -> None:
+        super().__init__(f"idempotency_key '{key}' ya usada con un payload distinto")
+        self.key = key
+
+
 class StockInsuficiente(VentaError):
     def __init__(self, producto_id: int, disponible, solicitado) -> None:
         super().__init__(

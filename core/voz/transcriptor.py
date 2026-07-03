@@ -78,7 +78,10 @@ def _cliente_whisper(api_key: str) -> Cliente:
 
         audio = payload["file"]
         data = {k: v for k, v in payload.items() if k != "file"}
-        async with httpx.AsyncClient() as cliente:
+        # El default de httpx (5s) corta transcripciones normales: subir el audio + esperar a
+        # Whisper toma más que eso con notas de voz de varios segundos.
+        timeout = httpx.Timeout(60.0, connect=10.0)
+        async with httpx.AsyncClient(timeout=timeout) as cliente:
             resp = await cliente.post(
                 "https://api.openai.com/v1/audio/transcriptions",
                 headers={"Authorization": f"Bearer {api_key}"},

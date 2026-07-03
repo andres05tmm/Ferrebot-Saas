@@ -79,14 +79,17 @@ def _app(
     repo: _FakeRepo,
     rl_email: _FakeRateLimiter | None = None,
     rl_ip: _FakeRateLimiter | None = None,
+    rl_global: _FakeRateLimiter | None = None,
 ) -> FastAPI:
     app = FastAPI()
     app.include_router(router, prefix="/api/v1")
     app.dependency_overrides[get_token_store] = lambda: store
     app.dependency_overrides[get_repo_identidades] = lambda: repo
-    # Dos cubos INDEPENDIENTES (email-solo / IP-sola); por defecto ambos permisivos.
-    el, il = rl_email or _FakeRateLimiter(), rl_ip or _FakeRateLimiter()
-    app.dependency_overrides[get_rate_limiters] = lambda: (el, il)
+    # Tres cubos INDEPENDIENTES (email-solo / IP-sola / global); por defecto permisivos.
+    el = rl_email or _FakeRateLimiter()
+    il = rl_ip or _FakeRateLimiter()
+    gl = rl_global or _FakeRateLimiter()
+    app.dependency_overrides[get_rate_limiters] = lambda: (el, il, gl)
     return app
 
 

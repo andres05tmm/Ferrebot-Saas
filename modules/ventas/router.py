@@ -16,7 +16,11 @@ from core.db.session import control_session, get_tenant_db
 from core.events.sse import tenant_event_stream
 from modules.facturacion.repository import SqlFacturacionRepository
 from modules.ventas.config import cargar_control_stock_estricto
+from modules.fiados.errors import ClienteInexistente
+from modules.fiados.repository import SqlFiadosRepository
+from modules.fiados.service import FiadosService
 from modules.ventas.errors import (
+    IdempotenciaConflicto,
     LineaInvalida,
     OperacionNoAutorizada,
     ProductoNoEncontrado,
@@ -88,16 +92,18 @@ async def crear_venta(
     if payload.idempotency_key is None and idempotency_key:
         payload = payload.model_copy(update={"idempotency_key": idempotency_key})
 
-    service = VentaService(SqlVentasRepository(session))
+    service = VentaService(
+        SqlVentasRepository(session), fiados=FiadosService(SqlFiadosRepository(session))
+    )
     try:
         resultado = await service.registrar_venta(
             payload, vendedor_id=user.user_id, control_stock_estricto=control_stock_estricto
         )
     except ProductoNoEncontrado as exc:
         raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
-    except StockInsuficiente as exc:
+    except (StockInsuficiente, IdempotenciaConflicto) as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
-    except LineaInvalida as exc:
+    except (LineaInvalida, ClienteInexistente) as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
 
     # Cierre fiscal de mostrador (ADR 0012 D2): si la empresa tiene `pos_electronico`, crea el pendiente

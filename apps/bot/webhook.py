@@ -131,42 +131,61 @@ async def manejar_update(
 
         # 4. Dedup por update_id (reintentos del webhook). El update_id viaja en el nivel superior;
         #    para un mensaje coincide con `update.update_id`, para un callback se toma del payload.
-        update_id = update.update_id if isinstance(update, UpdateBot) else int(payload["update_id"])
+        if isinstance(update, UpdateBot):
+            update_id = update.update_id
+        else:
+            update_id_crudo = payload.get("update_id")
+            if update_id_crudo is None:
+                log.info("bot_update_ignorado", motivo="callback_sin_update_id")
+                return ResultadoWebhook(Accion.UPDATE_IGNORADO, 200)
+            update_id = int(update_id_crudo)
         if not await deps.dedup.marcar_si_nuevo(tenant.id, update_id):
             log.info("bot_update_duplicado", update_id=update_id)
             return ResultadoWebhook(Accion.DUPLICADO, 200)
 
-        # 5. Sesión del tenant + mapeo del usuario (idéntico para mensaje y callback).
-        async with deps.abrir_sesion(tenant) as session:
-            usuario = await deps.usuarios(session).por_telegram_id(update.telegram_id)
-            if usuario is None or not usuario.activo:
-                await bundle.notificador.responder(update.chat_id, _MSG_NO_AUTORIZADO)
-                log.info("bot_no_autorizado", telegram_id=update.telegram_id)
-                return ResultadoWebhook(Accion.NO_AUTORIZADO, 200)
+        try:
+            # 5. Sesión del tenant + mapeo del usuario (idéntico para mensaje y callback).
+            async with deps.abrir_sesion(tenant) as session:
+                usuario = await deps.usuarios(session).por_telegram_id(update.telegram_id)
+                if usuario is None or not usuario.activo:
+                    await bundle.notificador.responder(update.chat_id, _MSG_NO_AUTORIZADO)
+                    log.info("bot_no_autorizado", telegram_id=update.telegram_id)
+                    return ResultadoWebhook(Accion.NO_AUTORIZADO, 200)
 
-            # 6. Contexto + delegación. Un callback va a `procesar_callback`; un mensaje, al turno.
-            ctx = Contexto(
-                tenant_id=tenant.id,
-                usuario_id=usuario.id,
-                rol=usuario.rol,
-                origen="bot",
-                idempotency_key=clave_idempotencia(tenant.id, update_id),
-                request_id=rid,
-                capacidades=await deps.capacidades.efectivas(tenant.id),
-                # Rubro del negocio (persona del prompt); None = fallback ferretero histórico.
-                rubro=(await deps.rubro.rubro(tenant.id)) if deps.rubro is not None else None,
-            )
-            if isinstance(update, CallbackBot):
-                if deps.procesar_callback is None:
-                    log.info("bot_callback_sin_handler", update_id=update_id)
-                    return ResultadoWebhook(Accion.UPDATE_IGNORADO, 200)
-                await deps.procesar_callback(update, ctx, session, bundle.notificador)
-                log.info("bot_callback_procesado", usuario_id=usuario.id, update_id=update_id)
+                # 6. Contexto + delegación. Un callback va a `procesar_callback`; un mensaje, al turno.
+                ctx = Contexto(
+                    tenant_id=tenant.id,
+                    usuario_id=usuario.id,
+                    rol=usuario.rol,
+                    origen="bot",
+                    idempotency_key=clave_idempotencia(tenant.id, update_id),
+                    request_id=rid,
+                    capacidades=await deps.capacidades.efectivas(tenant.id),
+                    # Rubro del negocio (persona del prompt); None = fallback ferretero histórico.
+                    rubro=(await deps.rubro.rubro(tenant.id)) if deps.rubro is not None else None,
+                )
+                if isinstance(update, CallbackBot):
+                    if deps.procesar_callback is None:
+                        log.info("bot_callback_sin_handler", update_id=update_id)
+                        return ResultadoWebhook(Accion.UPDATE_IGNORADO, 200)
+                    await deps.procesar_callback(update, ctx, session, bundle.notificador)
+                    log.info("bot_callback_procesado", usuario_id=usuario.id, update_id=update_id)
+                    return ResultadoWebhook(Accion.PROCESADO, 200, ctx)
+
+                await deps.procesar(update, ctx, session, bundle.notificador)
+                log.info("bot_turno_procesado", usuario_id=usuario.id, update_id=update_id)
                 return ResultadoWebhook(Accion.PROCESADO, 200, ctx)
-
-            await deps.procesar(update, ctx, session, bundle.notificador)
-            log.info("bot_turno_procesado", usuario_id=usuario.id, update_id=update_id)
-            return ResultadoWebhook(Accion.PROCESADO, 200, ctx)
+        except Exception:
+            # Turno fallido: se DESMARCA el dedup para que el reintento de Telegram sí procese
+            # (sin esto el reintento caería como duplicado y el mensaje se perdería para siempre).
+            # El doble procesamiento en la ventana de carrera lo cubre la idempotency_key de dominio.
+            log.exception("bot_turno_error", update_id=update_id)
+            try:
+                await deps.dedup.desmarcar(tenant.id, update_id)
+            except Exception:
+                # El DEL fallido no debe enmascarar el error original (Telegram reintenta igual).
+                log.exception("bot_dedup_desmarcar_error", update_id=update_id)
+            raise
     finally:
         request_id_var.reset(rid_token)
         tenant_id_var.reset(tid_token)

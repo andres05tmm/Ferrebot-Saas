@@ -136,6 +136,20 @@ def _parsear_emision(data: dict) -> EmisionResultado:
     return EmisionResultado(False, error_msg=error_msg, categoria="rechazada", raw=data)
 
 
+def _resultado_5xx(resp: httpx.Response) -> EmisionResultado:
+    """Un 5xx de MATIAS es un fallo TRANSITORIO del proveedor: categoria 'error' (reintentable por la
+    política y barrido por el reconciliador), nunca 'rechazada' (terminal de negocio). El rechazo real
+    llega con status < 500 y `success` falso; el body 5xx (si es JSON) se conserva como diagnóstico."""
+    try:
+        raw = resp.json()
+    except ValueError:
+        raw = None
+    return EmisionResultado(
+        False, error_msg=f"MATIAS respondió HTTP {resp.status_code}", categoria="error",
+        raw=raw if isinstance(raw, dict) else None,
+    )
+
+
 # Claves donde MATIAS suele exponer las URLs del documento (verbatim del portal + alias defensivos;
 # el nombre exacto se confirma contra el sandbox en F2.4 — `urls_documento` tolera las variantes).
 _CLAVES_XML_URL = ("urlinvoicexml", "url_xml", "xml_url", "urlxml")
@@ -406,7 +420,9 @@ class MatiasClient:
             return self._token_val
 
     async def emitir_factura(self, payload: dict) -> EmisionResultado:
-        """POST `/invoice` con Bearer token; devuelve `EmisionResultado` (NO persiste; eso es E3, §7/§10)."""
+        """POST `/invoice` con Bearer token; devuelve `EmisionResultado` (NO persiste; eso es E3, §7/§10).
+
+        Un 5xx se clasifica ANTES de parsear (`_resultado_5xx`): es transitorio, no un rechazo DIAN."""
         tok = await self._token()
         resp = await self._get_client().post(
             "/invoice", content=_a_json(payload),
@@ -414,6 +430,8 @@ class MatiasClient:
                      "Content-Type": "application/json"},
             timeout=30,
         )
+        if resp.status_code >= 500:
+            return _resultado_5xx(resp)
         return _parsear_emision(resp.json())
 
     async def consultar_estado(
@@ -441,7 +459,8 @@ class MatiasClient:
         """POST `/auto-increment/pos-documents` (ADR 0012 D4): emite el POS y MATIAS asigna número/prefijo.
 
         Bearer token; devuelve `EmisionResultado` con `numero`/`prefijo` asignados (NO persiste; eso es E3).
-        El endpoint de autoincremento elimina huecos y colisiones del consecutivo (los gestiona MATIAS)."""
+        El endpoint de autoincremento elimina huecos y colisiones del consecutivo (los gestiona MATIAS).
+        Un 5xx se clasifica ANTES de parsear (`_resultado_5xx`): es transitorio, no un rechazo DIAN."""
         tok = await self._token()
         resp = await self._get_client().post(
             "/auto-increment/pos-documents", content=_a_json(payload),
@@ -449,6 +468,8 @@ class MatiasClient:
                      "Content-Type": "application/json"},
             timeout=30,
         )
+        if resp.status_code >= 500:
+            return _resultado_5xx(resp)
         # El prefijo lo conocemos (lo enviamos): ancla la extracción del consecutivo al prefijo real.
         return _parsear_emision_pos(resp.json(), prefijo_esperado=payload.get("prefix"))
 

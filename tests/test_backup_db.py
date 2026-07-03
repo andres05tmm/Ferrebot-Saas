@@ -19,6 +19,7 @@ from tools.backup_db import (
     nombre_db_de_url,
     planear_backup,
     podar_backups,
+    separar_password,
     tamano_humano,
 )
 
@@ -74,6 +75,20 @@ def test_nombre_db_de_url():
     assert nombre_db_de_url("postgresql://u:p@host:5432/railway?sslmode=require") == "railway"
 
 
+# --------------------------- password fuera del DSN -----------------------
+
+def test_separar_password_quita_el_password_del_dsn():
+    dsn, pw = separar_password("postgresql://user:s3cr3t@host:5432/railway?sslmode=require")
+    assert pw == "s3cr3t"
+    assert "s3cr3t" not in dsn                       # nunca en la línea de comandos
+    assert dsn == "postgresql://user@host:5432/railway?sslmode=require"
+
+
+def test_separar_password_sin_password_devuelve_url_intacta():
+    url = "postgresql://user@host:5432/railway"
+    assert separar_password(url) == (url, None)
+
+
 # --------------------------- plan de backup -------------------------------
 
 def test_planear_backup_control_primero_y_un_objetivo_por_tenant():
@@ -108,16 +123,20 @@ def test_tamano_humano():
 # --------------------------- gate BACKUP_ENABLED --------------------------
 
 def _stub_flujo(
-    monkeypatch, tmp_path, *, backup_enabled: bool, backup_offsite_dir: str = ""
+    monkeypatch, tmp_path, *, backup_enabled: bool, backup_offsite_dir: str = "",
+    fallidas: dict[str, str] | None = None,
 ) -> list[dict]:
     """Aísla `main` de prod: cargar_env_prod no-op, settings fijos y `backup_all` espía.
 
-    Devuelve la lista de llamadas a backup_all (vacía = no se invocó a pg_dump)."""
+    Devuelve la lista de llamadas a backup_all (vacía = no se invocó a pg_dump). `fallidas`
+    simula bases que fallaron dentro de backup_all (que ya no aborta: acumula y reporta)."""
     llamadas: list[dict] = []
     settings = SimpleNamespace(backup_enabled=backup_enabled, backup_offsite_dir=backup_offsite_dir)
     monkeypatch.setattr(backup_db, "cargar_env_prod", lambda *a, **k: None)
     monkeypatch.setattr(backup_db, "get_settings", lambda: settings)
-    monkeypatch.setattr(backup_db, "backup_all", lambda **k: (llamadas.append(k), tmp_path)[1])
+    monkeypatch.setattr(
+        backup_db, "backup_all", lambda **k: (llamadas.append(k), (tmp_path, fallidas or {}))[1]
+    )
     return llamadas
 
 
@@ -140,6 +159,21 @@ def test_backup_habilitado_procede(monkeypatch, tmp_path):
     code = main(["--dir", str(tmp_path)])
     assert code == 0
     assert len(llamadas) == 1
+
+
+def test_backup_con_fallidas_retorna_1_y_omite_poda(monkeypatch, tmp_path, capsys):
+    # Una base falló: backup_all NO abortó (acumuló), pero el exit code delata el fallo al
+    # scheduler y la poda se omite (los backups viejos pueden ser la única copia buena).
+    vieja = tmp_path / "20200101T120000Z"
+    vieja.mkdir()
+    llamadas = _stub_flujo(
+        monkeypatch, tmp_path, backup_enabled=True, fallidas={"ferrebot_x": "pg_dump falló"}
+    )
+    code = main(["--dir", str(tmp_path), "--podar", "8"])
+    assert code == 1
+    assert len(llamadas) == 1
+    assert vieja.exists()                                   # poda omitida
+    assert "Poda omitida" in capsys.readouterr().out
 
 
 # --------------------------- retención (podar) ----------------------------

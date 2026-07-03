@@ -6,9 +6,10 @@ en claro: la clave es el hash, el valor es el `identidad_id`, el TTL es la expir
 atómico (GETDEL) → reuso imposible. `set-password` y `reset/confirmar` son la MISMA operación
 (token → nueva contraseña); `reset/solicitar` genera el token. El token NUNCA se loguea (es un secreto:
 solo viaja al usuario); el envío de email real es un TODO aparte. SIN enumeración en `reset/solicitar`:
-200 genérico exista o no el email, y rate-limit en DOS cubos INDEPENDIENTES (Redis INCR+EXPIRE): por
-email solo (inmune a la rotación de IP → frena email-bombing) y por IP sola (best-effort). Ambos suben
-el contador ANTES de tocar el directorio → el 429 tampoco revela si el email existe.
+200 genérico exista o no el email, y rate-limit en TRES cubos INDEPENDIENTES (Redis INCR+EXPIRE): por
+email solo (inmune a la rotación de IP → frena email-bombing dirigido), por IP sola (último salto de
+XFF, el del proxy) y GLOBAL (tope total del servicio → frena el bombing masivo distribuido). Todos
+suben el contador ANTES de tocar el directorio → el 429 tampoco revela si el email existe.
 
 Rutas eximidas del TenantMiddleware (`_AUTH_SIN_TENANT`): el flujo ocurre sobre el link compartido, sin
 empresa resuelta. Token store, repo (control DB) y rate-limiter se inyectan → testeable sin red.
@@ -137,29 +138,41 @@ def get_repo_identidades() -> RepoIdentidades:
     return _RepoControl()
 
 
-def get_rate_limiters() -> tuple[RateLimiter, RateLimiter]:
-    """Dos cubos INDEPENDIENTES para `reset/solicitar`: (por-email, por-IP). El handler dispara 429 si
-    CUALQUIERA pasa su tope. Separarlos cierra el bypass del cubo combinado {ip}:{email}: rotar la IP
-    (XFF spoofeable) ya no abre un cubo nuevo por intento (el de email es inmune a la IP), y una IP que
-    rota emails topa contra el cubo de IP."""
+_RESET_GLOBAL_MAX_INTENTOS = 200   # tope TOTAL de solicitudes de reset por ventana (todas las fuentes)
+_RESET_GLOBAL_VENTANA_S = 900
+_RESET_CLAVE_GLOBAL = "todas"      # clave única del cubo global (un solo contador para todo el servicio)
+
+
+def get_rate_limiters() -> tuple[RateLimiter, RateLimiter, RateLimiter]:
+    """Tres cubos INDEPENDIENTES para `reset/solicitar`: (por-email, por-IP, global). El handler
+    dispara 429 si CUALQUIERA pasa su tope. Separarlos cierra el bypass del cubo combinado {ip}:{email}:
+    rotar la IP (XFF spoofeable) ya no abre un cubo nuevo por intento (el de email es inmune a la IP),
+    y una IP que rota emails topa contra el cubo de IP. El GLOBAL (clave única) es la red de seguridad
+    contra el email-bombing masivo distribuido: rotar IPs Y emails a la vez topa igual con el total."""
     s = get_settings()
-    cliente = _cliente_redis(s.redis_url)   # un cliente, dos cubos (namespaces distintos en la clave)
+    cliente = _cliente_redis(s.redis_url)   # un cliente, tres cubos (namespaces distintos en la clave)
     por_email = _RedisRateLimiter(
         cliente, s.reset_solicitar_max_intentos, s.reset_solicitar_ventana_segundos, cubo="email"
     )
     por_ip = _RedisRateLimiter(
         cliente, s.reset_solicitar_ip_max_intentos, s.reset_solicitar_ip_ventana_segundos, cubo="ip"
     )
-    return por_email, por_ip
+    global_ = _RedisRateLimiter(cliente, _RESET_GLOBAL_MAX_INTENTOS, _RESET_GLOBAL_VENTANA_S, cubo="global")
+    return por_email, por_ip, global_
 
 
-def _client_ip(request: Request) -> str:
-    """IP del cliente para el rate-limit. Tras un proxy (Railway) la real va en X-Forwarded-For (primer
-    salto); si no hay header, cae al peer de la conexión. Solo identifica una clave de rate-limit, no
-    autoriza nada, así que un XFF manipulado solo afecta el cubo del propio atacante."""
+def client_ip(request: Request) -> str:
+    """IP del cliente para rate-limit/lockout (la comparte el login, `modules/auth/login_email`).
+
+    Se toma el ÚLTIMO elemento de X-Forwarded-For: es el que APPENDEA el proxy de confianza (Railway)
+    y el único que el cliente no controla. El primer salto es spoofeable (el atacante manda el header
+    que quiera y abriría un cubo nuevo por request); el último no. Sin header, cae al peer de la
+    conexión."""
     xff = request.headers.get("x-forwarded-for")
     if xff:
-        return xff.split(",")[0].strip()
+        saltos = [p.strip() for p in xff.split(",") if p.strip()]
+        if saltos:
+            return saltos[-1]
     return request.client.host if request.client else "desconocida"
 
 
@@ -213,22 +226,24 @@ async def reset_solicitar(
     request: Request,
     store: TokenStore = Depends(get_token_store),
     repo: RepoIdentidades = Depends(get_repo_identidades),
-    limiters: tuple[RateLimiter, RateLimiter] = Depends(get_rate_limiters),
+    limiters: tuple[RateLimiter, RateLimiter, RateLimiter] = Depends(get_rate_limiters),
 ) -> dict:
     """Solicita un reset. Anti-abuso/anti-enumeración:
-    - Rate-limit en DOS cubos INDEPENDIENTES (Redis): por email solo (sha(email), inmune a la rotación
-      de IP → frena el email-bombing dirigido) y por IP sola (best-effort, XFF spoofeable → frena el
-      abuso de una IP rotando emails). 429 si CUALQUIERA pasa su tope. AMBOS cuentan ANTES de tocar el
-      directorio → el 429 no depende de si el email existe (no enumera).
+    - Rate-limit en TRES cubos INDEPENDIENTES (Redis): por email solo (sha(email), inmune a la rotación
+      de IP → frena el email-bombing dirigido), por IP sola (la del proxy: último salto de XFF → frena
+      el abuso de una IP rotando emails) y GLOBAL (clave única → frena el email-bombing masivo aunque
+      roten IPs y emails). 429 si CUALQUIERA pasa su tope. TODOS cuentan ANTES de tocar el directorio
+      → el 429 no depende de si el email existe (no enumera).
     - SIN enumeración: 200 genérico exista o no el email. Si existe, genera el token de un solo uso.
     El token NUNCA se loguea (es un secreto); el envío por email real es un TODO aparte."""
     email = datos.email.strip().lower()
-    ip = _client_ip(request)
-    rl_email, rl_ip = limiters
-    # Cuenta AMBOS cubos SIEMPRE (sin cortocircuito): mismo número de operaciones exista o no el email.
+    ip = client_ip(request)
+    rl_email, rl_ip, rl_global = limiters
+    # Cuenta TODOS los cubos SIEMPRE (sin cortocircuito): mismas operaciones exista o no el email.
     ok_email = await rl_email.permitido(_sha(email))   # cubo email: clave sha(email), SIN IP
     ok_ip = await rl_ip.permitido(ip)                  # cubo IP: clave IP sola
-    if not (ok_email and ok_ip):
+    ok_global = await rl_global.permitido(_RESET_CLAVE_GLOBAL)   # cubo global: un contador para todo
+    if not (ok_email and ok_ip and ok_global):
         raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, "Demasiadas solicitudes. Intenta más tarde.")
 
     identidad = await repo.buscar_por_email(datos.email)

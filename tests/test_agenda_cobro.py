@@ -235,3 +235,35 @@ async def test_recuperacion_venta_creada_sin_vincular(tenant):
         assert res.replay is True and res.venta_id == primera.venta_id
         n = (await s.execute(text("SELECT count(*) FROM ventas"))).scalar_one()
         assert n == 1
+
+
+async def test_cobro_anticipado_no_libera_el_slot(tenant):
+    """Cobrar una cita FUTURA no la marca 'cumplida': `cumplida` es terminal y deja de ocupar
+    agenda — el slot pagado quedaría libre para otra reserva. El cobro queda en venta_id/cobrada_en
+    y la cita sigue activa (ocupando su intervalo) hasta que ocurra."""
+    async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
+        usuario_id, _ = await _seed_cita(s)   # reusa vendedor/servicio/recurso del seed
+        servicio_id = (await s.execute(text("SELECT id FROM servicios LIMIT 1"))).scalar_one()
+        recurso_id = (await s.execute(text("SELECT id FROM recursos LIMIT 1"))).scalar_one()
+        futura_id = (
+            await s.execute(
+                text(
+                    "INSERT INTO citas (servicio_id, recurso_id, cliente_nombre, cliente_telefono, "
+                    "inicio, fin, estado) VALUES (:sv, :rc, 'Luis', '+573009998877', "
+                    "now() + interval '2 days', now() + interval '2 days 30 minutes', 'confirmada') "
+                    "RETURNING id"
+                ),
+                {"sv": servicio_id, "rc": recurso_id},
+            )
+        ).scalar_one()
+        await s.commit()
+
+        res = await _cobrar(s, futura_id, usuario_id)
+        fila = (
+            await s.execute(
+                text("SELECT estado, venta_id, cobrada_en FROM citas WHERE id = :c"), {"c": futura_id}
+            )
+        ).one()
+    assert res.replay is False
+    assert fila.venta_id == res.venta_id and fila.cobrada_en is not None
+    assert fila.estado == "confirmada"   # sigue ACTIVA: ocupa agenda y el anti-no-show la ve

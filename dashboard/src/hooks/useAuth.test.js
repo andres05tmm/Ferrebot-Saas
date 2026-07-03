@@ -11,26 +11,26 @@ afterEach(() => {
 })
 
 describe('useAuth', () => {
-  it('login(200) guarda token y usuario {id, rol, tenant}', async () => {
+  it('loginConPassword(200) guarda token y usuario {id, rol, tenant}', async () => {
     const usuario = { id: 7, rol: 'admin', tenant: 'pr' }
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
       ok: true, status: 200, json: async () => ({ token: 'jwt-xyz', usuario }),
     }))
 
-    const r = await useAuth().login({ id: 7, hash: 'firma' })
+    const r = await useAuth().loginConPassword('ana@pr.co', 'clave')
 
     expect(r.ok).toBe(true)
     expect(localStorage.getItem('ferrebot_token')).toBe('jwt-xyz')
     expect(JSON.parse(localStorage.getItem('ferrebot_user'))).toEqual(usuario)
   })
 
-  it('login(403) devuelve el mensaje de no autorizado, sin guardar', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 403 }))
+  it('loginConPassword(401) devuelve el mensaje genérico, sin guardar', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 401 }))
 
-    const r = await useAuth().login({ id: 1 })
+    const r = await useAuth().loginConPassword('ana@pr.co', 'mala')
 
     expect(r.ok).toBe(false)
-    expect(r.error).toMatch(/Pídele a Andrés/)
+    expect(r.error).toMatch(/incorrectos/)
     expect(localStorage.getItem('ferrebot_token')).toBeNull()
   })
 

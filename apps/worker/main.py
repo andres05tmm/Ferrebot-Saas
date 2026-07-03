@@ -275,22 +275,25 @@ async def reconfirmaciones_agenda(ctx: dict) -> str:
 
     procesadas = 0
     for empresa_id, phone_number_id in numeros:
-        async with control_session() as cs:
-            capacidades = await ControlCapacidades(cs).efectivas(empresa_id)
-            if "pack_agenda" not in capacidades:
+        try:
+            async with control_session() as cs:
+                capacidades = await ControlCapacidades(cs).efectivas(empresa_id)
+                if "pack_agenda" not in capacidades:
+                    continue
+                tenant = await resolve_tenant_by_id(cs, empresa_id)
+            if tenant is None:
                 continue
-            tenant = await resolve_tenant_by_id(cs, empresa_id)
-        if tenant is None:
-            continue
-        enviar = _hacer_enviar_recordatorio(sender, settings, phone_number_id)
-        async for s in tenant_session(tenant):   # commit al cerrar el generador
-            servicio = AgendaService(SqlAgendaRepository(s))
-            resumen = await servicio.procesar_reconfirmaciones(ahora=now_co(), enviar=enviar)
-            procesadas += resumen.recordatorios + resumen.en_riesgo
-            log.info(
-                "reconfirmaciones_tenant", tenant_id=empresa_id,
-                recordatorios=resumen.recordatorios, en_riesgo=resumen.en_riesgo,
-            )
+            enviar = _hacer_enviar_recordatorio(sender, settings, phone_number_id)
+            async for s in tenant_session(tenant):   # commit al cerrar el generador
+                servicio = AgendaService(SqlAgendaRepository(s))
+                resumen = await servicio.procesar_reconfirmaciones(ahora=now_co(), enviar=enviar)
+                procesadas += resumen.recordatorios + resumen.en_riesgo
+                log.info(
+                    "reconfirmaciones_tenant", tenant_id=empresa_id,
+                    recordatorios=resumen.recordatorios, en_riesgo=resumen.en_riesgo,
+                )
+        except Exception:  # noqa: BLE001 — un fallo en un tenant no debe tumbar el barrido
+            log.exception("reconfirmaciones_error", tenant_id=empresa_id)
     return f"procesadas={procesadas}"
 
 
@@ -332,22 +335,25 @@ async def recordatorios_cobranza(ctx: dict) -> str:
 
     enviados = 0
     for empresa_id, phone_number_id in numeros:
-        async with control_session() as cs:
-            capacidades = await ControlCapacidades(cs).efectivas(empresa_id)
-            if "pack_cobranza" not in capacidades:
+        try:
+            async with control_session() as cs:
+                capacidades = await ControlCapacidades(cs).efectivas(empresa_id)
+                if "pack_cobranza" not in capacidades:
+                    continue
+                tenant = await resolve_tenant_by_id(cs, empresa_id)
+            if tenant is None:
                 continue
-            tenant = await resolve_tenant_by_id(cs, empresa_id)
-        if tenant is None:
-            continue
-        enviar = _hacer_enviar_cobranza(sender, settings, phone_number_id)
-        async for s in tenant_session(tenant):   # commit al cerrar el generador
-            servicio = CobranzaService(SqlCobranzaRepository(s))
-            resumen = await servicio.procesar_recordatorios(ahora=now_co(), enviar=enviar)
-            enviados += resumen.recordatorios
-            log.info(
-                "cobranza_tenant", tenant_id=empresa_id, recordatorios=resumen.recordatorios,
-                promesas_incumplidas=resumen.promesas_incumplidas, al_dia=resumen.al_dia,
-            )
+            enviar = _hacer_enviar_cobranza(sender, settings, phone_number_id)
+            async for s in tenant_session(tenant):   # commit al cerrar el generador
+                servicio = CobranzaService(SqlCobranzaRepository(s))
+                resumen = await servicio.procesar_recordatorios(ahora=now_co(), enviar=enviar)
+                enviados += resumen.recordatorios
+                log.info(
+                    "cobranza_tenant", tenant_id=empresa_id, recordatorios=resumen.recordatorios,
+                    promesas_incumplidas=resumen.promesas_incumplidas, al_dia=resumen.al_dia,
+                )
+        except Exception:  # noqa: BLE001 — un fallo en un tenant no debe tumbar el barrido
+            log.exception("cobranza_error", tenant_id=empresa_id)
     return f"enviados={enviados}"
 
 
@@ -448,20 +454,23 @@ async def seguimientos_postventa(ctx: dict) -> str:
 
     enviados = 0
     for empresa_id, phone_number_id in numeros:
-        async with control_session() as cs:
-            capacidades = await ControlCapacidades(cs).efectivas(empresa_id)
-            if "pack_postventa" not in capacidades:
+        try:
+            async with control_session() as cs:
+                capacidades = await ControlCapacidades(cs).efectivas(empresa_id)
+                if "pack_postventa" not in capacidades:
+                    continue
+                tenant = await resolve_tenant_by_id(cs, empresa_id)
+            if tenant is None:
                 continue
-            tenant = await resolve_tenant_by_id(cs, empresa_id)
-        if tenant is None:
-            continue
-        enviar = _hacer_enviar_postventa(sender, settings, phone_number_id)
-        async for s in tenant_session(tenant):   # commit al cerrar el generador
-            servicio = PostventaService(SqlPostventaRepository(s))
-            resumen = await servicio.procesar_seguimientos(ahora=now_co(), enviar=enviar)
-            enviados += resumen.enviados
-            if resumen.enviados:
-                log.info("postventa_tenant", tenant_id=empresa_id, enviados=resumen.enviados)
+            enviar = _hacer_enviar_postventa(sender, settings, phone_number_id)
+            async for s in tenant_session(tenant):   # commit al cerrar el generador
+                servicio = PostventaService(SqlPostventaRepository(s))
+                resumen = await servicio.procesar_seguimientos(ahora=now_co(), enviar=enviar)
+                enviados += resumen.enviados
+                if resumen.enviados:
+                    log.info("postventa_tenant", tenant_id=empresa_id, enviados=resumen.enviados)
+        except Exception:  # noqa: BLE001 — un fallo en un tenant no debe tumbar el barrido
+            log.exception("postventa_error", tenant_id=empresa_id)
     return f"enviados={enviados}"
 
 
@@ -480,21 +489,24 @@ async def conciliar_cobros(ctx: dict) -> str:
     for t in tenants:
         if "pagos_online" not in t.features:
             continue
-        async with control_session() as cs:
-            cred = await cargar_config_bold(cs, settings.secrets_master_key, t.id)
-            tenant = await resolve_tenant_by_id(cs, t.id)
-        if cred is None or tenant is None:
-            continue                      # sin llave Bold → modo manual, nada que conciliar
-        psp = BoldClient(cred)
-        async for s in tenant_session(tenant):   # commit al cerrar el generador
-            servicio = PagosService(SqlPagosRepository(s), psp=psp)
-            resumen = await servicio.conciliar()
-            pagados += resumen.pagados
-            if resumen.revisados:
-                log.info(
-                    "conciliar_cobros_tenant", tenant_id=t.id, revisados=resumen.revisados,
-                    pagados=resumen.pagados, cerrados=resumen.cerrados,
-                )
+        try:
+            async with control_session() as cs:
+                cred = await cargar_config_bold(cs, settings.secrets_master_key, t.id)
+                tenant = await resolve_tenant_by_id(cs, t.id)
+            if cred is None or tenant is None:
+                continue                      # sin llave Bold → modo manual, nada que conciliar
+            psp = BoldClient(cred)
+            async for s in tenant_session(tenant):   # commit al cerrar el generador
+                servicio = PagosService(SqlPagosRepository(s), psp=psp)
+                resumen = await servicio.conciliar()
+                pagados += resumen.pagados
+                if resumen.revisados:
+                    log.info(
+                        "conciliar_cobros_tenant", tenant_id=t.id, revisados=resumen.revisados,
+                        pagados=resumen.pagados, cerrados=resumen.cerrados,
+                    )
+        except Exception:  # noqa: BLE001 — un fallo en un tenant no debe tumbar el barrido
+            log.exception("conciliar_cobros_error", tenant_id=t.id)
     return f"pagados={pagados}"
 
 
@@ -515,16 +527,19 @@ async def reconciliar_pendientes(ctx: dict) -> str:
     for t in tenants:
         if "facturacion_electronica" not in t.features:
             continue
-        servicio = await ctx["crear_servicio"](t.id)
-        resumen = await servicio.reconciliar(antiguedad=corte, limite=settings.reconciliacion_lote_max)
-        for factura_id in resumen.ids_aceptadas:
-            await _encolar_descarga(ctx, t.id, factura_id)
-        reconciliadas += resumen.aceptadas + resumen.rechazadas
-        if resumen.revisadas:
-            log.info(
-                "reconciliar_tenant", tenant_id=t.id, revisadas=resumen.revisadas,
-                aceptadas=resumen.aceptadas, rechazadas=resumen.rechazadas,
-            )
+        try:
+            servicio = await ctx["crear_servicio"](t.id)
+            resumen = await servicio.reconciliar(antiguedad=corte, limite=settings.reconciliacion_lote_max)
+            for factura_id in resumen.ids_aceptadas:
+                await _encolar_descarga(ctx, t.id, factura_id)
+            reconciliadas += resumen.aceptadas + resumen.rechazadas
+            if resumen.revisadas:
+                log.info(
+                    "reconciliar_tenant", tenant_id=t.id, revisadas=resumen.revisadas,
+                    aceptadas=resumen.aceptadas, rechazadas=resumen.rechazadas,
+                )
+        except Exception:  # noqa: BLE001 — un fallo en un tenant no debe tumbar el barrido
+            log.exception("reconciliar_error", tenant_id=t.id)
     return f"reconciliadas={reconciliadas}"
 
 

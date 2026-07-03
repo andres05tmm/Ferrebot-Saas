@@ -24,6 +24,7 @@ from modules.compras_fiscal.errors import (
     CompraFiscalInexistente,
     CompraInexistente,
     CufeNoImportado,
+    EventoRadianYaResuelto,
 )
 from modules.compras_fiscal.radian_service import RadianMatias, RadianService
 from modules.compras_fiscal.repository import SqlComprasFiscalRepository
@@ -154,7 +155,7 @@ async def aceptar_factura(
         fiscal, ok = await service.aceptar(fiscal_id)
     except CompraFiscalInexistente as exc:
         raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
-    except CufeNoImportado as exc:
+    except (CufeNoImportado, EventoRadianYaResuelto) as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
     if not ok:
         response.status_code = status.HTTP_502_BAD_GATEWAY
@@ -174,7 +175,7 @@ async def reclamar_factura(
         fiscal, ok = await service.reclamar(fiscal_id, payload.motivo)
     except CompraFiscalInexistente as exc:
         raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
-    except CufeNoImportado as exc:
+    except (CufeNoImportado, EventoRadianYaResuelto) as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
     if not ok:
         response.status_code = status.HTTP_502_BAD_GATEWAY

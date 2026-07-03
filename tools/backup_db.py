@@ -17,8 +17,11 @@ Versión de pg_dump (gotcha): el servidor de Railway (PG 18.x) es MÁS NUEVO que
 pg_dump aborta si su versión es menor que la del servidor. Apunta `PG_DUMP`/`PG_RESTORE` a una imagen
 Docker para fijar la versión (no necesita montar volúmenes: el dump viaja por stdout/stdin):
 
-    PG_DUMP="docker run --rm postgres:18 pg_dump"
-    PG_RESTORE="docker run --rm -i postgres:18 pg_restore"   # -i: lee el .dump por stdin
+    PG_DUMP="docker run --rm -e PGPASSWORD postgres:18 pg_dump"
+    PG_RESTORE="docker run --rm -i -e PGPASSWORD postgres:18 pg_restore"   # -i: lee el .dump por stdin
+
+(`-e PGPASSWORD` sin valor reenvía la variable del host al contenedor: la contraseña NUNCA viaja
+como argumento de línea de comandos — sería visible en el listado de procesos.)
 
 El driver y el patrón espejan tools/migrate_tenants.py y tools/provision_tenant.py (psycopg + to_libpq).
 """
@@ -33,7 +36,7 @@ import sys
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import quote, urlsplit, urlunsplit
 
 import psycopg
 from psycopg.rows import dict_row
@@ -86,6 +89,23 @@ def nombre_db_de_url(url: str) -> str:
     """Nombre de la base de una URL postgres (primer segmento del path, sin query)."""
     path = urlsplit(url).path.lstrip("/")
     return path.split("/")[0] if path else ""
+
+
+def separar_password(url: str) -> tuple[str, str | None]:
+    """(URL sin password, password en claro o None). PURO.
+
+    El password NO debe viajar en la línea de comandos de pg_dump/pg_restore (visible en el listado
+    de procesos): se separa aquí y se pasa al subprocess vía env `PGPASSWORD`. host/puerto/db/user
+    sí pueden seguir en el DSN."""
+    partes = urlsplit(url)
+    if partes.password is None:
+        return url, None
+    netloc = partes.hostname or ""
+    if partes.port:
+        netloc = f"{netloc}:{partes.port}"
+    if partes.username is not None:
+        netloc = f"{quote(partes.username, safe='')}@{netloc}"
+    return urlunsplit(partes._replace(netloc=netloc)), partes.password
 
 
 def _parsear_marca(nombre: str) -> datetime | None:
@@ -176,14 +196,20 @@ def listar_tenant_db_names(control_url: str) -> list[str]:
 def _hint_docker() -> str:
     return (
         "\nUsa Docker para fijar la versión del cliente (servidor PG 18.x):\n"
-        '  PG_DUMP="docker run --rm postgres:18 pg_dump"\n'
-        '  PG_RESTORE="docker run --rm -i postgres:18 pg_restore"'
+        '  PG_DUMP="docker run --rm -e PGPASSWORD postgres:18 pg_dump"\n'
+        '  PG_RESTORE="docker run --rm -i -e PGPASSWORD postgres:18 pg_restore"'
     )
 
 
-def _ejecutar(cmd: list[str], *, stdout=None, stdin=None) -> subprocess.CompletedProcess:
+def _ejecutar(
+    cmd: list[str], *, stdout=None, stdin=None, password: str | None = None
+) -> subprocess.CompletedProcess:
+    """Corre el comando. Si hay `password`, va por env `PGPASSWORD` (nunca como argumento)."""
+    env = {**os.environ, "PGPASSWORD": password} if password is not None else None
     try:
-        return subprocess.run(cmd, stdout=stdout, stdin=stdin, stderr=subprocess.PIPE, check=False)
+        return subprocess.run(
+            cmd, stdout=stdout, stdin=stdin, stderr=subprocess.PIPE, check=False, env=env
+        )
     except FileNotFoundError as exc:
         raise BackupError(f"No se encontró '{cmd[0]}'.{_hint_docker()}") from exc
 
@@ -197,9 +223,10 @@ def _pg_dump(dump_cmd: list[str], url: str, destino: Path) -> int:
     """Vuelca `url` a `destino` en formato custom (-Fc), por stdout (no requiere montar volúmenes en
     Docker). Devuelve el tamaño del archivo. Borra el archivo parcial si pg_dump falla."""
     destino.parent.mkdir(parents=True, exist_ok=True)
-    args = dump_cmd + ["-Fc", "--no-owner", "--no-privileges", "-d", to_libpq(url)]
+    dsn, password = separar_password(to_libpq(url))
+    args = dump_cmd + ["-Fc", "--no-owner", "--no-privileges", "-d", dsn]
     with destino.open("wb") as f:
-        cp = _ejecutar(args, stdout=f)
+        cp = _ejecutar(args, stdout=f, password=password)
     if cp.returncode != 0:
         destino.unlink(missing_ok=True)
         err = cp.stderr.decode(errors="replace").strip()
@@ -210,8 +237,14 @@ def _pg_dump(dump_cmd: list[str], url: str, destino: Path) -> int:
 
 # --------------------------- comandos -------------------------------------
 
-def backup_all(*, pg_dump: str, dir_backups: Path = _DIR_BACKUPS, ahora: datetime | None = None) -> Path:
-    """Respalda control DB + todos los tenants a `dir_backups/<timestamp>/`. Devuelve esa carpeta."""
+def backup_all(
+    *, pg_dump: str, dir_backups: Path = _DIR_BACKUPS, ahora: datetime | None = None
+) -> tuple[Path, dict[str, str]]:
+    """Respalda control DB + todos los tenants a `dir_backups/<timestamp>/`.
+
+    Si una base falla NO aborta: continúa con las demás y acumula el error (espejo de
+    tools/migrate_tenants.py — un tenant caído no debe dejar sin respaldo a los siguientes).
+    Devuelve (carpeta destino, {db_name: error} de las fallidas; vacío = todo OK)."""
     settings = get_settings()
     dump_cmd = shlex.split(pg_dump)
     destino_dir = dir_backups / marca_tiempo(ahora)
@@ -221,12 +254,23 @@ def backup_all(*, pg_dump: str, dir_backups: Path = _DIR_BACKUPS, ahora: datetim
     )
     print(f"Respaldo → {destino_dir}  ({len(objetivos)} bases)")
     total = 0
+    fallidas: dict[str, str] = {}
     for obj in objetivos:
-        tam = _pg_dump(dump_cmd, obj.url, destino_dir / obj.archivo)
+        try:
+            tam = _pg_dump(dump_cmd, obj.url, destino_dir / obj.archivo)
+        except (BackupError, OSError) as exc:
+            fallidas[obj.db_name] = str(exc)
+            print(f"  ✗ {obj.archivo}  FALLÓ:\n{exc}", file=sys.stderr)
+            continue
         total += tam
         print(f"  ✓ {obj.archivo}  ({tamano_humano(tam)})")
-    print(f"Listo: {len(objetivos)} archivos, {tamano_humano(total)} en {destino_dir}")
-    return destino_dir
+    ok = len(objetivos) - len(fallidas)
+    print(f"Listo: {ok}/{len(objetivos)} archivos, {tamano_humano(total)} en {destino_dir}")
+    if fallidas:
+        print(
+            f"FALLARON {len(fallidas)} base(s): {', '.join(fallidas)}", file=sys.stderr
+        )
+    return destino_dir, fallidas
 
 
 def _contar_tablas(url: str, tablas: tuple[str, ...]) -> dict[str, int]:
@@ -255,11 +299,10 @@ def restore_verify(
     if not dump_path.exists():
         raise BackupError(f"No existe el dump: {dump_path}")
     restore_cmd = shlex.split(pg_restore)
-    args = restore_cmd + [
-        "--clean", "--if-exists", "--no-owner", "--no-privileges", "-d", to_libpq(scratch_url)
-    ]
+    dsn, password = separar_password(to_libpq(scratch_url))
+    args = restore_cmd + ["--clean", "--if-exists", "--no-owner", "--no-privileges", "-d", dsn]
     with dump_path.open("rb") as f:
-        cp = _ejecutar(args, stdin=f)
+        cp = _ejecutar(args, stdin=f, password=password)
     if cp.returncode != 0:
         # --clean sobre una base vacía emite avisos (DROP de objetos inexistentes) → no es fatal.
         # Si fue un fallo real, los conteos de abajo lo delatan (0 o tabla ausente).
@@ -281,24 +324,29 @@ def _correr_respaldo(args: argparse.Namespace) -> int:
 
     El gate va DESPUÉS de `cargar_env_prod()` para que `backup_enabled` salga de `.env.prod` (no del
     `.env` local). Sin `--force`, si está apagado termina con éxito (return 0) para no alarmar al
-    scheduler. La poda (`--podar`) corre solo si el backup procedió. El off-site (BACKUP_OFFSITE_DIR)
-    se intenta al final: si la carpeta no está montada, avisa y sigue (el backup local ya está)."""
+    scheduler. La poda (`--podar`) corre solo si el backup fue COMPLETO (con fallos no se borran
+    backups viejos: pueden ser la única copia buena de la base fallida). El off-site
+    (BACKUP_OFFSITE_DIR) se intenta al final: si la carpeta no está montada, avisa y sigue (el
+    backup local ya está). Devuelve 1 si alguna base falló (tras intentar todas)."""
     pg_dump = os.environ.get("PG_DUMP", _PG_DUMP_DEFAULT)
     cargar_env_prod()   # el respaldo SÍ corre contra prod (URLs públicas de Railway + BACKUP_ENABLED)
     settings = get_settings()
     if not args.force and not settings.backup_enabled:
         print("backup deshabilitado (BACKUP_ENABLED=off)")
         return 0
-    destino = backup_all(pg_dump=pg_dump, dir_backups=Path(args.dir))
+    destino, fallidas = backup_all(pg_dump=pg_dump, dir_backups=Path(args.dir))
     if args.podar is not None:
-        viejas = podar_backups(Path(args.dir), args.podar)
-        for carpeta in viejas:
-            shutil.rmtree(carpeta)
-            print(f"  ✗ podado {carpeta} (> {args.podar} semanas)")
-        print(f"Poda: {len(viejas)} carpeta(s) eliminada(s) (retención {args.podar} semanas)")
+        if fallidas:
+            print("Poda omitida: hubo fallos de respaldo (se conservan los backups viejos).")
+        else:
+            viejas = podar_backups(Path(args.dir), args.podar)
+            for carpeta in viejas:
+                shutil.rmtree(carpeta)
+                print(f"  ✗ podado {carpeta} (> {args.podar} semanas)")
+            print(f"Poda: {len(viejas)} carpeta(s) eliminada(s) (retención {args.podar} semanas)")
     if settings.backup_offsite_dir:
         _copiar_offsite_seguro(destino, settings.backup_offsite_dir, args.podar)
-    return 0
+    return 1 if fallidas else 0
 
 
 def _copiar_offsite_seguro(destino: Path, offsite_dir: str, keep_semanas: int | None) -> None:

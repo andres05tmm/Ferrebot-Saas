@@ -388,7 +388,8 @@ class MemoriaWa:
 
     Persiste solo turnos `user`/`assistant` (texto): basta para que el modelo recuerde el hilo entre
     mensajes (p. ej. "¿a nombre de quién?") sin arrastrar el andamiaje de herramientas. Cliente Redis
-    perezoso e inyectable (tests). Recorta a los últimos `max_turnos` intercambios.
+    perezoso e inyectable (tests): se crea al primer uso y se cachea en la instancia (el pool de
+    redis-py multiplexa). Recorta a los últimos `max_turnos` intercambios.
     """
 
     def __init__(
@@ -402,8 +403,13 @@ class MemoriaWa:
     def _key(self, tenant_id: int, telefono: str) -> str:
         return f"wa:conv:{tenant_id}:{telefono}"
 
+    def _redis(self) -> Any:
+        if self._client is None:
+            self._client = _cliente_redis(self._url)
+        return self._client
+
     async def cargar(self, tenant_id: int, telefono: str) -> list[Message]:
-        cliente = self._client or _cliente_redis(self._url)
+        cliente = self._redis()
         dato = await cliente.get(self._key(tenant_id, telefono))
         if not dato:
             return []
@@ -412,7 +418,7 @@ class MemoriaWa:
     async def guardar(
         self, tenant_id: int, telefono: str, historial: list[Message], usuario: str, asistente: str
     ) -> None:
-        cliente = self._client or _cliente_redis(self._url)
+        cliente = self._redis()
         turnos = [{"role": m.role, "content": m.content} for m in historial]
         turnos.append({"role": "user", "content": usuario})
         turnos.append({"role": "assistant", "content": asistente})
@@ -425,7 +431,7 @@ class MemoriaWa:
         Sin esto, al devolver la conversación al bot el LLM re-escalaría de inmediato por el historial
         previo (el cliente había pedido asesor + se llamó a escalar_humano).
         """
-        cliente = self._client or _cliente_redis(self._url)
+        cliente = self._redis()
         await cliente.delete(self._key(tenant_id, telefono))
 
     async def anexar_usuario(self, tenant_id: int, telefono: str, texto: str) -> None:
@@ -435,7 +441,7 @@ class MemoriaWa:
         pierde: se anexa al historial para dar contexto cuando el bot reanude (y, más adelante, para la
         bandeja del dashboard).
         """
-        cliente = self._client or _cliente_redis(self._url)
+        cliente = self._redis()
         dato = await cliente.get(self._key(tenant_id, telefono))
         turnos = json.loads(dato) if dato else []
         turnos.append({"role": "user", "content": texto})
@@ -596,7 +602,7 @@ class AgenteWa:
         except Exception:  # noqa: BLE001 — fallback elegante: nunca exponer el error interno al cliente
             log.exception("wa_agente_error", tenant_id=tenant.id)
             texto = FALLBACK
-        await self._enviar(mensaje, texto)
+        await self._enviar(mensaje, texto, tenant.id)
         return texto
 
     async def _pagos(
@@ -612,14 +618,14 @@ class AgenteWa:
         psp = await self._resolver_psp(tenant.id) if self._resolver_psp is not None else None
         return PagosService(SqlPagosRepository(session), psp=psp)
 
-    async def _enviar(self, mensaje: MensajeWa, texto: str) -> None:
+    async def _enviar(self, mensaje: MensajeWa, texto: str, tenant_id: int) -> None:
         try:
             await self._sender.enviar_texto(
                 phone_number_id=mensaje.phone_number_id, to=mensaje.telefono,
                 texto=whatsappify(texto),   # Markdown → formato que WhatsApp renderiza
             )
         except Exception:  # noqa: BLE001 — un fallo de envío no debe tumbar el job
-            log.exception("wa_envio_error", tenant_id=None)
+            log.exception("wa_envio_error", tenant_id=tenant_id)
 
 
 def _cliente_redis(url: str) -> Any:

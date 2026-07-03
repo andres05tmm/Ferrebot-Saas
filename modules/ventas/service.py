@@ -10,13 +10,15 @@ from decimal import Decimal
 from typing import Protocol
 
 from core.config.timezone import rango_dia_co
-from core.money import cuantizar as _money
+from core.money import cuantizar as _money, descomponer_iva
 from modules.inventario.precios import (
     EsquemaPrecio,
     FraccionPrecio,
     obtener_precio_para_cantidad,
 )
+from modules.fiados.service import FiadosService
 from modules.ventas.errors import (
+    IdempotenciaConflicto,
     LineaInvalida,
     OperacionNoAutorizada,
     ProductoNoEncontrado,
@@ -148,6 +150,7 @@ class VentasRepo(Protocol):
     async def siguiente_consecutivo(self) -> int: ...
     async def crear_venta(self, header: VentaHeader) -> VentaLeer: ...
     async def obtener_cabecera(self, venta_id: int) -> VentaLeer | None: ...
+    async def obtener(self, venta_id: int) -> VentaConLineas | None: ...
     async def tiene_factura_viva(self, venta_id: int) -> bool: ...
     async def borrar_venta(self, venta_id: int) -> None: ...
     async def revertir_lineas(self, venta_id: int) -> None: ...
@@ -161,30 +164,60 @@ class ResultadoVenta:
 
 
 def calcular_totales(lineas: list[LineaResuelta]) -> tuple[Decimal, Decimal, Decimal]:
-    """(subtotal, impuestos, total) con IVA incluido en cada total de línea."""
+    """(subtotal, impuestos, total) con IVA incluido en cada total de línea.
+
+    La descomposición base/IVA es LA MISMA de la factura electrónica (`core.money.descomponer_iva`,
+    redondeo base-primero): la venta y su documento fiscal no pueden diferir ni un centavo.
+    """
     subtotal = impuestos = total = Decimal("0")
     for ln in lineas:
-        impuesto = _money(ln.total_linea - ln.total_linea / (1 + Decimal(ln.iva) / 100))
-        base = ln.total_linea - impuesto
+        base, impuesto = descomponer_iva(ln.total_linea, ln.iva)
         subtotal += base
         impuestos += impuesto
         total += ln.total_linea
     return _money(subtotal), _money(impuestos), _money(total)
 
 
+def _firma_lineas(lineas) -> list[tuple]:
+    """Firma comparable de las líneas para el guard de idempotencia: catálogo por (producto, cantidad)
+    —el precio NO entra: lo resuelve el catálogo y puede derivar—; varia por (descripción, cantidad,
+    precio). Orden-insensible."""
+    firma: list[tuple] = []
+    for ln in lineas:
+        if ln.producto_id is not None:
+            firma.append(("cat", ln.producto_id, str(ln.cantidad.normalize())))
+        else:
+            precio = _money(ln.precio_unitario) if ln.precio_unitario is not None else None
+            firma.append(("varia", (ln.descripcion or "").strip().lower(),
+                          str(ln.cantidad.normalize()), str(precio)))
+    return sorted(firma)
+
+
 class VentaService:
-    def __init__(self, repo: VentasRepo) -> None:
+    def __init__(self, repo: VentasRepo, *, fiados: FiadosService | None = None) -> None:
         self._repo = repo
+        self._fiados = fiados
 
     async def registrar_venta(
         self, datos: VentaCrear, vendedor_id: int, *, control_stock_estricto: bool = False
     ) -> ResultadoVenta:
         """Registra la venta. `control_stock_estricto` (opt-in por empresa) bloquea con
         StockInsuficiente cuando el stock no alcanza; el default PERMISIVO (False) deja pasar la venta y
-        el stock baja (puede quedar negativo: negocios informales que no llevan inventario estricto)."""
+        el stock baja (puede quedar negativo: negocios informales que no llevan inventario estricto).
+
+        Una venta FIADA exige `cliente_id` y crea su cargo en el ledger de fiados EN LA MISMA
+        transacción (key derivada `venta-fiado:{id}`): sin eso la deuda quedaría invisible para
+        cobranza y saldo del cliente."""
+        if datos.metodo_pago == "fiado":
+            if datos.cliente_id is None:
+                raise LineaInvalida("Una venta fiada requiere cliente_id (¿a nombre de quién queda la deuda?)")
+            if self._fiados is None:
+                raise LineaInvalida("Este canal no soporta ventas fiadas")
         if datos.idempotency_key:
             existente = await self._repo.buscar_por_idempotency(datos.idempotency_key)
             if existente is not None:
+                if not await self._mismo_payload(existente, datos):
+                    raise IdempotenciaConflicto(datos.idempotency_key)
                 return ResultadoVenta(venta=existente, replay=True)
 
         lineas = [await self._resolver_linea(ln, control_stock_estricto) for ln in datos.lineas]
@@ -203,7 +236,27 @@ class VentaService:
             lineas=lineas,
         )
         venta = await self._repo.crear_venta(header)
+        if datos.metodo_pago == "fiado" and self._fiados is not None:
+            # Misma transacción/sesión: si el cargo falla (p. ej. cliente inexistente), la venta
+            # también se revierte — nunca queda una venta fiada sin deuda en el ledger.
+            await self._fiados.crear(
+                cliente_id=datos.cliente_id, venta_id=venta.id, monto=venta.total,
+                idempotency_key=f"venta-fiado:{venta.id}",
+            )
         return ResultadoVenta(venta=venta, replay=False)
+
+    async def _mismo_payload(self, existente: VentaLeer, datos: VentaCrear) -> bool:
+        """¿El payload entrante coincide con la venta ya registrada bajo la misma idempotency_key?
+
+        Compara método de pago, cliente y la firma de líneas (`_firma_lineas`). Reusar una key con
+        un payload distinto es un bug del caller → IdempotenciaConflicto (409), como en compras.
+        """
+        if datos.metodo_pago != existente.metodo_pago or datos.cliente_id != existente.cliente_id:
+            return False
+        detalle = await self._repo.obtener(existente.id)
+        if detalle is None:
+            return True   # carrera improbable (venta borrada): el replay de cabecera basta
+        return _firma_lineas(datos.lineas) == _firma_lineas(detalle.lineas)
 
     async def obtener_venta(self, venta_id: int) -> VentaLeer | None:
         """Cabecera de una venta por id (solo lectura; la usa el replay del cobro de cita, ADR 0022)."""
@@ -323,6 +376,12 @@ class VentaService:
             total = _money(precio * ln.cantidad)
         else:
             total, precio = obtener_precio_para_cantidad(prod.esquema(), ln.cantidad)
+            if _money(precio * ln.cantidad) != total:
+                # Fracción: el motor cobra `precio_total` de la fracción pero devuelve el precio del
+                # paquete COMPLETO como unitario. El detalle persiste solo (cantidad, precio_unitario),
+                # y la factura DIAN y los reportes reconstruyen la línea multiplicándolos: se guarda
+                # el precio EFECTIVO por unidad para que el documento cuadre con lo cobrado.
+                precio = total / ln.cantidad
         # Snapshot del costo: promedio ponderado móvil (ADR 0025); fallback al precio_compra si el
         # promedio aún es NULL (producto sin compras tras la migración 0028).
         costo = prod.costo_promedio if prod.costo_promedio is not None else prod.precio_compra

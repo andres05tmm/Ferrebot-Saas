@@ -437,7 +437,8 @@ class SqlFacturacionRepository:
         )
 
     async def _cliente_fiscal(self, cliente_id: int | None) -> ClienteFiscalDatos:
-        """Datos fiscales del cliente; si la venta no tiene cliente → consumidor final (campos None)."""
+        """Datos fiscales del cliente; sin cliente en la venta —o cliente ya BORRADO— → consumidor
+        final (campos None), como cualquier venta de mostrador. Nunca lanza por la fila ausente."""
         if cliente_id is None:
             return ClienteFiscalDatos(None, None, None, None, "", None, None, None, None)
         c = (
@@ -446,7 +447,9 @@ class SqlFacturacionRepository:
                      "ciudad_dane, regimen FROM clientes WHERE id=:c"),
                 {"c": cliente_id},
             )
-        ).one()
+        ).one_or_none()
+        if c is None:
+            return ClienteFiscalDatos(None, None, None, None, "", None, None, None, None)
         return ClienteFiscalDatos(
             tipo_id=c.tipo_documento, identificacion=c.documento, dv=None, regimen_fiscal=c.regimen,
             nombre=c.nombre, email=c.correo, mobile=c.telefono, address=c.direccion,

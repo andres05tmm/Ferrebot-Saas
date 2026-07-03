@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-from core.money import cuantizar
+from core.money import cuantizar, descomponer_iva
 from modules.facturacion.schemas import ClienteFiscal, FacturaInput, ItemFactura, PosInput
 
 # --- Mapas de IDs (verbatim §3/§4) -------------------------------------------
@@ -150,13 +150,14 @@ def armar_customer(c: ClienteFiscal) -> dict:
 # --- líneas y totales (§8.2 / §8.3 / §8.4) -----------------------------------
 
 def _math_linea(item: ItemFactura) -> tuple[Decimal, Decimal, Decimal, Decimal]:
-    """Saca base/IVA/precio unitario de un precio con IVA incluido (Decimal puro)."""
+    """Saca base/IVA/precio unitario de un precio con IVA incluido (Decimal puro).
+
+    Base/IVA salen de `core.money.descomponer_iva` (la MISMA descomposición que usa ventas):
+    una sola verdad de redondeo, la venta y su documento no difieren ni un centavo."""
     pct = item.pct_iva
     total_con_iva = item.precio_unitario_con_iva * item.cantidad
-    divisor = Decimal(1) + pct / Decimal(100)
-    base = cuantizar(total_con_iva / divisor)
-    iva = cuantizar(total_con_iva - base)
-    price = cuantizar(item.precio_unitario_con_iva / divisor)
+    base, iva = descomponer_iva(total_con_iva, pct)
+    price = cuantizar(item.precio_unitario_con_iva / (Decimal(1) + pct / Decimal(100)))
     return pct, base, iva, price
 
 

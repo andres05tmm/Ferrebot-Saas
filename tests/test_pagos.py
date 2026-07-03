@@ -243,3 +243,46 @@ async def test_confirmar_pedido_sin_capacidad_no_crea_cobro(tenant):
 
     assert isinstance(r, Resultado) and "cobro" not in r.data
     assert cobros == 0
+
+
+# --- máquina de estados (solo `pendiente` es mutable) ------------------------------
+async def test_transiciones_invalidas_rechazadas(tenant):
+    import pytest
+
+    from modules.pagos.service import TransicionInvalida
+
+    async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
+        svc = PagosService(SqlPagosRepository(s))
+        cancelado = await svc.crear_cobro(
+            origen="cobranza", origen_id=21, monto=Decimal("10000"), descripcion="x"
+        )
+        await svc.cancelar(cancelado.id)
+        with pytest.raises(TransicionInvalida):   # pagar un cancelado re-emitiría cobro_pagado
+            await svc.marcar_pagado_manual(cancelado.id)
+
+        pagado = await svc.crear_cobro(
+            origen="cobranza", origen_id=22, monto=Decimal("20000"), descripcion="y"
+        )
+        await svc.marcar_pagado_manual(pagado.id)
+        with pytest.raises(TransicionInvalida):   # cancelar un pagado contradice el hecho emitido
+            await svc.cancelar(pagado.id)
+        with pytest.raises(TransicionInvalida):   # re-pagar re-emitiría el evento
+            await svc.marcar_pagado_manual(pagado.id)
+        await s.commit()
+
+
+async def test_crear_cobro_reabre_cancelado_con_link_nuevo(tenant):
+    async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
+        psp = FakePsp()
+        svc = PagosService(SqlPagosRepository(s), psp=psp)
+        c1 = await svc.crear_cobro(
+            origen="pedido", origen_id=33, monto=Decimal("15000"), descripcion="Pedido #33"
+        )
+        await svc.cancelar(c1.id)
+        # El UNIQUE parcial por (origen, origen_id) impide otra fila: el cancelado se REABRE.
+        c2 = await svc.crear_cobro(
+            origen="pedido", origen_id=33, monto=Decimal("18000"), descripcion="Pedido #33 v2"
+        )
+        await s.commit()
+    assert c2.id == c1.id and c2.estado == "pendiente"
+    assert c2.monto == Decimal("18000") and len(psp.creados) == 2   # link fresco

@@ -14,6 +14,7 @@ los tests lo falsean (cero SQL, cero red).
 from __future__ import annotations
 
 import asyncio
+import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 
@@ -39,30 +40,48 @@ class RecursosEmpresa:
     archivos: ArchivosTelegram
 
 
-class RecursosBot:
-    """Mapa `empresa_id -> RecursosEmpresa`, construido perezosamente y cacheado (espejo de
-    `EngineCache`). `cargar` resuelve las credenciales y se inyecta; el bundle se construye una sola
-    vez por empresa (lock)."""
+# TTL de la caché de credenciales (segundos): una rotación de bot-token/api-key en el control DB
+# se recoge sin reiniciar el bot (espejo de `core.tenancy.cache.ControlCache`, con ventana mayor).
+_TTL_RECURSOS = 300.0
 
-    def __init__(self, *, cargar: Callable[[int], Awaitable[Credenciales]]) -> None:
+
+class RecursosBot:
+    """Mapa `empresa_id -> RecursosEmpresa`, construido perezosamente y cacheado con TTL (espejo de
+    `core.tenancy.cache.ControlCache`). `cargar` resuelve las credenciales y se inyecta; el bundle se
+    construye una sola vez por empresa dentro de la ventana del TTL (lock POR empresa: cargar las
+    credenciales de una empresa no bloquea a las demás)."""
+
+    def __init__(
+        self, *, cargar: Callable[[int], Awaitable[Credenciales]], ttl: float = _TTL_RECURSOS
+    ) -> None:
         self._cargar = cargar
-        self._cache: dict[int, RecursosEmpresa] = {}
-        self._lock = asyncio.Lock()
+        self._ttl = ttl
+        self._cache: dict[int, tuple[float, RecursosEmpresa]] = {}
+        self._locks: dict[int, asyncio.Lock] = {}
+
+    def _lock_de(self, empresa_id: int) -> asyncio.Lock:
+        lock = self._locks.get(empresa_id)
+        if lock is None:
+            lock = self._locks.setdefault(empresa_id, asyncio.Lock())
+        return lock
 
     async def para(self, empresa_id: int) -> RecursosEmpresa:
         """Devuelve (o construye y cachea) los recursos de la empresa. Resuelve credenciales con
-        `cargar` —una sola vez por empresa, bajo lock— y arma TelegramNotificador/TelegramArchivos
-        (bot_token) + WhisperTranscriptor (openai_key). El lock se mantiene a través de la carga,
-        como `EngineCache.get_or_create`, para no construir el bundle dos veces."""
-        async with self._lock:
-            bundle = self._cache.get(empresa_id)
-            if bundle is not None:
-                return bundle
+        `cargar` —una sola vez por empresa dentro del TTL, bajo el lock de ESA empresa— y arma
+        TelegramNotificador/TelegramArchivos (bot_token) + WhisperTranscriptor (openai_key). El lock
+        se mantiene a través de la carga para no construir el bundle dos veces."""
+        async with self._lock_de(empresa_id):
+            entrada = self._cache.get(empresa_id)
+            if entrada is not None:
+                expira, bundle = entrada
+                if time.monotonic() < expira:
+                    return bundle
+                self._cache.pop(empresa_id, None)
             cred = await self._cargar(empresa_id)
             bundle = RecursosEmpresa(
                 notificador=TelegramNotificador(bot_token=cred.bot_token),
                 transcriptor=WhisperTranscriptor(api_key=cred.openai_key),
                 archivos=TelegramArchivos(bot_token=cred.bot_token),
             )
-            self._cache[empresa_id] = bundle
+            self._cache[empresa_id] = (time.monotonic() + self._ttl, bundle)
             return bundle

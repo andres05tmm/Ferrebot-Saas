@@ -10,9 +10,6 @@
  * dashboard/src/lib/handoff.js (^[a-z0-9-]+$): jamás se trata `next` como URL → cero open redirect.
  */
 
-export const API_URL = import.meta.env.VITE_API_URL || 'https://app.melquiadez.com'
-export const APP_URL = import.meta.env.VITE_APP_URL || 'https://app.melquiadez.com'
-
 // Contrato del slug — ESPEJA dashboard/src/lib/handoff.js SLUG_RE y core/tenancy/resolver.py.
 const SLUG_RE = /^[a-z0-9-]+$/
 const BASE_DOMAIN_DEFAULT = 'melquiadez.com'
@@ -54,6 +51,12 @@ export function baseDomain(hostname = currentHostname()) {
   }
   return BASE_DOMAIN_DEFAULT
 }
+
+// API y dashboard viven bajo `app.{base}` (mismo origin: apps/api sirve el SPA). Derivados del host
+// en RUNTIME —igual que baseDomain()—: un deploy de staging en otro dominio jamás debe POSTear
+// credenciales a la API de producción por un fallback hardcodeado. Las VITE_ vars son override.
+export const API_URL = import.meta.env.VITE_API_URL || `https://app.${baseDomain()}`
+export const APP_URL = import.meta.env.VITE_APP_URL || `https://app.${baseDomain()}`
 
 /**
  * urlDashboardParaTenant — destino del handoff al SUBDOMINIO del tenant, con el token en el fragmento.

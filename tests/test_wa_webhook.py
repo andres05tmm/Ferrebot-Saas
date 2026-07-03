@@ -52,10 +52,12 @@ class _FakeResolver:
 
 
 class _FakeDedup:
-    def __init__(self, nuevo=True): self.nuevo = nuevo; self.vistos = []
+    def __init__(self, nuevo=True): self.nuevo = nuevo; self.vistos = []; self.desmarcados = []
     async def marcar_si_nuevo(self, message_id):
         self.vistos.append(message_id)
         return self.nuevo
+    async def desmarcar(self, message_id):
+        self.desmarcados.append(message_id)
 
 
 class _FakeProcesar:
@@ -131,6 +133,48 @@ async def test_mensaje_no_texto_se_ignora():
 
 
 # --- dedup ------------------------------------------------------------------
+async def test_encolado_fallido_desmarca_el_dedup_y_propaga():
+    """Invariante de entrega: si encolar falla, el wamid se DESMARCA para que el reintento de Kapso
+    sí se procese (sin esto el reintento cae como duplicado y el mensaje se pierde para siempre)."""
+    class _ProcesarBoom:
+        async def __call__(self, mensaje, ctx):
+            raise RuntimeError("cola caída")
+
+    deps, _ = _deps(procesar=_ProcesarBoom())
+    with pytest.raises(RuntimeError):
+        await _correr(deps)
+    assert deps.dedup.vistos == ["wamid.abc"]
+    assert deps.dedup.desmarcados == ["wamid.abc"]   # la clave se liberó: el reintento procesará
+
+
+async def test_reintento_tras_encolado_fallido_si_procesa():
+    class _ProcesarUnaVezBoom:
+        def __init__(self): self.llamadas = 0
+        async def __call__(self, mensaje, ctx):
+            self.llamadas += 1
+            if self.llamadas == 1:
+                raise RuntimeError("cola caída")
+
+    class _DedupReal:
+        """Dedup con semántica real de SET NX / DEL sobre un dict."""
+        def __init__(self): self.marcas = set()
+        async def marcar_si_nuevo(self, message_id):
+            if message_id in self.marcas:
+                return False
+            self.marcas.add(message_id)
+            return True
+        async def desmarcar(self, message_id):
+            self.marcas.discard(message_id)
+
+    proc = _ProcesarUnaVezBoom()
+    deps = WaDeps(webhook_secret=SECRET, resolver=_FakeResolver(_tenant()),
+                  dedup=_DedupReal(), procesar=proc)
+    with pytest.raises(RuntimeError):
+        await _correr(deps)
+    res = await _correr(deps)                        # reintento del proveedor
+    assert res.accion == AccionWa.PROCESADO and proc.llamadas == 2
+
+
 async def test_dedup_mensaje_repetido():
     deps, proc = _deps(nuevo=False)
     res = await _correr(deps)

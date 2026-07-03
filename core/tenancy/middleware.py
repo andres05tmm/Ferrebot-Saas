@@ -69,11 +69,10 @@ class TenantMiddleware:
                 await self.app(scope, receive, send)
                 return
             tenant = await self._resolve(request)
-            if tenant is None:
+            if tenant is None or tenant.estado != "activa":
+                # Un solo 404 genérico para inexistente E inactiva: distinguirlas (404 vs 403)
+                # permitía enumerar tenants y su estado sin autenticación vía X-Tenant-Slug.
                 await self._deny(scope, receive, send, 404, "Empresa no encontrada")
-                return
-            if tenant.estado != "activa":
-                await self._deny(scope, receive, send, 403, "Empresa inactiva")
                 return
             tenant_id_var.set(tenant.id)
             scope["state"] = scope.get("state", {})

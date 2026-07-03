@@ -42,6 +42,10 @@ async def atender_mensaje_wa(
 
     Seams inyectados por `on_startup`: `ctx["resolver_tenant"]` (tenant_id → ResolvedTenant) y
     `ctx["wa_agente"]` (el `AgenteWa` que corre el bucle LLM + herramientas y responde por Kapso).
+    El turno se SERIALIZA por conversación con un lock Redis por (tenant, teléfono) —mismo patrón
+    que el lock por slug de `provisionar_tenant`—: dos mensajes del mismo cliente en paralelo
+    (`max_jobs` > 1) harían GET→append→SET sobre la memoria y el último SET pisaría el turno del
+    otro. `timeout` expira el lock si el worker muere; sin `ctx["redis"]` (tests/smoke) no hay lock.
     """
     tenant = await ctx["resolver_tenant"](tenant_id)
     if tenant is None:
@@ -50,7 +54,13 @@ async def atender_mensaje_wa(
     mensaje = MensajeWa(
         message_id=message_id, telefono=telefono, phone_number_id=phone_number_id, texto=texto
     )
-    await ctx["wa_agente"].atender(mensaje, tenant)
+    redis = ctx.get("redis")
+    if redis is None:
+        await ctx["wa_agente"].atender(mensaje, tenant)
+        return "atendido"
+    lock = redis.lock(f"wa:conv:lock:{tenant_id}:{telefono}", timeout=180, blocking_timeout=120)
+    async with lock:
+        await ctx["wa_agente"].atender(mensaje, tenant)
     return "atendido"
 
 

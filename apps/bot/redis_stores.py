@@ -34,6 +34,11 @@ class RedisDedupStore:
         marcado = await cliente.set(f"dedup:{tenant_id}:{update_id}", "1", nx=True, ex=_TTL_DEDUP)
         return bool(marcado)
 
+    async def desmarcar(self, tenant_id: int, update_id: int) -> None:
+        """Libera la marca (procesamiento fallido): el reintento de Telegram sí se procesa."""
+        cliente = self._client or _cliente_redis(self._url)
+        await cliente.delete(f"dedup:{tenant_id}:{update_id}")
+
 
 class RedisConfirmStore:
     """Pendiente de confirmación por (tenant, chat), con TTL (`_TTL_CONFIRM`)."""

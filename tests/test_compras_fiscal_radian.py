@@ -250,3 +250,46 @@ async def test_radian_es_solo_admin_vendedor_403(tenant):
     async with _cliente(app) as c:
         r = await c.post(f"/api/v1/compras-fiscal/{fid}/aceptar")
     assert r.status_code == 403, r.text
+
+
+async def test_retry_de_aceptar_no_reenvia_032(tenant):
+    """Idempotencia parcial del par 032+033: si el 033 falla, `evento_032_at` ya quedó persistido
+    y el reintento envía SOLO el 033 — un evento DIAN real jamás se duplica."""
+    async with AsyncSession(tenant.engine) as s:
+        fid = await _seed_fiscal(s, nit="900222")
+        await s.commit()
+
+    fallido = _FakeMatias(fallar_en="033")
+    app = _app(tenant, fake=fallido)
+    async with _cliente(app) as c:
+        await c.post(f"/api/v1/compras-fiscal/{fid}/importar", json={"cufe": "CUFE-R1"})
+        r1 = await c.post(f"/api/v1/compras-fiscal/{fid}/aceptar")
+    assert r1.status_code == 502, r1.text
+    assert r1.json()["evento_032_at"] is not None   # el 032 exitoso quedó persistido
+
+    reintento = _FakeMatias()
+    app2 = _app(tenant, fake=reintento)
+    async with _cliente(app2) as c:
+        r2 = await c.post(f"/api/v1/compras-fiscal/{fid}/aceptar")
+    assert r2.status_code == 200, r2.text
+    assert r2.json()["evento_estado"] == "aceptada"
+    codigos = [call[0] for call in reintento.calls]
+    assert "032" not in codigos and codigos.count("033") == 1
+
+
+async def test_aceptar_una_aceptada_es_409(tenant):
+    async with AsyncSession(tenant.engine) as s:
+        fid = await _seed_fiscal(s, nit="900333")
+        await s.commit()
+
+    fake = _FakeMatias()
+    app = _app(tenant, fake=fake)
+    async with _cliente(app) as c:
+        await c.post(f"/api/v1/compras-fiscal/{fid}/importar", json={"cufe": "CUFE-R2"})
+        r1 = await c.post(f"/api/v1/compras-fiscal/{fid}/aceptar")
+        r2 = await c.post(f"/api/v1/compras-fiscal/{fid}/aceptar")
+        r3 = await c.post(f"/api/v1/compras-fiscal/{fid}/reclamar", json={"motivo": "tarde"})
+    assert r1.status_code == 200
+    assert r2.status_code == 409   # re-aceptar reenviaría eventos DIAN reales
+    assert r3.status_code == 409   # reclamar una aceptada contradice el evento ya enviado
+    assert [call[0] for call in fake.calls if call[0] in ("031", "032", "033")] == ["032", "033"]

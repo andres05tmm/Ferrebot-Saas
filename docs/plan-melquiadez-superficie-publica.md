@@ -32,7 +32,7 @@
   del "deploy fácil para clientes nuevos" (§7) y de los tenants demo (§5).
 - **Mapeo Kapso → tenant**: tabla control `wa_numeros`, upsert por `phone_number_id`
   (`tools/seed_wa_numero.py`). El switch de demo (§6) es una envoltura cómoda sobre esto.
-- **5 propuestas de diseño por vertical** en `design-propuestas/` (aurora-clínica, brasa-restaurante,
+- **5 propuestas de diseño por vertical** en `docs/design/propuestas/` (aurora-clínica, brasa-restaurante,
   brisa-hotel, navaja-barbería, lienzo-genérico): son la base visual de los dashboards demo (§5).
 - **Landing** (M3, ✅ hecho): migrada de HTML a mano a **Vite + React + Tailwind** en `landing/` (`/`,
   `/login`, `/demo`), ya con marca Melquiadez; el build estático se sigue desplegando como assets de
@@ -195,7 +195,7 @@ y que Andrés pueda mostrar el bot por WhatsApp en la misma conversación de ven
 
 Cada demo es un **tenant real provisionado por manifiesto** (ADR 0007) — exactamente el mismo camino
 que un cliente pagado, lo cual convierte cada demo en un test de provisioning. Negocios ficticios
-con nombre propio (los de `design-propuestas/`):
+con nombre propio (los de `docs/design/propuestas/`):
 
 | Tenant (slug) | Negocio ficticio | Packs | Diseño base | Datos sembrados |
 |---|---|---|---|---|
@@ -213,7 +213,7 @@ con nombre propio (los de `design-propuestas/`):
 
 1. **Cerrar A2/ADR 0008 si falta algo**: que un tenant de servicios NO vea tabs de retail (la
    clínica demo es el canario). Verificar contra `main` actual.
-2. **Theming por vertical**: las propuestas de `design-propuestas/` se convierten en **presets de
+2. **Theming por vertical**: las propuestas de `docs/design/propuestas/` se convierten en **presets de
    branding** (paleta + tipografía + iconografía por vertical) seleccionables en el manifiesto
    (`branding.preset: navaja`). El dashboard ya tematiza por `--color-primary`; extender el branding
    del control DB a un set de tokens (primario, superficie, radio, fuente display) que el shell lee
@@ -269,7 +269,7 @@ set-password). Lo que falta para que "dar de alta un cliente" sea un trámite de
 | M3 | **Landing React**: migrar a Vite+React+shadcn, portar lo bueno del HTML actual, secciones §2 con componentes del catálogo | M1 |
 | M4 | **Sign-in**: página `/login` en la landing + CORS `/auth/*` + handoff por fragmento + `next=` | M2, M3 |
 | M5 | **Tenants demo**: manifiestos de barbería/restaurante/hotel + ampliar clínica + identidades demo + reset nocturno | M2 |
-| M6 | **Theming por vertical**: presets de branding desde `design-propuestas/` + branding extendido en `GET /config` + home "Hoy" por vertical | M5 |
+| M6 | **Theming por vertical**: presets de branding desde `docs/design/propuestas/` + branding extendido en `GET /config` + home "Hoy" por vertical | M5 |
 | M7 | **Switch Kapso**: `tools/switch_demo.py` + rebrand del número en Kapso | M5 |
 | M8 | **Cierre**: checklist de onboarding actualizado, smoke E2E (landing → login → dashboard demo por subdominio), QA visual con el harness | todo |
 

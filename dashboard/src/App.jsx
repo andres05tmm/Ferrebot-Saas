@@ -65,7 +65,7 @@ const TABS = {
   '/pedidos': TabPedidos,
 }
 import { bootConfig } from './lib/config.js'
-import { FeaturesProvider, useFeatures, resolveHomePath, esAtencionCliente } from './lib/features.jsx'
+import { FeaturesProvider, useFeatures, resolveHomePath, esAtencionCliente, isRouteEnabled } from './lib/features.jsx'
 import { BrandingProvider } from './lib/branding.jsx'
 
 // /historial es transversal (ADR 0018): la familia POS ve el historial de ventas; la de servicios ve
@@ -81,6 +81,15 @@ export function HistorialPorFamilia() {
 function HomeRedirect() {
   const features = useFeatures()
   return <Navigate to={resolveHomePath(features)} replace />
+}
+
+// Gate por feature del tenant: un deep-link a un tab deshabilitado (Sidebar/CommandPalette ya lo
+// filtran, pero la URL sigue siendo alcanzable) redirige a la portada en vez de montar un panel
+// cuyos fetches solo devolverían 403/404.
+function RutaConFeature({ path, children }) {
+  const features = useFeatures()
+  if (!isRouteEnabled(path, features)) return <Navigate to={resolveHomePath(features)} replace />
+  return children
 }
 
 // ── Error Boundary ───────────────────────────────────────────────────────────
@@ -166,7 +175,13 @@ export default function App() {
             <Route path="/" element={<HomeRedirect />} />
             {ROUTES.map(r => {
               const Comp = TABS[r.path] || TabStub
-              return <Route key={r.path} path={r.path} element={<Comp />} />
+              return (
+                <Route
+                  key={r.path}
+                  path={r.path}
+                  element={<RutaConFeature path={r.path}><Comp /></RutaConFeature>}
+                />
+              )
             })}
             <Route path="*" element={<HomeRedirect />} />
           </Route>

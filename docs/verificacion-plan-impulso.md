@@ -102,7 +102,7 @@ wiring declarativo (deps + despacho + sección de prompt).
    verificar tarifa QR Bre-B online + pedir la spec del webhook.
 3. **Prender flags** por tenant (orden sugerido: `pack_cobranza` en Punto Rojo primero — ROI inmediato).
 4. **Número de WhatsApp (Kapso) para clinica-demo** → habilita la demo vendible de la Ola 1.
-5. **Propuestas de diseño** (Aurora / Brisa / Lienzo en `design-propuestas/`): NO hay que elegir una —
+5. **Propuestas de diseño** (Aurora / Brisa / Lienzo en `docs/design/propuestas/`): NO hay que elegir una —
    son el catálogo para mostrar a cada cliente según su vertical (la landing nueva hace lo mismo con
    su selector). Lo único pendiente de decisión: cuál usar como TEMA BASE al portar el dashboard
    React (las tres comparten estructura; portar una hace mecánicas las otras).

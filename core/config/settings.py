@@ -4,7 +4,15 @@ Secretos por empresa NO viven aquí: van cifrados en el control DB (ver core.cry
 """
 from functools import lru_cache
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Defaults de DEV de las claves criptográficas. Si un deploy de producción arranca con alguno,
+# los JWT y los secretos por empresa quedan firmados/cifrados con claves públicas → fail-fast.
+_CLAVES_DEV = {
+    "secret_key": "dev-only-change-me",
+    "secrets_master_key": "dev-only-change-me-master",
+}
 
 
 class Settings(BaseSettings):
@@ -14,6 +22,10 @@ class Settings(BaseSettings):
     admin_database_url: str
     control_database_url: str
     tenants_direct_url_base: str
+
+    # Entorno de despliegue (ENTORNO=production en Railway). `sentry_environment` no sirve como
+    # señal: su default es "production" y rompería el arranque de dev local sin env vars.
+    entorno: str = "dev"
 
     # Plataforma
     secret_key: str = "dev-only-change-me"
@@ -130,6 +142,19 @@ class Settings(BaseSettings):
     # solo su `google_calendar_id` por tenant (en agenda_config). Vacío = sync deshabilitado en toda la
     # plataforma. NUNCA hardcodear: va en el entorno (es un secreto). Ver docs/agenda-google-calendar.md.
     google_service_account_json: str = ""
+
+    @model_validator(mode="after")
+    def _sin_claves_dev_en_produccion(self) -> "Settings":
+        """Aborta el arranque si producción quedó con alguna clave criptográfica en su default."""
+        if self.entorno != "production":
+            return self
+        en_default = [campo for campo, dev in _CLAVES_DEV.items() if getattr(self, campo) == dev]
+        if en_default:
+            raise ValueError(
+                f"ENTORNO=production con claves en su default de dev: {', '.join(en_default)}. "
+                "Define las env vars SECRET_KEY / SECRETS_MASTER_KEY."
+            )
+        return self
 
     @property
     def demo_slugs(self) -> tuple[str, ...]:

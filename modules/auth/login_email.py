@@ -9,9 +9,12 @@ Seguridad (ADR 0009 §D4):
 - SIN enumeración de usuarios: mismo 401 genérico y costo temporal SIMILAR para email inexistente,
   clave errada, identidad inactiva o sin contraseña aún (se verifica un hash DUMMY para igualar el
   tiempo de argon2 cuando no hay hash real). Nunca se ramifica el status/mensaje por la causa.
-- Lockout por email en Redis: tras N fallos en una ventana → 429 hasta que expire (configurable).
-  TODO: el lockout es email-only; agregar lockout por IP (y/o combinado email+IP) es seguimiento
-  —mitiga el password-spraying contra muchos emails desde una misma IP—. Requiere la IP del request.
+- Lockout en DOS cubos INDEPENDIENTES en Redis: por email (N fallos/ventana, configurable) y por IP
+  (tope generoso para NAT/oficinas compartidas) → frena el password-spraying contra muchos emails desde
+  una misma IP. 429 si CUALQUIERA está en el tope. La IP sale del último salto de X-Forwarded-For (el
+  del proxy, no spoofeable; `modules/auth/password_reset.client_ip`). El éxito resetea SOLO el cubo de
+  email: el de IP expira por TTL (resetearlo dejaría que un spraying con una credencial válida a mano
+  limpiara su contador).
 - Hashes/secretos jamás en logs.
 
 El directorio (control DB) y el lockout (Redis) se inyectan por dependencia → testeable sin red.
@@ -20,7 +23,7 @@ from __future__ import annotations
 
 from typing import Any, Protocol
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel
 from sqlalchemy import text
 
@@ -30,11 +33,17 @@ from core.config import get_settings
 from core.db.session import control_session
 from core.logging import get_logger
 from core.tenancy.identidades_repo import Identidad, buscar_por_email
+from modules.auth.password_reset import client_ip
 from modules.auth.router import LoginOut, UsuarioOut
 
 log = get_logger("auth")
 
 router = APIRouter(tags=["auth"])
+
+# Cubo por IP (anti password-spraying): generoso a propósito —una IP de NAT/oficina agrupa a muchos
+# usuarios legítimos— pero suficiente para cortar el spraying sostenido desde una sola IP.
+_LOGIN_IP_MAX_INTENTOS = 30
+_LOGIN_IP_VENTANA_S = 900
 
 # Hash DUMMY (argon2id) para igualar el costo temporal cuando NO hay hash real (email inexistente o
 # identidad sin contraseña). Se computa una vez al cargar el módulo; su valor exacto es irrelevante.
@@ -121,16 +130,25 @@ def get_lockout() -> Lockout:
     return _RedisLockout(_cliente_redis(s.redis_url), s.login_max_intentos, s.login_lockout_segundos)
 
 
+def get_lockout_ip() -> Lockout:
+    """Cubo por IP (anti password-spraying). Clave prefijada: no colisiona con el cubo por email."""
+    s = get_settings()
+    return _RedisLockout(_cliente_redis(s.redis_url), _LOGIN_IP_MAX_INTENTOS, _LOGIN_IP_VENTANA_S)
+
+
 @router.post("/auth/login/password", response_model=LoginOut)
 async def login_password(
     datos: EmailLogin,
+    request: Request,
     directorio: Directorio = Depends(get_directorio),
     lockout: Lockout = Depends(get_lockout),
+    lockout_ip: Lockout = Depends(get_lockout_ip),
 ) -> LoginOut:
     """Autentica por email/contraseña y emite el JWT con el `tenant` de la empresa del usuario."""
     clave = datos.email.strip().lower()
+    clave_ip = f"ip:{client_ip(request)}"
 
-    if await lockout.bloqueado(clave):
+    if await lockout.bloqueado(clave) or await lockout_ip.bloqueado(clave_ip):
         log.warning("login_password_bloqueado", email_hash=hash(clave))   # nunca el email en claro
         raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, "Demasiados intentos. Intenta más tarde.")
 
@@ -145,6 +163,7 @@ async def login_password(
 
     if not autenticado:
         await lockout.registrar_fallo(clave)
+        await lockout_ip.registrar_fallo(clave_ip)
         # Mensaje y status idénticos para email inexistente / clave errada / inactivo / sin clave.
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Credenciales inválidas")
 
@@ -163,6 +182,7 @@ async def login_password(
     slug = await directorio.slug_empresa(identidad.empresa_id) if identidad.empresa_id else None
     if slug is None:
         await lockout.registrar_fallo(clave)
+        await lockout_ip.registrar_fallo(clave_ip)
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Credenciales inválidas")
 
     await lockout.reset(clave)

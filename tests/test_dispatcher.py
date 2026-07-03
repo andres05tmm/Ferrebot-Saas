@@ -39,6 +39,9 @@ class _FakeVentasRepo:
     async def buscar_por_idempotency(self, key):
         return self._existente
 
+    async def obtener(self, venta_id):
+        return None   # sin detalle: el guard de idempotencia compara solo la cabecera
+
     async def obtener_producto(self, producto_id):
         return self._producto if producto_id == self._producto.id else None
 

@@ -21,6 +21,23 @@ class CobroInexistente(Exception):
     """El cobro no existe (dashboard)."""
 
 
+class TransicionInvalida(Exception):
+    """El cobro no admite esa transición de estado (p. ej. pagar un cancelado) (→ 409).
+
+    Solo `pendiente` es mutable (→ pagado | vencido | cancelado): cada transición emite eventos
+    que los consumidores tratan como hechos nuevos, así que un estado terminal no se re-emite.
+    """
+
+    def __init__(self, cobro_id: int, actual: str, destino: str) -> None:
+        super().__init__(f"El cobro {cobro_id} está '{actual}': no puede pasar a '{destino}'")
+        self.cobro_id = cobro_id
+        self.actual = actual
+        self.destino = destino
+
+
+_ESTADO_MUTABLE = "pendiente"
+
+
 @dataclass(frozen=True, slots=True)
 class ResumenConciliacion:
     """Resultado de una corrida de conciliación: cuántos revisados y cuántos cambiaron de estado."""
@@ -49,11 +66,17 @@ class PagosService:
         """Crea (o devuelve, idempotente) la solicitud de cobro de un objeto de dominio.
 
         Con PSP el cobro nace con link/URL real; sin PSP nace `manual` (el agente igual informa el
-        total y el negocio concilia a mano). Nunca dos cobros para el mismo (origen, origen_id).
+        total y el negocio concilia a mano). Nunca dos cobros para el mismo (origen, origen_id):
+        uno `pendiente`/`pagado` se devuelve tal cual (replay); uno `cancelado`/`vencido` se REABRE
+        (vuelve a `pendiente` con monto/descripcion/link nuevos) — el UNIQUE parcial por origen
+        impide insertar otra fila, y sin reapertura el origen quedaría sin forma de re-cobrarse.
         """
         if origen_id is not None:
             existente = await self._repo.cobro_por_origen(origen, origen_id)
             if existente is not None:
+                if existente.estado in ("cancelado", "vencido"):
+                    return await self._reabrir(existente, monto=monto, descripcion=descripcion,
+                                               cliente_telefono=cliente_telefono, vence_en=vence_en)
                 return existente
         referencia = f"{origen}-{origen_id or 'x'}-{uuid.uuid4().hex[:10]}"
         cobro = Cobro(
@@ -68,6 +91,33 @@ class PagosService:
             cobro.proveedor_id = link.proveedor_id
             cobro.url = link.url
         return await self._repo.crear(cobro)
+
+    async def _reabrir(
+        self,
+        cobro: Cobro,
+        *,
+        monto: Decimal,
+        descripcion: str,
+        cliente_telefono: str | None,
+        vence_en: datetime | None,
+    ) -> Cobro:
+        """Reabre un cobro cerrado sin pago (cancelado/vencido): misma fila, datos y link frescos."""
+        referencia = f"{cobro.origen}-{cobro.origen_id or 'x'}-{uuid.uuid4().hex[:10]}"
+        cobro.referencia = referencia
+        cobro.monto = monto
+        cobro.descripcion = descripcion
+        cobro.cliente_telefono = cliente_telefono
+        cobro.proveedor = None
+        cobro.proveedor_id = None
+        cobro.url = None
+        if self._psp is not None:
+            link = await self._psp.crear_link(SolicitudCobro(
+                referencia=referencia, monto=monto, descripcion=descripcion, vence_en=vence_en,
+            ))
+            cobro.proveedor = "bold"
+            cobro.proveedor_id = link.proveedor_id
+            cobro.url = link.url
+        return await self._repo.marcar(cobro, "pendiente")
 
     async def conciliar(self, *, limite: int = 100) -> ResumenConciliacion:
         """Barre los cobros `pendiente` del PSP y consulta su estado real (polling del worker).
@@ -100,14 +150,21 @@ class PagosService:
         return await self._repo.listar(estados=estados)
 
     async def marcar_pagado_manual(self, cobro_id: int) -> Cobro:
-        """El negocio vio la plata (transferencia directa/efectivo): cierra el cobro a mano."""
+        """El negocio vio la plata (transferencia directa/efectivo): cierra el cobro a mano.
+
+        Solo desde `pendiente`: pagar un cancelado/vencido (o re-pagar) re-emitiría `cobro_pagado`
+        y los consumidores lo tratarían como un pago nuevo."""
         cobro = await self._repo.cobro_por_id(cobro_id)
         if cobro is None:
             raise CobroInexistente(str(cobro_id))
+        if cobro.estado != _ESTADO_MUTABLE:
+            raise TransicionInvalida(cobro.id, cobro.estado, "pagado")
         return await self._repo.marcar(cobro, "pagado")
 
     async def cancelar(self, cobro_id: int) -> Cobro:
         cobro = await self._repo.cobro_por_id(cobro_id)
         if cobro is None:
             raise CobroInexistente(str(cobro_id))
+        if cobro.estado != _ESTADO_MUTABLE:
+            raise TransicionInvalida(cobro.id, cobro.estado, "cancelado")
         return await self._repo.marcar(cobro, "cancelado")

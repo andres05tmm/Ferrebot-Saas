@@ -12,6 +12,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Protocol
 
+from core.config.timezone import to_co
 from core.logging import get_logger
 from core.money import cuantizar
 from modules.facturacion import ubl
@@ -156,13 +157,15 @@ def _construir_factura_input(
 ) -> FacturaInput:
     """PURO: mapea `DatosVentaFiscal` + `ConfigFiscal` a los schemas de E1 (`FacturaInput`).
 
-    document_number=str(consecutivo); prefix/resolution/notes de `config`; fecha→date/hora→time;
-    means_payment_id/payment_method_id desde `metodo_pago`/`es_fiado`; ClienteFiscal con
-    `city_id_matias` o `config.city_id_default`; un `ItemFactura` por cada item.
+    document_number=str(consecutivo); prefix/resolution/notes de `config`; fecha/hora en HORA
+    COLOMBIA (`to_co`: la venta viene TIMESTAMPTZ en UTC y una venta nocturna no puede facturarse
+    con fecha del día siguiente); means_payment_id/payment_method_id desde `metodo_pago`/`es_fiado`;
+    ClienteFiscal con `city_id_matias` o `config.city_id_default`; un `ItemFactura` por cada item.
     """
+    fecha_co = to_co(datos.fecha)
     emision = DatosEmision(
         resolution_number=config.resolution_number, prefix=config.prefix,
-        document_number=str(consecutivo), fecha=datos.fecha.date(), hora=datos.fecha.time(),
+        document_number=str(consecutivo), fecha=fecha_co.date(), hora=fecha_co.time(),
         means_payment_id=ubl._MEDIOS_PAGO.get(datos.metodo_pago.lower(), 10),
         payment_method_id=2 if datos.es_fiado else 1, notes=config.notes,
     )
@@ -176,9 +179,11 @@ def _construir_pos_input(
     """PURO: mapea `DatosVentaFiscal` + `ConfigFiscal` al `PosInput` (ADR 0012 D5). SIN número/prefijo.
 
     `point_of_sale`: cashier_name = vendedor de la venta; terminal/address/cashier_type = config POS;
-    sales_code = consecutivo INTERNO de la venta; sub_total = total CON IVA (suma de las líneas)."""
+    sales_code = consecutivo INTERNO de la venta; sub_total = total CON IVA (suma de las líneas).
+    fecha/hora en HORA COLOMBIA (`to_co`), igual que la FE."""
+    fecha_co = to_co(datos.fecha)
     emision = DatosEmisionPos(
-        resolution_number=config.resolution_pos, fecha=datos.fecha.date(), hora=datos.fecha.time(),
+        resolution_number=config.resolution_pos, fecha=fecha_co.date(), hora=fecha_co.time(),
         means_payment_id=ubl._MEDIOS_PAGO.get(datos.metodo_pago.lower(), 10),
         payment_method_id=2 if datos.es_fiado else 1, notes=config.notes,
         prefix=config.prefix_pos,   # desambigua la resolución POS (ADR 0012 D4 corregido)
@@ -292,9 +297,10 @@ class FacturacionService:
         return decision
 
     async def _llamar_matias(self, f: FacturaLeer, datos: DatosVentaFiscal) -> "_ResEmision":
-        """Arma el payload (FE o POS) y llama a MATIAS; envuelve SOLO la red. No persiste."""
-        city = await self._matias.city_id(datos.cliente.municipio_dian)
+        """Arma el payload (FE o POS) y llama a MATIAS; envuelve TODA la red (`/cities` incluida:
+        un fallo ahí también es transitorio y debe marcar error, no propagar). No persiste."""
         try:
+            city = await self._matias.city_id(datos.cliente.municipio_dian)
             if f.tipo == "pos":
                 payload = ubl.armar_payload_pos(_construir_pos_input(datos, self._config, city_id_matias=city))
                 res = await self._matias.emitir_pos(payload)

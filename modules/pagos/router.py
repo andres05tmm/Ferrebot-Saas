@@ -13,7 +13,7 @@ from core.auth.features import require_feature
 from core.db.session import get_tenant_db
 from modules.pagos.repository import SqlPagosRepository
 from modules.pagos.schemas import CobroLeer
-from modules.pagos.service import CobroInexistente, PagosService
+from modules.pagos.service import CobroInexistente, PagosService, TransicionInvalida
 
 router = APIRouter(
     prefix="/pagos", tags=["pagos"],
@@ -45,6 +45,8 @@ async def marcar_pagado_manual(
         return await service.marcar_pagado_manual(cobro_id)
     except CobroInexistente as exc:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Cobro no encontrado") from exc
+    except TransicionInvalida as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
 
 
 @router.post("/cobros/{cobro_id}/cancelar", response_model=CobroLeer)
@@ -57,3 +59,5 @@ async def cancelar_cobro(
         return await service.cancelar(cobro_id)
     except CobroInexistente as exc:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Cobro no encontrado") from exc
+    except TransicionInvalida as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc

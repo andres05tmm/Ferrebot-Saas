@@ -32,7 +32,7 @@
 
 **Métricas** — `modules/reportes_agente/router.py`: `GET /api/v1/agente/reporte` ya entrega bloques por pack (citas, % sin humano, pedidos, recuperado, satisfacción).
 
-**Temas** — `dashboard/src/index.css` (`[data-tema="aurora"]` light+dark), `dashboard/src/lib/config.js applyTheming` (setea `data-tema` desde `branding.tema`), 5 mockups en `design-propuestas/` (aurora clínica, brasa restaurante, brisa hotel, lienzo genérico, navaja barbería).
+**Temas** — `dashboard/src/index.css` (`[data-tema="aurora"]` light+dark), `dashboard/src/lib/config.js applyTheming` (setea `data-tema` desde `branding.tema`), 5 mockups en `docs/design/propuestas/` (aurora clínica, brasa restaurante, brisa hotel, lienzo genérico, navaja barbería).
 
 ---
 
@@ -105,7 +105,7 @@ Toma capturas de clinica-demo y Punto Rojo (light+dark).
 4. **SSE**: nuevo evento `conversacion_mensaje` (vía `notify_all`, acotado al tenant) para que el hilo se actualice en vivo. Reusar `conversacion_escalada/resuelta`.
 5. **Listado del inbox**: extender `GET /conversaciones` para listar TODAS (no solo escaladas) con último mensaje y estado, para la columna izquierda del inbox (filtros: en humano / con bot).
 
-**Frontend** — reescribir `TabConversaciones.jsx` como **Inbox** (layout tipo Chatwoot, ya hay referencia en `design-propuestas` aurora `.conv-wrap`):
+**Frontend** — reescribir `TabConversaciones.jsx` como **Inbox** (layout tipo Chatwoot, ya hay referencia en `docs/design/propuestas` aurora `.conv-wrap`):
 - Columna izquierda: lista de conversaciones (avatar, nombre/teléfono, último mensaje, estado, "hace cuánto"), búsqueda y filtro por estado.
 - Panel derecho: **hilo bidireccional** (burbujas cliente/bot/asesor diferenciadas) + **composer** para escribir, deshabilitado si la conversación está en `bot` con un botón "Tomar conversación" (→ `/tomar`), y "Devolver al bot" (→ `/resolver`).
 - Realtime: `useRealtimeEvent(['conversacion_mensaje','conversacion_escalada','conversacion_resuelta'])` refresca lista e hilo.
@@ -128,7 +128,7 @@ Toma capturas de clinica-demo y Punto Rojo (light+dark).
 Lee docs/plan-dashboard-agente-2026.md (Fase 2) y modules/conversaciones/{router,service,repository}.py,
 migrations/tenant/versions/0009_conversaciones.py, apps/wa/agent.py (handoff/pausa), apps/wa/kapso.py
 (enviar_texto), routers/events.py (notify_all/SSE), dashboard/src/tabs/TabConversaciones.jsx,
-dashboard/src/components/RealtimeProvider.jsx, y design-propuestas/propuesta-aurora-clinica.html (.conv-wrap).
+dashboard/src/components/RealtimeProvider.jsx, y docs/design/propuestas/propuesta-aurora-clinica.html (.conv-wrap).
 
 Construye el inbox con hand-off bidireccional (modelo Chatwoot sobre el estado bot/humano existente):
 1) Migración tenant nueva conversacion_mensajes (cliente_telefono, direccion entrante/saliente, autor
@@ -154,14 +154,14 @@ migración up/down. Corre pytest -q y `cd dashboard && npm test -- --run`. Pasa 
 **Meta:** componentes pulidos a nivel mockup (no solo paleta) y los temas por vertical listos para demo, de modo que vender = elegir tema + datos.
 
 ### Alcance
-1. **Portar componentes al nivel de los mockups** (`design-propuestas/`): tarjetas KPI, agenda-grid, inbox, chips/badges, sidebar — usando las skills `design:design-system` (tokens/consistencia), `design:design-critique` (revisión por pantalla) y `design:ux-copy` (microcopy de estados vacíos, botones, banners del inbox).
+1. **Portar componentes al nivel de los mockups** (`docs/design/propuestas/`): tarjetas KPI, agenda-grid, inbox, chips/badges, sidebar — usando las skills `design:design-system` (tokens/consistencia), `design:design-critique` (revisión por pantalla) y `design:ux-copy` (microcopy de estados vacíos, botones, banners del inbox).
 2. **Catálogo de temas por vertical**: replicar el patrón `[data-tema="aurora"]` para los demás mockups (brasa/brisa/lienzo/navaja) como bloques de tokens en `index.css`, seleccionables por `branding.tema`. Cada vertical = un tema con su paleta/tipografía/forma; estructura compartida.
 3. **Modo demo / seed de showcase**: un set de datos de ejemplo (citas, conversaciones con hilo, KPIs) por vertical para que una demo se vea "viva" sin cliente real. Reusar el provisionador/seed.
 4. **Accesibilidad**: pasar `design:accessibility-review` (contraste, foco, targets) en cada tema antes de darlo por listo.
 5. (Opcional) **Login tematizado por subdominio** cuando exista dominio propio con wildcard (hoy el login es pre-auth y no se tematiza; documentado como fuera de alcance del white-label actual).
 
 ### Archivos
-`dashboard/src/index.css` (bloques de tema), `dashboard/tailwind.config.js`, componentes en `dashboard/src/components/*` y `tabs/*`, `design-propuestas/*` (referencia), seed/provisionador para el modo demo.
+`dashboard/src/index.css` (bloques de tema), `dashboard/tailwind.config.js`, componentes en `dashboard/src/components/*` y `tabs/*`, `docs/design/propuestas/*` (referencia), seed/provisionador para el modo demo.
 
 ### Criterios de aceptación
 - [ ] Cada vertical (≥3 temas) renderiza el dashboard con su paleta/tipografía/forma; estructura compartida; Punto Rojo intacto.
@@ -172,7 +172,7 @@ migración up/down. Corre pytest -q y `cd dashboard && npm test -- --run`. Pasa 
 ### Prompt para Claude Code (Fase 3)
 ```
 Lee docs/plan-dashboard-agente-2026.md (Fase 3), dashboard/src/index.css (bloque [data-tema=aurora]),
-tailwind.config.js y los mockups design-propuestas/*.html. Usa las skills design:design-system,
+tailwind.config.js y los mockups docs/design/propuestas/*.html. Usa las skills design:design-system,
 design:design-critique, design:ux-copy y design:accessibility-review.
 1) Lleva los componentes (KPI, agenda-grid, inbox, chips/badges, sidebar) al nivel visual de los
    mockups, manteniendo los tokens semánticos (sin colores hardcodeados).

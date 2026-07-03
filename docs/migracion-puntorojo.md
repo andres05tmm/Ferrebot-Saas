@@ -1,6 +1,6 @@
 # Migración de FerreBot → Punto Rojo (tenant #1)
 
-> Mapeo **a nivel de campo** del esquema actual de FerreBot (una sola tienda) a la **app DB del tenant** (ver `schema.md`). Es el primer aprovisionamiento (ver `onboarding-tenant.md`). Fuente: `ferrebot_export/` (schema.sql, columnas.csv, fks.txt, secuencias.txt, conteos.txt).
+> Mapeo **a nivel de campo** del esquema actual de FerreBot (una sola tienda) a la **app DB del tenant** (ver `schema.md`). Es el primer aprovisionamiento (ver `onboarding-tenant.md`). Fuente: `docs/legacy/ferrebot-export/` (schema.sql, columnas.csv, fks.txt, secuencias.txt, conteos.txt).
 >
 > **Importante:** el export reveló divergencias entre FerreBot real y el esquema objetivo de `schema.md`. Las que requieren ampliar el esquema destino están en §8 (**Brechas de esquema**). Resolverlas es prerequisito para la paridad.
 
@@ -283,7 +283,7 @@ El export muestra tablas/campos de FerreBot **sin destino** en `schema.md`. Para
 - **Smoke:** una venta nueva, una emisión de factura de prueba, un cierre de caja en el tenant ya migrado.
 - **Aislamiento:** correr el test de `.claude/rules/testing.md` (empresa A nunca ve B) con Punto Rojo como tenant real.
 
-> Mantener `ferrebot_export/` fuera de git si contiene rutas/datos sensibles (revisar `.gitignore`). El dump es solo-estructura, pero por higiene no se versiona junto al código.
+> Mantener `docs/legacy/ferrebot-export/` fuera de git si contiene rutas/datos sensibles (revisar `.gitignore`). El dump es solo-estructura, pero por higiene no se versiona junto al código.
 
 ## 10. Corte de webhook (cutover a producción)
 

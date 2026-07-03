@@ -177,7 +177,7 @@
   }
 
   /* ════════════════════════════════════════════════════════════════════════════
-     TEMA "aurora" — white-label clínica (propuesta design-propuestas/propuesta-aurora-clinica.html).
+     TEMA "aurora" — white-label clínica (propuesta docs/design/propuestas/propuesta-aurora-clinica.html).
      Se activa con [data-tema="aurora"] en <html> (lo setea applyTheming desde branding.tema), combinable
      con data-theme light/dark. Mapea los tokens Aurora (brand teal, ink, line, ok/warn/bad) a las MISMAS
      vars semánticas que usa todo el dashboard → cambia paleta + tipografía + forma sin tocar componentes.
@@ -305,7 +305,7 @@
   }
 
   /* ════════════════════════════════════════════════════════════════════════════
-     TEMA "brasa" — restaurante — terracota cálida (design-propuestas/propuesta-brasa-restaurante.html). Display: Figtree.
+     TEMA "brasa" — restaurante — terracota cálida (docs/design/propuestas/propuesta-brasa-restaurante.html). Display: Figtree.
      Mismo patrón que aurora: remapea los MISMOS tokens semánticos (light default · dark explícito ·
      dark por SO). Tema base y aurora intactos.
      ════════════════════════════════════════════════════════════════════════════ */

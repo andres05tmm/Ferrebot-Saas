@@ -11,6 +11,13 @@ from core.llm.base import LLMError, LLMResponse, Message, ToolCall, ToolSpec
 
 Cliente = Callable[[dict[str, Any]], Awaitable[dict[str, Any]]]
 
+# Explicit request timeout: the SDK default (10 min) would pin the tenant's DB session
+# (pool_size=2) for the whole hang.
+_TIMEOUT_S = 60.0
+
+# One SDK client per api_key, reused across generate() calls (connection pooling, no leak).
+_sdk_clients: dict[str, Any] = {}
+
 
 class OpenAIProvider:
     nombre = "openai"
@@ -111,7 +118,7 @@ def _cargar_args(arguments: Any) -> dict[str, Any]:
 
 
 def _cliente_openai(api_key: str) -> Cliente:
-    """Cliente real (perezoso): importa el SDK solo al invocar, no al cargar el módulo."""
+    """Real client (lazy): imports the SDK on first call, cached per api_key with a timeout."""
     async def _call(payload: dict[str, Any]) -> dict[str, Any]:
         try:
             from openai import AsyncOpenAI
@@ -119,8 +126,12 @@ def _cliente_openai(api_key: str) -> Cliente:
             raise LLMError(
                 "SDK 'openai' no instalado; inyecta un `client` (en pruebas) o agrégalo a deps"
             ) from exc
+        client = _sdk_clients.get(api_key)
+        if client is None:
+            client = AsyncOpenAI(api_key=api_key, timeout=_TIMEOUT_S)
+            _sdk_clients[api_key] = client
         try:
-            resp = await AsyncOpenAI(api_key=api_key).chat.completions.create(**payload)
+            resp = await client.chat.completions.create(**payload)
         except Exception as exc:  # traduce el error del SDK a la excepción canónica (retry-able o no)
             from core.llm.resiliencia import clasificar_excepcion
             raise clasificar_excepcion(exc) from exc

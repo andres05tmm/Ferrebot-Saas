@@ -57,19 +57,31 @@ class FacturaElectronica(TenantBase):
 
 
 class NotaElectronica(TenantBase):
-    """Nota crédito/débito electrónica asociada a una factura (tenant 0001)."""
+    """Nota crédito/débito electrónica asociada a una factura y a la venta origen (tenant 0001 + 0031).
+
+    Los campos de vínculo/numeración/idempotencia (ADR 0026) los agrega la migración 0031: `venta_id`
+    liga la nota a la venta corregida; `consecutivo`/`prefijo` son su propio número DIAN; `idempotency_key`
+    UNIQUE da la idempotencia de emisión; `dian_respuesta` guarda la respuesta MATIAS completa (histórico
+    fiscal). `factura_id`/`venta_id` son columnas planas BigInteger (la FK vive en la base, no en el ORM)."""
 
     __tablename__ = "notas_electronicas"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     factura_id: Mapped[int | None] = mapped_column(BigInteger)
+    venta_id: Mapped[int | None] = mapped_column(BigInteger)
     tipo: Mapped[str] = mapped_column(fe_tipo_enum, nullable=False)
     motivo: Mapped[str | None] = mapped_column(Text)
+    prefijo: Mapped[str | None] = mapped_column(Text)
+    consecutivo: Mapped[int | None] = mapped_column(BigInteger)
     cufe: Mapped[str | None] = mapped_column(Text)
     estado: Mapped[str] = mapped_column(fe_estado_enum, nullable=False, default="pendiente")
+    dian_respuesta: Mapped[dict | None] = mapped_column(JSONB)
+    idempotency_key: Mapped[str | None] = mapped_column(Text, unique=True)
+    intentos: Mapped[int] = mapped_column(SmallInteger, nullable=False, default=0)
     creado_en: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
+    emitido_en: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class DocumentoSoporte(TenantBase):

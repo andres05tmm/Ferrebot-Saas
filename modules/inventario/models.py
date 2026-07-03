@@ -32,6 +32,9 @@ class Producto(TenantBase):
     unidad_medida: Mapped[str] = mapped_column(Text, nullable=False)
     precio_venta: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
     precio_compra: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
+    # Costo unitario promedio ponderado móvil (ADR 0025): lo recalcula cada COMPRA bajo FOR UPDATE y
+    # lo snapshotean las SALIDA en su `costo_unitario`. NULL hasta la primera compra (cae a precio_compra).
+    costo_promedio: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
     precio_especial: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
     # Precio escalonado por cantidad (modelo FerreBot): NULL si no aplica.
     precio_umbral: Mapped[Decimal | None] = mapped_column(Numeric(12, 3))
@@ -106,6 +109,10 @@ class MovimientoInventario(TenantBase):
     usuario_id: Mapped[int | None] = mapped_column(BigInteger)
     # Idempotencia estructural (migración 0002): UNIQUE parcial donde no es NULL.
     idempotency_key: Mapped[str | None] = mapped_column(Text)
+    # Fecha de la OPERACIÓN de negocio origen (ADR 0025): la fecha de la venta para SALIDA y de la
+    # compra para ENTRADA; NULL para ajustes (el P&L cae a `creado_en`). Ancla el COGS a la fecha de
+    # la venta, no al instante de inserción del movimiento (que difería al editar una venta).
+    fecha_operacion: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     creado_en: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

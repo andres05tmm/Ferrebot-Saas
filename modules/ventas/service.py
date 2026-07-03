@@ -43,6 +43,9 @@ class ProductoPrecio:
     activo: bool
     # Costo de compra AL MOMENTO de vender: se hila hasta el movimiento SALIDA (costo de ventas exacto).
     precio_compra: Decimal | None = None
+    # Costo promedio ponderado móvil (ADR 0025): fuente PREFERIDA del snapshot de costo en la SALIDA;
+    # cae a `precio_compra` si aún es NULL (producto sin compras registradas tras la migración 0028).
+    costo_promedio: Decimal | None = None
     precio_umbral: Decimal | None = None
     precio_bajo_umbral: Decimal | None = None
     precio_sobre_umbral: Decimal | None = None
@@ -320,8 +323,11 @@ class VentaService:
             total = _money(precio * ln.cantidad)
         else:
             total, precio = obtener_precio_para_cantidad(prod.esquema(), ln.cantidad)
+        # Snapshot del costo: promedio ponderado móvil (ADR 0025); fallback al precio_compra si el
+        # promedio aún es NULL (producto sin compras tras la migración 0028).
+        costo = prod.costo_promedio if prod.costo_promedio is not None else prod.precio_compra
         return LineaResuelta(
             producto_id=prod.id, descripcion=ln.descripcion or prod.nombre, cantidad=ln.cantidad,
             precio_unitario=precio, iva=prod.iva, total_linea=total, descontar_stock=True,
-            costo_unitario=prod.precio_compra,
+            costo_unitario=costo,
         )

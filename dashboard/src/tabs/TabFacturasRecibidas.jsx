@@ -155,7 +155,7 @@ function RecibidaRow({ r }) {
         <div className="min-w-0 flex-1">
           <div className="font-medium truncate">
             {r.proveedor_nit ? `NIT ${r.proveedor_nit}` : 'Proveedor'}
-            {r.numero_factura ? ` · ${r.numero_factura}` : ''}
+            {r.descripcion ? ` · ${r.descripcion}` : ''}
           </div>
           <div className="text-[11px] text-muted-foreground truncate">
             CUFE {String(r.cufe).slice(0, 16)}…

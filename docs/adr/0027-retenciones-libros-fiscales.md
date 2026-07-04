@@ -125,3 +125,48 @@ venta** está plumbeada pero no persistida/seleccionable en UI (fase posterior),
   `downgrade base` contra una base tenant local).
 - Aislamiento multi-tenant de config y saldos cubierto por tests (empresa A nunca ve datos de B).
 - Nuevas features `retenciones` y `libros_contables` (opcionales, sin dependencias duras).
+
+## Seguimiento — cableado inline + INC al total (post Fase 3/8)
+
+Con la Fase 3 (notas/devoluciones) y la Fase 8 (motor contable, ADR 0030) ya mezcladas, se cierra el
+enganche que D2 dejó "documentado para el orquestador".
+
+### S1 — Aplicación automática en venta/compra (inline, atómica, opt-in)
+
+`VentaService`/`ComprasService` reciben un aplicador de retenciones **opcional** (puerto estructural,
+como `fiados`). Al registrar el documento, si está inyectado, se calculan y persisten sus renglones en
+la **misma transacción** (`guardar_renglones(commit=False)`): commit atómico con la venta/compra —igual
+que el cargo de fiado—, así un rollback del documento revierte también sus retenciones. Los routers
+`POST /ventas` y `POST /compras` inyectan el aplicador **solo si el tenant tiene la feature
+`retenciones`** (si no, el motor no corre ni una consulta → coste cero para quien no lo activó). El
+endpoint on-demand `/retenciones/*/aplicar` sigue existiendo (`commit=True`) para recálculo/backfill
+manual. Invariante intacto: el motor **jamás** muta `ventas.total`. Idempotencia: reintentar una venta
+por `idempotency_key` es replay (no re-aplica) y, aun re-aplicando, el UPSERT no duplica (test).
+
+**Alcance:** los canales cableados son los flujos HTTP canónicos (dashboard POS + compras). El bot
+(`ai/tools.py`) y el cobro de cita (`agenda`) no se cablearon inline: un negocio formal que configura
+retenciones opera por el dashboard, y esos canales quedan cubiertos por el `/aplicar` on-demand y el
+backfill contable (ambos idempotentes). Queda como extensión futura si se requiere.
+
+### S2 — INC opcional al total del documento (cierra el opt-in de D5)
+
+D5 dejó el INC **registrado pero no sumado** al total. Ahora es opt-in por tenant **sin migración**:
+una fila de CONFIG en `config_retenciones` con `tipo='inc_al_total'` (clave natural `(inc_al_total,
+global)`), cuyo `activo` es el interruptor. `tipo` es TEXT libre (sin CHECK), así que la fila cabe en la
+tabla existente; se excluye del motor junto con `uvt` (`TIPOS_CONFIG`), como valor de config, no regla.
+Con el interruptor activo el resumen expone `total_con_inc = total_documento + total_inc` y
+`neto_a_recibir = total_con_inc − total_retenido`; apagado, el INC se informa aparte como antes. **La
+tabla `ventas` sigue intacta** (`total_documento` es siempre el de la tabla): `total_con_inc` es la
+representación fiscal del documento, no una mutación del cobro. Cobrar el INC en el punto de venta
+(mutar el total recaudado) exigiría meterlo al pricing de línea y es un cambio más profundo, fuera de
+alcance.
+
+### S3 — Convivencia con el proyector contable (ADR 0030)
+
+El proyector lee `retenciones_documento` (clave `retencion:{id}`, idempotente) y **no asienta el INC**
+(`RETENCION_CUENTAS` sin `inc`). Se mantiene esa decisión (ADR 0030: incorporarlo descuadraría contra
+las tablas operativas). El cableado inline solo hace que los renglones existan antes; proyectar tras él
+cuadra (Σdébitos=Σcréditos), es idempotente (backfill replay sin duplicar) y el INC no genera asiento
+—verificado por test.
+
+**Sin migración nueva:** todo el cambio reusa `config_retenciones`/`retenciones_documento` (0032/0033).

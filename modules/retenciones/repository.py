@@ -15,7 +15,13 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules.retenciones.models import ConfigRetencion, RetencionDocumento
-from modules.retenciones.motor import UVT, ReglaRetencion, RetencionCalculada
+from modules.retenciones.motor import (
+    INC_AL_TOTAL,
+    TIPOS_CONFIG,
+    UVT,
+    ReglaRetencion,
+    RetencionCalculada,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -74,11 +80,12 @@ class SqlRetencionesRepository:
         ).scalar_one()
 
     async def reglas_activas(self) -> list[ReglaRetencion]:
-        """Reglas activas del tenant proyectadas al motor (sin la fila `uvt`)."""
+        """Reglas activas del tenant proyectadas al motor (sin las filas de CONFIG: `uvt`/`inc_al_total`)."""
         filas = (
             await self._s.execute(
                 select(ConfigRetencion).where(
-                    ConfigRetencion.activo.is_(True), ConfigRetencion.tipo != UVT
+                    ConfigRetencion.activo.is_(True),
+                    ConfigRetencion.tipo.notin_(TIPOS_CONFIG),
                 )
             )
         ).scalars()
@@ -105,6 +112,20 @@ class SqlRetencionesRepository:
             )
         ).scalar_one_or_none()
         return Decimal(val) if val is not None else Decimal("0")
+
+    async def inc_al_total(self) -> bool:
+        """¿El tenant activó que el INC se SUME al total del documento? (fila CONFIG `inc_al_total`).
+
+        Opt-in (ADR 0027 D5): sin la fila o inactiva → False (INC solo se registra aparte, no suma).
+        """
+        activo = (
+            await self._s.execute(
+                select(ConfigRetencion.activo)
+                .where(ConfigRetencion.tipo == INC_AL_TOTAL, ConfigRetencion.activo.is_(True))
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        return bool(activo)
 
     # ── Bases del documento ──────────────────────────────────────────────────
     async def base_venta(self, venta_id: int) -> BaseDocumento | None:
@@ -155,11 +176,15 @@ class SqlRetencionesRepository:
 
     # ── Persistencia de renglones (retenciones_documento) ────────────────────
     async def guardar_renglones(
-        self, *, doc_tipo: str, doc_id: int, renglones: list[RetencionCalculada]
+        self, *, doc_tipo: str, doc_id: int, renglones: list[RetencionCalculada],
+        commit: bool = True,
     ) -> None:
         """UPSERT idempotente de los renglones del documento (clave doc_tipo,doc_id,tipo,concepto).
 
-        Reaplicar el motor sobre el mismo documento ACTUALIZA en el lugar (no duplica). Commitea.
+        Reaplicar el motor sobre el mismo documento ACTUALIZA en el lugar (no duplica). `commit=True`
+        (default) cierra la transacción —lo usa el endpoint on-demand `/retenciones/*/aplicar`—; con
+        `commit=False` los renglones quedan en la MISMA transacción del documento (cableado inline en
+        venta/compra: se commitean atómicamente con la venta, como el cargo de fiado).
         """
         for r in renglones:
             stmt = (
@@ -174,7 +199,8 @@ class SqlRetencionesRepository:
                 )
             )
             await self._s.execute(stmt)
-        await self._s.commit()
+        if commit:
+            await self._s.commit()
 
     async def listar_por_documento(
         self, *, doc_tipo: str, doc_id: int

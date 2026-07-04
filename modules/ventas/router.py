@@ -31,12 +31,24 @@ from modules.ventas.errors import (
     VentaNoEsDeHoy,
 )
 from modules.facturacion.pos_hook import encolar_cierre_pos
+from modules.retenciones.repository import SqlRetencionesRepository
+from modules.retenciones.service import RetencionesService
 from modules.ventas.repository import SqlVentasRepository
 from modules.ventas.schemas import VentaConLineas, VentaCrear, VentaLeer
-from modules.ventas.service import VentaService
+from modules.ventas.service import RetencionesAplicador, VentaService
 
 # Feature fina `ventas` (ADR 0021, antes pack `pos`): sin la capacidad, todo el router responde 404.
 router = APIRouter(tags=["ventas"], dependencies=[Depends(require_feature("ventas"))])
+
+
+def _aplicador_retenciones(
+    session: AsyncSession, capacidades: frozenset[str]
+) -> RetencionesAplicador | None:
+    """RetencionesService atado a la sesión del tenant SOLO si tiene la feature `retenciones`; None si
+    no (así el motor no corre —ni una consulta— para tenants que no lo activaron)."""
+    if "retenciones" not in capacidades:
+        return None
+    return RetencionesService(SqlRetencionesRepository(session))
 
 
 def get_ventas_repo(session: AsyncSession = Depends(get_tenant_db)) -> SqlVentasRepository:
@@ -88,13 +100,18 @@ async def crear_venta(
     session: AsyncSession = Depends(get_tenant_db),
     user: Principal = Depends(require_role("vendedor")),
     control_stock_estricto: bool = Depends(get_control_stock_estricto),
+    capacidades: frozenset[str] = Depends(get_capacidades),
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
 ) -> VentaLeer:
     if payload.idempotency_key is None and idempotency_key:
         payload = payload.model_copy(update={"idempotency_key": idempotency_key})
 
     service = VentaService(
-        SqlVentasRepository(session), fiados=FiadosService(SqlFiadosRepository(session))
+        SqlVentasRepository(session),
+        fiados=FiadosService(SqlFiadosRepository(session)),
+        # Retenciones inline (ADR 0027), solo si el tenant tiene la feature `retenciones`: calcula y
+        # persiste los renglones tributarios de la venta en su misma transacción (opt-in).
+        retenciones=_aplicador_retenciones(session, capacidades),
     )
     try:
         resultado = await service.registrar_venta(

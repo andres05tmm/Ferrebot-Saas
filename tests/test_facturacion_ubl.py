@@ -14,7 +14,15 @@ from decimal import Decimal
 import pytest
 
 from modules.facturacion import ubl
-from modules.facturacion.schemas import ClienteFiscal, DatosEmision, FacturaInput, ItemFactura
+from modules.facturacion.schemas import (
+    ClienteFiscal,
+    DatosEmision,
+    DatosEmisionNota,
+    FacturaInput,
+    ItemFactura,
+    NotaInput,
+    ReferenciaFactura,
+)
 
 # --- valores esperados del doc (§3/§4) ---------------------------------------
 EXP_TIPO_ID_MATIAS = {
@@ -244,3 +252,76 @@ def test_armar_payload_factura_time_sin_microsegundos():
     assert payload["time"] == "20:35:47"
     assert re.fullmatch(r"\d{2}:\d{2}:\d{2}", payload["time"])    # sin punto decimal ni zona
     assert payload["date"] == "2026-06-04"                        # date intacto (Y-m-d)
+
+
+# --- nota crédito/débito (§12) -----------------------------------------------
+
+def _nota(tipo="nota_credito", razon_id=1, descripcion="Devolución") -> NotaInput:
+    emision = DatosEmisionNota(
+        resolution_number="18760000001", prefix="FPR",
+        fecha=date(2026, 6, 4), hora=time(10, 30, 0),
+        means_payment_id=10, payment_method_id=1, notes="Punto Rojo",
+    )
+    return NotaInput(
+        tipo=tipo, emision=emision,
+        cliente=ClienteFiscal(tipo_documento="CC", numero="123", nombre="Juan", city_id_matias="149"),
+        items=[_item(precio="11900", cant="1", pct="19", pid=5)],
+        referencia=ReferenciaFactura(number="FPR1024", cufe="f" * 40, fecha=date(2026, 6, 1)),
+        razon_id=razon_id, descripcion_razon=descripcion,
+    )
+
+
+def test_ids_nota_verbatim():
+    assert (ubl.TYPE_DOC_NC, ubl.TYPE_DOC_ND) == (5, 4)
+    assert ubl.RAZONES_NC[1].startswith("Devolución")
+    assert ubl.RAZONES_ND[4] == "Otros"
+
+
+def test_armar_payload_nota_credito_estructura():
+    p = ubl.armar_payload_nota(_nota())
+    assert p["type_document_id"] == 5                       # NC
+    assert p["operation_type_id"] == 1 and p["currency_id"] == 272
+    assert p["resolution_number"] == "18760000001" and p["prefix"] == "FPR"
+    assert "document_number" not in p                       # el consecutivo lo asigna MATIAS
+    # Referencia OBLIGATORIA a la factura original (§12).
+    assert p["billing_reference"] == {"number": "FPR1024", "uuid": "f" * 40, "date": "2026-06-01"}
+    assert p["discrepancy_response"] == {"discrepancy_response_id": 1, "description": "Devolución"}
+    # Reusa el núcleo FE: líneas con tax_id="1" + totales consistentes (FAU04).
+    assert p["lines"][0]["tax_totals"][0]["tax_id"] == "1"
+    assert p["legal_monetary_totals"]["payable_amount"] == Decimal("11900.00")
+    assert p["payments"][0]["value_paid"] == Decimal("11900.00")
+
+
+def test_armar_payload_nota_debito_type_document_4():
+    p = ubl.armar_payload_nota(_nota(tipo="nota_debito", razon_id=4, descripcion="Otros"))
+    assert p["type_document_id"] == 4
+    assert p["discrepancy_response"]["discrepancy_response_id"] == 4
+
+
+def test_armar_payload_nota_time_sin_microsegundos():
+    emision = DatosEmisionNota(
+        resolution_number="18760000001", prefix="FPR",
+        fecha=date(2026, 6, 4), hora=time(20, 35, 47, 123456),   # con microsegundos
+        means_payment_id=10, payment_method_id=1, notes="PR",
+    )
+    n = NotaInput(
+        tipo="nota_credito", emision=emision, cliente=ClienteFiscal(nombre="Cliente"),
+        items=[_item()], referencia=ReferenciaFactura(number="FPR1", cufe="f" * 40, fecha=date(2026, 6, 1)),
+        razon_id=2, descripcion_razon="Anulación",
+    )
+    p = ubl.armar_payload_nota(n)
+    assert re.fullmatch(r"\d{2}:\d{2}:\d{2}", p["time"]) and p["time"] == "20:35:47"
+
+
+def test_armar_payload_nota_sin_prefix_no_incluye_clave():
+    """`prefix=None` (config sin prefijo) → la clave no viaja (como el POS)."""
+    emision = DatosEmisionNota(
+        resolution_number="18760000001", prefix=None, fecha=date(2026, 6, 4), hora=time(10, 0, 0),
+        means_payment_id=10, payment_method_id=1, notes="PR",
+    )
+    n = NotaInput(
+        tipo="nota_credito", emision=emision, cliente=ClienteFiscal(nombre="Cliente"),
+        items=[_item()], referencia=ReferenciaFactura(number="1", cufe="f" * 40, fecha=date(2026, 6, 1)),
+        razon_id=5, descripcion_razon="Otros",
+    )
+    assert "prefix" not in ubl.armar_payload_nota(n)

@@ -12,7 +12,13 @@ from __future__ import annotations
 from decimal import Decimal
 
 from core.money import cuantizar, descomponer_iva
-from modules.facturacion.schemas import ClienteFiscal, FacturaInput, ItemFactura, PosInput
+from modules.facturacion.schemas import (
+    ClienteFiscal,
+    FacturaInput,
+    ItemFactura,
+    NotaInput,
+    PosInput,
+)
 
 # --- Mapas de IDs (verbatim §3/§4) -------------------------------------------
 # §3 — tipo de documento en POST de creación (identity_document_id). .get(tipo, "1") por defecto.
@@ -42,6 +48,23 @@ CURRENCY_COP = 272      # COP
 TYPE_DOC_FE = 7         # factura electrónica
 OPERATION_FE = 1        # operación FE (el tipo de cliente define CF/normal, no esto)
 TYPE_DOC_POS = 20       # documento equivalente POS electrónico (id INTERNO MATIAS, NUNCA el code DIAN; ADR 0012 D4)
+TYPE_DOC_NC = 5         # nota crédito (§12 / §4)
+TYPE_DOC_ND = 4         # nota débito (§12 / §4)
+
+# Razones de nota (§4/§12): van en `discrepancy_response.discrepancy_response_id` + `description`.
+RAZONES_NC: dict[int, str] = {
+    1: "Devolución parcial de bienes y/o no aceptación parcial del servicio",
+    2: "Anulación de factura electrónica",
+    3: "Rebaja o descuento parcial o total",
+    4: "Ajuste de precio",
+    5: "Otros",
+}
+RAZONES_ND: dict[int, str] = {
+    1: "Intereses",
+    2: "Gastos por cobrar",
+    3: "Cambio del valor",
+    4: "Otros",
+}
 
 # Documento de consumidor final (§8.1).
 _DOC_CONSUMIDOR_FINAL = "222222222222"
@@ -334,6 +357,59 @@ def armar_payload_pos(p: PosInput) -> dict:
     }
     # El prefijo desambigua la resolución (varios tipos comparten resolution_number); MATIAS
     # autoincrementa solo el número. Sin prefijo el endpoint responde 404 (ADR 0012 D4, corregido).
+    if e.prefix is not None:
+        payload["prefix"] = e.prefix
+    return payload
+
+
+def armar_payload_nota(n: NotaInput) -> dict:
+    """Ensambla el payload UBL de una nota crédito/débito (§12). Reusa el núcleo FE.
+
+    Diferencias vs factura: `type_document_id` 5 (NC) / 4 (ND); dos bloques obligatorios que refieren la
+    factura original —`billing_reference` (número, uuid=CUFE, fecha) y `discrepancy_response` (código de
+    razón DIAN + descripción)—. SIN `document_number`: el consecutivo de la nota lo asigna MATIAS al
+    emitir (como el POS por autoincremento); el `prefix` viaja para desambiguar la resolución. Misma math
+    de líneas (IVA incluido), mismo `tax_id="1"` y mismo pre-check FAU04 que la FE: la nota corrige la
+    factura sobre las MISMAS bases, así la DIAN no descuadra `sum(líneas.taxable) == cabecera.taxable`."""
+    e = n.emision
+    customer = armar_customer(n.cliente)
+    lineas, acc = armar_lineas(n.items)
+    tax_totals = armar_tax_totals(acc)
+    legal_monetary_totals = armar_legal_monetary_totals(acc)
+    validar_bases(lineas, tax_totals)
+    total_con_iva = legal_monetary_totals["payable_amount"]
+    type_doc = TYPE_DOC_NC if n.tipo == "nota_credito" else TYPE_DOC_ND
+    payload = {
+        "resolution_number": e.resolution_number,
+        "type_document_id": type_doc,
+        "operation_type_id": OPERATION_FE,
+        "currency_id": CURRENCY_COP,
+        "date": e.fecha.isoformat(),
+        # MATIAS exige `time` en H:i:s estricto (isoformat arrastra microsegundos y lo rechaza).
+        "time": e.hora.strftime("%H:%M:%S"),
+        "notes": e.notes,
+        "graphic_representation": 1,
+        "send_email": 0 if _correo_es_placeholder(customer["email"]) else 1,
+        # Referencia OBLIGATORIA a la factura original que la nota corrige (§12).
+        "billing_reference": {
+            "number": n.referencia.number,
+            "uuid": n.referencia.cufe,
+            "date": n.referencia.fecha.isoformat(),
+        },
+        "discrepancy_response": {
+            "discrepancy_response_id": n.razon_id,
+            "description": n.descripcion_razon,
+        },
+        "customer": customer,
+        "lines": lineas,
+        "tax_totals": tax_totals,
+        "legal_monetary_totals": legal_monetary_totals,
+        "payments": [{
+            "payment_method_id": e.payment_method_id,
+            "means_payment_id": e.means_payment_id,
+            "value_paid": total_con_iva,
+        }],
+    }
     if e.prefix is not None:
         payload["prefix"] = e.prefix
     return payload

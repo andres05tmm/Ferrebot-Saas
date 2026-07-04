@@ -126,10 +126,25 @@ devolución/nada por devolver; 422 línea no vendida o payload inválido.
   se anula ni se excluye, así que el neto es el saldo físico real.
 - Migración tenant **0031** (`0031_notas_devoluciones`), aditiva, NULL-safe y con `downgrade` limpio
   (verificado `upgrade head` + `downgrade 0030` + re-`upgrade` + `downgrade base` contra base local).
-- Desviación vs. spec: el UBL fino de la nota se deja como payload mínimo (se confirma contra sandbox
-  MATIAS luego), en línea con cómo se estacionaron otras integraciones DIAN; el foco de la fase fueron
-  los invariantes contables (stock+contrapartida, idempotencia, COGS, arqueo, aislamiento). Los cambios
-  se acotaron a archivos/módulos **nuevos** más ediciones aditivas en `reportes`, `facturacion/models`
-  y el guard/mapeo en `ventas` (D7), para minimizar conflictos con la Fase 4 (retenciones).
-- Pendiente (fase posterior): worker de reintentos para notas en `error` (espejo del de facturas) y el
-  UBL definitivo de la nota contra el sandbox MATIAS.
+- Desviación vs. spec (Fase 3): el UBL fino de la nota se dejó como payload mínimo (se confirmaría contra
+  sandbox MATIAS luego), en línea con cómo se estacionaron otras integraciones DIAN; el foco de la fase
+  fueron los invariantes contables (stock+contrapartida, idempotencia, COGS, arqueo, aislamiento). Los
+  cambios se acotaron a archivos/módulos **nuevos** más ediciones aditivas en `reportes`,
+  `facturacion/models` y el guard/mapeo en `ventas` (D7), para minimizar conflictos con la Fase 4
+  (retenciones).
+- **Afinado posterior (hecho):** el UBL fino de la nota (§12 de `facturacion-matias-extract.md`) ya se
+  construye completo —`ubl.armar_payload_nota`: `type_document_id` 5 (NC) / 4 (ND), `billing_reference`
+  (número + CUFE + fecha de la factura original) y `discrepancy_response` (razón DIAN), reusando el núcleo
+  FE (cliente, líneas con IVA incluido, `tax_totals`, `legal_monetary_totals`, pre-check FAU04)— y sale por
+  los endpoints reales `/notes/credit` | `/notes/debit` (`MatiasClient.emitir_nota`). `NotasService` arma
+  el payload desde los datos fiscales de la venta + la referencia de la factura aceptada
+  (`SqlNotasRepository.datos_fiscales_nota`). Sin credenciales MATIAS accesibles fuera del control DB, la
+  validación fue con **tests de contrato/mocks** (no contra el sandbox real). Limitación conocida: la nota
+  representa el **documento completo** de la venta; una nota de valor **parcial** frente a una devolución
+  parcial (líneas devueltas exactas) queda como refinamiento cuando se haga fluir el detalle de líneas
+  desde `devoluciones`.
+- **Worker de reintentos (hecho):** `NotasService.reintentar_pendientes` + el cron `reintentar_notas_error`
+  (`apps/worker/main.py`, gate `notas_electronicas`) barren las notas en `error`/`pendiente` y las
+  re-emiten, espejo del reconciliador de facturas. Idempotencia: NUNCA re-emiten una nota ya `aceptada`
+  (estado terminal), y `intentos < MAX_INTENTOS` acota los reintentos (dead-letter silencioso al tope).
+  Sin migración: la tabla `notas_electronicas` ya trae `estado`/`intentos`/`creado_en`.

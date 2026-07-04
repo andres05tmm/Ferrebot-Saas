@@ -59,6 +59,7 @@ from modules.postventa.repository import SqlPostventaRepository
 from modules.postventa.service import PostventaService, SeguimientoPendiente
 from modules.facturacion.config import cargar_config_matias
 from modules.facturacion.matias_client import MatiasClient, MatiasCredenciales
+from modules.facturacion.notas import NotasService, ResumenReintentoNotas, SqlNotasRepository
 from modules.facturacion.politica import Decision
 from modules.facturacion.repository import SqlFacturacionRepository
 from modules.facturacion.service import MAX_INTENTOS, FacturacionService, ResumenReconciliacion
@@ -149,6 +150,15 @@ class _ServicioEmision:
         async for s in tenant_session(tenant):   # commit al cerrar el generador
             servicio = FacturacionService(SqlFacturacionRepository(s), cliente, config)
             resumen = await servicio.reconciliar(antiguedad=antiguedad, limite=limite)
+        return resumen
+
+    async def reintentar_notas(self, *, antiguedad, limite: int) -> ResumenReintentoNotas:
+        """Re-emite las notas crédito/débito estancadas en `error` del tenant (ADR 0026, mirror de la FE)."""
+        tenant, cliente, config = await self._componer()
+        resumen = ResumenReintentoNotas()
+        async for s in tenant_session(tenant):   # commit al cerrar el generador
+            servicio = NotasService(SqlNotasRepository(s), cliente, config)
+            resumen = await servicio.reintentar_pendientes(antiguedad=antiguedad, limite=limite)
         return resumen
 
 
@@ -543,6 +553,39 @@ async def reconciliar_pendientes(ctx: dict) -> str:
     return f"reconciliadas={reconciliadas}"
 
 
+async def reintentar_notas_error(ctx: dict) -> str:
+    """Cron de reintentos de notas (ADR 0026): por cada tenant con `notas_electronicas`, re-emite las
+    notas crédito/débito que quedaron en `error` (p. ej. sin credenciales MATIAS al momento de la
+    devolución, o fallo de transporte). Mirror de `reconciliar_pendientes`.
+
+    Smoke manual (como los demás crons): la lógica determinista —idempotencia (no re-emitir una nota ya
+    aceptada), tope de intentos, mapeo de estados— vive en `NotasService.reintentar_pendientes` (testeada
+    con fakes/base efímera). Aquí solo el barrido multi-tenant: filtra por capacidad, reusa el seam
+    `crear_servicio` (con su caché de clientes MATIAS) y corre el reintento sobre la base de cada empresa.
+    `antiguedad`/`lote` reusan los settings de reconciliación."""
+    settings = get_settings()
+    corte = now_co() - timedelta(minutes=settings.reconciliacion_antiguedad_min_minutos)
+    async with control_session() as cs:
+        tenants = await listar_tenants(cs)
+
+    reintentadas = 0
+    for t in tenants:
+        if "notas_electronicas" not in t.features:
+            continue
+        try:
+            servicio = await ctx["crear_servicio"](t.id)
+            resumen = await servicio.reintentar_notas(antiguedad=corte, limite=settings.reconciliacion_lote_max)
+            reintentadas += resumen.aceptadas + resumen.rechazadas
+            if resumen.revisadas:
+                log.info(
+                    "reintentar_notas_tenant", tenant_id=t.id, revisadas=resumen.revisadas,
+                    aceptadas=resumen.aceptadas, rechazadas=resumen.rechazadas,
+                )
+        except Exception:  # noqa: BLE001 — un fallo en un tenant no debe tumbar el barrido
+            log.exception("reintentar_notas_error", tenant_id=t.id)
+    return f"reintentadas={reintentadas}"
+
+
 async def resembrar_demos(ctx: dict) -> str:
     """Cron nocturno de higiene de demos (plan §4): resetea cada tenant demo a su estado canónico.
 
@@ -584,6 +627,9 @@ class WorkerSettings:
         cron(reconfirmaciones_agenda, minute={0, 15, 30, 45}, run_at_startup=False),
         # Reconciliación fiscal (D7.2): cada 10 min consulta el estado de las facturas estancadas.
         cron(reconciliar_pendientes, minute=set(range(0, 60, 10)), run_at_startup=False),
+        # Reintentos de notas crédito/débito (ADR 0026): cada 30 min re-emite las notas en `error`
+        # (decalado de la reconciliación FE). Idempotente: nunca re-emite una nota ya aceptada.
+        cron(reintentar_notas_error, minute={7, 37}, run_at_startup=False),
         # Cobranza (ADR 0015): cada 30 min; la ventana horaria/cadencia/tope los aplica el motor.
         cron(recordatorios_cobranza, minute={5, 35}, run_at_startup=False),
         # Cuentas por pagar (ADR 0019): cada 30 min (decalado de cobranza); la ventana/cadencia/dedup

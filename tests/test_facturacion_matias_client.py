@@ -88,9 +88,11 @@ def test_parsear_ciudades_variantes():
 class _Handler:
     """Handler de MockTransport: respuestas canned por endpoint + traza de paths (sin red real)."""
 
-    def __init__(self, *, token="TKN", login=None, invoice=None, cities=None, countries=None, xml=None):
+    def __init__(self, *, token="TKN", login=None, invoice=None, cities=None, countries=None, xml=None,
+                 note=None):
         self._login = login if login is not None else {"token": token, "expires_in": 3600}
         self._invoice = invoice
+        self._note = note
         self._cities = cities if cities is not None else {"data": []}
         self._countries = countries if countries is not None else {"data": []}
         self._xml = xml
@@ -101,6 +103,8 @@ class _Handler:
         self.paths.append(path)
         if path.endswith("/auth/login"):
             return httpx.Response(200, json=self._login)
+        if path.endswith("/notes/credit") or path.endswith("/notes/debit"):
+            return httpx.Response(200, json=self._note)
         if path.endswith("/invoice"):
             return httpx.Response(200, json=self._invoice)
         if path.endswith("/cities"):
@@ -177,6 +181,40 @@ async def test_emitir_pos_5xx_es_error_transitorio():
     res = await _client_5xx(503).emitir_pos({"prefix": "POS"})
     assert res.ok is False and res.categoria == "error"
     assert "503" in res.error_msg
+
+
+# --- notas crédito/débito (§12): endpoint por tipo + mismo parseo que /invoice ---
+
+async def test_emitir_nota_credito_va_a_notes_credit():
+    handler = _Handler(note={"success": True, "XmlDocumentKey": _CUFE_OK})
+    res = await _client(handler).emitir_nota("nota_credito", {"type_document_id": 5})
+    assert res.ok is True and res.cufe == _CUFE_OK and res.categoria == "aceptada"
+    assert _cuenta(handler, "/notes/credit") == 1 and _cuenta(handler, "/notes/debit") == 0
+
+
+async def test_emitir_nota_debito_va_a_notes_debit():
+    handler = _Handler(note={"success": True, "XmlDocumentKey": _CUFE_OK})
+    res = await _client(handler).emitir_nota("nota_debito", {"type_document_id": 4})
+    assert res.ok is True
+    assert _cuenta(handler, "/notes/debit") == 1 and _cuenta(handler, "/notes/credit") == 0
+
+
+async def test_emitir_nota_rechazo():
+    handler = _Handler(note={"success": False, "message": "Rechazado", "errors": {"billing_reference.uuid": "requerido"}})
+    res = await _client(handler).emitir_nota("nota_credito", {"type_document_id": 5})
+    assert res.ok is False and res.categoria == "rechazada"
+    assert "Rechazado" in res.error_msg and "billing_reference.uuid" in res.error_msg
+
+
+async def test_emitir_nota_5xx_es_error_transitorio():
+    def _call(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/auth/login"):
+            return httpx.Response(200, json={"token": "TKN", "expires_in": 3600})
+        return httpx.Response(500, json={"success": False, "message": "Server Error"})
+
+    http = httpx.AsyncClient(transport=httpx.MockTransport(_call), base_url=_CRED.base_url)
+    res = await MatiasClient(_CRED, client=http).emitir_nota("nota_credito", {"type_document_id": 5})
+    assert res.ok is False and res.categoria == "error" and "500" in res.error_msg
 
 
 def test_parsear_estado_variantes():

@@ -279,6 +279,12 @@ def main(argv: "list[str] | None" = None) -> int:
                     help="ruta llm: activa el LLM-as-judge del texto libre (opt-in; requiere key). Off por defecto.")
     args = ap.parse_args(argv)
 
+    # Consolas/pipes Windows cp1252 no codifican el ⚠ ni los emojis del corpus: sin esto, `print`
+    # revienta con UnicodeEncodeError y el replay sale con código 1 aunque haya pasado.
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(errors="replace")
+
     if args.route == "llm":
         return _main_llm(args)
 

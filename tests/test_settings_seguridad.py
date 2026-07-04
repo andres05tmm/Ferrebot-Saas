@@ -16,6 +16,14 @@ _BASE = {
 }
 
 
+@pytest.fixture(autouse=True)
+def _sin_claves_del_entorno(monkeypatch):
+    """El CI exporta SECRET_KEY/SECRETS_MASTER_KEY (ci.yml) y pydantic-settings las leería por
+    encima de los defaults que estos tests verifican; aquí el entorno debe quedar limpio."""
+    for var in ("ENTORNO", "SECRET_KEY", "SECRETS_MASTER_KEY"):
+        monkeypatch.delenv(var, raising=False)
+
+
 def test_dev_arranca_con_defaults():
     s = Settings(**_BASE, _env_file=None)
     assert s.entorno == "dev" and s.secret_key == "dev-only-change-me"

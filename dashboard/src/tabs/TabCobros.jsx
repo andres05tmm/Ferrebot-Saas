@@ -7,9 +7,10 @@
  */
 import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
+import { useQueryClient } from '@tanstack/react-query'
 import { CreditCard, ExternalLink, CheckCircle2, XCircle } from 'lucide-react'
-import { api } from '@/lib/api'
-import { cop, useFetch } from '@/components/shared.jsx'
+import { cop } from '@/components/shared.jsx'
+import { useCobros, useAccionCobro, keyPrefix } from '@/lib/queries'
 import { useRealtimeEvent } from '@/components/RealtimeProvider.jsx'
 import { useAuth } from '@/hooks/useAuth.js'
 import { Card } from '@/components/ui/card.jsx'
@@ -54,9 +55,10 @@ export default function TabCobros() {
   const { isAdmin } = useAuth()
   const admin = isAdmin()
   const [filtro, setFiltro] = useState('')
-  const path = filtro ? `/pagos/cobros?estado=${filtro}` : '/pagos/cobros'
-  const cobrosQ = useFetch(path, [filtro])
-  useRealtimeEvent(EVENTOS, () => cobrosQ.refetch())
+  const qc = useQueryClient()
+  const cobrosQ = useCobros(filtro)
+  const accionM = useAccionCobro()
+  useRealtimeEvent(EVENTOS, () => qc.invalidateQueries({ queryKey: keyPrefix.cobros }))
 
   const cobros = arr(cobrosQ.data)
   const { pendientes, montoPendiente, pagados } = useMemo(() => {
@@ -71,12 +73,10 @@ export default function TabCobros() {
   }, [cobros])
 
   async function accion(cobro, tipo) {
-    const url = `/pagos/cobros/${cobro.id}/${tipo === 'pagar' ? 'pagado-manual' : 'cancelar'}`
     try {
-      const res = await api(url, { method: 'POST' })
+      const res = await accionM.mutateAsync({ id: cobro.id, tipo })
       if (res.ok) {
         toast.success(tipo === 'pagar' ? 'Cobro marcado como pagado' : 'Cobro cancelado')
-        cobrosQ.refetch()
       } else if (res.status === 409) {
         toast.error('El cobro ya no está pendiente')
       } else if (res.status === 403) {
@@ -94,10 +94,10 @@ export default function TabCobros() {
       </h1>
 
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
-        <Kpi label="Por cobrar" value={cobrosQ.loading ? '…' : cop(montoPendiente)}
+        <Kpi label="Por cobrar" value={cobrosQ.isLoading ? '…' : cop(montoPendiente)}
           hint={`${pendientes} pendiente${pendientes === 1 ? '' : 's'}`} />
-        <Kpi label="Pendientes" value={cobrosQ.loading ? '…' : pendientes} />
-        <Kpi label="Pagados" value={cobrosQ.loading ? '…' : pagados} hint="en la vista actual" />
+        <Kpi label="Pendientes" value={cobrosQ.isLoading ? '…' : pendientes} />
+        <Kpi label="Pagados" value={cobrosQ.isLoading ? '…' : pagados} hint="en la vista actual" />
       </div>
 
       <div className="flex flex-wrap gap-1.5">
@@ -112,9 +112,9 @@ export default function TabCobros() {
       </div>
 
       <Card className="p-0 overflow-hidden">
-        {cobrosQ.loading ? (
+        {cobrosQ.isLoading ? (
           <p className="py-10 text-center text-sm text-muted-foreground">Cargando…</p>
-        ) : cobrosQ.error ? (
+        ) : cobrosQ.isError ? (
           <p className="py-10 text-center text-sm text-destructive">No se pudieron cargar los cobros.</p>
         ) : cobros.length === 0 ? (
           <p className="py-10 text-center text-sm text-muted-foreground">

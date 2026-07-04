@@ -8,6 +8,7 @@ vi.mock('@/components/RealtimeProvider.jsx', () => ({
 }))
 
 import TabReservas from './TabReservas.jsx'
+import { conQuery } from '@/test/query.jsx'
 
 const HABS = [
   { recurso_id: 1, nombre: 'Hab 101', precio_noche: '100000', total: '200000' },
@@ -35,13 +36,13 @@ afterEach(() => { cleanup(); vi.restoreAllMocks() })
 describe('TabReservas', () => {
   it('parte pidiendo elegir fechas', () => {
     instalarFetch()
-    render(<MemoryRouter><TabReservas /></MemoryRouter>)
+    render(conQuery(<MemoryRouter><TabReservas /></MemoryRouter>))
     expect(screen.getByText(/Elige las fechas y busca/i)).toBeInTheDocument()
   })
 
   it('busca disponibilidad y lista habitaciones libres con su total', async () => {
     instalarFetch()
-    render(<MemoryRouter><TabReservas /></MemoryRouter>)
+    render(conQuery(<MemoryRouter><TabReservas /></MemoryRouter>))
 
     fireEvent.click(screen.getByRole('button', { name: /Buscar disponibilidad/ }))
     expect(await screen.findByText('Hab 101')).toBeInTheDocument()
@@ -51,7 +52,7 @@ describe('TabReservas', () => {
 
   it('reserva una habitación llamando a POST /reservas con recurso_id y noches', async () => {
     const fetchMock = instalarFetch()
-    render(<MemoryRouter><TabReservas /></MemoryRouter>)
+    render(conQuery(<MemoryRouter><TabReservas /></MemoryRouter>))
 
     fireEvent.click(screen.getByRole('button', { name: /Buscar disponibilidad/ }))
     await screen.findByText('Hab 101')

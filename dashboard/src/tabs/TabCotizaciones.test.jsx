@@ -10,6 +10,7 @@ vi.mock('@/components/RealtimeProvider.jsx', () => ({
 
 import TabCotizaciones from './TabCotizaciones.jsx'
 import { USER_KEY } from '@/lib/api'
+import { conQuery } from '@/test/query.jsx'
 
 const COTS = [
   { id: 1, cliente_telefono: '3001112233', cliente_nombre: 'Ana Pérez', estado: 'pendiente',
@@ -44,7 +45,7 @@ afterEach(() => { cleanup(); vi.restoreAllMocks() })
 describe('TabCotizaciones', () => {
   it('lista cotizaciones con total y estado', async () => {
     instalarFetch()
-    render(<MemoryRouter><TabCotizaciones /></MemoryRouter>)
+    render(conQuery(<MemoryRouter><TabCotizaciones /></MemoryRouter>))
     expect(await screen.findByText('Ana Pérez')).toBeInTheDocument()
     expect(screen.getByText('$120.000')).toBeInTheDocument()
     expect(screen.getByText('3009998877')).toBeInTheDocument()   // sin nombre → teléfono
@@ -52,7 +53,7 @@ describe('TabCotizaciones', () => {
 
   it('aceptar una cotización pendiente llama al endpoint con el estado', async () => {
     const fetchMock = instalarFetch()
-    render(<MemoryRouter><TabCotizaciones /></MemoryRouter>)
+    render(conQuery(<MemoryRouter><TabCotizaciones /></MemoryRouter>))
     await screen.findByText('Ana Pérez')
 
     fireEvent.click(screen.getByRole('button', { name: /Aceptar cotización 1/ }))
@@ -66,14 +67,14 @@ describe('TabCotizaciones', () => {
   it('el admin ve la config del cotizador; el staff no la pide', async () => {
     comoAdmin()
     const fetchMock = instalarFetch()
-    render(<MemoryRouter><TabCotizaciones /></MemoryRouter>)
+    render(conQuery(<MemoryRouter><TabCotizaciones /></MemoryRouter>))
     await screen.findByText('Ana Pérez')
     expect(await screen.findByLabelText('Vigencia (días)')).toHaveValue(3)
 
     cleanup()
     localStorage.clear()
     const fetchStaff = instalarFetch()
-    render(<MemoryRouter><TabCotizaciones /></MemoryRouter>)
+    render(conQuery(<MemoryRouter><TabCotizaciones /></MemoryRouter>))
     await screen.findByText('Ana Pérez')
     expect(fetchStaff.mock.calls.some(c => String(c[0]).includes('/cotizaciones/config'))).toBe(false)
   })

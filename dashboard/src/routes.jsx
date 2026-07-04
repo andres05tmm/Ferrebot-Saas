@@ -9,6 +9,7 @@ import {
   History, TrendingUp, Trophy, BookOpen,
   FileText, FileCheck, Calculator, FileCog,
   CalendarDays, Headset, BookText, HandCoins, ChefHat, Banknote,
+  CreditCard, FileSpreadsheet, Star, BedDouble, Undo2, Percent, Library, Landmark,
 } from 'lucide-react'
 import { isRouteEnabled } from './lib/features.jsx'
 
@@ -20,20 +21,26 @@ export const ROUTES = [
 
   // Operación
   { path: '/ventas',              label: 'Ventas Rápidas',      icon: ShoppingCart,    group: 'operacion' },
+  { path: '/devoluciones',        label: 'Devoluciones',        icon: Undo2,           group: 'operacion' },
   { path: '/caja',                label: 'Caja',                icon: Wallet,          group: 'operacion' },
   { path: '/inventario',          label: 'Inventario',          icon: Package,         group: 'operacion' },
   { path: '/agenda',              label: 'Agenda',              icon: CalendarDays,    group: 'operacion' },
+  { path: '/reservas',            label: 'Reservas',            icon: BedDouble,       group: 'operacion' },
   { path: '/pedidos',             label: 'Pedidos',             icon: ChefHat,         group: 'operacion' },
+  { path: '/cotizaciones',        label: 'Cotizaciones',        icon: FileSpreadsheet, group: 'operacion' },
+  { path: '/postventa',           label: 'Postventa',           icon: Star,            group: 'operacion' },
   { path: '/conversaciones',      label: 'Conversaciones',      icon: Headset,         group: 'operacion' },
   { path: '/conocimiento',        label: 'Conocimiento',        icon: BookText,        group: 'operacion' },
 
   // Gestión
   { path: '/clientes',            label: 'Clientes',            icon: Users,           group: 'gestion' },
   { path: '/cartera',             label: 'Cartera',             icon: HandCoins,       group: 'gestion' },
+  { path: '/cobros',              label: 'Cobros',              icon: CreditCard,      group: 'gestion' },
   { path: '/compras',             label: 'Compras',             icon: Truck,           group: 'gestion' },
   { path: '/proveedores',         label: 'Proveedores',         icon: Building2,       group: 'gestion' },
   { path: '/cuentas-por-pagar',   label: 'Cuentas por pagar',   icon: Banknote,        group: 'gestion' },
   { path: '/gastos',              label: 'Gastos',              icon: Receipt,         group: 'gestion' },
+  { path: '/conciliacion',        label: 'Conciliación',        icon: Landmark,        group: 'gestion' },
 
   // Reportes
   { path: '/historial',           label: 'Historial',           icon: History,         group: 'reportes' },
@@ -45,6 +52,8 @@ export const ROUTES = [
   { path: '/facturacion',         label: 'Facturación',         icon: FileText,        group: 'fiscal' },
   { path: '/facturas-recibidas',  label: 'Facturas recibidas',  icon: FileCheck,       group: 'fiscal' },
   { path: '/libro-iva',           label: 'Libro IVA',           icon: Calculator,      group: 'fiscal' },
+  { path: '/libros',              label: 'Libros contables',    icon: Library,         group: 'fiscal' },
+  { path: '/retenciones',         label: 'Retenciones',         icon: Percent,         group: 'fiscal' },
   { path: '/compras-fiscal',      label: 'Compras Fiscal',      icon: FileCog,         group: 'fiscal' },
 ]
 

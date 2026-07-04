@@ -9,6 +9,7 @@ import {
   History, TrendingUp, Trophy, BookOpen,
   FileText, FileCheck, Calculator, FileCog,
   CalendarDays, Headset, BookText, HandCoins, ChefHat, Banknote,
+  CreditCard, FileSpreadsheet, Star,
 } from 'lucide-react'
 import { isRouteEnabled } from './lib/features.jsx'
 
@@ -24,12 +25,15 @@ export const ROUTES = [
   { path: '/inventario',          label: 'Inventario',          icon: Package,         group: 'operacion' },
   { path: '/agenda',              label: 'Agenda',              icon: CalendarDays,    group: 'operacion' },
   { path: '/pedidos',             label: 'Pedidos',             icon: ChefHat,         group: 'operacion' },
+  { path: '/cotizaciones',        label: 'Cotizaciones',        icon: FileSpreadsheet, group: 'operacion' },
+  { path: '/postventa',           label: 'Postventa',           icon: Star,            group: 'operacion' },
   { path: '/conversaciones',      label: 'Conversaciones',      icon: Headset,         group: 'operacion' },
   { path: '/conocimiento',        label: 'Conocimiento',        icon: BookText,        group: 'operacion' },
 
   // Gestión
   { path: '/clientes',            label: 'Clientes',            icon: Users,           group: 'gestion' },
   { path: '/cartera',             label: 'Cartera',             icon: HandCoins,       group: 'gestion' },
+  { path: '/cobros',              label: 'Cobros',              icon: CreditCard,      group: 'gestion' },
   { path: '/compras',             label: 'Compras',             icon: Truck,           group: 'gestion' },
   { path: '/proveedores',         label: 'Proveedores',         icon: Building2,       group: 'gestion' },
   { path: '/cuentas-por-pagar',   label: 'Cuentas por pagar',   icon: Banknote,        group: 'gestion' },

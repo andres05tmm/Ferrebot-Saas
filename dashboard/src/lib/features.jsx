@@ -72,6 +72,9 @@ export const RUTA_FEATURE = {
   '/cartera': 'pack_cobranza',
   '/cuentas-por-pagar': 'pack_pagar',
   '/pedidos': 'pack_pedidos',
+  '/cotizaciones': 'pack_ventas',
+  '/postventa': 'pack_postventa',
+  '/cobros': 'pagos_online',
 }
 
 /**

@@ -5,8 +5,10 @@
  * staff (vendedor+). Tiempo real: refetch del kárdex ante venta/ajuste/compra que muevan stock.
  */
 import { useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { BookOpen, Search, PackageSearch } from 'lucide-react'
-import { useFetch, cop } from '@/components/shared.jsx'
+import { cop } from '@/components/shared.jsx'
+import { useProductos, useKardex, keyPrefix } from '@/lib/queries'
 import { useRealtimeEvent } from '@/components/RealtimeProvider.jsx'
 import { Card } from '@/components/ui/card.jsx'
 import { Input } from '@/components/ui/input.jsx'
@@ -56,10 +58,13 @@ export default function TabKardex() {
   const [q, setQ] = useState('')
   const [sel, setSel] = useState(null)   // producto elegido { id, nombre }
 
+  const qc = useQueryClient()
   const busca = q.trim()
-  const productosQ = useFetch(busca && !sel ? `/productos?q=${encodeURIComponent(busca)}&limite=20` : null, [busca, !!sel])
-  const kardexQ = useFetch(sel ? `/inventario/kardex/${sel.id}?limite=200` : null, [sel?.id])
-  useRealtimeEvent(['venta_registrada', 'compra_registrada', 'stock_ajustado'], () => { if (sel) kardexQ.refetch() })
+  // Con un producto elegido se corta la búsqueda (q vacío → useProductos deshabilitada).
+  const productosQ = useProductos(sel ? '' : busca)
+  const kardexQ = useKardex(sel?.id ?? null)
+  useRealtimeEvent(['venta_registrada', 'compra_registrada', 'stock_ajustado'],
+    () => qc.invalidateQueries({ queryKey: keyPrefix.kardex }))
 
   const productos = arr(productosQ.data)
   const movimientos = arr(kardexQ.data)
@@ -79,7 +84,7 @@ export default function TabKardex() {
         </div>
         {busca && !sel && (
           <div className="mt-2">
-            {productosQ.loading ? (
+            {productosQ.isLoading ? (
               <p className="py-4 text-center text-sm text-muted-foreground">Buscando…</p>
             ) : productos.length === 0 ? (
               <p className="py-4 text-center text-sm text-muted-foreground">Sin coincidencias.</p>
@@ -112,9 +117,9 @@ export default function TabKardex() {
             <button onClick={() => { setSel(null); setQ('') }}
               className="ml-auto text-[11px] text-primary hover:underline shrink-0">cambiar</button>
           </div>
-          {kardexQ.loading ? (
+          {kardexQ.isLoading ? (
             <p className="py-10 text-center text-sm text-muted-foreground">Cargando kárdex…</p>
-          ) : kardexQ.error ? (
+          ) : kardexQ.isError ? (
             <p className="py-10 text-center text-sm text-destructive">No se pudo cargar el kárdex.</p>
           ) : movimientos.length === 0 ? (
             <p className="py-10 text-center text-sm text-muted-foreground">

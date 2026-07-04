@@ -8,6 +8,7 @@ vi.mock('@/components/RealtimeProvider.jsx', () => ({
 }))
 
 import TabKardex from './TabKardex.jsx'
+import { conQuery } from '@/test/query.jsx'
 
 const PRODUCTOS = [{ id: 5, nombre: 'Taladro Bosch', codigo: 'TAL-01', precio_venta: '120000' }]
 const KARDEX = [
@@ -36,13 +37,13 @@ afterEach(() => { cleanup(); vi.restoreAllMocks() })
 describe('TabKardex', () => {
   it('parte con un estado vacío que invita a buscar', () => {
     instalarFetch()
-    render(<MemoryRouter><TabKardex /></MemoryRouter>)
+    render(conQuery(<MemoryRouter><TabKardex /></MemoryRouter>))
     expect(screen.getByText(/Busca un producto para ver su historial/i)).toBeInTheDocument()
   })
 
   it('busca, selecciona un producto y muestra sus movimientos', async () => {
     instalarFetch()
-    render(<MemoryRouter><TabKardex /></MemoryRouter>)
+    render(conQuery(<MemoryRouter><TabKardex /></MemoryRouter>))
 
     fireEvent.change(screen.getByLabelText('Buscar producto'), { target: { value: 'taladro' } })
     fireEvent.click(await screen.findByRole('button', { name: /Taladro Bosch/ }))

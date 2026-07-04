@@ -11,6 +11,7 @@ vi.mock('@/components/RealtimeProvider.jsx', () => ({
 
 import TabCobros from './TabCobros.jsx'
 import { USER_KEY } from '@/lib/api'
+import { conQuery } from '@/test/query.jsx'
 
 const COBROS = [
   { id: 1, referencia: 'ped-1-abc', origen: 'pedido', origen_id: 1, cliente_telefono: '3001112233',
@@ -43,7 +44,7 @@ afterEach(() => { cleanup(); vi.restoreAllMocks() })
 describe('TabCobros', () => {
   it('lista cobros con monto y estado (staff sin acciones)', async () => {
     instalarFetch()   // sin USER_KEY → vendedor
-    render(<MemoryRouter><TabCobros /></MemoryRouter>)
+    render(conQuery(<MemoryRouter><TabCobros /></MemoryRouter>))
 
     expect(await screen.findByText('Pedido #1')).toBeInTheDocument()
     // $50.000 aparece en el KPI "Por cobrar" y en la fila del cobro pendiente
@@ -57,7 +58,7 @@ describe('TabCobros', () => {
   it('admin marca pagado un cobro pendiente y llama al endpoint', async () => {
     comoAdmin()
     const fetchMock = instalarFetch()
-    render(<MemoryRouter><TabCobros /></MemoryRouter>)
+    render(conQuery(<MemoryRouter><TabCobros /></MemoryRouter>))
     await screen.findByText('Pedido #1')
 
     fireEvent.click(screen.getByRole('button', { name: /Marcar pagado el cobro 1/ }))
@@ -70,7 +71,7 @@ describe('TabCobros', () => {
   it('filtra por estado con el query param', async () => {
     comoAdmin()
     const fetchMock = instalarFetch()
-    render(<MemoryRouter><TabCobros /></MemoryRouter>)
+    render(conQuery(<MemoryRouter><TabCobros /></MemoryRouter>))
     await screen.findByText('Pedido #1')
 
     fireEvent.click(screen.getByRole('button', { name: 'Pagados' }))
@@ -80,7 +81,7 @@ describe('TabCobros', () => {
 
   it('se suscribe a los eventos de cobro', async () => {
     instalarFetch()
-    render(<MemoryRouter><TabCobros /></MemoryRouter>)
+    render(conQuery(<MemoryRouter><TabCobros /></MemoryRouter>))
     await screen.findByText('Pedido #1')
     expect(rtEventos).toEqual(expect.arrayContaining(['cobro_creado', 'cobro_pagado', 'cobro_estado']))
   })

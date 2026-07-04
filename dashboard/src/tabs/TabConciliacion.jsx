@@ -7,9 +7,10 @@
  */
 import { useState } from 'react'
 import { toast } from 'sonner'
+import { useQueryClient } from '@tanstack/react-query'
 import { Landmark, Wand2, ArrowDownLeft, ArrowUpRight, Link2, CheckCircle2 } from 'lucide-react'
-import { api } from '@/lib/api'
-import { useFetch, cop } from '@/components/shared.jsx'
+import { cop } from '@/components/shared.jsx'
+import { useMovimientosBancarios, useSugerirConciliacion, useConciliar, keyPrefix } from '@/lib/queries'
 import { useRealtimeEvent } from '@/components/RealtimeProvider.jsx'
 import { useAuth } from '@/hooks/useAuth.js'
 import { Card } from '@/components/ui/card.jsx'
@@ -101,31 +102,29 @@ export default function TabConciliacion() {
 function ConciliacionContenido() {
   const [filtro, setFiltro] = useState('')
   const [sugiriendo, setSugiriendo] = useState(false)
-  const path = filtro ? `/bancos/movimientos?estado=${filtro}` : '/bancos/movimientos'
-  const movsQ = useFetch(path, [filtro])
-  useRealtimeEvent(['reconnected'], () => movsQ.refetch())
+  const qc = useQueryClient()
+  const movsQ = useMovimientosBancarios(filtro)
+  const sugerirM = useSugerirConciliacion()
+  const conciliarM = useConciliar()
+  useRealtimeEvent(['reconnected'], () => qc.invalidateQueries({ queryKey: keyPrefix.bancosMovimientos }))
 
   const movimientos = arr(movsQ.data)
 
   async function correrSugerencias() {
     setSugiriendo(true)
     try {
-      const res = await api('/bancos/sugerir', { method: 'POST' })
+      const res = await sugerirM.mutateAsync()
       if (res.ok) {
         const data = await res.json().catch(() => ({}))
         toast.success(`${data.sugeridos ?? 0} movimiento(s) sugerido(s)`)
-        movsQ.refetch()
       } else toast.error('No se pudo correr el match')
     } catch { toast.error('Error de conexión') } finally { setSugiriendo(false) }
   }
 
   async function conciliar(movId, cand) {
     try {
-      const res = await api(`/bancos/movimientos/${movId}/conciliar`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tipo: cand.tipo, id_interno: cand.id }),
-      })
-      if (res.ok) { toast.success('Movimiento conciliado'); movsQ.refetch() }
+      const res = await conciliarM.mutateAsync({ movId, tipo: cand.tipo, idInterno: cand.id })
+      if (res.ok) toast.success('Movimiento conciliado')
       else if (res.status === 422) toast.error('El enlace no es válido (monto o naturaleza no calzan)')
       else if (res.status === 404) toast.error('El movimiento ya no existe')
       else toast.error('No se pudo conciliar')
@@ -156,9 +155,9 @@ function ConciliacionContenido() {
       </div>
 
       <Card className="p-0 overflow-hidden">
-        {movsQ.loading ? (
+        {movsQ.isLoading ? (
           <p className="py-10 text-center text-sm text-muted-foreground">Cargando…</p>
-        ) : movsQ.error ? (
+        ) : movsQ.isError ? (
           <p className="py-10 text-center text-sm text-destructive">No se pudieron cargar los movimientos.</p>
         ) : movimientos.length === 0 ? (
           <p className="py-10 text-center text-sm text-muted-foreground">

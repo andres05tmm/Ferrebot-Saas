@@ -4,6 +4,7 @@ import { MemoryRouter } from 'react-router-dom'
 
 import TabRetenciones from './TabRetenciones.jsx'
 import { USER_KEY } from '@/lib/api'
+import { conQuery } from '@/test/query.jsx'
 
 const REGLAS = [
   { id: 1, tipo: 'retefuente', concepto: 'Compras generales', base_minima_uvt: '27', tarifa: '2.5', activo: true, editable: true },
@@ -32,14 +33,14 @@ afterEach(() => { cleanup(); vi.restoreAllMocks() })
 describe('TabRetenciones', () => {
   it('sin rol admin muestra el aviso', () => {
     instalarFetch()
-    render(<MemoryRouter><TabRetenciones /></MemoryRouter>)
+    render(conQuery(<MemoryRouter><TabRetenciones /></MemoryRouter>))
     expect(screen.getByText(/solo para administradores/i)).toBeInTheDocument()
   })
 
   it('admin ve el catálogo y guarda una nueva regla (PUT)', async () => {
     comoAdmin()
     const fetchMock = instalarFetch()
-    render(<MemoryRouter><TabRetenciones /></MemoryRouter>)
+    render(conQuery(<MemoryRouter><TabRetenciones /></MemoryRouter>))
 
     expect(await screen.findByText('Compras generales')).toBeInTheDocument()
     expect(screen.getByText('2.5%')).toBeInTheDocument()

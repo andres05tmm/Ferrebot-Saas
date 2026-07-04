@@ -9,6 +9,7 @@ vi.mock('@/components/RealtimeProvider.jsx', () => ({
 
 import TabPostventa from './TabPostventa.jsx'
 import { USER_KEY } from '@/lib/api'
+import { conQuery } from '@/test/query.jsx'
 
 const SAT = { promedio: 4.5, respuestas: 8 }
 const RESPUESTAS = [
@@ -40,14 +41,14 @@ afterEach(() => { cleanup(); vi.restoreAllMocks() })
 describe('TabPostventa', () => {
   it('sin rol admin no pide datos y muestra el aviso', () => {
     const fetchMock = instalarFetch()
-    render(<MemoryRouter><TabPostventa /></MemoryRouter>)
+    render(conQuery(<MemoryRouter><TabPostventa /></MemoryRouter>))
     expect(screen.getByText(/solo un administrador/i)).toBeInTheDocument()
     expect(fetchMock.mock.calls.filter(c => String(c[0]).includes('/postventa'))).toHaveLength(0)
   })
 
   it('pinta el KPI de satisfacción y las respuestas', async () => {
     comoAdmin(); instalarFetch()
-    render(<MemoryRouter><TabPostventa /></MemoryRouter>)
+    render(conQuery(<MemoryRouter><TabPostventa /></MemoryRouter>))
 
     expect(await screen.findByText('4.5')).toBeInTheDocument()
     expect(screen.getByText('Excelente servicio', { exact: false })).toBeInTheDocument()

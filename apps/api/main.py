@@ -34,6 +34,7 @@ from modules.cobranza.router import router as cobranza_router
 from modules.compras.router import router as compras_router
 from modules.compras_fiscal.router import router as compras_fiscal_router
 from modules.config.router import router as config_router
+from modules.contabilidad.router import router as contabilidad_router
 from modules.conversaciones.router import router as conversaciones_router
 from modules.cotizaciones.router import router as cotizaciones_router
 from modules.devoluciones.router import router as devoluciones_router
@@ -180,6 +181,7 @@ def create_app(spa_dist: Path | None = None) -> FastAPI:
     app.include_router(postventa_router, prefix="/api/v1")     # postventa (plan §2.6)
     app.include_router(reportes_agente_router, prefix="/api/v1")  # analítica del dueño (Ola 3 §11)
     app.include_router(retenciones_router, prefix="/api/v1")   # retenciones/INC (ADR 0027)
+    app.include_router(contabilidad_router, prefix="/api/v1")  # ledger doble partida + PUC (ADR 0030)
     # Webhook único de WhatsApp (Kapso): NO va bajo /api/ (no es por-empresa; resuelve el tenant por
     # phone_number_id). El TenantMiddleware lo deja pasar (solo /api/ es por-empresa).
     app.include_router(crear_router_wa())

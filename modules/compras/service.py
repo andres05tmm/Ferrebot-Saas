@@ -7,6 +7,7 @@ default usan hora Colombia (regla #4).
 from dataclasses import dataclass
 from datetime import date, datetime, time
 from decimal import Decimal
+from typing import Protocol
 
 from core.config.timezone import COLOMBIA_TZ, now_co, rango_dia_co, today_co
 from core.money import cuantizar
@@ -59,9 +60,23 @@ def _rango_o_mes(desde: date | None, hasta: date | None) -> tuple[datetime, date
     return rango_dia_co(desde or hoy.replace(day=1), hasta or hoy)
 
 
+class RetencionesAplicador(Protocol):
+    """Puerto del motor de retenciones (lo cumple RetencionesService). Estructural, opcional.
+
+    En la compra NOSOTROS somos agente retenedor: al registrarla se calculan/persisten las retenciones
+    practicadas (ADR 0027) inline, en la MISMA transacción (`commit=False`).
+    """
+
+    async def aplicar_a_compra(self, compra_id: int, *, commit: bool = ...) -> object | None: ...
+
+
 class ComprasService:
-    def __init__(self, repo: SqlComprasRepository) -> None:
+    def __init__(
+        self, repo: SqlComprasRepository, *, retenciones: RetencionesAplicador | None = None
+    ) -> None:
         self._repo = repo
+        # Motor de retenciones inline (opt-in, ADR 0027): solo se inyecta con la feature `retenciones`.
+        self._retenciones = retenciones
 
     async def registrar(self, datos: CompraCrear, *, usuario_id: int | None) -> ResultadoCompra:
         """Registra la compra: resuelve proveedor, calcula total y persiste (stock + costo + eventos).
@@ -92,6 +107,10 @@ class ComprasService:
             items=items, total=total, usuario_id=usuario_id,
             idempotency_key=datos.idempotency_key,
         )
+        if self._retenciones is not None:
+            # Retenciones inline (ADR 0027): calcula/persiste los renglones en la MISMA transacción
+            # (commit=False), atómico con la compra. Sin config activa no crea renglones (opt-in).
+            await self._retenciones.aplicar_a_compra(compra.id, commit=False)
         return ResultadoCompra(compra=compra, replay=False)
 
     async def listar(self, *, desde: date | None, hasta: date | None) -> list[CompraLeer]:

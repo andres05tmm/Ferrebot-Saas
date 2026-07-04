@@ -137,6 +137,17 @@ class EdicionVenta:
     lineas: list[LineaResuelta] = field(default_factory=list)
 
 
+class RetencionesAplicador(Protocol):
+    """Puerto del motor de retenciones (lo cumple RetencionesService; los tests lo falsean).
+
+    Estructural: se inyecta OPCIONAL en la venta para calcular/persistir sus retenciones inline (ADR
+    0027). `commit=False` mantiene los renglones en la MISMA transacción de la venta (atómico, como el
+    cargo de fiado): si la venta se revierte, sus retenciones también.
+    """
+
+    async def aplicar_a_venta(self, venta_id: int, *, commit: bool = ...) -> object | None: ...
+
+
 class VentasRepo(Protocol):
     """Puerto de datos de ventas (lo implementa SqlVentasRepository; los tests lo falsean)."""
 
@@ -196,9 +207,15 @@ def _firma_lineas(lineas) -> list[tuple]:
 
 
 class VentaService:
-    def __init__(self, repo: VentasRepo, *, fiados: FiadosService | None = None) -> None:
+    def __init__(
+        self, repo: VentasRepo, *, fiados: FiadosService | None = None,
+        retenciones: RetencionesAplicador | None = None,
+    ) -> None:
         self._repo = repo
         self._fiados = fiados
+        # Motor de retenciones inline (opt-in, ADR 0027): solo se inyecta si el tenant tiene la feature
+        # `retenciones`; None = no se calculan retenciones al vender (tenant sin la capacidad).
+        self._retenciones = retenciones
 
     async def registrar_venta(
         self, datos: VentaCrear, vendedor_id: int, *, control_stock_estricto: bool = False
@@ -245,6 +262,11 @@ class VentaService:
                 cliente_id=datos.cliente_id, venta_id=venta.id, monto=venta.total,
                 idempotency_key=f"venta-fiado:{venta.id}",
             )
+        if self._retenciones is not None:
+            # Retenciones inline (ADR 0027): calcula y persiste los renglones tributarios en la MISMA
+            # transacción (commit=False) — atómico con la venta, igual que el cargo de fiado. El motor
+            # JAMÁS muta el total de la venta; sin config activa no crea renglones (opt-in real).
+            await self._retenciones.aplicar_a_venta(venta.id, commit=False)
         return ResultadoVenta(venta=venta, replay=False)
 
     async def _mismo_payload(self, existente: VentaLeer, datos: VentaCrear) -> bool:

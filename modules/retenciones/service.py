@@ -51,19 +51,34 @@ class RetencionesService:
         return self._a_regla_leer(fila)
 
     # ── Aplicación a documentos ──────────────────────────────────────────────
-    async def aplicar_a_venta(self, venta_id: int) -> ResumenRetenciones | None:
-        """Calcula y persiste los renglones tributarios de una venta. None si no existe/anulada."""
+    async def aplicar_a_venta(
+        self, venta_id: int, *, commit: bool = True
+    ) -> ResumenRetenciones | None:
+        """Calcula y persiste los renglones tributarios de una venta. None si no existe/anulada.
+
+        `commit=False` deja los renglones en la MISMA transacción de la venta (cableado inline); el
+        default `True` cierra la transacción (endpoint on-demand `/retenciones/venta/{id}/aplicar`).
+        """
         base = await self._repo.base_venta(venta_id)
         if base is None:
             return None
-        return await self._aplicar(DOC_VENTA, venta_id, base.base_gravable, base.iva, base.total)
+        return await self._aplicar(
+            DOC_VENTA, venta_id, base.base_gravable, base.iva, base.total, commit=commit
+        )
 
-    async def aplicar_a_compra(self, compra_id: int) -> ResumenRetenciones | None:
-        """Calcula y persiste los renglones tributarios de una compra. None si la compra no existe."""
+    async def aplicar_a_compra(
+        self, compra_id: int, *, commit: bool = True
+    ) -> ResumenRetenciones | None:
+        """Calcula y persiste los renglones tributarios de una compra. None si la compra no existe.
+
+        `commit=False` deja los renglones en la MISMA transacción de la compra (cableado inline).
+        """
         base = await self._repo.base_compra(compra_id)
         if base is None:
             return None
-        return await self._aplicar(DOC_COMPRA, compra_id, base.base_gravable, base.iva, base.total)
+        return await self._aplicar(
+            DOC_COMPRA, compra_id, base.base_gravable, base.iva, base.total, commit=commit
+        )
 
     async def obtener_documento(self, *, doc_tipo: str, doc_id: int) -> ResumenRetenciones:
         """Lee los renglones ya persistidos de un documento y arma el resumen (sin recalcular)."""
@@ -80,29 +95,48 @@ class RetencionesService:
         total_doc = base.total if base is not None else Decimal("0")
         ret = _suma(renglones, {"retefuente", "ica", "reteiva"})
         inc = _suma(renglones, {"inc"})
-        return ResumenRetenciones(
-            doc_tipo=doc_tipo, doc_id=doc_id, total_documento=total_doc,
-            total_retenido=ret, total_inc=inc, neto_a_recibir=total_doc - ret, retenciones=renglones,
+        inc_al_total = await self._repo.inc_al_total()
+        return self._resumen(
+            doc_tipo=doc_tipo, doc_id=doc_id, total=total_doc,
+            ret=ret, inc=inc, inc_al_total=inc_al_total, renglones=renglones,
         )
 
     async def _aplicar(
-        self, doc_tipo: str, doc_id: int, base_gravable: Decimal, iva: Decimal, total: Decimal
+        self, doc_tipo: str, doc_id: int, base_gravable: Decimal, iva: Decimal, total: Decimal,
+        *, commit: bool = True,
     ) -> ResumenRetenciones:
         reglas = await self._repo.reglas_activas()
         uvt = await self._repo.uvt_valor()
         calculadas = calcular_retenciones(
             reglas, base_gravable=base_gravable, iva=iva, uvt_valor=uvt
         )
-        await self._repo.guardar_renglones(doc_tipo=doc_tipo, doc_id=doc_id, renglones=calculadas)
+        await self._repo.guardar_renglones(
+            doc_tipo=doc_tipo, doc_id=doc_id, renglones=calculadas, commit=commit
+        )
         ret = total_retenido(calculadas)
         inc = total_inc(calculadas)
-        return ResumenRetenciones(
-            doc_tipo=doc_tipo, doc_id=doc_id, total_documento=total,
-            total_retenido=ret, total_inc=inc, neto_a_recibir=total - ret,
-            retenciones=[
+        inc_al_total = await self._repo.inc_al_total()
+        return self._resumen(
+            doc_tipo=doc_tipo, doc_id=doc_id, total=total,
+            ret=ret, inc=inc, inc_al_total=inc_al_total,
+            renglones=[
                 RetencionLeer(tipo=r.tipo, concepto=r.concepto, base=r.base, tarifa=r.tarifa, valor=r.valor)
                 for r in calculadas
             ],
+        )
+
+    @staticmethod
+    def _resumen(
+        *, doc_tipo: str, doc_id: int, total: Decimal, ret: Decimal, inc: Decimal,
+        inc_al_total: bool, renglones: list[RetencionLeer],
+    ) -> ResumenRetenciones:
+        """Arma el resumen. El INC SUMA al total si el tenant activó `inc_al_total`; nunca se muta la
+        tabla `ventas` (invariante): `total_documento` es siempre el de la tabla."""
+        total_con_inc = total + inc if inc_al_total else total
+        return ResumenRetenciones(
+            doc_tipo=doc_tipo, doc_id=doc_id, total_documento=total,
+            total_retenido=ret, total_inc=inc, total_con_inc=total_con_inc,
+            inc_al_total=inc_al_total, neto_a_recibir=total_con_inc - ret, retenciones=renglones,
         )
 
     @staticmethod

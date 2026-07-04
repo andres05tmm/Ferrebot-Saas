@@ -6,7 +6,9 @@ from decimal import Decimal
 
 from pydantic import BaseModel, Field
 
-TIPOS_VALIDOS = {"retefuente", "ica", "reteiva", "inc", "uvt"}
+# Reglas de cálculo + filas de CONFIG: `uvt` (valor del UVT) e `inc_al_total` (interruptor opt-in que
+# suma el INC al total del documento, ADR 0027 D5). Las de config no generan renglón (ver motor).
+TIPOS_VALIDOS = {"retefuente", "ica", "reteiva", "inc", "uvt", "inc_al_total"}
 
 
 class ReglaUpsert(BaseModel):
@@ -43,11 +45,14 @@ class RetencionLeer(BaseModel):
 
 
 class ResumenRetenciones(BaseModel):
-    """Resultado de aplicar el motor a un documento: renglones + neto (el total NO se toca).
+    """Resultado de aplicar el motor a un documento: renglones + neto (la tabla `ventas` NO se toca).
 
-    `total_documento` es el total cobrado/facturado, INTACTO. `total_retenido` (retefuente/ica/reteiva)
-    reduce el pago recibido: `neto_a_recibir = total_documento − total_retenido`. `total_inc` se informa
-    aparte (impuesto al consumo registrado; su incorporación al total es opt-in futuro, ADR 0027).
+    `total_documento` es el total cobrado/facturado en la tabla, SIEMPRE intacto (invariante ADR 0027:
+    el motor jamás muta `ventas.total`). `total_retenido` (retefuente/ica/reteiva) reduce el pago
+    recibido. El INC es distinto: SUMA al total cuando el tenant activa la config `inc_al_total`
+    (`inc_al_total=True`, ADR 0027 D5); si no, se informa aparte como antes. `total_con_inc` es el total
+    del documento a nivel fiscal ( `total_documento + total_inc` con el interruptor activo, si no
+    `total_documento`); `neto_a_recibir = total_con_inc − total_retenido`.
     """
 
     doc_tipo: str
@@ -55,5 +60,7 @@ class ResumenRetenciones(BaseModel):
     total_documento: Decimal
     total_retenido: Decimal
     total_inc: Decimal
+    total_con_inc: Decimal
+    inc_al_total: bool
     neto_a_recibir: Decimal
     retenciones: list[RetencionLeer]

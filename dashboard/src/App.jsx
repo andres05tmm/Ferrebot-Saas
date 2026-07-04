@@ -41,6 +41,7 @@ import TabCobros from './tabs/TabCobros.jsx'
 import TabCotizaciones from './tabs/TabCotizaciones.jsx'
 import TabPostventa from './tabs/TabPostventa.jsx'
 import TabKardex from './tabs/TabKardex.jsx'
+import TabReservas from './tabs/TabReservas.jsx'
 import { ROUTES } from './routes.jsx'
 
 // Tabs núcleo (E6) + reportes (S2) + facturación (S3) + compras (S4a) + proveedores (S4b) +
@@ -71,6 +72,7 @@ const TABS = {
   '/cotizaciones': TabCotizaciones,
   '/postventa': TabPostventa,
   '/kardex': TabKardex,
+  '/reservas': TabReservas,
 }
 import { bootConfig } from './lib/config.js'
 import { FeaturesProvider, useFeatures, resolveHomePath, esAtencionCliente, isRouteEnabled } from './lib/features.jsx'

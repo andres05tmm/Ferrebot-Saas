@@ -9,7 +9,7 @@ import {
   History, TrendingUp, Trophy, BookOpen,
   FileText, FileCheck, Calculator, FileCog,
   CalendarDays, Headset, BookText, HandCoins, ChefHat, Banknote,
-  CreditCard, FileSpreadsheet, Star,
+  CreditCard, FileSpreadsheet, Star, BedDouble,
 } from 'lucide-react'
 import { isRouteEnabled } from './lib/features.jsx'
 
@@ -24,6 +24,7 @@ export const ROUTES = [
   { path: '/caja',                label: 'Caja',                icon: Wallet,          group: 'operacion' },
   { path: '/inventario',          label: 'Inventario',          icon: Package,         group: 'operacion' },
   { path: '/agenda',              label: 'Agenda',              icon: CalendarDays,    group: 'operacion' },
+  { path: '/reservas',            label: 'Reservas',            icon: BedDouble,       group: 'operacion' },
   { path: '/pedidos',             label: 'Pedidos',             icon: ChefHat,         group: 'operacion' },
   { path: '/cotizaciones',        label: 'Cotizaciones',        icon: FileSpreadsheet, group: 'operacion' },
   { path: '/postventa',           label: 'Postventa',           icon: Star,            group: 'operacion' },

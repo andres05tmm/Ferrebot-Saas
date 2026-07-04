@@ -6,8 +6,10 @@
  */
 import { useState } from 'react'
 import { useOutletContext } from 'react-router-dom'
+import { useQueryClient } from '@tanstack/react-query'
 import { Library, BookOpen, ListTree } from 'lucide-react'
-import { useFetch, cop, mesActualCO } from '@/components/shared.jsx'
+import { cop, mesActualCO } from '@/components/shared.jsx'
+import { useLibroMayor, useLibroAuxiliar, keyPrefix } from '@/lib/queries'
 import { useRealtimeEvent } from '@/components/RealtimeProvider.jsx'
 import { useAuth } from '@/hooks/useAuth.js'
 import { Card } from '@/components/ui/card.jsx'
@@ -43,11 +45,11 @@ function LibrosContenido() {
   const [rango, setRango] = useState(mesActualCO())
   const setCampo = (k) => (e) => setRango(prev => ({ ...prev, [k]: e.target.value }))
 
-  const qs = `desde=${rango.desde}&hasta=${rango.hasta}`
-  const mayorQ = useFetch(vista === 'mayor' ? `/reportes/libro-mayor?${qs}` : null, [refreshKey, rango.desde, rango.hasta])
-  const auxQ = useFetch(vista === 'auxiliar' ? `/reportes/libro-auxiliar?${qs}` : null, [refreshKey, rango.desde, rango.hasta])
+  const qc = useQueryClient()
+  const mayorQ = useLibroMayor(rango.desde, rango.hasta, vista === 'mayor', refreshKey)
+  const auxQ = useLibroAuxiliar(rango.desde, rango.hasta, vista === 'auxiliar', refreshKey)
   const q = vista === 'mayor' ? mayorQ : auxQ
-  useRealtimeEvent(['reconnected'], () => { mayorQ.refetch(); auxQ.refetch() })
+  useRealtimeEvent(['reconnected'], () => qc.invalidateQueries({ queryKey: keyPrefix.libros }))
 
   const filas = arr(q.data)
 
@@ -84,9 +86,9 @@ function LibrosContenido() {
       </Card>
 
       <Card className="p-0 overflow-hidden">
-        {q.loading ? (
+        {q.isLoading ? (
           <p className="py-10 text-center text-sm text-muted-foreground">Cargando…</p>
-        ) : q.error ? (
+        ) : q.isError ? (
           <p className="py-10 text-center text-sm text-destructive">No se pudo cargar el libro.</p>
         ) : filas.length === 0 ? (
           <p className="py-10 text-center text-sm text-muted-foreground">Sin movimientos en el periodo.</p>

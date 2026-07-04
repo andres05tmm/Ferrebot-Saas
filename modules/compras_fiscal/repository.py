@@ -30,8 +30,12 @@ class SqlComprasFiscalRepository:
         total: Decimal,
         soporte_url: str | None = None,
         compra_id: int | None = None,
+        cufe_proveedor: str | None = None,
     ) -> CompraFiscalLeer:
-        """Inserta una compra fiscal (montos cuantizados; `creado_en` en hora Colombia)."""
+        """Inserta una compra fiscal (montos cuantizados; `creado_en` en hora Colombia).
+
+        `cufe_proveedor` se fija al crear una factura RECIBIDA por QR (ADR 0020): así el CUFE queda
+        persistido como ancla de idempotencia aunque el acuse RADIAN posterior falle (degrade)."""
         orm = CompraFiscal(
             compra_id=compra_id,
             proveedor_nit=proveedor_nit,
@@ -39,6 +43,7 @@ class SqlComprasFiscalRepository:
             iva=cuantizar(iva),
             total=cuantizar(total),
             soporte_url=soporte_url,
+            cufe_proveedor=cufe_proveedor,
             creado_en=now_co(),
         )
         self._s.add(orm)
@@ -69,6 +74,26 @@ class SqlComprasFiscalRepository:
             )
         ).scalar_one_or_none()
         return CompraFiscalLeer.model_validate(orm) if orm is not None else None
+
+    async def por_cufe(self, cufe: str) -> CompraFiscalLeer | None:
+        """La compra fiscal cuyo `cufe_proveedor` == cufe, o None (ancla de idempotencia de la recepción)."""
+        orm = (
+            await self._s.execute(
+                select(CompraFiscal).where(CompraFiscal.cufe_proveedor == cufe)
+            )
+        ).scalar_one_or_none()
+        return CompraFiscalLeer.model_validate(orm) if orm is not None else None
+
+    async def listar_recibidas(self) -> list[CompraFiscalLeer]:
+        """Compras fiscales RECIBIDAS por QR (las que tienen `cufe_proveedor`), recientes primero."""
+        filas = (
+            await self._s.execute(
+                select(CompraFiscal)
+                .where(CompraFiscal.cufe_proveedor.is_not(None))
+                .order_by(CompraFiscal.id.desc())
+            )
+        ).scalars().all()
+        return [CompraFiscalLeer.model_validate(f) for f in filas]
 
     async def obtener(self, fiscal_id: int) -> CompraFiscalLeer | None:
         """Una compra fiscal por id (con su estado RADIAN), o None si no existe."""

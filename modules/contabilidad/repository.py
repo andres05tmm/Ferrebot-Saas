@@ -123,6 +123,14 @@ class SqlContabilidadRepository:
             )
         ).scalar_one_or_none()
 
+    async def marcar_periodo(
+        self, periodo: PeriodoContable, estado: str, *, ahora: datetime
+    ) -> None:
+        """Cambia el candado del período (open|locked|closed). Solo flush."""
+        periodo.estado = estado
+        periodo.actualizado_en = ahora
+        await self._s.flush()
+
     # --- asientos -------------------------------------------------------------
     async def asiento_por_idempotency(self, key: str) -> JournalEntry | None:
         return (
@@ -269,6 +277,31 @@ class SqlContabilidadRepository:
             q = q.where(JournalEntry.fecha >= inicio)
         if fin is not None:
             q = q.where(JournalEntry.fecha <= fin)
+        filas = (await self._s.execute(q)).all()
+        return [
+            AgregadoCuenta(
+                codigo=c, nombre=n, naturaleza=nat, imputable=imp,
+                debitos=Decimal(d), creditos=Decimal(cr),
+            )
+            for c, n, nat, imp, d, cr in filas
+        ]
+
+    async def agregado_por_cuenta_periodo(self, periodo_id: int) -> list[AgregadoCuenta]:
+        """Débitos/creditos por cuenta imputable (posted) acotado a UN período (para el cierre)."""
+        deb = func.coalesce(
+            func.sum(case((JournalLine.direction == "debit", JournalLine.amount), else_=0)), 0
+        )
+        cred = func.coalesce(
+            func.sum(case((JournalLine.direction == "credit", JournalLine.amount), else_=0)), 0
+        )
+        q = (
+            select(PucCuenta.codigo, PucCuenta.nombre, PucCuenta.naturaleza, PucCuenta.imputable, deb, cred)
+            .join(JournalLine, JournalLine.cuenta_id == PucCuenta.id)
+            .join(JournalEntry, JournalLine.entry_id == JournalEntry.id)
+            .where(JournalEntry.estado == "posted", JournalEntry.periodo_id == periodo_id)
+            .group_by(PucCuenta.id, PucCuenta.codigo, PucCuenta.nombre, PucCuenta.naturaleza, PucCuenta.imputable)
+            .order_by(PucCuenta.codigo)
+        )
         filas = (await self._s.execute(q)).all()
         return [
             AgregadoCuenta(

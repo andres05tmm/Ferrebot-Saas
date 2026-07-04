@@ -25,9 +25,14 @@ ICA = "ica"
 RETEIVA = "reteiva"
 INC = "inc"
 UVT = "uvt"
+# Fila de CONFIG del tenant (NO es una regla de cálculo, no genera renglón): su `activo` prende/apaga
+# que el INC se SUME al total del documento (opt-in, ADR 0027 D5). Clave natural: (inc_al_total, global).
+INC_AL_TOTAL = "inc_al_total"
 
 # Retenciones "verdaderas" (reducen el pago recibido); INC es un impuesto (no retención) → aparte.
 TIPOS_RETENCION: frozenset[str] = frozenset({RETEFUENTE, ICA, RETEIVA})
+# Filas de CONFIG (valores/interruptores del tenant), NO reglas de cálculo: se excluyen del motor.
+TIPOS_CONFIG: frozenset[str] = frozenset({UVT, INC_AL_TOTAL})
 
 
 @dataclass(frozen=True, slots=True)
@@ -73,7 +78,7 @@ def calcular_retenciones(
     """
     renglones: list[RetencionCalculada] = []
     for r in reglas:
-        if not r.activo or r.tipo == UVT or r.tarifa <= 0:
+        if not r.activo or r.tipo in TIPOS_CONFIG or r.tarifa <= 0:
             continue
         base = iva if r.tipo == RETEIVA else base_gravable
         if base <= 0:

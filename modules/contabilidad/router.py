@@ -8,12 +8,20 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.auth import Principal, require_role
 from core.auth.features import require_feature
 from core.db.session import get_tenant_db
+from modules.contabilidad.apertura import AperturaService
+from modules.contabilidad.cierre import CierreService
+from modules.contabilidad.errors import (
+    AsientoDescuadrado,
+    CorteVacio,
+    PeriodoBloqueado,
+    PeriodoInexistente,
+)
 from modules.contabilidad.estados import EstadosService
 from modules.contabilidad.fuente_repository import FuenteContableRepository
 from modules.contabilidad.ledger import LedgerService
@@ -21,8 +29,11 @@ from modules.contabilidad.proyector import Proyector
 from modules.contabilidad.repository import SqlContabilidadRepository
 from modules.contabilidad.schemas import (
     AsientoLeer,
+    AsientoResultado,
     BalanceComprobacion,
     BalanceGeneral,
+    CierreResultado,
+    CorteApertura,
     EstadoResultados,
     FlujoEfectivo,
     LineaAsientoLeer,
@@ -64,6 +75,43 @@ async def backfill(
     proj = Proyector(LedgerService(repo), FuenteContableRepository(session))
     resumen = await proj.backfill(desde)
     return {"creados": resumen.creados, "replay": resumen.replay}
+
+
+@router.post("/apertura", response_model=AsientoResultado)
+async def registrar_apertura(
+    payload: CorteApertura,
+    session: AsyncSession = Depends(get_tenant_db),
+    _user: Principal = Depends(require_role("admin")),
+) -> AsientoResultado:
+    """Asiento de apertura desde un corte de saldos iniciales. Idempotente por período (replay)."""
+    repo = SqlContabilidadRepository(session)
+    try:
+        res = await AperturaService(LedgerService(repo), repo).registrar_apertura(payload)
+    except CorteVacio as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
+    except (AsientoDescuadrado, PeriodoBloqueado) as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+    return AsientoResultado(entry_id=res.entry.id, replay=res.replay)
+
+
+@router.post("/periodo/cerrar", response_model=CierreResultado)
+async def cerrar_periodo(
+    anio: int = Query(..., ge=2000, le=2100),
+    mes: int = Query(..., ge=1, le=12),
+    session: AsyncSession = Depends(get_tenant_db),
+    _user: Principal = Depends(require_role("admin")),
+) -> CierreResultado:
+    """Cierra el período: salda 4/5/6 contra patrimonio y bloquea nuevos asientos. Idempotente."""
+    repo = SqlContabilidadRepository(session)
+    try:
+        res = await CierreService(LedgerService(repo), repo).cerrar_periodo(anio, mes)
+    except PeriodoInexistente as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
+    except PeriodoBloqueado as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+    return CierreResultado(
+        entry_id=res.entry.id if res.entry else None, replay=res.replay, utilidad=res.utilidad
+    )
 
 
 @router.get("/asientos", response_model=list[AsientoLeer])

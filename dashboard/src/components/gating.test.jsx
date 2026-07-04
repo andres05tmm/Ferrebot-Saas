@@ -65,9 +65,16 @@ describe('gating del Sidebar', () => {
   it('muestra un tab fiscal cuando su feature está presente', () => {
     renderSidebar(['facturacion_electronica'])
     expect(screen.getByText('Facturación')).toBeInTheDocument()
-    expect(screen.getByText('Facturas recibidas')).toBeInTheDocument()
+    // Facturas recibidas ya NO cuelga de facturacion_electronica: reusa la capa RADIAN (compras_fiscal).
+    expect(screen.queryByText('Facturas recibidas')).toBeNull()
     // Libro IVA sigue oculto: requiere su propia capacidad (libro_iva).
     expect(screen.queryByText('Libro IVA')).toBeNull()
+  })
+
+  it('muestra Facturas recibidas (QR) con la capacidad compras_fiscal (ADR 0020)', () => {
+    renderSidebar(['compras_fiscal'])
+    expect(screen.getByText('Facturas recibidas')).toBeInTheDocument()
+    expect(screen.queryByText('Facturación')).toBeNull()   // requiere su propia capacidad
   })
 })
 

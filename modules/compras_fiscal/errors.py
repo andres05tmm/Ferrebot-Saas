@@ -29,6 +29,10 @@ class CufeNoImportado(ComprasFiscalError):
         self.fiscal_id = fiscal_id
 
 
+class QRInvalido(ComprasFiscalError):
+    """El contenido del QR escaneado no contiene un CUFE reconocible (ADR 0020 → 422)."""
+
+
 class EventoRadianYaResuelto(ComprasFiscalError):
     """La factura ya está en un estado RADIAN terminal (aceptada/reclamada): re-aceptarla o
     reclamarla enviaría eventos DIAN reales duplicados o contradictorios (→ 409)."""

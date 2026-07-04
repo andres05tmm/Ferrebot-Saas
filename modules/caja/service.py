@@ -6,11 +6,16 @@ caja abierta (FOR UPDATE) y el chequeo de idempotencia va DENTRO de esa sección
 from dataclasses import dataclass
 from decimal import Decimal
 
-from core.config.timezone import now_co
+from core.config.timezone import now_co, today_co
 from modules.caja.arqueo import calcular_arqueo
 from modules.caja.errors import CajaNoAbierta
 from modules.caja.models import Caja, CajaMovimiento, Gasto
 from modules.caja.repository import SqlCajaRepository
+from modules.proveedores.errors import (
+    AbonoInvalido,
+    FacturaProveedorInexistente,
+)
+from modules.proveedores.repository import SqlProveedoresRepository
 
 
 @dataclass(frozen=True, slots=True)
@@ -32,8 +37,13 @@ class ResultadoGasto:
 
 
 class CajaService:
-    def __init__(self, repo: SqlCajaRepository) -> None:
+    def __init__(
+        self, repo: SqlCajaRepository, prov_repo: SqlProveedoresRepository | None = None
+    ) -> None:
         self._repo = repo
+        # Opcional: solo el router de caja lo cablea (misma sesión) para el vínculo gasto→CxP.
+        # El canal del bot registra gastos simples y no necesita este seam.
+        self._prov = prov_repo
 
     async def actual(self, usuario_id: int) -> Caja | None:
         return await self._repo.caja_abierta(usuario_id)
@@ -95,7 +105,15 @@ class CajaService:
         monto: Decimal,
         concepto: str | None,
         idempotency_key: str | None = None,
+        proveedor_id: int | None = None,
+        factura_proveedor_id: str | None = None,
     ) -> ResultadoGasto:
+        """Registra el gasto (+ su egreso de caja). Si `factura_proveedor_id` viene, salda esa cuenta
+        por pagar generando SU único abono (ADR 0028): no se duplica el abono.
+
+        El chequeo de idempotencia va ANTES de crear el abono: un replay devuelve el gasto previo sin
+        crear un segundo abono (invariante "no duplicar el abono").
+        """
         caja = await self._repo.caja_abierta(usuario_id, lock=True)
         if caja is None:
             raise CajaNoAbierta(usuario_id)
@@ -103,8 +121,36 @@ class CajaService:
             previo = await self._repo.gasto_por_key(idempotency_key)
             if previo is not None:
                 return ResultadoGasto(previo, replay=True)
+
+        # Validación del vínculo a CxP ANTES de mover nada (defaults seguros: no gasto a medias).
+        if factura_proveedor_id is not None:
+            if self._prov is None:
+                raise RuntimeError("registrar_gasto con vínculo a CxP requiere el repo de proveedores")
+            factura = await self._prov.obtener(factura_proveedor_id)
+            if factura is None:
+                raise FacturaProveedorInexistente(factura_proveedor_id)
+            if monto > factura.pendiente:
+                raise AbonoInvalido(
+                    f"El gasto {monto} excede el pendiente {factura.pendiente} de la factura "
+                    f"{factura_proveedor_id!r}"
+                )
+
+        # El vínculo a CxP solo lo usa el router de caja (HTTP); el canal del bot registra gastos
+        # simples. Pasamos los kwargs de enlace SOLO cuando hay enlace, para no exigirlos del repo
+        # en las rutas que no lo tienen.
+        enlace = (
+            {"proveedor_id": proveedor_id, "factura_proveedor_id": factura_proveedor_id}
+            if (proveedor_id is not None or factura_proveedor_id is not None)
+            else {}
+        )
         gasto = await self._repo.insertar_gasto(
             caja_id=caja.id, usuario_id=usuario_id, categoria=categoria, monto=monto,
-            concepto=concepto, idempotency_key=idempotency_key,
+            concepto=concepto, idempotency_key=idempotency_key, **enlace,
         )
+        if factura_proveedor_id is not None:
+            assert self._prov is not None   # validado arriba
+            _, abono_id = await self._prov.crear_abono_devolver_id(
+                factura_id=factura_proveedor_id, monto=monto, fecha=today_co(),
+            )
+            await self._repo.set_abono_gasto(gasto, abono_id=abono_id)
         return ResultadoGasto(gasto, replay=False)

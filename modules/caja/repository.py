@@ -139,11 +139,18 @@ class SqlCajaRepository:
         monto: Decimal,
         concepto: str | None,
         idempotency_key: str | None = None,
+        proveedor_id: int | None = None,
+        factura_proveedor_id: str | None = None,
     ) -> Gasto:
-        """Inserta el gasto y SU egreso de caja en la misma tx (gasto → caja_movimientos)."""
+        """Inserta el gasto y SU egreso de caja en la misma tx (gasto → caja_movimientos).
+
+        `proveedor_id`/`factura_proveedor_id` son el vínculo opcional a CxP (ADR 0028); el abono que
+        salda la factura lo enlaza después el servicio con `set_abono_gasto` (un gasto → un abono).
+        """
         gasto = Gasto(
             categoria=categoria, monto=monto, concepto=concepto,
             caja_id=caja_id, usuario_id=usuario_id, idempotency_key=idempotency_key,
+            proveedor_id=proveedor_id, factura_proveedor_id=factura_proveedor_id,
         )
         self._s.add(gasto)
         await self._s.flush()
@@ -156,6 +163,12 @@ class SqlCajaRepository:
         await publish(self._s, "gasto_registrado", {
             "gasto_id": gasto.id, "caja_id": caja_id, "categoria": categoria, "monto": str(monto),
         })
+        return gasto
+
+    async def set_abono_gasto(self, gasto: Gasto, *, abono_id: int) -> Gasto:
+        """Enlaza el abono que ESTE gasto generó (candado anti-duplicación gasto→CxP)."""
+        gasto.abono_proveedor_id = abono_id
+        await self._s.flush()
         return gasto
 
     async def listar_gastos(

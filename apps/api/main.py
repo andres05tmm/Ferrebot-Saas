@@ -27,6 +27,7 @@ from modules.agenda.router import router as agenda_router
 from modules.auth.login_email import router as auth_email_router
 from modules.auth.password_reset import router as auth_reset_router
 from modules.auth.router import router as auth_router
+from modules.bancos.router import router as bancos_router
 from modules.caja.router import gastos_router, router as caja_router
 from modules.clientes.router import router as clientes_router
 from modules.cobranza.router import router as cobranza_router
@@ -174,6 +175,7 @@ def create_app(spa_dist: Path | None = None) -> FastAPI:
     app.include_router(cotizaciones_router, prefix="/api/v1")  # cotizaciones WA (ADR 0017)
     app.include_router(pagos_router, prefix="/api/v1")         # cobros (ADR 0013)
     app.include_router(pagar_router, prefix="/api/v1")         # cuentas por pagar (ADR 0019)
+    app.include_router(bancos_router, prefix="/api/v1")        # conciliación bancaria (ADR 0028)
     app.include_router(postventa_router, prefix="/api/v1")     # postventa (plan §2.6)
     app.include_router(reportes_agente_router, prefix="/api/v1")  # analítica del dueño (Ola 3 §11)
     # Webhook único de WhatsApp (Kapso): NO va bajo /api/ (no es por-empresa; resuelve el tenant por

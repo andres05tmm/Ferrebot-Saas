@@ -32,3 +32,11 @@ class AsientoConflicto(ContabilidadError):
 
 class ProyeccionInvalida(ContabilidadError):
     """El evento origen no existe o no es proyectable (p. ej. venta anulada)."""
+
+
+class CorteVacio(ContabilidadError):
+    """El corte de apertura no tiene saldos: no hay nada que asentar."""
+
+
+class PeriodoInexistente(ContabilidadError):
+    """No existe un `periodo_contable` para (anio, mes): no se puede cerrar."""

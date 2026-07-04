@@ -133,8 +133,15 @@ y estados; más dos acciones de operación (sembrar PUC, backfill).
   estado de resultados resta las devoluciones (contra-ingreso 417505) que el P&L simple no resta; un
   gasto que salda CxP es pago de pasivo en el ledger pero cuenta como gasto en el P&L simple; la
   retención reduce el efectivo del ledger pero no el arqueo operativo.
-- **Cabos sueltos:** (a) el asiento de apertura desde saldos iniciales reales (inventario valorizado,
-  cartera, CxP) queda como helper explícito, no automático desde un corte; (b) cierre de período
-  (asiento de cierre que lleva 4/5/6 a patrimonio) no implementado —los estados calculan la utilidad al
-  vuelo—; (c) las facturas de proveedor "sueltas" (`facturas_proveedores` sin `compra`) no se proyectan
-  como CxP en v1 (sus abonos sí debitan Proveedores).
+- **Cabos sueltos (resueltos):** (a) **asiento de apertura** — `apertura.py` (`AperturaService`) arma
+  un asiento balanceado desde un corte (`CorteApertura`: caja/bancos/cartera/inventario/CxP) con el
+  patrimonio como partida de cierre; idempotente por período (`apertura:{anio}-{mes}`). (b) **cierre de
+  período** — `cierre.py` (`CierreService.cerrar_periodo`) salda 4/5/6 contra Patrimonio (utilidad del
+  ejercicio) y pasa el período a `closed`; el guard de período ya rechaza asientos posteriores y el
+  asiento de cierre es inmutable (corrección por espejo). Idempotente por período (`cierre:{anio}-{mes}`;
+  la idempotencia se valida antes del candado, así el reintento sobre un período ya cerrado replayea sin
+  error). (c) **facturas de proveedor "sueltas"** — `proyectar_factura_proveedor` asienta débito Compras
+  (`620501`, cuenta nueva de la semilla) / crédito Proveedores, cubriendo la CxP que faltaba para que el
+  abono tuviera contrapartida; incluida en el backfill. `facturas_proveedores` no tiene vínculo con
+  `compras` (flujos disjuntos), así que no hay doble conteo. Superficie REST: `POST /contabilidad/apertura`
+  y `POST /contabilidad/periodo/cerrar` (admin, gateadas por `contabilidad_ledger`).

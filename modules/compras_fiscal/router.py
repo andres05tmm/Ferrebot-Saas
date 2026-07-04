@@ -20,24 +20,32 @@ from core.auth import Principal, require_role
 from core.auth.features import require_feature
 from core.config import get_settings
 from core.db.session import control_session, get_tenant_db
+from core.logging import get_logger
 from modules.compras_fiscal.errors import (
     CompraFiscalInexistente,
     CompraInexistente,
     CufeNoImportado,
     EventoRadianYaResuelto,
+    QRInvalido,
 )
 from modules.compras_fiscal.radian_service import RadianMatias, RadianService
+from modules.compras_fiscal.recepcion_service import RecepcionService
 from modules.compras_fiscal.repository import SqlComprasFiscalRepository
 from modules.compras_fiscal.schemas import (
     AmbienteFiscal,
     CompraFiscalCrear,
     CompraFiscalLeer,
+    EscanearQR,
+    FacturaRecibidaLeer,
     ImportarCufe,
     ReclamarMotivo,
 )
 from modules.compras_fiscal.service import ComprasFiscalService
 from modules.facturacion.config import cargar_ambiente, cargar_config_matias
 from modules.facturacion.matias_client import MatiasClient
+from modules.proveedores.repository import SqlProveedoresRepository
+
+log = get_logger("compras_fiscal.router")
 
 router = APIRouter(tags=["compras-fiscal"], dependencies=[Depends(require_feature("compras_fiscal"))])
 
@@ -72,6 +80,39 @@ def get_radian_service(
 ) -> RadianService:
     """`RadianService` sobre la sesión del tenant + el cliente MATIAS de la empresa (overridable)."""
     return RadianService(SqlComprasFiscalRepository(session), deps.matias, ambiente=deps.ambiente)
+
+
+async def get_recepcion_deps(request: Request) -> RadianDeps | None:
+    """Cliente MATIAS de la empresa para la recepción por QR, o **None** si no está configurado.
+
+    A diferencia de `get_radian_deps` (que asume MATIAS presente), la recepción DEGRADA: si la empresa no
+    tiene credenciales MATIAS (config incompleta en el control DB), devuelve None y la recepción registra
+    igual la deuda + el soporte con el CUFE (sin acuse ni XML). Overridable en tests para FAKEAR MATIAS.
+    """
+    try:
+        async with control_session() as cs:
+            cred, config = await cargar_config_matias(
+                cs, get_settings().secrets_master_key, request.state.tenant.id
+            )
+    except Exception:  # noqa: BLE001 — config MATIAS ausente/incompleta: se degrada sin acoplar
+        log.info("recepcion_matias_no_configurado", tenant_id=request.state.tenant.id)
+        return None
+    return RadianDeps(matias=MatiasClient(cred), ambiente=config.ambiente)
+
+
+def get_recepcion_service(
+    session: AsyncSession = Depends(get_tenant_db),
+    deps: RadianDeps | None = Depends(get_recepcion_deps),
+) -> RecepcionService:
+    """`RecepcionService` sobre la sesión del tenant: compone fiscal + proveedores + RADIAN (opcional)."""
+    radian = (
+        RadianService(SqlComprasFiscalRepository(session), deps.matias, ambiente=deps.ambiente)
+        if deps is not None
+        else None
+    )
+    return RecepcionService(
+        SqlComprasFiscalRepository(session), SqlProveedoresRepository(session), radian=radian
+    )
 
 
 # ---- DATOS (Slice 6a) ------------------------------------------------------
@@ -160,6 +201,34 @@ async def aceptar_factura(
     if not ok:
         response.status_code = status.HTTP_502_BAD_GATEWAY
     return fiscal
+
+
+# ---- Recepción por QR (ADR 0020, F1) — factura recibida → cuenta por pagar ---
+@router.get("/facturas-recibidas", response_model=list[FacturaRecibidaLeer])
+async def listar_facturas_recibidas(
+    service: RecepcionService = Depends(get_recepcion_service),
+    _user: Principal = Depends(require_role("admin")),
+) -> list[FacturaRecibidaLeer]:
+    """Facturas de proveedor recibidas por QR (soporte fiscal con CUFE + su cuenta por pagar)."""
+    return await service.listar_recibidas()
+
+
+@router.post("/facturas-recibidas/escanear", response_model=FacturaRecibidaLeer)
+async def escanear_factura_recibida(
+    payload: EscanearQR,
+    response: Response,
+    service: RecepcionService = Depends(get_recepcion_service),
+    user: Principal = Depends(require_role("admin")),
+) -> FacturaRecibidaLeer:
+    """Escanea el QR de una factura de proveedor: extrae el CUFE, registra la cuenta por pagar y el
+    soporte fiscal, y acusa recibo (030) por RADIAN. 201 la primera vez; 200 si el CUFE ya se había
+    recibido (idempotente, no duplica); 422 si el QR no contiene un CUFE reconocible."""
+    try:
+        recibida, creada = await service.recibir(payload, usuario_id=user.user_id)
+    except QRInvalido as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
+    response.status_code = status.HTTP_201_CREATED if creada else status.HTTP_200_OK
+    return recibida
 
 
 @router.post("/compras-fiscal/{fiscal_id}/reclamar", response_model=CompraFiscalLeer)

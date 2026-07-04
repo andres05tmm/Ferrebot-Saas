@@ -4,7 +4,7 @@
 de centavos (la DIAN calcula el IVA por línea y al sumar puede quedar a ±1 centavo del total). Una
 incoherencia mayor a un centavo es un error de captura → 422.
 """
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -72,3 +72,67 @@ class AmbienteFiscal(BaseModel):
     """Ambiente DIAN declarado de la empresa, para la confirmación del operador en la UI."""
 
     ambiente: str
+
+
+class EscanearQR(BaseModel):
+    """Cuerpo del POST /facturas-recibidas/escanear (ADR 0020, F1): el QR + los datos de cabecera.
+
+    `qr` es el TEXTO leído del QR (URL DIAN, campos `CUFE:` o el hash crudo); de ahí sale el CUFE. Los
+    datos de cabecera (proveedor, montos, vencimiento) los aporta el operador: la lectura del documento
+    oficial de MATIAS es Pregunta abierta #1 del ADR (sin confirmar), así que v1 registra la deuda con el
+    monto/vencimiento capturados + acuse RADIAN + CUFE archivado. `base`/`iva` son opcionales (0 = desglose
+    desconocido, como la fiscal derivada de una compra); si se dan ambos, deben cuadrar con `total`.
+    """
+
+    qr: str = Field(min_length=1)
+    proveedor_nit: str = Field(min_length=1)
+    proveedor_nombre: str | None = None
+    numero_factura: str | None = None
+    descripcion: str | None = None
+    base: Decimal = Field(default=Decimal("0"), ge=0)
+    iva: Decimal = Field(default=Decimal("0"), ge=0)
+    total: Decimal = Field(gt=0)
+    fecha: date | None = None
+    fecha_vencimiento: date | None = None
+
+    @model_validator(mode="after")
+    def _coherencia(self) -> "EscanearQR":
+        """Si se declaran base e IVA (>0), base+iva debe igualar total (±1 centavo). Vencimiento ≥ fecha."""
+        if (self.base + self.iva) > 0 and abs((self.base + self.iva) - self.total) > TOLERANCIA_CENTAVO:
+            raise ValueError(
+                f"Incoherencia: base ({self.base}) + iva ({self.iva}) != total ({self.total})"
+            )
+        if (
+            self.fecha_vencimiento is not None
+            and self.fecha is not None
+            and self.fecha_vencimiento < self.fecha
+        ):
+            raise ValueError("La fecha de vencimiento no puede ser anterior a la fecha de la factura")
+        return self
+
+
+class FacturaRecibidaLeer(BaseModel):
+    """Vista de una factura de proveedor RECIBIDA por QR: soporte fiscal (CUFE + RADIAN) + cuenta por pagar.
+
+    Compone la fila `compras_fiscal` (CUFE, montos, estado de los eventos DIAN) con la
+    `facturas_proveedores` (la deuda con su vencimiento y saldo). El `cuenta_por_pagar_id` ES el CUFE:
+    para las recibidas por QR, el CUFE es el identificador único de la deuda (dedup PK + índice UNIQUE).
+    """
+
+    cufe: str
+    fiscal_id: int
+    proveedor_nit: str | None
+    base: Decimal
+    iva: Decimal
+    total: Decimal
+    # Estado RADIAN (NULL si MATIAS no estaba configurado: degradó a solo registrar deuda + soporte).
+    evento_030_at: datetime | None = None
+    evento_estado: str | None = None
+    evento_error: str | None = None
+    # Cuenta por pagar (facturas_proveedores) enlazada. Ausente solo si la deuda no pudo crearse.
+    cuenta_por_pagar_id: str | None = None
+    fecha: date | None = None
+    fecha_vencimiento: date | None = None
+    pendiente: Decimal | None = None
+    estado: str | None = None
+    descripcion: str | None = None

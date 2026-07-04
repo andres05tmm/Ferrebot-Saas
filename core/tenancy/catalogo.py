@@ -28,6 +28,9 @@ OPCIONALES: frozenset[str] = frozenset({
     # Contable C (ADR 0027): retenciones/INC editables por tenant + libros auxiliar/mayor. Opt-in,
     # sin dependencias duras (un negocio puede retener sin FE; los libros derivan de datos existentes).
     "retenciones", "libros_contables",
+    # Motor contable (ADR 0030): ledger de doble partida + PUC + estados financieros. Capa DERIVADA,
+    # opt-in, apagada por defecto; deriva de los eventos de dinero (ventas/caja) → dep en OR.
+    "contabilidad_ledger",
 })
 
 # Meta-packs: un flag grueso que EXPANDE a features finas. La expansión conserva el flag meta en el
@@ -81,6 +84,8 @@ DEPENDENCIAS: dict[str, frozenset[str]] = {
     # Conciliación bancaria (ADR 0028): cruza el extracto con gastos/ventas/abonos. Su superficie de
     # contabilidad de caja (gastos) vive tras `caja`; basta esa para habilitarla (dep en OR).
     "conciliacion_bancaria": frozenset({"caja"}),
+    # El ledger proyecta eventos de dinero: basta ventas o caja para tener algo que contabilizar.
+    "contabilidad_ledger": frozenset({"ventas", "caja"}),
 }
 
 

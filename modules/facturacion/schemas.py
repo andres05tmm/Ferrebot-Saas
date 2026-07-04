@@ -74,6 +74,50 @@ class FacturaInput:
 
 
 @dataclass(frozen=True, slots=True)
+class ReferenciaFactura:
+    """`billing_reference` (§12): la factura ORIGINAL que la nota corrige.
+
+    Obligatoria en toda nota crédito/débito: `number` = número legal de la factura (prefijo+consecutivo),
+    `cufe` = su CUFE (uuid en el UBL), `fecha` = fecha de emisión de la factura original."""
+
+    number: str
+    cufe: str
+    fecha: date
+
+
+@dataclass(frozen=True, slots=True)
+class DatosEmisionNota:
+    """Cabecera de emisión de una nota crédito/débito.
+
+    Sin `document_number`: el consecutivo de la nota lo asigna MATIAS al emitir (como el POS por
+    autoincremento). `prefix` viaja para desambiguar la resolución (None = no enviarlo)."""
+
+    resolution_number: str
+    prefix: str | None
+    fecha: date
+    hora: time
+    means_payment_id: int
+    payment_method_id: int
+    notes: str
+
+
+@dataclass(frozen=True, slots=True)
+class NotaInput:
+    """Todo lo que el núcleo UBL necesita para armar el payload de una nota crédito/débito (§12).
+
+    `tipo` ∈ {'nota_credito','nota_debito'} (fija `type_document_id` 5/4); `referencia` es la factura
+    original (`billing_reference`); `razon_id`/`descripcion_razon` arman el `discrepancy_response`."""
+
+    tipo: str
+    emision: DatosEmisionNota
+    cliente: ClienteFiscal
+    items: list[ItemFactura]
+    referencia: ReferenciaFactura
+    razon_id: int
+    descripcion_razon: str
+
+
+@dataclass(frozen=True, slots=True)
 class DatosEmisionPos:
     """Cabecera de emisión del POS electrónico (ADR 0012). MATIAS autoincrementa el `document_number`
     (D4), pero el `prefix` SÍ viaja: una misma `resolution_number` puede servir a varios tipos de

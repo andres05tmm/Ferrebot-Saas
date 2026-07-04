@@ -434,6 +434,24 @@ class MatiasClient:
             return _resultado_5xx(resp)
         return _parsear_emision(resp.json())
 
+    async def emitir_nota(self, tipo: str, payload: dict) -> EmisionResultado:
+        """POST `/notes/credit` (NC) | `/notes/debit` (ND) con Bearer token (§12); devuelve `EmisionResultado`.
+
+        `tipo` ∈ {'nota_credito','nota_debito'} elige el endpoint. Mismo parseo que `/invoice`
+        (`_parsear_emision`: éxito = success + CUFE ≥40, FAD06) y misma clasificación de 5xx como error
+        TRANSITORIO ANTES de parsear (no un rechazo DIAN). NO persiste (eso es el servicio)."""
+        endpoint = "/notes/credit" if tipo == "nota_credito" else "/notes/debit"
+        tok = await self._token()
+        resp = await self._get_client().post(
+            endpoint, content=_a_json(payload),
+            headers={"Authorization": f"Bearer {tok}", "Accept": "application/json",
+                     "Content-Type": "application/json"},
+            timeout=30,
+        )
+        if resp.status_code >= 500:
+            return _resultado_5xx(resp)
+        return _parsear_emision(resp.json())
+
     async def consultar_estado(
         self, *, prefijo: str | None, consecutivo: int, resolution: str | None = None
     ) -> EstadoConsulta:

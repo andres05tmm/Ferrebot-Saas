@@ -27,6 +27,10 @@ from modules.agenda.schemas import (
 )
 from modules.agenda.service import AgendaService
 
+# La FK `citas.venta_id` exige la tabla `ventas` en el metadata al crear la base efímera; corriendo
+# este archivo aislado nadie más la importa.
+import modules.ventas.models  # noqa: F401, E402
+
 TEL = "3001234567"
 CAL_ID = "negocio@group.calendar.google.com"
 

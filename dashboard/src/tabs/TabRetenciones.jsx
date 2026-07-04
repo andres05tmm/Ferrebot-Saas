@@ -7,8 +7,7 @@
 import { useState } from 'react'
 import { toast } from 'sonner'
 import { Percent, Plus } from 'lucide-react'
-import { api } from '@/lib/api'
-import { useFetch } from '@/components/shared.jsx'
+import { useRetencionesConfig, useGuardarRetencion } from '@/lib/queries'
 import { useAuth } from '@/hooks/useAuth.js'
 import { Card } from '@/components/ui/card.jsx'
 import { Input } from '@/components/ui/input.jsx'
@@ -26,10 +25,11 @@ const TIPO_TONO = {
   uvt: 'bg-muted text-muted-foreground border-border',
 }
 
-function FormRegla({ onGuardada }) {
+function FormRegla() {
   const vacio = { tipo: 'retefuente', concepto: '', base_minima_uvt: '0', tarifa: '0', activo: true }
   const [f, setF] = useState(vacio)
   const [enviando, setEnviando] = useState(false)
+  const guardarM = useGuardarRetencion()
   const set = (k) => (e) => setF(p => ({ ...p, [k]: e.target.value }))
 
   async function guardar() {
@@ -41,10 +41,8 @@ function FormRegla({ onGuardada }) {
     }
     setEnviando(true)
     try {
-      const res = await api('/retenciones/config', {
-        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
-      })
-      if (res.ok) { toast.success('Regla guardada'); setF(vacio); onGuardada() }
+      const res = await guardarM.mutateAsync(body)
+      if (res.ok) { toast.success('Regla guardada'); setF(vacio) }
       else if (res.status === 422) toast.error('Tipo inválido')
       else if (res.status === 403) toast.error('Necesitas permisos de administrador')
       else toast.error('No se pudo guardar')
@@ -111,7 +109,7 @@ export default function TabRetenciones() {
 }
 
 function RetencionesContenido() {
-  const configQ = useFetch('/retenciones/config')
+  const configQ = useRetencionesConfig()
   const reglas = arr(configQ.data)
 
   return (
@@ -125,7 +123,7 @@ function RetencionesContenido() {
           <div className="px-3.5 py-2.5 border-b border-border-subtle">
             <h2 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Catálogo tributario</h2>
           </div>
-          {configQ.loading ? (
+          {configQ.isLoading ? (
             <p className="py-10 text-center text-sm text-muted-foreground">Cargando…</p>
           ) : reglas.length === 0 ? (
             <p className="py-10 text-center text-sm text-muted-foreground">
@@ -148,7 +146,7 @@ function RetencionesContenido() {
             </ul>
           )}
         </Card>
-        <FormRegla onGuardada={configQ.refetch} />
+        <FormRegla />
       </div>
     </div>
   )

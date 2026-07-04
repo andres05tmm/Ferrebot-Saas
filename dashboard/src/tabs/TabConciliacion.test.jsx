@@ -9,6 +9,7 @@ vi.mock('@/components/RealtimeProvider.jsx', () => ({
 
 import TabConciliacion from './TabConciliacion.jsx'
 import { USER_KEY } from '@/lib/api'
+import { conQuery } from '@/test/query.jsx'
 
 const MOVS = [
   {
@@ -47,14 +48,14 @@ afterEach(() => { cleanup(); vi.restoreAllMocks() })
 describe('TabConciliacion', () => {
   it('sin rol admin muestra el aviso', () => {
     instalarFetch()
-    render(<MemoryRouter><TabConciliacion /></MemoryRouter>)
+    render(conQuery(<MemoryRouter><TabConciliacion /></MemoryRouter>))
     expect(screen.getByText(/solo para administradores/i)).toBeInTheDocument()
   })
 
   it('lista movimientos con candidatos y concilia uno', async () => {
     comoAdmin()
     const fetchMock = instalarFetch()
-    render(<MemoryRouter><TabConciliacion /></MemoryRouter>)
+    render(conQuery(<MemoryRouter><TabConciliacion /></MemoryRouter>))
 
     expect(await screen.findByText('REF-1')).toBeInTheDocument()
     expect(screen.getByText(/enlazado con gasto #7/)).toBeInTheDocument()
@@ -68,7 +69,7 @@ describe('TabConciliacion', () => {
   it('correr sugerencias llama a POST /bancos/sugerir', async () => {
     comoAdmin()
     const fetchMock = instalarFetch()
-    render(<MemoryRouter><TabConciliacion /></MemoryRouter>)
+    render(conQuery(<MemoryRouter><TabConciliacion /></MemoryRouter>))
     await screen.findByText('REF-1')
 
     fireEvent.click(screen.getByRole('button', { name: /Correr sugerencias/ }))

@@ -27,6 +27,10 @@ from modules.agenda.schemas import (
 from modules.conversaciones.repository import SqlConversacionRepository
 from modules.conversaciones.service import ConversacionService
 
+# La FK `citas.venta_id` exige la tabla `ventas` en el metadata al crear la base efímera; corriendo
+# este archivo aislado nadie más la importa.
+import modules.ventas.models  # noqa: F401, E402
+
 TEL = "573001112233"
 PNID = "123456789012345"
 

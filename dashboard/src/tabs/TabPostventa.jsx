@@ -8,8 +8,9 @@
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { Star, MessageSquareHeart } from 'lucide-react'
-import { api } from '@/lib/api'
-import { useFetch } from '@/components/shared.jsx'
+import {
+  usePostventaSatisfaccion, usePostventaRespuestas, usePostventaConfig, useGuardarPostventaConfig,
+} from '@/lib/queries'
 import { useAuth } from '@/hooks/useAuth.js'
 import { Card } from '@/components/ui/card.jsx'
 import { Input } from '@/components/ui/input.jsx'
@@ -43,8 +44,9 @@ function Kpi({ label, value, hint }) {
   )
 }
 
-function SeccionConfig({ config, refetch }) {
+function SeccionConfig({ config }) {
   const [f, setF] = useState(null)
+  const guardarM = useGuardarPostventaConfig()
   useEffect(() => { if (config && !f) setF(config) }, [config]) // eslint-disable-line react-hooks/exhaustive-deps
   if (!f) return null
   const set = (k) => (e) => setF(p => ({ ...p, [k]: e.target.value }))
@@ -59,10 +61,8 @@ function SeccionConfig({ config, refetch }) {
       calificacion_minima_resena: Number(f.calificacion_minima_resena) || 4,
     }
     try {
-      const res = await api('/postventa/config', {
-        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
-      })
-      if (res.ok) { toast.success('Configuración guardada'); refetch() }
+      const res = await guardarM.mutateAsync(body)
+      if (res.ok) toast.success('Configuración guardada')
       else if (res.status === 403) toast.error('Necesitas permisos de administrador')
       else toast.error('No se pudo guardar')
     } catch { toast.error('Error de conexión') }
@@ -129,9 +129,9 @@ export default function TabPostventa() {
 }
 
 function PostventaAdmin() {
-  const satQ = useFetch('/postventa/satisfaccion')
-  const respuestasQ = useFetch('/postventa/respuestas')
-  const configQ = useFetch('/postventa/config')
+  const satQ = usePostventaSatisfaccion()
+  const respuestasQ = usePostventaRespuestas()
+  const configQ = usePostventaConfig()
 
   const sat = satQ.data || {}
   const promedio = Number(sat.promedio ?? 0)
@@ -148,13 +148,13 @@ function PostventaAdmin() {
         <Card className="p-3">
           <div className="text-[11px] uppercase tracking-wider text-muted-foreground">Satisfacción</div>
           <div className="text-lg font-semibold tabular-nums inline-flex items-center gap-2">
-            {satQ.loading ? '…' : (total > 0 ? promedio.toFixed(1) : '—')}
+            {satQ.isLoading ? '…' : (total > 0 ? promedio.toFixed(1) : '—')}
             {total > 0 && <Estrellas n={promedio} />}
           </div>
           <div className="text-[11px] text-muted-foreground">promedio 1-5</div>
         </Card>
-        <Kpi label="Respuestas" value={satQ.loading ? '…' : total} />
-        <Kpi label="Comentarios" value={respuestasQ.loading ? '…' : respuestas.filter(r => r.comentario).length} />
+        <Kpi label="Respuestas" value={satQ.isLoading ? '…' : total} />
+        <Kpi label="Comentarios" value={respuestasQ.isLoading ? '…' : respuestas.filter(r => r.comentario).length} />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
@@ -162,7 +162,7 @@ function PostventaAdmin() {
           <h2 className="text-sm font-semibold mb-2 inline-flex items-center gap-1.5">
             <Star className="size-4 text-warning" /> Respuestas
           </h2>
-          {respuestasQ.loading ? (
+          {respuestasQ.isLoading ? (
             <p className="py-8 text-center text-sm text-muted-foreground">Cargando…</p>
           ) : respuestas.length === 0 ? (
             <p className="py-8 text-center text-sm text-muted-foreground">
@@ -186,7 +186,7 @@ function PostventaAdmin() {
             </ul>
           )}
         </Card>
-        <SeccionConfig config={configQ.data} refetch={configQ.refetch} />
+        <SeccionConfig config={configQ.data} />
       </div>
     </div>
   )

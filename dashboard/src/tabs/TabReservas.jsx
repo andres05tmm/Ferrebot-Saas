@@ -7,8 +7,8 @@
 import { useState } from 'react'
 import { toast } from 'sonner'
 import { BedDouble, CalendarClock } from 'lucide-react'
-import { api } from '@/lib/api'
-import { useFetch, cop } from '@/components/shared.jsx'
+import { cop } from '@/components/shared.jsx'
+import { useHabitaciones, useCrearReserva } from '@/lib/queries'
 import { Card } from '@/components/ui/card.jsx'
 import { Input } from '@/components/ui/input.jsx'
 import { Button } from '@/components/ui/button.jsx'
@@ -24,17 +24,15 @@ function FormReserva({ hab, checkin, noches, onHecho }) {
   const [nombre, setNombre] = useState('')
   const [telefono, setTelefono] = useState('')
   const [enviando, setEnviando] = useState(false)
+  const crearM = useCrearReserva()
 
   async function reservar() {
     if (!nombre.trim() || !telefono.trim()) { toast.error('Indica nombre y teléfono del huésped'); return }
     setEnviando(true)
     try {
-      const res = await api('/reservas', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          recurso_id: hab.recurso_id, checkin, noches: Number(noches),
-          cliente_nombre: nombre.trim(), cliente_telefono: telefono.trim(),
-        }),
+      const res = await crearM.mutateAsync({
+        recurso_id: hab.recurso_id, checkin, noches: Number(noches),
+        cliente_nombre: nombre.trim(), cliente_telefono: telefono.trim(),
       })
       if (res.ok) {
         const data = await res.json().catch(() => ({}))
@@ -64,7 +62,7 @@ function FormReserva({ hab, checkin, noches, onHecho }) {
   )
 }
 
-function Habitacion({ hab, checkin, noches, onHecho }) {
+function Habitacion({ hab, checkin, noches }) {
   const [abierto, setAbierto] = useState(false)
   return (
     <li className="px-3.5 py-2.5 text-[13px]">
@@ -82,7 +80,7 @@ function Habitacion({ hab, checkin, noches, onHecho }) {
           {abierto ? 'Cerrar' : 'Reservar'}
         </Button>
       </div>
-      {abierto && <FormReserva hab={hab} checkin={checkin} noches={noches} onHecho={() => { setAbierto(false); onHecho() }} />}
+      {abierto && <FormReserva hab={hab} checkin={checkin} noches={noches} onHecho={() => setAbierto(false)} />}
     </li>
   )
 }
@@ -93,8 +91,7 @@ export default function TabReservas() {
   // Se dispara la búsqueda con un "tick" para no pedir en cada tecleo; y para poder refetch tras reservar.
   const [buscado, setBuscado] = useState(null)   // { checkin, noches }
 
-  const path = buscado ? `/reservas/habitaciones?checkin=${buscado.checkin}&noches=${buscado.noches}` : null
-  const habsQ = useFetch(path, [buscado?.checkin, buscado?.noches])
+  const habsQ = useHabitaciones(buscado)
   const habitaciones = arr(habsQ.data)
 
   function buscar() {
@@ -138,9 +135,9 @@ export default function TabReservas() {
               Habitaciones libres · check-in {buscado.checkin} · {buscado.noches} noche{buscado.noches === 1 ? '' : 's'}
             </h2>
           </div>
-          {habsQ.loading ? (
+          {habsQ.isLoading ? (
             <p className="py-10 text-center text-sm text-muted-foreground">Buscando…</p>
-          ) : habsQ.error ? (
+          ) : habsQ.isError ? (
             <p className="py-10 text-center text-sm text-destructive">No se pudo consultar la disponibilidad.</p>
           ) : habitaciones.length === 0 ? (
             <p className="py-10 text-center text-sm text-muted-foreground">
@@ -149,8 +146,7 @@ export default function TabReservas() {
           ) : (
             <ul className="divide-y divide-border-subtle">
               {habitaciones.map(h => (
-                <Habitacion key={h.recurso_id} hab={h} checkin={buscado.checkin} noches={buscado.noches}
-                  onHecho={habsQ.refetch} />
+                <Habitacion key={h.recurso_id} hab={h} checkin={buscado.checkin} noches={buscado.noches} />
               ))}
             </ul>
           )}

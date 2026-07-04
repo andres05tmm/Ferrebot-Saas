@@ -7,9 +7,12 @@
  */
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
+import { useQueryClient } from '@tanstack/react-query'
 import { FileSpreadsheet, Check, X, ChevronDown, ChevronRight } from 'lucide-react'
-import { api } from '@/lib/api'
-import { cop, useFetch } from '@/components/shared.jsx'
+import { cop } from '@/components/shared.jsx'
+import {
+  useCotizaciones, useCotizacionesConfig, useMarcarCotizacion, useGuardarCotizacionesConfig, keyPrefix,
+} from '@/lib/queries'
 import { useRealtimeEvent } from '@/components/RealtimeProvider.jsx'
 import { useAuth } from '@/hooks/useAuth.js'
 import { Card } from '@/components/ui/card.jsx'
@@ -93,18 +96,17 @@ function Fila({ cot, admin, onMarcar }) {
   )
 }
 
-function SeccionConfig({ config, refetch }) {
+function SeccionConfig({ config }) {
   const [f, setF] = useState(null)
+  const guardarM = useGuardarCotizacionesConfig()
   useEffect(() => { if (config && !f) setF(config) }, [config]) // eslint-disable-line react-hooks/exhaustive-deps
   if (!f) return null
 
   async function guardar() {
     const body = { mostrar_stock: !!f.mostrar_stock, vigencia_dias: Number(f.vigencia_dias) || 3 }
     try {
-      const res = await api('/cotizaciones/config', {
-        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
-      })
-      if (res.ok) { toast.success('Configuración guardada'); refetch() }
+      const res = await guardarM.mutateAsync(body)
+      if (res.ok) toast.success('Configuración guardada')
       else if (res.status === 403) toast.error('Necesitas permisos de administrador')
       else toast.error('No se pudo guardar')
     } catch { toast.error('Error de conexión') }
@@ -136,20 +138,19 @@ export default function TabCotizaciones() {
   const { isAdmin } = useAuth()
   const admin = isAdmin()
   const [filtro, setFiltro] = useState('')
-  const path = filtro ? `/cotizaciones?estado=${filtro}` : '/cotizaciones'
-  const cotsQ = useFetch(path, [filtro])
-  // La config solo la puede leer el admin (403 para staff): no la pedimos sin rol.
-  const configQ = useFetch(admin ? '/cotizaciones/config' : null)
-  useRealtimeEvent(EVENTOS, () => cotsQ.refetch())
+  const qc = useQueryClient()
+  const cotsQ = useCotizaciones(filtro)
+  // La config solo la puede leer el admin (403 para staff): `enabled` corta la llamada sin rol.
+  const configQ = useCotizacionesConfig(admin)
+  const marcarM = useMarcarCotizacion()
+  useRealtimeEvent(EVENTOS, () => qc.invalidateQueries({ queryKey: keyPrefix.cotizacionesLista }))
 
   const cots = arr(cotsQ.data)
 
   async function onMarcar(cot, estado) {
     try {
-      const res = await api(`/cotizaciones/${cot.id}/estado`, {
-        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ estado }),
-      })
-      if (res.ok) { toast.success(estado === 'aceptada' ? 'Cotización aceptada' : 'Cotización cancelada'); cotsQ.refetch() }
+      const res = await marcarM.mutateAsync({ id: cot.id, estado })
+      if (res.ok) toast.success(estado === 'aceptada' ? 'Cotización aceptada' : 'Cotización cancelada')
       else if (res.status === 409) toast.error('La cotización ya no admite ese cambio')
       else toast.error('No se pudo actualizar')
     } catch { toast.error('Error de conexión') }
@@ -172,9 +173,9 @@ export default function TabCotizaciones() {
           ))}
         </div>
         <Card className="p-0 overflow-hidden">
-          {cotsQ.loading ? (
+          {cotsQ.isLoading ? (
             <p className="py-10 text-center text-sm text-muted-foreground">Cargando…</p>
-          ) : cotsQ.error ? (
+          ) : cotsQ.isError ? (
             <p className="py-10 text-center text-sm text-destructive">No se pudieron cargar las cotizaciones.</p>
           ) : cots.length === 0 ? (
             <p className="py-10 text-center text-sm text-muted-foreground">
@@ -187,7 +188,7 @@ export default function TabCotizaciones() {
           )}
         </Card>
       </div>
-      {admin && <SeccionConfig config={configQ.data} refetch={configQ.refetch} />}
+      {admin && <SeccionConfig config={configQ.data} />}
     </div>
   )
 }

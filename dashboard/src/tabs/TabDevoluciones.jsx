@@ -8,8 +8,8 @@
 import { useState } from 'react'
 import { toast } from 'sonner'
 import { Undo2, Search } from 'lucide-react'
-import { api } from '@/lib/api'
-import { useFetch, cop } from '@/components/shared.jsx'
+import { cop } from '@/components/shared.jsx'
+import { useVenta, useRegistrarDevolucion } from '@/lib/queries'
 import { Card } from '@/components/ui/card.jsx'
 import { Input } from '@/components/ui/input.jsx'
 import { Button } from '@/components/ui/button.jsx'
@@ -33,6 +33,7 @@ function DetalleVenta({ venta, onHecho }) {
   const [motivo, setMotivo] = useState('')
   const [key] = useState(nuevaKey)
   const [enviando, setEnviando] = useState(false)
+  const registrarM = useRegistrarDevolucion()
 
   function toggle(l) {
     setSel(prev => {
@@ -54,11 +55,7 @@ function DetalleVenta({ venta, onHecho }) {
     }
     setEnviando(true)
     try {
-      const res = await api('/devoluciones', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Idempotency-Key': key },
-        body: JSON.stringify(body),
-      })
+      const res = await registrarM.mutateAsync({ body, key })
       if (res.ok) {
         const data = await res.json().catch(() => ({}))
         toast.success(`Devolución registrada · reintegro ${cop(data.total)} (${data.metodo_reintegro || 'caja'})`)
@@ -130,7 +127,7 @@ export default function TabDevoluciones() {
   const [ventaId, setVentaId] = useState('')
   const [buscar, setBuscar] = useState(null)   // id confirmado a cargar
 
-  const ventaQ = useFetch(buscar ? `/ventas/${buscar}` : null, [buscar])
+  const ventaQ = useVenta(buscar)
   const venta = ventaQ.data
 
   function onBuscar() {
@@ -163,9 +160,9 @@ export default function TabDevoluciones() {
         <Card className="p-10 text-center text-sm text-muted-foreground">
           Escribe el número de una venta para registrar su devolución.
         </Card>
-      ) : ventaQ.loading ? (
+      ) : ventaQ.isLoading ? (
         <Card className="p-10 text-center text-sm text-muted-foreground">Cargando venta…</Card>
-      ) : ventaQ.error || !venta ? (
+      ) : ventaQ.isError || !venta ? (
         <Card className="p-10 text-center text-sm text-destructive">
           No se encontró la venta #{buscar}.
         </Card>

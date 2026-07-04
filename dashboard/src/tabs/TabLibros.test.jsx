@@ -9,6 +9,7 @@ vi.mock('@/components/RealtimeProvider.jsx', () => ({
 
 import TabLibros from './TabLibros.jsx'
 import { USER_KEY } from '@/lib/api'
+import { conQuery } from '@/test/query.jsx'
 
 const MAYOR = [
   { concepto: 'ventas', naturaleza: 'ingreso', total: '500000' },
@@ -36,13 +37,15 @@ function comoAdmin() { localStorage.setItem(USER_KEY, JSON.stringify({ id: 1, ro
 // TabLibros usa useOutletContext (refreshKey): lo envolvemos en una ruta con Outlet context.
 function renderConOutlet() {
   return render(
-    <MemoryRouter>
-      <Routes>
-        <Route element={<OutletCtx />}>
-          <Route path="*" element={<TabLibros />} />
-        </Route>
-      </Routes>
-    </MemoryRouter>,
+    conQuery(
+      <MemoryRouter>
+        <Routes>
+          <Route element={<OutletCtx />}>
+            <Route path="*" element={<TabLibros />} />
+          </Route>
+        </Routes>
+      </MemoryRouter>,
+    ),
   )
 }
 import { Outlet } from 'react-router-dom'

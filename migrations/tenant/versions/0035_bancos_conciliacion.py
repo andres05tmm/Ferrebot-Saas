@@ -18,7 +18,7 @@ movimientos bancarios y la extiende, de forma ADITIVA:
 Se aplica a TODAS las empresas vía `tools.migrate_tenants` (tenancy.md §7).
 
 Revision ID: 0035_bancos_conciliacion
-Revises: 0030_orm_huerfanas
+Revises: 0034_libro_iva_dedup
 Create Date: 2026-07-03
 """
 from collections.abc import Sequence
@@ -27,7 +27,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "0035_bancos_conciliacion"
-down_revision: str | None = "0030_orm_huerfanas"
+down_revision: str | None = "0034_libro_iva_dedup"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

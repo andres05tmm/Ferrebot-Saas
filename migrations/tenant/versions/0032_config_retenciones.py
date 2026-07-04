@@ -11,7 +11,7 @@ nace `editable=true` para que la empresa la ajuste. Tabla de negocio sin `empres
 frontera del tenant.
 
 Revision ID: 0032_config_retenciones
-Revises: 0030_orm_huerfanas
+Revises: 0031_notas_devoluciones
 Create Date: 2026-07-03
 """
 from collections.abc import Sequence
@@ -20,7 +20,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "0032_config_retenciones"
-down_revision: str | None = "0030_orm_huerfanas"
+down_revision: str | None = "0031_notas_devoluciones"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

@@ -8,7 +8,7 @@
 import { useState } from 'react'
 import { toast } from 'sonner'
 import { Trash2, Power, BookText } from 'lucide-react'
-import { api } from '@/lib/api.js'
+import { api } from '@/lib/api'
 import { useFetch } from '@/components/shared.jsx'
 import { useAuth } from '@/hooks/useAuth.js'
 import { Card } from '@/components/ui/card.jsx'

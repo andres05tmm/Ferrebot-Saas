@@ -25,6 +25,7 @@ from modules.ventas.errors import (
     OperacionNoAutorizada,
     ProductoNoEncontrado,
     StockInsuficiente,
+    VentaConDevolucion,
     VentaConFacturaViva,
     VentaNoEncontrada,
     VentaNoEsDeHoy,
@@ -176,7 +177,7 @@ async def editar_venta(
         raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
     except OperacionNoAutorizada as exc:
         raise HTTPException(status.HTTP_403_FORBIDDEN, str(exc)) from exc
-    except (VentaNoEsDeHoy, VentaConFacturaViva, StockInsuficiente) as exc:
+    except (VentaNoEsDeHoy, VentaConFacturaViva, VentaConDevolucion, StockInsuficiente) as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
     except ProductoNoEncontrado as exc:
         raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
@@ -205,7 +206,7 @@ async def borrar_venta(
         raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
     except OperacionNoAutorizada as exc:
         raise HTTPException(status.HTTP_403_FORBIDDEN, str(exc)) from exc
-    except (VentaNoEsDeHoy, VentaConFacturaViva) as exc:
+    except (VentaNoEsDeHoy, VentaConFacturaViva, VentaConDevolucion) as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
     return {"venta_id": venta_id, "borrada": True}
 

@@ -23,13 +23,16 @@ from modules.caja.schemas import (
     MovimientoLeer,
 )
 from modules.caja.service import CajaService
+from modules.proveedores.errors import AbonoInvalido, FacturaProveedorInexistente
+from modules.proveedores.repository import SqlProveedoresRepository
 
 router = APIRouter(tags=["caja"], dependencies=[Depends(require_feature("caja"))])
 gastos_router = APIRouter(tags=["gastos"], dependencies=[Depends(require_feature("caja"))])
 
 
 def _service(session: AsyncSession) -> CajaService:
-    return CajaService(SqlCajaRepository(session))
+    # Cablea el repo de proveedores (misma sesión) para el vínculo gasto→CxP (ADR 0028).
+    return CajaService(SqlCajaRepository(session), SqlProveedoresRepository(session))
 
 
 @router.get("/caja/actual", response_model=CajaLeer)
@@ -101,9 +104,14 @@ async def registrar_gasto(
         res = await _service(session).registrar_gasto(
             usuario_id=user.user_id, categoria=payload.categoria, monto=payload.monto,
             concepto=payload.concepto, idempotency_key=idempotency_key,
+            proveedor_id=payload.proveedor_id, factura_proveedor_id=payload.factura_proveedor_id,
         )
     except CajaNoAbierta as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+    except FacturaProveedorInexistente as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
+    except AbonoInvalido as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
     if res.replay:
         response.status_code = status.HTTP_200_OK
     return GastoLeer.model_validate(res.gasto)

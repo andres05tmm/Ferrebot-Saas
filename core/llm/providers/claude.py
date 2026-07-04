@@ -16,6 +16,11 @@ from core.llm.base import (
 
 Cliente = Callable[[dict[str, Any]], Awaitable[dict[str, Any]]]
 
+# Prompt caching (ADR 0024): marca de cache efímera (~5 min) para el PREFIJO estable del prompt
+# (tools del catálogo + system por tenant). Anthropic cachea el prefijo hasta el bloque marcado, así
+# que basta ponerla en la ÚLTIMA tool y en el bloque system: −costo/−latencia sin romper el prefijo.
+_EFIMERO: dict[str, Any] = {"type": "ephemeral"}
+
 # Explicit request timeout: the SDK default (10 min) would pin the tenant's DB session
 # (pool_size=2) for the whole hang.
 _TIMEOUT_S = 60.0
@@ -77,13 +82,33 @@ class ClaudeProvider:
             "model": model,
             "max_tokens": extra.pop("max_tokens", 1024),
             "messages": cuerpo,
-            "tools": self.traducir_tools(tools),
+            "tools": self._tools_cacheables(tools),
         }
         system_final = system or system_msgs
         if system_final:
-            payload["system"] = system_final
+            payload["system"] = self._system_cacheable(system_final)
         payload.update(extra)
         return payload
+
+    @staticmethod
+    def _tools_cacheables(tools: list[ToolSpec]) -> list[dict[str, Any]]:
+        """Traduce el catálogo y pone un breakpoint de caché en la ÚLTIMA tool (prefijo estable).
+
+        `traducir_tools` se mantiene puro (otros consumidores no cargan la marca); el breakpoint
+        se agrega solo aquí, sobre la copia del payload. Sin tools no hay nada que cachear.
+        """
+        traducidas: list[dict[str, Any]] = [
+            {"name": t.name, "description": t.description, "input_schema": t.parameters}
+            for t in tools
+        ]
+        if traducidas:
+            traducidas[-1]["cache_control"] = _EFIMERO
+        return traducidas
+
+    @staticmethod
+    def _system_cacheable(system: str) -> list[dict[str, Any]]:
+        """System como bloque de texto con marca de caché efímera (el system es estable por tenant)."""
+        return [{"type": "text", "text": system, "cache_control": _EFIMERO}]
 
     # --- Anthropic → canónico -----------------------------------------------
     def parsear_respuesta(self, raw: dict[str, Any]) -> LLMResponse:
@@ -127,6 +152,10 @@ def _cliente_anthropic(api_key: str) -> Cliente:
         if client is None:
             client = AsyncAnthropic(api_key=api_key, timeout=_TIMEOUT_S)
             _sdk_clients[api_key] = client
-        resp = await client.messages.create(**payload)
+        try:
+            resp = await client.messages.create(**payload)
+        except Exception as exc:  # traduce el error del SDK a la excepción canónica (retry-able o no)
+            from core.llm.resiliencia import clasificar_excepcion
+            raise clasificar_excepcion(exc) from exc
         return resp.model_dump()
     return _call

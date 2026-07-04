@@ -37,6 +37,7 @@ from ai.cotizaciones_tools import (
     exponer_catalogo as exponer_cotizaciones,
 )
 from ai.envelope import Contexto, ErrorTool, Resultado
+from ai.saneamiento import revisar as revisar_entrada
 from ai.faq_tools import (
     FaqDeps,
     POR_NOMBRE as FAQ_POR_NOMBRE,
@@ -71,6 +72,7 @@ from apps.wa.kapso import KapsoSender, MensajeWa
 from core.config.timezone import now_co
 from core.llm.base import Message, ToolSpec
 from core.llm.factory import LLMResuelto, Turno
+from core.llm.gobierno import Gobierno
 from core.logging import get_logger
 from core.tenancy.context import ResolvedTenant
 from modules.agenda.gcal import CalendarPort
@@ -97,6 +99,10 @@ log = get_logger("wa.agent")
 
 # Mensaje amable si el modelo o el canal fallan (nunca se expone el error interno).
 FALLBACK = "Disculpa, tuve un problema para atenderte. ¿Puedes intentarlo de nuevo en un momento?"
+
+# Mensaje fijo cuando el saneamiento bloquea el TEXTO entrante (inyección, texto desmesurado…):
+# amable y genérico — sin detallar el motivo (no se le da retroalimentación al atacante).
+RECHAZO_ENTRADA = "No puedo procesar ese mensaje. ¿Me dices en otras palabras en qué te ayudo?"
 
 # Tope de iteraciones modelo↔herramientas por mensaje (agendar puede encadenar varias consultas).
 _MAX_ITERS = 6
@@ -302,7 +308,19 @@ def exponer_runtime(ctx: Contexto) -> list[ToolSpec]:
 async def ejecutar_runtime(
     tool_call: Any, ctx: Contexto, deps: RuntimeDeps
 ) -> Resultado | ErrorTool:
-    """Despacha la herramienta al pack que la define (transversales o packs de dominio)."""
+    """Despacha la herramienta al pack que la define (transversales o packs de dominio).
+
+    Saneamiento PRIMERO (ADR 0023): la misma malla ligera del dispatcher del bot interno
+    (`ai.saneamiento`) corre aquí sobre los args crudos — el canal público es el más expuesto a
+    inyección de instrucciones y valores absurdos. Bloqueado → `ErrorTool` sin tocar ningún pack.
+    """
+    motivo = revisar_entrada(tool_call.arguments)
+    if motivo is not None:
+        log.warning(
+            "wa_saneamiento_bloqueo", tenant_id=ctx.tenant_id, tool=tool_call.name,
+            motivo=motivo.detalle, recuperable=motivo.recuperable,
+        )
+        return ErrorTool("validacion", motivo.detalle, recuperable=motivo.recuperable)
     if tool_call.name in HANDOFF_POR_NOMBRE:
         return await handoff_ejecutar(tool_call, ctx, deps.handoff)
     if tool_call.name in FAQ_POR_NOMBRE:
@@ -458,6 +476,7 @@ class AgenteWa:
         turno: Turno = Turno.ORQUESTADOR,
         gcal: CalendarPort | None = None,
         resolver_psp: ResolverPsp | None = None,
+        gobierno: Gobierno | None = None,
     ) -> None:
         self._abrir_tenant = abrir_tenant
         self._resolver_llm = resolver_llm
@@ -469,6 +488,8 @@ class AgenteWa:
         self._gcal = gcal
         # PSP OPCIONAL por tenant (ADR 0013): habilita el link de cobro al confirmar un pedido.
         self._resolver_psp = resolver_psp
+        # Gobierno OPCIONAL (ADR 0024): rate-limit + presupuesto por empresa ANTES de correr el LLM.
+        self._gobierno = gobierno
 
     async def atender(self, mensaje: MensajeWa, tenant: ResolvedTenant) -> str:
         """Corre el bucle del agente y responde. Devuelve el texto enviado (para observabilidad/tests).
@@ -478,6 +499,8 @@ class AgenteWa:
         """
         texto = FALLBACK
         pausado = False
+        bloqueado = False
+        cortado = False
         try:
             capacidades = await self._capacidades(tenant.id)
             ctx = Contexto(
@@ -503,6 +526,33 @@ class AgenteWa:
                     if await conversaciones.esta_en_humano(mensaje.telefono):
                         pausado = True
                         continue
+                    # Saneamiento del TEXTO entrante (ADR 0023): la inyección llega por el mensaje,
+                    # no solo por args de tools. Bloqueado → respuesta fija amable SIN correr el LLM
+                    # y sin envenenar la memoria; el hilo del inbox sí registra ambos lados.
+                    motivo = revisar_entrada({"texto": mensaje.texto})
+                    if motivo is not None:
+                        bloqueado = True
+                        texto = RECHAZO_ENTRADA
+                        log.warning(
+                            "wa_texto_bloqueado", tenant_id=tenant.id,
+                            motivo=motivo.detalle, recuperable=motivo.recuperable,
+                        )
+                        await repo_conv.agregar_mensaje(mensaje.telefono, "saliente", "bot", texto)
+                        continue
+                    # Gobierno de agentes (ADR 0024): rate-limit + presupuesto ANTES de correr el LLM.
+                    # Cortado → respuesta amable fija SIN llamar al modelo; se registra en el inbox y no
+                    # se escribe la memoria (el corte no es parte del hilo de la conversación).
+                    if self._gobierno is not None:
+                        decision = await self._gobierno.evaluar(tenant.id, mensaje.telefono)
+                        if not decision.permitido:
+                            cortado = True
+                            texto = decision.mensaje or FALLBACK
+                            log.info(
+                                "wa_gobierno_cortado", tenant_id=tenant.id,
+                                corte=decision.corte.value if decision.corte else None,
+                            )
+                            await repo_conv.agregar_mensaje(mensaje.telefono, "saliente", "bot", texto)
+                            continue
                     repo = SqlAgendaRepository(session)
                     cfg = await repo.obtener_config()
                     proveedor = await self._resolver_llm(tenant.id, self._turno)
@@ -545,7 +595,10 @@ class AgenteWa:
                 await self._memoria.anexar_usuario(tenant.id, mensaje.telefono, mensaje.texto)
                 log.info("wa_conversacion_en_humano_pausada", tenant_id=tenant.id)
                 return ""
-            await self._memoria.guardar(tenant.id, mensaje.telefono, historial, mensaje.texto, texto)
+            if not bloqueado and not cortado:
+                await self._memoria.guardar(
+                    tenant.id, mensaje.telefono, historial, mensaje.texto, texto
+                )
         except Exception:  # noqa: BLE001 — fallback elegante: nunca exponer el error interno al cliente
             log.exception("wa_agente_error", tenant_id=tenant.id)
             texto = FALLBACK

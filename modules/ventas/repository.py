@@ -88,6 +88,20 @@ class SqlVentasRepository:
         ).first()
         return fila is not None
 
+    async def tiene_devolucion(self, venta_id: int) -> bool:
+        """¿La venta tiene una devolución registrada? (ADR 0026: bloquea borrar/editar con 409 legible.)
+
+        Lectura cross-módulo a `devoluciones` con SQL de texto (mismo criterio que las FKs planas: no
+        acoplar el grafo de mappers entre módulos). Sin este guard, el DELETE moriría en la FK
+        `devoluciones.venta_id` con un 500 opaco.
+        """
+        fila = (
+            await self._s.execute(
+                text("SELECT id FROM devoluciones WHERE venta_id=:v LIMIT 1"), {"v": venta_id}
+            )
+        ).first()
+        return fila is not None
+
     async def borrar_venta(self, venta_id: int) -> None:
         """Borra una venta de forma TOTAL (física) restaurando stock, en una transacción.
 
@@ -196,7 +210,7 @@ class SqlVentasRepository:
             self._s.add(MovimientoInventario(
                 producto_id=ln.producto_id, tipo="SALIDA", cantidad=ln.cantidad,
                 costo_unitario=ln.costo_unitario, referencia=f"venta:{venta.id}",
-                usuario_id=venta.vendedor_id,
+                usuario_id=venta.vendedor_id, fecha_operacion=venta.fecha,
             ))
         await self._s.flush()
 
@@ -236,6 +250,7 @@ class SqlVentasRepository:
         return ProductoPrecio(
             id=prod.id, nombre=prod.nombre, precio_venta=prod.precio_venta,
             iva=prod.iva, activo=prod.activo, precio_compra=prod.precio_compra,
+            costo_promedio=prod.costo_promedio,
             precio_umbral=prod.precio_umbral,
             precio_bajo_umbral=prod.precio_bajo_umbral,
             precio_sobre_umbral=prod.precio_sobre_umbral,
@@ -343,7 +358,7 @@ class SqlVentasRepository:
             self._s.add(MovimientoInventario(
                 producto_id=ln.producto_id, tipo="SALIDA", cantidad=ln.cantidad,
                 costo_unitario=ln.costo_unitario, referencia=f"venta:{venta.id}",
-                usuario_id=header.vendedor_id,
+                usuario_id=header.vendedor_id, fecha_operacion=venta.fecha,
             ))
         await self._s.flush()
 

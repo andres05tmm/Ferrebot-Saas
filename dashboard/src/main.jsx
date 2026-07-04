@@ -23,9 +23,11 @@ import '@fontsource/sora/800.css'
 import '@fontsource/archivo/600.css'
 import '@fontsource/archivo/700.css'
 import '@fontsource/archivo/800.css'
+import { QueryClientProvider } from '@tanstack/react-query'
 import App from './App.jsx'
 import './index.css'
 import { consumeTokenFromHash } from './lib/handoff.js'
+import { queryClient } from './lib/queryClient'
 
 // Handoff de la landing (plan §3): ANTES de montar el router o disparar cualquier fetch, si la URL trae
 // `#token=...` lo guardamos como sesión y borramos el fragmento del historial (que jamás quede en el
@@ -33,8 +35,12 @@ import { consumeTokenFromHash } from './lib/handoff.js'
 consumeTokenFromHash()
 
 // El boot de /config (theming + features) corre ya autenticado, dentro de ProtectedRoute (App.jsx).
+// QueryClientProvider en la raíz (ADR 0029): habilita useQuery/useMutation en toda la app. Convive
+// con useFetch (sin big-bang) y con el SSE (useRealtime), que no cambian.
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
-    <App />
+    <QueryClientProvider client={queryClient}>
+      <App />
+    </QueryClientProvider>
   </React.StrictMode>,
 )

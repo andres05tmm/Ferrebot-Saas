@@ -71,3 +71,14 @@ class VentaConFacturaViva(VentaError):
     def __init__(self, venta_id: int, *, accion: str = "borrar") -> None:
         super().__init__(f"La venta tiene factura electrónica; no se puede {accion}")
         self.venta_id = venta_id
+
+
+class VentaConDevolucion(VentaError):
+    """La venta ya tiene una devolución registrada; no se puede borrar/editar (→ 409, ADR 0026).
+
+    La devolución ya movió stock y dinero (egreso de caja / abono al fiado): borrar o reescribir la
+    venta dejaría esas contrapartidas colgando. La corrección posible es otra devolución (parcial)."""
+
+    def __init__(self, venta_id: int, *, accion: str = "borrar") -> None:
+        super().__init__(f"La venta tiene una devolución registrada; no se puede {accion}")
+        self.venta_id = venta_id

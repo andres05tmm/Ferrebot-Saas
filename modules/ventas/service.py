@@ -23,6 +23,7 @@ from modules.ventas.errors import (
     OperacionNoAutorizada,
     ProductoNoEncontrado,
     StockInsuficiente,
+    VentaConDevolucion,
     VentaConFacturaViva,
     VentaNoEncontrada,
     VentaNoEsDeHoy,
@@ -45,6 +46,9 @@ class ProductoPrecio:
     activo: bool
     # Costo de compra AL MOMENTO de vender: se hila hasta el movimiento SALIDA (costo de ventas exacto).
     precio_compra: Decimal | None = None
+    # Costo promedio ponderado móvil (ADR 0025): fuente PREFERIDA del snapshot de costo en la SALIDA;
+    # cae a `precio_compra` si aún es NULL (producto sin compras registradas tras la migración 0028).
+    costo_promedio: Decimal | None = None
     precio_umbral: Decimal | None = None
     precio_bajo_umbral: Decimal | None = None
     precio_sobre_umbral: Decimal | None = None
@@ -149,6 +153,7 @@ class VentasRepo(Protocol):
     async def obtener_cabecera(self, venta_id: int) -> VentaLeer | None: ...
     async def obtener(self, venta_id: int) -> VentaConLineas | None: ...
     async def tiene_factura_viva(self, venta_id: int) -> bool: ...
+    async def tiene_devolucion(self, venta_id: int) -> bool: ...
     async def borrar_venta(self, venta_id: int) -> None: ...
     async def revertir_lineas(self, venta_id: int) -> None: ...
     async def aplicar_edicion(self, venta_id: int, edicion: EdicionVenta) -> VentaConLineas | None: ...
@@ -290,7 +295,9 @@ class VentaService:
 
         En orden: existe (VentaNoEncontrada/404) → es de HOY Colombia (VentaNoEsDeHoy/409) → permiso,
         admin o vendedor dueño (OperacionNoAutorizada/403) → sin factura electrónica viva
-        (VentaConFacturaViva/409). `accion` ("borrar"/"editar") solo ajusta el mensaje del error.
+        (VentaConFacturaViva/409) → sin devolución registrada (VentaConDevolucion/409, ADR 0026: la
+        devolución ya movió stock y dinero; borrar/reescribir la venta dejaría eso colgando).
+        `accion` ("borrar"/"editar") solo ajusta el mensaje del error.
         """
         venta = await self._repo.obtener_cabecera(venta_id)
         if venta is None:
@@ -301,6 +308,8 @@ class VentaService:
             raise OperacionNoAutorizada(venta_id, accion=accion)
         if await self._repo.tiene_factura_viva(venta_id):
             raise VentaConFacturaViva(venta_id, accion=accion)
+        if await self._repo.tiene_devolucion(venta_id):
+            raise VentaConDevolucion(venta_id, accion=accion)
         return venta
 
     async def borrar_venta(self, venta_id: int, *, user_id: int, es_admin: bool) -> int:
@@ -379,8 +388,11 @@ class VentaService:
                 # y la factura DIAN y los reportes reconstruyen la línea multiplicándolos: se guarda
                 # el precio EFECTIVO por unidad para que el documento cuadre con lo cobrado.
                 precio = total / ln.cantidad
+        # Snapshot del costo: promedio ponderado móvil (ADR 0025); fallback al precio_compra si el
+        # promedio aún es NULL (producto sin compras tras la migración 0028).
+        costo = prod.costo_promedio if prod.costo_promedio is not None else prod.precio_compra
         return LineaResuelta(
             producto_id=prod.id, descripcion=ln.descripcion or prod.nombre, cantidad=ln.cantidad,
             precio_unitario=precio, iva=prod.iva, total_linea=total, descontar_stock=True,
-            costo_unitario=prod.precio_compra,
+            costo_unitario=costo,
         )

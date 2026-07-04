@@ -1,0 +1,37 @@
+{
+  // TypeScript gradual (ADR 0029): allowJs deja convivir .js y .ts/.tsx sin big-bang.
+  // `strict` solo muerde a los archivos .ts/.tsx — `checkJs:false` deja los .jsx existentes
+  // sin type-check. Vite/esbuild transpila sin tsc; este tsconfig es para el editor y un
+  // `tsc --noEmit` opcional, NUNCA corre en `npm run build`.
+  "compilerOptions": {
+    "target": "ES2020",
+    "useDefineForClassFields": true,
+    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "skipLibCheck": true,
+
+    // Resolución tipo bundler: un import `./api.js` resuelve al fuente `./api.ts`
+    // (igual que hace Vite). Así no hay que reescribir los 30+ imports `@/lib/api.js`.
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+    "jsx": "react-jsx",
+
+    // Convivencia .js/.ts
+    "allowJs": true,
+    "checkJs": false,
+
+    // strict aplica solo a lo tipado (.ts/.tsx), porque checkJs está apagado
+    "strict": true,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "noFallthroughCasesInSwitch": true,
+
+    "types": ["vite/client"],
+    "baseUrl": ".",
+    "paths": { "@/*": ["./src/*"] }
+  },
+  "include": ["src"]
+}

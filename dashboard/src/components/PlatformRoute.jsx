@@ -6,7 +6,7 @@
  * gatea cada /admin/* con require_platform; esto es el gate del cliente (ocultar la UI).
  */
 import { Navigate } from 'react-router-dom'
-import { getToken } from '@/lib/api.js'
+import { getToken } from '@/lib/api'
 import { useAuth } from '@/hooks/useAuth.js'
 
 export default function PlatformRoute({ children }) {

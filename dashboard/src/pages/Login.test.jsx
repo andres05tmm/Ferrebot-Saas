@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import Login from './Login.jsx'
-import { redirector } from '@/lib/api.js'
+import { redirector } from '@/lib/api'
 
 function renderLogin() {
   return render(

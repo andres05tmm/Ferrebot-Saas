@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { consumeTokenFromHash, slugFromHost, landingLoginUrlForHost, baseDomain, landingOrigin } from './handoff.js'
-import { TOKEN_KEY } from './api.js'
+import { TOKEN_KEY } from './api'
 
 beforeEach(() => {
   localStorage.clear()

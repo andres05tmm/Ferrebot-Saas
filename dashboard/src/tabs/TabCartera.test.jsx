@@ -11,7 +11,7 @@ vi.mock('@/components/RealtimeProvider.jsx', () => ({
 }))
 
 import TabCartera from './TabCartera.jsx'
-import { USER_KEY } from '@/lib/api.js'
+import { USER_KEY } from '@/lib/api'
 
 const DEUDORES = [
   { cliente_id: 1, nombre: 'Ana Pérez', telefono: '3001112233', saldo: '150000.00',

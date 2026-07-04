@@ -4,11 +4,16 @@
  * (VentaCrear) con header Idempotency-Key (UUID por envío). Soporta venta varia (línea sin
  * producto_id → exige descripcion + precio_unitario). Éxito → limpia el carrito + toast; la SSE
  * 'venta_registrada' refresca Hoy/Historial. Diferido: productos frecuentes / top (sin endpoint).
+ *
+ * Atajos de teclado POS (ADR 0029): F2 o «/» enfocan el buscador; Enter en el buscador agrega el
+ * primer resultado; F9 o Ctrl+Enter cobran; Alt+1..4 elige método de pago; y un lector de código de
+ * barras (ráfaga de teclas terminada en Enter) busca y agrega directo. Se eligieron teclas que no
+ * chocan con atajos del navegador.
  */
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { Plus, Search, Trash2, X } from 'lucide-react'
-import { api, apiJson } from '@/lib/api.js'
+import { api, apiJson } from '@/lib/api'
 import { cop } from '@/components/shared.jsx'
 import { useFeatures } from '@/lib/features.jsx'
 import { Card } from '@/components/ui/card.jsx'
@@ -44,6 +49,16 @@ export default function TabVentasRapidas() {
   const [documento, setDocumento] = useState(documentoDefault)
   const [enviando, setEnviando] = useState(false)
 
+  // Refs para los atajos de teclado: el listener global se ata UNA vez, así que lee el estado vivo
+  // por ref (resultados y la función registrar, que capturaría valores viejos si se cerrara en ella).
+  const searchRef = useRef(null)
+  const resultadosRef = useRef(resultados)
+  const registrarRef = useRef(null)
+  const bufferRef = useRef('')            // acumulador del lector de código de barras
+  const bufferTimerRef = useRef(null)
+  resultadosRef.current = resultados
+  registrarRef.current = registrar
+
   // Búsqueda de producto (GET /productos?q). Sin q → sin resultados.
   useEffect(() => {
     if (!q.trim()) { setResultados([]); return undefined }
@@ -53,6 +68,89 @@ export default function TabVentasRapidas() {
       .catch(() => { if (!cancelado) setResultados([]) })
     return () => { cancelado = true }
   }, [q])
+
+  // Lector de código de barras: busca el código y agrega el producto (match exacto por `codigo`, o el
+  // primero). No pasa por el buscador visible: agrega directo, como espera un cajero escaneando.
+  async function agregarPorCodigo(codigo) {
+    try {
+      const d = await apiJson(`/productos?q=${encodeURIComponent(codigo)}&limite=5`)
+      const lista = Array.isArray(d) ? d : []
+      if (lista.length === 0) { toast.error(`Sin producto para «${codigo}»`); return }
+      const exacto = lista.find(p => String(p.codigo ?? '') === codigo) || lista[0]
+      agregarProducto(exacto)
+    } catch {
+      toast.error('Error al buscar el código')
+    }
+  }
+
+  // Atajos de teclado del POS (ADR 0029). Listener global atado una sola vez; el estado vivo entra
+  // por refs. Teclas elegidas para no chocar con el navegador (F2/F9 = funciones; Alt+dígito; «/»
+  // solo fuera de un campo). El lector de código de barras se detecta por ráfaga: teclas imprimibles
+  // que llegan más rápido que IDLE_MS se acumulan; Enter con el buffer largo → es un escaneo.
+  useEffect(() => {
+    const BARCODE_MIN = 4     // caracteres mínimos del buffer para tratarlo como código escaneado
+    const IDLE_MS = 30        // pausa que descarta el buffer (tecleo humano lo resetea; el lector no)
+
+    const esEditable = (el) => {
+      if (!el || !el.tagName) return false
+      const tag = el.tagName
+      return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el.isContentEditable
+    }
+    const limpiarBuffer = () => {
+      bufferRef.current = ''
+      if (bufferTimerRef.current) { clearTimeout(bufferTimerRef.current); bufferTimerRef.current = null }
+    }
+
+    function onKeyDown(e) {
+      // Acumular ráfaga del lector: solo teclas imprimibles sin modificadores.
+      if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        bufferRef.current += e.key
+        if (bufferTimerRef.current) clearTimeout(bufferTimerRef.current)
+        bufferTimerRef.current = setTimeout(() => { bufferRef.current = '' }, IDLE_MS)
+      }
+
+      // F2 o «/» → foco al buscador («/» solo si no estás escribiendo en un campo).
+      if (e.key === 'F2' || (e.key === '/' && !esEditable(e.target))) {
+        e.preventDefault()
+        searchRef.current?.focus()
+        searchRef.current?.select?.()
+        return
+      }
+      // F9 o Ctrl/Cmd+Enter → cobrar.
+      if (e.key === 'F9' || (e.key === 'Enter' && (e.ctrlKey || e.metaKey))) {
+        e.preventDefault()
+        registrarRef.current?.()
+        return
+      }
+      // Alt+1..N → método de pago.
+      if (e.altKey && /^[1-9]$/.test(e.key)) {
+        const idx = Number(e.key) - 1
+        if (idx < METODOS.length) { e.preventDefault(); setMetodoPago(METODOS[idx]) }
+        return
+      }
+      // Enter: ráfaga larga = escaneo (busca y agrega); si no, agrega el primer resultado del buscador.
+      if (e.key === 'Enter') {
+        const scan = bufferRef.current
+        limpiarBuffer()
+        if (scan.length >= BARCODE_MIN) {
+          e.preventDefault()
+          agregarPorCodigo(scan)
+          return
+        }
+        if (document.activeElement === searchRef.current && resultadosRef.current.length > 0) {
+          e.preventDefault()
+          agregarProducto(resultadosRef.current[0])
+        }
+      }
+    }
+
+    document.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.removeEventListener('keydown', onKeyDown)
+      if (bufferTimerRef.current) clearTimeout(bufferTimerRef.current)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   function agregarProducto(p) {
     setCarrito(prev => {
@@ -137,7 +235,7 @@ export default function TabVentasRapidas() {
         <Card className="p-3">
           <div className="relative">
             <Search className="size-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
-            <Input value={q} onChange={(e) => setQ(e.target.value)}
+            <Input ref={searchRef} value={q} onChange={(e) => setQ(e.target.value)}
               placeholder="Buscar producto…" aria-label="Buscar producto" className="pl-9" />
           </div>
           {resultados.length > 0 && (
@@ -156,6 +254,7 @@ export default function TabVentasRapidas() {
           )}
         </Card>
 
+        <AtajosHint />
         <VariaForm onAdd={agregarVaria} />
       </div>
 
@@ -236,6 +335,28 @@ export default function TabVentasRapidas() {
         </button>
       </Card>
     </div>
+  )
+}
+
+// Tecla con estilo de <kbd> para el hint de atajos.
+function Kbd({ children }) {
+  return (
+    <kbd className="inline-flex items-center rounded border border-border bg-surface-2 px-1 text-[10px] font-medium text-muted-foreground">
+      {children}
+    </kbd>
+  )
+}
+
+// Hint discreto de los atajos de teclado del POS (ADR 0029).
+function AtajosHint() {
+  return (
+    <p className="flex flex-wrap items-center gap-x-3 gap-y-1 px-1 text-[11px] text-muted-foreground">
+      <span><Kbd>F2</Kbd> o <Kbd>/</Kbd> buscar</span>
+      <span><Kbd>Enter</Kbd> agrega</span>
+      <span><Kbd>F9</Kbd> cobrar</span>
+      <span><Kbd>Alt</Kbd>+<Kbd>1</Kbd>–<Kbd>4</Kbd> método de pago</span>
+      <span>o escanea un código de barras</span>
+    </p>
   )
 }
 

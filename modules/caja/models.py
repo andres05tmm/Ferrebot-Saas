@@ -2,7 +2,7 @@
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import BigInteger, DateTime, Numeric, Text, func
+from sqlalchemy import BigInteger, DateTime, ForeignKey, Numeric, Text, func
 from sqlalchemy.dialects.postgresql import ENUM as PgEnum
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -57,6 +57,18 @@ class Gasto(TenantBase):
     caja_id: Mapped[int | None] = mapped_column(BigInteger)
     usuario_id: Mapped[int | None] = mapped_column(BigInteger)
     idempotency_key: Mapped[str | None] = mapped_column(Text)
+    # --- gastos ↔ cuentas por pagar (0036, ADR 0028) --------------------------
+    # A quién se le pagó (opcional). El gasto que SALDA una factura de proveedor guarda su id y el
+    # ÚNICO abono que generó (candado anti-duplicación: un gasto → a lo sumo un abono).
+    proveedor_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("proveedores.id", ondelete="SET NULL")
+    )
+    factura_proveedor_id: Mapped[str | None] = mapped_column(
+        Text, ForeignKey("facturas_proveedores.id", ondelete="SET NULL")
+    )
+    abono_proveedor_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("facturas_abonos.id", ondelete="SET NULL")
+    )
     creado_en: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

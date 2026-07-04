@@ -8,7 +8,7 @@
 import { useState } from 'react'
 import { toast } from 'sonner'
 import { ChefHat, Bike, CheckCircle2, ClipboardList, XCircle } from 'lucide-react'
-import { api } from '@/lib/api.js'
+import { api } from '@/lib/api'
 import { cop, useFetch } from '@/components/shared.jsx'
 import { useRealtimeEvent } from '@/components/RealtimeProvider.jsx'
 import { useAuth } from '@/hooks/useAuth.js'

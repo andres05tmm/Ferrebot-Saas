@@ -187,3 +187,100 @@ describe('TabVentasRapidas — selector de documento', () => {
     expect(ventaBody(fetchMock).documento).toBe('fe')
   })
 })
+
+// Atajos de teclado del POS (ADR 0029). El listener vive en `document`: los eventos se disparan ahí.
+const TORNILLO_COD = { id: 3, nombre: 'Tornillo', precio_venta: '150', codigo: '7701234567890' }
+
+describe('TabVentasRapidas — atajos de teclado', () => {
+  it('F2 enfoca el buscador', () => {
+    instalarFetch()
+    render(<TabVentasRapidas />)
+    expect(screen.getByLabelText('Buscar producto')).not.toHaveFocus()
+
+    fireEvent.keyDown(document, { key: 'F2' })
+    expect(screen.getByLabelText('Buscar producto')).toHaveFocus()
+  })
+
+  it('«/» enfoca el buscador fuera de un campo, pero NO cuando escribes en uno', () => {
+    instalarFetch()
+    render(<TabVentasRapidas />)
+
+    fireEvent.keyDown(document.body, { key: '/' })
+    expect(screen.getByLabelText('Buscar producto')).toHaveFocus()
+
+    // Con el foco en otro input, «/» debe teclearse (no robar el foco al buscador).
+    const desc = screen.getByLabelText('Descripción varia')
+    desc.focus()
+    fireEvent.keyDown(desc, { key: '/' })
+    expect(desc).toHaveFocus()
+  })
+
+  it('Enter en el buscador con resultados agrega el primer producto', async () => {
+    instalarFetch()
+    render(<TabVentasRapidas />)
+    const input = screen.getByLabelText('Buscar producto')
+
+    fireEvent.change(input, { target: { value: 'mar' } })
+    await screen.findByText('Martillo')     // resultados listos
+    input.focus()
+    fireEvent.keyDown(document, { key: 'Enter' })
+
+    await screen.findByLabelText('Cantidad de Martillo')  // agregado al carrito
+  })
+
+  it('F9 cobra (POST /ventas) y limpia el carrito', async () => {
+    const fetchMock = instalarFetch()
+    render(<TabVentasRapidas />)
+
+    fireEvent.change(screen.getByLabelText('Buscar producto'), { target: { value: 'mar' } })
+    fireEvent.click(await screen.findByText('Martillo'))
+
+    fireEvent.keyDown(document, { key: 'F9' })
+    await screen.findByText('Agrega productos para vender.')
+    expect(fetchMock.mock.calls.some(c => String(c[0]).includes('/ventas') && c[1]?.method === 'POST')).toBe(true)
+  })
+
+  it('Ctrl+Enter también cobra', async () => {
+    const fetchMock = instalarFetch()
+    render(<TabVentasRapidas />)
+
+    fireEvent.change(screen.getByLabelText('Buscar producto'), { target: { value: 'mar' } })
+    fireEvent.click(await screen.findByText('Martillo'))
+
+    fireEvent.keyDown(document, { key: 'Enter', ctrlKey: true })
+    await screen.findByText('Agrega productos para vender.')
+    expect(fetchMock.mock.calls.some(c => String(c[0]).includes('/ventas') && c[1]?.method === 'POST')).toBe(true)
+  })
+
+  it('Alt+2 selecciona «transferencia» como método de pago', () => {
+    instalarFetch()
+    render(<TabVentasRapidas />)
+
+    fireEvent.keyDown(document, { key: '2', altKey: true })
+    expect(screen.getByLabelText('Método de pago')).toHaveValue('transferencia')
+  })
+
+  it('lector de código de barras: ráfaga de teclas + Enter busca y agrega directo', async () => {
+    const fetchMock = instalarFetch([TORNILLO_COD])
+    render(<TabVentasRapidas />)
+
+    const code = '7701234567890'
+    for (const ch of code) fireEvent.keyDown(document, { key: ch })  // ráfaga (sin pausa → buffer intacto)
+    fireEvent.keyDown(document, { key: 'Enter' })
+
+    await screen.findByLabelText('Cantidad de Tornillo')  // agregado sin pasar por el buscador
+    expect(fetchMock.mock.calls.some(c => String(c[0]).includes(`/productos?q=${code}`))).toBe(true)
+  })
+
+  it('una ráfaga corta (menos del mínimo) NO se trata como escaneo', () => {
+    const fetchMock = instalarFetch([TORNILLO_COD])
+    render(<TabVentasRapidas />)
+
+    fireEvent.keyDown(document, { key: '1' })
+    fireEvent.keyDown(document, { key: '2' })
+    fireEvent.keyDown(document, { key: 'Enter' })
+
+    expect(screen.getByText('Agrega productos para vender.')).toBeInTheDocument()
+    expect(fetchMock.mock.calls.some(c => String(c[0]).includes('/productos?q=12'))).toBe(false)
+  })
+})

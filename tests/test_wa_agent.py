@@ -362,13 +362,14 @@ def _coro(valor):
 
 
 # --- handoff: pausa del agente cuando la conversación está en humano --------
-def _agente(engine, provider, *, memoria=None, sender=None) -> AgenteWa:
+def _agente(engine, provider, *, memoria=None, sender=None, gobierno=None) -> AgenteWa:
     return AgenteWa(
         abrir_tenant=_abrir_factory(engine),
         resolver_llm=lambda tid, turno: _coro(_llm(provider)),
         capacidades=lambda tid: _coro(frozenset({"pack_agenda", "canal_whatsapp"})),
         memoria=memoria or MemoriaWa(url="x", client=_FakeRedis()),
         sender=sender or _FakeSender(),
+        gobierno=gobierno,
     )
 
 
@@ -481,6 +482,46 @@ async def test_agente_escala_a_humano_y_pausa_el_siguiente_mensaje(tenant):
         _tenant_resuelto(),
     )
     assert texto2 == "" and sender2.envios == [] and provider2.generaciones == []
+
+
+# --- gobierno (ADR 0024): rate-limit / presupuesto cortan ANTES del LLM -----
+class _GobiernoStoreFake:
+    async def permitir_rate(self, tenant_id, usuario_id, limite, ventana_s):
+        return True
+
+    async def reservar_presupuesto(self, tenant_id, fecha, costo, limite, ttl_s):
+        return costo <= limite   # con limite < costo, siempre corta
+
+
+async def test_gobierno_presupuesto_corta_sin_llamar_al_llm(tenant):
+    from core.llm.gobierno import MENSAJE_PRESUPUESTO, Gobierno, PoliticaGobierno
+
+    await _seed(tenant.engine)
+    provider = _ScriptedProvider([])          # si corriera el LLM, reventaría (lista vacía)
+    sender = _FakeSender()
+    gob = Gobierno(
+        store=_GobiernoStoreFake(),
+        plataforma=PoliticaGobierno(presupuesto_diario=1, costo_estimado_turno=1000),
+    )
+    agente = _agente(tenant.engine, provider, sender=sender, gobierno=gob)
+
+    texto = await agente.atender(
+        MensajeWa(message_id="wg", telefono=TEL, phone_number_id=PNID, texto="hola"),
+        _tenant_resuelto(),
+    )
+    assert texto == MENSAJE_PRESUPUESTO
+    assert provider.generaciones == []        # el modelo NUNCA se llamó
+    assert sender.envios == [(PNID, TEL, MENSAJE_PRESUPUESTO)]
+    # El hilo del inbox registró entrante + el mensaje de corte saliente.
+    async with AsyncSession(tenant.engine) as s:
+        filas = (await s.execute(
+            text("SELECT direccion, texto FROM conversacion_mensajes "
+                 "WHERE cliente_telefono=:t ORDER BY id"),
+            {"t": TEL},
+        )).all()
+    assert [(f.direccion, f.texto) for f in filas] == [
+        ("entrante", "hola"), ("saliente", MENSAJE_PRESUPUESTO)
+    ]
 
 
 # --- inbox: el runtime persiste el hilo (entrante + saliente) ----------------

@@ -27,14 +27,17 @@ from modules.agenda.router import router as agenda_router
 from modules.auth.login_email import router as auth_email_router
 from modules.auth.password_reset import router as auth_reset_router
 from modules.auth.router import router as auth_router
+from modules.bancos.router import router as bancos_router
 from modules.caja.router import gastos_router, router as caja_router
 from modules.clientes.router import router as clientes_router
 from modules.cobranza.router import router as cobranza_router
 from modules.compras.router import router as compras_router
 from modules.compras_fiscal.router import router as compras_fiscal_router
 from modules.config.router import router as config_router
+from modules.contabilidad.router import router as contabilidad_router
 from modules.conversaciones.router import router as conversaciones_router
 from modules.cotizaciones.router import router as cotizaciones_router
+from modules.devoluciones.router import router as devoluciones_router
 from modules.facturacion.router import router as facturacion_router
 from modules.facturacion.webhook import crear_router_matias
 from modules.facturacion.webhook_wiring import construir_webhook_matias_deps
@@ -48,6 +51,8 @@ from modules.postventa.router import router as postventa_router
 from modules.proveedores.router import router as proveedores_router
 from modules.reportes_agente.router import router as reportes_agente_router
 from modules.reportes.router import router as reportes_router
+from modules.reservas.router import router as reservas_router
+from modules.retenciones.router import router as retenciones_router
 from modules.ventas.router import router as ventas_router
 
 log = get_logger("api")
@@ -152,6 +157,7 @@ def create_app(spa_dist: Path | None = None) -> FastAPI:
     app.include_router(auth_reset_router, prefix="/api/v1")   # set-password / reset por token (ADR 0009)
     app.include_router(admin_router, prefix="/api/v1")        # panel super-admin, cross-tenant (ADR 0010)
     app.include_router(ventas_router, prefix="/api/v1")
+    app.include_router(devoluciones_router, prefix="/api/v1")  # devoluciones + nota crédito (ADR 0026)
     app.include_router(catalogo_router, prefix="/api/v1")    # /productos* — feature `ventas` (ADR 0021)
     app.include_router(inventario_router, prefix="/api/v1")  # /inventario/* — feature `inventario`
     app.include_router(caja_router, prefix="/api/v1")
@@ -172,8 +178,12 @@ def create_app(spa_dist: Path | None = None) -> FastAPI:
     app.include_router(cotizaciones_router, prefix="/api/v1")  # cotizaciones WA (ADR 0017)
     app.include_router(pagos_router, prefix="/api/v1")         # cobros (ADR 0013)
     app.include_router(pagar_router, prefix="/api/v1")         # cuentas por pagar (ADR 0019)
+    app.include_router(bancos_router, prefix="/api/v1")        # conciliación bancaria (ADR 0028)
     app.include_router(postventa_router, prefix="/api/v1")     # postventa (plan §2.6)
+    app.include_router(reservas_router, prefix="/api/v1")      # reservas por noches (pack_reservas)
     app.include_router(reportes_agente_router, prefix="/api/v1")  # analítica del dueño (Ola 3 §11)
+    app.include_router(retenciones_router, prefix="/api/v1")   # retenciones/INC (ADR 0027)
+    app.include_router(contabilidad_router, prefix="/api/v1")  # ledger doble partida + PUC (ADR 0030)
     # Webhook único de WhatsApp (Kapso): NO va bajo /api/ (no es por-empresa; resuelve el tenant por
     # phone_number_id). El TenantMiddleware lo deja pasar (solo /api/ es por-empresa).
     app.include_router(crear_router_wa())

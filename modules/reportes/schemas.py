@@ -43,6 +43,20 @@ class LibroIVA(BaseModel):
     saldo: Decimal              # iva_generado − iva_descontable (+ = a pagar; − = a favor)
 
 
+class SaldoBimestral(BaseModel):
+    """Saldo de IVA consolidado de un bimestre (materializado, ADR 0027).
+
+    `saldo = iva_generado − iva_descontable` (+ = a pagar; − = a favor). A diferencia de `LibroIVA`
+    (cruce al vuelo de un rango arbitrario), esto es el saldo PERSISTIDO por período bimestral.
+    """
+
+    anio: int
+    bimestre: int
+    iva_generado: Decimal
+    iva_descontable: Decimal
+    saldo: Decimal
+
+
 class PuntoSerie(BaseModel):
     """Un día de la serie de ventas (para la gráfica de evolución y el sparkline del tab Hoy)."""
 
@@ -56,6 +70,27 @@ class TotalesVentas(BaseModel):
     dia: Decimal
     semana: Decimal
     mes: Decimal
+
+
+class CuentaMayor(BaseModel):
+    """Un renglón del Libro Mayor: total por cuenta/concepto en el período (ADR 0027, sin PUC formal).
+
+    `naturaleza` agrupa el concepto (ingreso/egreso/impuesto/retencion) mientras no exista el PUC (F8).
+    """
+
+    concepto: str
+    naturaleza: str
+    total: Decimal
+
+
+class MovimientoAuxiliar(BaseModel):
+    """Un movimiento del Libro Auxiliar: el detalle documento a documento detrás del Mayor (ADR 0027)."""
+
+    fecha: date
+    concepto: str
+    naturaleza: str
+    referencia: str
+    valor: Decimal
 
 
 class TopProducto(BaseModel):

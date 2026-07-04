@@ -29,6 +29,9 @@
 | `notas_electronicas` | Notas crédito/débito | `facturacion_electronica` |
 | `libro_iva` | Tab Libro IVA, saldos bimestrales | `facturacion_electronica` o `compras_fiscal` |
 | `pos_electronico` | POS electrónico DIAN (documento equivalente) | `facturacion_electronica` |
+| `retenciones` | Config de retenciones/INC editable + cálculo/persistencia por documento (ADR 0027) | — |
+| `libros_contables` | Libros auxiliar y mayor (reportes contables derivados, ADR 0027) | — |
+| `contabilidad_ledger` | Motor contable: ledger de doble partida + PUC + estados financieros, capa derivada opt-in (ADR 0030) | `ventas` o `caja` |
 | `compras_fiscal` | Compras con soporte tributario, tab Compras fiscal | — |
 | `honorarios` | Cuentas de cobro | — |
 | `fiados` | Crédito a clientes y abonos | `ventas` |

@@ -130,6 +130,10 @@ def _cliente_openai(api_key: str) -> Cliente:
         if client is None:
             client = AsyncOpenAI(api_key=api_key, timeout=_TIMEOUT_S)
             _sdk_clients[api_key] = client
-        resp = await client.chat.completions.create(**payload)
+        try:
+            resp = await client.chat.completions.create(**payload)
+        except Exception as exc:  # traduce el error del SDK a la excepción canónica (retry-able o no)
+            from core.llm.resiliencia import clasificar_excepcion
+            raise clasificar_excepcion(exc) from exc
         return resp.model_dump()
     return _call

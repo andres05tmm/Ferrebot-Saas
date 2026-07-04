@@ -32,6 +32,7 @@ from apps.bot.repos import ControlCapacidades, ControlSecretosBot, SqlUsuariosBo
 from core.config import get_settings
 from core.db.session import control_session, tenant_session
 from core.llm.factory import PlataformaLLM, Turno
+from core.llm.gobierno import Gobierno, PoliticaGobierno, RedisGobierno
 from core.llm.stores import ControlLLMConfigStore, ControlLLMKeyStore
 from core.tenancy.cache import control_cache
 from core.tenancy.config_empresa import cargar_rubro
@@ -216,6 +217,13 @@ def construir_deps(
         plataforma=PlataformaLLM.desde_settings(settings),
     )
     crear_recursos = _crear_recursos_factory(config)
+    # Gobierno de agentes (ADR 0024): compuertas Redis (rate-limit + presupuesto) por empresa. Inerte
+    # mientras los límites de plataforma sean 0 y la empresa no los active en config_empresa (opt-in).
+    gobierno = Gobierno(
+        store=RedisGobierno(url=settings.redis_url),
+        plataforma=PoliticaGobierno.desde_settings(settings),
+        config_store=config,
+    )
     procesar = crear_turno_handler(
         dispatcher=dispatcher,
         memoria=lambda s: MemoriaService(SqlMemoriaRepository(s)),
@@ -226,6 +234,7 @@ def construir_deps(
         crear_bypass=crear_bypass_factory(dispatcher),
         pendientes=pendientes,
         turno=Turno.WORKER,
+        gobierno=gobierno,
     )
     procesar_callback = crear_callback_handler(
         dispatcher=dispatcher,

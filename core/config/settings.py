@@ -95,6 +95,27 @@ class Settings(BaseSettings):
     llm_model_worker: str = "gpt-4o-mini"
     llm_model_orquestador: str = "gpt-4o"
 
+    # Resiliencia LLM (ADR 0023): retry ante transitorios (kill-switch en caliente) y proveedor de
+    # respaldo opcional con SUS modelos ("" = sin respaldo; los nombres no cruzan entre vendors).
+    llm_retry_habilitado: bool = True
+    llm_fallback_provider: str = ""
+    llm_fallback_model_worker: str = ""
+    llm_fallback_model_orquestador: str = ""
+
+    # Gobierno de agentes (ADR 0024): compuertas ATÓMICAS en Redis ANTES de gastar la llamada al
+    # modelo — rate-limit por (empresa, usuario) y presupuesto diario por empresa. `0` = compuerta
+    # apagada (opt-in, no cambia nada para tenants existentes); override por empresa en config_empresa
+    # (`llm_rate_limite`, `llm_rate_ventana_s`, `llm_presupuesto_diario`); kill-switch en caliente con
+    # `gobierno_habilitado` (mismo patrón que la resiliencia F0). El presupuesto se mide en TOKENS
+    # estimados: cada turno RESERVA `gobierno_costo_estimado_turno` antes de llamar (gate determinista),
+    # y `core/llm/medicion.py` reconcilia con el uso real. Al exceder cualquiera, el turno se CORTA con
+    # un mensaje amable (nunca en silencio). Un fallo de Redis NO tumba el turno (fail-open + log).
+    gobierno_habilitado: bool = True
+    gobierno_rate_limite: int = 0             # llamadas por ventana y usuario (0 = sin rate-limit)
+    gobierno_rate_ventana_s: int = 60
+    gobierno_presupuesto_diario: int = 0      # tope diario por empresa en tokens estimados (0 = sin tope)
+    gobierno_costo_estimado_turno: int = 1500  # reserva de tokens por turno (gate pre-llamada)
+
     # Canal WhatsApp vía Kapso (BSP). Credenciales de PLATAFORMA: una sola cuenta Kapso atiende a
     # todos los tenants (el tenant se resuelve por phone_number_id en el control DB, tabla wa_numeros).
     # `kapso_webhook_secret` valida la firma HMAC de los webhooks entrantes; `kapso_api_key` autentica

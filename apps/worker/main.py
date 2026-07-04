@@ -29,7 +29,8 @@ from core.config.timezone import now_co
 from core.db.session import control_session, tenant_session
 from core.db.urls import tenant_url
 from core.events.publisher import publish
-from core.llm.factory import PlataformaLLM, Turno, get_llm
+from core.llm.factory import PlataformaLLM, Turno, get_llm_con_fallback
+from core.llm.gobierno import Gobierno, PoliticaGobierno, RedisGobierno
 from core.llm.stores import ControlLLMConfigStore, ControlLLMKeyStore
 from core.logging import get_logger
 from core.observability import init_sentry
@@ -176,7 +177,8 @@ def _construir_agente(settings) -> AgenteWa:
     config_store, key_store = _ConfigControl(), _KeyControl(settings.secrets_master_key)
 
     async def resolver_llm(tenant_id: int, turno: Turno):
-        return await get_llm(
+        # Con resiliencia (ADR 0023): retry ante transitorios + respaldo si está configurado.
+        return await get_llm_con_fallback(
             tenant_id, turno=turno, config_store=config_store, key_store=key_store,
             plataforma=plataforma,
         )
@@ -191,6 +193,12 @@ def _construir_agente(settings) -> AgenteWa:
             cred = await cargar_config_bold(s, settings.secrets_master_key, tenant_id)
         return BoldClient(cred) if cred is not None else None
 
+    # Gobierno de agentes (ADR 0024): compuertas Redis (rate-limit + presupuesto) por empresa; opt-in.
+    gobierno = Gobierno(
+        store=RedisGobierno(url=settings.redis_url),
+        plataforma=PoliticaGobierno.desde_settings(settings),
+        config_store=config_store,
+    )
     return AgenteWa(
         abrir_tenant=tenant_session,
         resolver_llm=resolver_llm,
@@ -200,6 +208,7 @@ def _construir_agente(settings) -> AgenteWa:
         # Sync write-only con Google Calendar (None si no hay service account en el entorno).
         gcal=calendar_client_por_defecto(),
         resolver_psp=resolver_psp,
+        gobierno=gobierno,
     )
 
 

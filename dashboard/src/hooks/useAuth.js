@@ -5,7 +5,7 @@
  * la sesión en localStorage y expone `loginConPassword` (POST /auth/login/password vía api.js).
  * No usa hooks de React, así que es seguro llamarlo fuera de un componente.
  */
-import { api, TOKEN_KEY, USER_KEY, limpiarSesion, redirector } from '@/lib/api.js'
+import { api, TOKEN_KEY, USER_KEY, limpiarSesion, redirector } from '@/lib/api'
 
 export function useAuth() {
   const getToken = () => {

@@ -33,6 +33,12 @@ class PlataformaLLM:
     model_worker: str
     model_orquestador: str
     keys: dict[str, str]
+    # Resiliencia (ADR 0023): retry apagable en caliente + proveedor de respaldo opcional (con sus
+    # modelos, porque los nombres de modelo no son intercambiables entre vendors). "" = sin respaldo.
+    retry_habilitado: bool = True
+    fallback_provider: str = ""
+    fallback_model_worker: str = ""
+    fallback_model_orquestador: str = ""
 
     @classmethod
     def desde_settings(cls, settings) -> "PlataformaLLM":
@@ -41,6 +47,10 @@ class PlataformaLLM:
             model_worker=settings.llm_model_worker,
             model_orquestador=settings.llm_model_orquestador,
             keys={"openai": settings.openai_api_key, "claude": settings.anthropic_api_key},
+            retry_habilitado=settings.llm_retry_habilitado,
+            fallback_provider=settings.llm_fallback_provider,
+            fallback_model_worker=settings.llm_fallback_model_worker,
+            fallback_model_orquestador=settings.llm_fallback_model_orquestador,
         )
 
 
@@ -83,4 +93,49 @@ async def get_llm(
 
     return LLMResuelto(
         provider=clase(api_key=key), model=model, provider_nombre=provider_nombre
+    )
+
+
+async def get_llm_con_fallback(
+    empresa_id: int,
+    *,
+    turno: Turno = Turno.WORKER,
+    config_store: ConfigStore,
+    key_store: KeyStore,
+    plataforma: PlataformaLLM,
+) -> LLMResuelto:
+    """`get_llm` + resiliencia (ADR 0023): retry con backoff y, si está configurado, respaldo.
+
+    Con `retry_habilitado=False` devuelve el proveedor pelado (kill-switch en caliente por .env).
+    El respaldo solo se cablea si `fallback_provider` apunta a OTRO proveedor con key disponible;
+    usa sus propios modelos (`fallback_model_*`) porque los nombres no cruzan entre vendors.
+    """
+    base = await get_llm(
+        empresa_id, turno=turno, config_store=config_store,
+        key_store=key_store, plataforma=plataforma,
+    )
+    if not plataforma.retry_habilitado:
+        return base
+
+    from core.llm.resiliencia import ProveedorResiliente
+
+    respaldo = None
+    modelo_respaldo = None
+    nombre_fb = plataforma.fallback_provider
+    if nombre_fb and nombre_fb != base.provider_nombre:
+        key_fb = await key_store.api_key(empresa_id, nombre_fb) or plataforma.keys.get(nombre_fb)
+        modelo_respaldo = (
+            plataforma.fallback_model_orquestador if turno is Turno.ORQUESTADOR
+            else plataforma.fallback_model_worker
+        )
+        if key_fb and modelo_respaldo:
+            respaldo = registry.obtener_clase(nombre_fb)(api_key=key_fb)
+
+    return LLMResuelto(
+        provider=ProveedorResiliente(
+            base.provider, respaldo=respaldo,
+            modelo_respaldo=modelo_respaldo if respaldo else None,
+        ),
+        model=base.model,
+        provider_nombre=base.provider_nombre,
     )

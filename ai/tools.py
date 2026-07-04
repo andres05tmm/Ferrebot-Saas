@@ -245,7 +245,8 @@ async def _crear_cliente(args: CrearClienteArgs, ctx: Contexto, deps: Deps) -> R
     res = await deps.clientes.crear(ClienteCrear(**args.model_dump()))
     c = res.cliente
     return Resultado(
-        data={"id": c.id, "creado": res.creado},
+        # `nombre` va en la data para el writer de memoria_entidades (último cliente mencionado, ADR 0024).
+        data={"id": c.id, "nombre": c.nombre, "creado": res.creado},
         resumen=(f"Cliente {c.nombre} creado." if res.creado else f"El cliente {c.nombre} ya existía."),
     )
 

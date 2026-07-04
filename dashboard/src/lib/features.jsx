@@ -63,7 +63,8 @@ export const RUTA_FEATURE = {
   // `/historial` es transversal (POS y servicios) → condición propia en isRouteEnabled, no aquí.
   // Fiscal
   '/facturacion': 'facturacion_electronica',
-  '/facturas-recibidas': 'facturacion_electronica',
+  // Facturas recibidas por QR (ADR 0020): reusa la capa RADIAN de compras fiscal → gate `compras_fiscal`.
+  '/facturas-recibidas': 'compras_fiscal',
   '/libro-iva': 'libro_iva',
   '/libros': 'libros_contables',
   '/retenciones': 'retenciones',

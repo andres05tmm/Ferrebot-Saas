@@ -30,6 +30,7 @@ import TabFacturacion from './tabs/TabFacturacion.jsx'
 import TabCompras from './tabs/TabCompras.jsx'
 import TabProveedores from './tabs/TabProveedores.jsx'
 import TabComprasFiscal from './tabs/TabComprasFiscal.jsx'
+import TabFacturasRecibidas from './tabs/TabFacturasRecibidas.jsx'
 import TabLibroIVA from './tabs/TabLibroIVA.jsx'
 import TabAgenda from './tabs/TabAgenda.jsx'
 import TabConversaciones from './tabs/TabConversaciones.jsx'
@@ -65,6 +66,7 @@ const TABS = {
   '/compras': TabCompras,
   '/proveedores': TabProveedores,
   '/compras-fiscal': TabComprasFiscal,
+  '/facturas-recibidas': TabFacturasRecibidas,
   '/libro-iva': TabLibroIVA,
   '/agenda': TabAgenda,
   '/conversaciones': TabConversaciones,

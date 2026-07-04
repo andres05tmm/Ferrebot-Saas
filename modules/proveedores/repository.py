@@ -65,6 +65,17 @@ class SqlProveedoresRepository:
         ).scalar_one_or_none()
         return FacturaProveedorLeer.model_validate(orm) if orm is not None else None
 
+    async def mapa_por_ids(self, ids: list[str]) -> dict[str, FacturaProveedorLeer]:
+        """Facturas cuyo id ∈ `ids`, indexadas por id (una consulta; evita N+1 al componer recibidas)."""
+        if not ids:
+            return {}
+        filas = (
+            await self._s.execute(
+                select(FacturaProveedor).where(FacturaProveedor.id.in_(ids))
+            )
+        ).scalars().all()
+        return {f.id: FacturaProveedorLeer.model_validate(f) for f in filas}
+
     async def crear_abono_y_recalcular(
         self, *, factura_id: str, monto: Decimal, fecha: date
     ) -> FacturaProveedorLeer:

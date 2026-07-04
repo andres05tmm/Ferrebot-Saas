@@ -152,6 +152,26 @@ class Proyector:
             ev.fecha, "devolucion", ev.id, f"devolucion:{ev.id}", f"Devolución {ev.id}", lineas
         )
 
+    async def proyectar_factura_proveedor(self, factura_id: str) -> ResultadoAsiento | None:
+        """Factura de proveedor 'suelta' (sin `compra`): débito compras, crédito Proveedores (CxP).
+
+        Sin la factura proyectada, su abono debitaría Proveedores sin un crédito que lo respalde
+        (ADR 0030 cabo c). No lleva IVA descontable: `facturas_proveedores` solo trae el total.
+        """
+        ev = await self._fuente.factura_proveedor(factura_id)
+        if ev is None:
+            raise ProyeccionInvalida(f"factura de proveedor {factura_id!r} inexistente")
+        if ev.total <= 0:
+            return None
+        lineas = [
+            _debit(puc.COMPRAS_PROVEEDOR, ev.total, "Compra a crédito (factura de proveedor)"),
+            _credit(puc.PROVEEDORES, ev.total, "Cuenta por pagar al proveedor"),
+        ]
+        return await self._registrar(
+            ev.fecha, "factura_proveedor", None, f"factura_proveedor:{ev.id}",
+            f"Factura de proveedor {ev.id}", lineas,
+        )
+
     async def proyectar_retencion(self, retencion_id: int) -> ResultadoAsiento | None:
         ev = await self._fuente.retencion(retencion_id)
         if ev is None:
@@ -190,7 +210,16 @@ class Proyector:
                 bucket = replay if res.replay else creados
                 bucket[tipo] = bucket.get(tipo, 0) + 1
 
+        async def correr_facturas():
+            for fid in await self._fuente.ids_facturas_proveedores_desde(desde):
+                res = await self.proyectar_factura_proveedor(fid)
+                if res is None:
+                    continue
+                bucket = replay if res.replay else creados
+                bucket["factura_proveedor"] = bucket.get("factura_proveedor", 0) + 1
+
         await correr("compra", "compras", "fecha", self.proyectar_compra)
+        await correr_facturas()
         await correr("venta", "ventas", "fecha", self.proyectar_venta, "AND estado='completada'")
         await correr("abono_fiado", "fiados_movimientos", "creado_en", self.proyectar_abono_fiado, "AND tipo='abono'")
         await correr("gasto", "gastos", "creado_en", self.proyectar_gasto)

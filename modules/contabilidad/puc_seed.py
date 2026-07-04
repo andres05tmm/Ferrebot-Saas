@@ -36,6 +36,9 @@ GASTO_MANTENIMIENTO = "514510"
 GASTO_PAPELERIA = "519525"
 GASTO_OTROS = "519595"
 COSTO_VENTAS = "613505"
+# Compras a proveedor por factura "suelta" (sin `compra` asociada, sin inventario mapeado; ADR 0030
+# cabo c / ADR 0020). Contrapartida al débito de la CxP que se acredita a Proveedores.
+COMPRAS_PROVEEDOR = "620501"
 
 # categoría de `gastos` (enum operativo) → cuenta PUC del gasto.
 GASTO_CUENTA_POR_CATEGORIA: dict[str, str] = {
@@ -133,6 +136,9 @@ _SEMILLA: list[CuentaSemilla] = [
     CuentaSemilla("61", "COSTO DE VENTAS", D, False),
     CuentaSemilla("6135", "COMERCIO AL POR MAYOR Y AL POR MENOR", D, False),
     CuentaSemilla(COSTO_VENTAS, "Costo de mercancía vendida", D, True),
+    CuentaSemilla("62", "COMPRAS", D, False),
+    CuentaSemilla("6205", "DE MERCANCÍAS", D, False),
+    CuentaSemilla(COMPRAS_PROVEEDOR, "Compras a proveedor (factura sin inventario)", D, True),
 ]
 
 

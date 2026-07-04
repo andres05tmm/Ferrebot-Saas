@@ -8,11 +8,13 @@ lee; el proyector no muta las tablas origen. Sin commit.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime, time
 from decimal import Decimal
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from core.config.timezone import COLOMBIA_TZ
 
 
 @dataclass(frozen=True, slots=True)
@@ -81,8 +83,26 @@ class RetencionEvento:
     metodo_pago_doc: str | None   # método de la venta origen (para elegir Caja/Clientes)
 
 
+@dataclass(frozen=True, slots=True)
+class FacturaProveedorEvento:
+    """Factura de proveedor 'suelta' (sin `compra` asociada): una cuenta por pagar directa."""
+
+    id: str          # nº de factura del proveedor (PK natural, TEXT)
+    fecha: datetime
+    total: Decimal
+
+
 def _dec(v) -> Decimal:
     return Decimal(v) if v is not None else Decimal("0")
+
+
+def _fecha_co(v) -> datetime:
+    """Normaliza una columna `DATE`/`TIMESTAMPTZ` a datetime aware en hora Colombia (regla #4)."""
+    if isinstance(v, datetime):
+        return v
+    if isinstance(v, date):
+        return datetime.combine(v, time.min, tzinfo=COLOMBIA_TZ)
+    return v
 
 
 class FuenteContableRepository:
@@ -212,8 +232,33 @@ class FuenteContableRepository:
             tipo=row.tipo, valor=_dec(row.valor), metodo_pago_doc=row.mp,
         )
 
+    async def factura_proveedor(self, factura_id: str) -> FacturaProveedorEvento | None:
+        row = (
+            await self._s.execute(
+                text("SELECT id, fecha, total FROM facturas_proveedores WHERE id=:id"),
+                {"id": factura_id},
+            )
+        ).one_or_none()
+        if row is None:
+            return None
+        return FacturaProveedorEvento(
+            id=row.id, fecha=_fecha_co(row.fecha), total=_dec(row.total)
+        )
+
     # --- ids para el backfill (solo hacia adelante desde una fecha) ------------
     async def ids_desde(self, tabla: str, columna_fecha: str, desde: datetime, filtro: str = "") -> list[int]:
         q = f"SELECT id FROM {tabla} WHERE {columna_fecha} >= :desde {filtro} ORDER BY id"
         rows = (await self._s.execute(text(q), {"desde": desde})).all()
+        return [r.id for r in rows]
+
+    async def ids_facturas_proveedores_desde(self, desde: datetime) -> list[str]:
+        """IDs (TEXT) de facturas de proveedor con `fecha >= desde` (columna DATE)."""
+        rows = (
+            await self._s.execute(
+                text(
+                    "SELECT id FROM facturas_proveedores WHERE fecha >= (:desde)::date ORDER BY id"
+                ),
+                {"desde": desde},
+            )
+        ).all()
         return [r.id for r in rows]

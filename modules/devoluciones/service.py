@@ -14,8 +14,10 @@ from modules.caja.repository import SqlCajaRepository
 from modules.devoluciones.errors import (
     CajaRequerida,
     DevolucionConflicto,
+    DevolucionExcedeVenta,
     FiadoNoEncontrado,
     LineaNoVendida,
+    NadaPorDevolver,
     VentaNoEncontrada,
 )
 from modules.devoluciones.models import Devolucion
@@ -69,9 +71,11 @@ class DevolucionesService:
         if venta is None:
             raise VentaNoEncontrada(datos.venta_id)
 
-        # 3) Resolver líneas devueltas (total o parcial) + total del reintegro.
+        # 3) Resolver líneas devueltas (total o parcial) + total del reintegro. El acumulado de
+        # devoluciones previas acota lo devolvible (anti sobre-devolución con keys distintas).
         vendidas = await self._repo.lineas_vendidas(datos.venta_id)
-        lineas = self._resolver(vendidas, datos)
+        devuelto = await self._repo.devuelto_por_venta(datos.venta_id)
+        lineas = self._resolver(vendidas, datos, devuelto)
         total = cuantizar(sum((ln.total_linea for ln in lineas), Decimal("0")))
         metodo = "fiado" if venta.metodo_pago == "fiado" else "efectivo"
 
@@ -125,18 +129,44 @@ class DevolucionesService:
         return ResultadoDevolucion(dev, replay=False)
 
     def _resolver(
-        self, vendidas: list[LineaVendida], datos: DevolucionCrear
+        self, vendidas: list[LineaVendida], datos: DevolucionCrear,
+        devuelto: dict[int | None, Decimal],
     ) -> list[LineaResueltaDev]:
-        """Total (`lineas=None`) → todo lo vendido; parcial → solo lo pedido, validando cantidad."""
+        """Resuelve las líneas devolvibles acotadas por el acumulado de devoluciones previas.
+
+        Total (`lineas=None`) → el REMANENTE de cada línea (vendido − ya devuelto); si no queda nada
+        → NadaPorDevolver. Una línea varia (sin producto_id) solo entra en la primera devolución (no
+        hay cómo rastrearla individualmente después). Parcial → solo catálogo; las cantidades pedidas
+        se AGREGAN por producto (dos líneas del mismo producto en el payload suman) y
+        pedido + ya devuelto ≤ vendido, o DevolucionExcedeVenta."""
         if datos.lineas is None:
-            return [self._linea(v, v.cantidad) for v in vendidas]
+            resueltas: list[LineaResueltaDev] = []
+            for v in vendidas:
+                if v.producto_id is None:
+                    if not devuelto:   # varia: solo en la PRIMERA devolución de la venta
+                        resueltas.append(self._linea(v, v.cantidad))
+                    continue
+                remanente = v.cantidad - devuelto.get(v.producto_id, Decimal("0"))
+                if remanente > 0:
+                    resueltas.append(self._linea(v, remanente))
+            if not resueltas:
+                raise NadaPorDevolver(datos.venta_id)
+            return resueltas
+
         por_producto = {v.producto_id: v for v in vendidas if v.producto_id is not None}
-        resueltas: list[LineaResueltaDev] = []
+        pedido_por_producto: dict[int, Decimal] = {}
         for pedida in datos.lineas:
-            vendida = por_producto.get(pedida.producto_id)
-            if vendida is None or pedida.cantidad > vendida.cantidad:
-                raise LineaNoVendida(pedida.producto_id)
-            resueltas.append(self._linea(vendida, pedida.cantidad))
+            pedido_por_producto[pedida.producto_id] = (
+                pedido_por_producto.get(pedida.producto_id, Decimal("0")) + pedida.cantidad
+            )
+        resueltas = []
+        for producto_id, cantidad in pedido_por_producto.items():
+            vendida = por_producto.get(producto_id)
+            if vendida is None:
+                raise LineaNoVendida(producto_id)
+            if cantidad + devuelto.get(producto_id, Decimal("0")) > vendida.cantidad:
+                raise DevolucionExcedeVenta(producto_id)
+            resueltas.append(self._linea(vendida, cantidad))
         return resueltas
 
     @staticmethod
@@ -157,7 +187,8 @@ class DevolucionesService:
             return False
         if datos.lineas is None:
             return True  # total: el detalle persistido ES el total; la venta ya coincidió
-        firma_in = sorted(
-            (str(ln.producto_id), str(ln.cantidad.normalize())) for ln in datos.lineas
-        )
+        agregado: dict[int, Decimal] = {}
+        for ln in datos.lineas:   # misma agregación por producto que `_resolver`
+            agregado[ln.producto_id] = agregado.get(ln.producto_id, Decimal("0")) + ln.cantidad
+        firma_in = sorted((str(pid), str(cant.normalize())) for pid, cant in agregado.items())
         return firma_in == _firma_detalle(prev)

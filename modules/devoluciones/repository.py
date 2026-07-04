@@ -109,6 +109,22 @@ class SqlDevolucionesRepository:
             for f in filas
         ]
 
+    async def devuelto_por_venta(self, venta_id: int) -> dict[int | None, Decimal]:
+        """Cantidad YA devuelta por producto en devoluciones previas de la venta (guard anti sobre-devolución).
+
+        Clave None agrupa las líneas varias (sin producto_id). Vacío si la venta no tiene devoluciones."""
+        filas = (
+            await self._s.execute(
+                text(
+                    "SELECT dd.producto_id, COALESCE(SUM(dd.cantidad), 0) AS cantidad "
+                    "FROM devoluciones_detalle dd JOIN devoluciones d ON d.id = dd.devolucion_id "
+                    "WHERE d.venta_id = :v GROUP BY dd.producto_id"
+                ),
+                {"v": venta_id},
+            )
+        ).all()
+        return {f.producto_id: Decimal(f.cantidad) for f in filas}
+
     async def factura_aceptada_de_venta(self, venta_id: int) -> int | None:
         """Id del documento fiscal ACEPTADO por DIAN de la venta (para ligar la nota crédito), o None.
 

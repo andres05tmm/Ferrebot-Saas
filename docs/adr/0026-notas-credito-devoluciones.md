@@ -83,10 +83,37 @@ al promedio del día distorsionaría tanto el valor de inventario como el COGS.
 ### D5 — Idempotencia estricta (cierra FF-1)
 
 `DevolucionesService.devolver` endurece el patrón: misma `idempotency_key` + **mismo** payload
-(venta + firma de líneas order-insensible) → **replay** (devuelve la devolución existente sin duplicar
-stock/caja/nota); misma key + payload **distinto** → `DevolucionConflicto` (409). El ancla es la fila
-`devoluciones` (UNIQUE); las contrapartidas (egreso, abono, nota) cuelgan de esa fila con keys derivadas
-(`devolucion-fiado:{id}`, `devolucion-nc:{id}`), así el replay no las re-ejecuta.
+(venta + firma de líneas order-insensible, agregada por producto) → **replay** (devuelve la devolución
+existente sin duplicar stock/caja/nota); misma key + payload **distinto** → `DevolucionConflicto` (409).
+El ancla es la fila `devoluciones` (UNIQUE); las contrapartidas (egreso, abono, nota) cuelgan de esa
+fila con keys derivadas (`devolucion-fiado:{id}`, `devolucion-nc:{id}`), así el replay no las re-ejecuta.
+
+### D6 — Sobre-devolución bloqueada por el acumulado (no solo por request)
+
+La idempotencia por key no basta: dos devoluciones con **keys distintas** podrían re-ingresar más stock
+del vendido y reintegrar el dinero dos veces. `_resolver` acota lo devolvible con el **acumulado** de
+`devoluciones_detalle` de la venta (`devuelto_por_venta`):
+
+- **Parcial:** las cantidades del payload se AGREGAN por producto (dos líneas del mismo producto suman)
+  y `pedido + ya_devuelto ≤ vendido`, o `DevolucionExcedeVenta` (409).
+- **Total:** devuelve el **remanente** por línea (vendido − ya devuelto); si no queda nada →
+  `NadaPorDevolver` (409). Una línea varia (sin `producto_id`, no rastreable individualmente) solo entra
+  en la primera devolución de la venta.
+
+### D7 — La devolución bloquea borrar/editar la venta (409 legible)
+
+Nuevo guard en `ventas/service.py::_guard_modificacion` (tras el de factura viva): si la venta tiene una
+devolución (`tiene_devolucion`, lectura cross-módulo en el repo) → `VentaConDevolucion` (409). La
+devolución ya movió stock y dinero; borrar o reescribir la venta dejaría esas contrapartidas colgando
+(sin el guard, el `DELETE` moriría en la FK `devoluciones.venta_id` con un 500 opaco).
+
+### D8 — Superficie HTTP: `POST /devoluciones` (feature fina `ventas`)
+
+`modules/devoluciones/router.py`, montado en `apps/api/main.py`. Idempotente por header
+`Idempotency-Key` (replay → 200). La composición carga MATIAS/config del control DB si hay tenant
+resuelto; sin credenciales la devolución sale igual y la nota queda `error` reintentable — **la emisión
+DIAN nunca bloquea el reintegro**. Mapeo: 404 venta inexistente; 409 caja/fiado/conflicto/sobre-
+devolución/nada por devolver; 422 línea no vendida o payload inválido.
 
 ## Consecuencias
 
@@ -102,5 +129,7 @@ stock/caja/nota); misma key + payload **distinto** → `DevolucionConflicto` (40
 - Desviación vs. spec: el UBL fino de la nota se deja como payload mínimo (se confirma contra sandbox
   MATIAS luego), en línea con cómo se estacionaron otras integraciones DIAN; el foco de la fase fueron
   los invariantes contables (stock+contrapartida, idempotencia, COGS, arqueo, aislamiento). Los cambios
-  se acotaron a archivos/módulos **nuevos** más una edición aditiva en `reportes` y `facturacion/models`,
-  para minimizar conflictos con la Fase 4 (retenciones), que integra el orquestador.
+  se acotaron a archivos/módulos **nuevos** más ediciones aditivas en `reportes`, `facturacion/models`
+  y el guard/mapeo en `ventas` (D7), para minimizar conflictos con la Fase 4 (retenciones).
+- Pendiente (fase posterior): worker de reintentos para notas en `error` (espejo del de facturas) y el
+  UBL definitivo de la nota contra el sandbox MATIAS.

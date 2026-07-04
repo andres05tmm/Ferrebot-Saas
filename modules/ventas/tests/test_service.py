@@ -10,6 +10,7 @@ from modules.ventas.errors import (
     OperacionNoAutorizada,
     ProductoNoEncontrado,
     StockInsuficiente,
+    VentaConDevolucion,
     VentaConFacturaViva,
     VentaNoEncontrada,
     VentaNoEsDeHoy,
@@ -169,9 +170,10 @@ def test_varia_sin_precio_es_invalida_en_el_schema():
 
 # --- Borrado de venta (guards del servicio, repo falso) -----------------------------------------
 class FakeBorradoRepo:
-    def __init__(self, *, cabecera=None, factura_viva=False):
+    def __init__(self, *, cabecera=None, factura_viva=False, devolucion=False):
         self._cabecera = cabecera
         self._factura_viva = factura_viva
+        self._devolucion = devolucion
         self.borrado = None
         self.revertido = None
 
@@ -180,6 +182,9 @@ class FakeBorradoRepo:
 
     async def tiene_factura_viva(self, venta_id):
         return self._factura_viva
+
+    async def tiene_devolucion(self, venta_id):
+        return self._devolucion
 
     async def borrar_venta(self, venta_id):
         self.borrado = venta_id
@@ -240,6 +245,21 @@ async def test_factura_viva_bloquea_el_borrado():
     with pytest.raises(VentaConFacturaViva):
         await VentaService(repo).borrar_venta(1, user_id=7, es_admin=False)
     assert repo.borrado is None   # nunca se borró
+
+
+async def test_devolucion_bloquea_el_borrado():
+    """ADR 0026: la devolución ya movió stock y dinero → borrar la venta dejaría eso colgando (409)."""
+    repo = FakeBorradoRepo(cabecera=_cabecera(vendedor_id=7), devolucion=True)
+    with pytest.raises(VentaConDevolucion):
+        await VentaService(repo).borrar_venta(1, user_id=7, es_admin=False)
+    assert repo.borrado is None
+
+
+async def test_devolucion_bloquea_la_edicion():
+    repo = FakeBorradoRepo(cabecera=_cabecera(vendedor_id=7), devolucion=True)
+    with pytest.raises(VentaConDevolucion):
+        await VentaService(repo).editar_venta(1, _datos_edicion(), user_id=7, es_admin=False)
+    assert repo.revertido is None   # ni siquiera se intentó revertir
 
 
 # --- Edición de venta: los guards (idénticos al borrado) cortan antes de tocar stock --------------

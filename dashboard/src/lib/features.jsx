@@ -40,7 +40,7 @@ const PACKS_ATENCION_CLIENTE = ['pack_agenda', 'pack_pedidos', 'pack_reservas']
 // (ventas en POS, pedidos/citas/reservas en servicios) y lleva su propia condición en isRouteEnabled.
 const RUTAS_RETAIL = new Set([
   '/hoy', '/ventas', '/caja', '/inventario', '/compras', '/proveedores', '/gastos',
-  '/top-productos', '/kardex',
+  '/top-productos', '/kardex', '/devoluciones',
 ])
 
 // Ruta → capacidad requerida (catalogo.py). Las rutas NO listadas son núcleo → siempre visibles
@@ -58,12 +58,16 @@ export const RUTA_FEATURE = {
   '/compras': 'inventario',
   '/proveedores': 'inventario',
   '/kardex': 'inventario',
+  '/devoluciones': 'ventas',
   '/top-productos': 'ventas',
   // `/historial` es transversal (POS y servicios) → condición propia en isRouteEnabled, no aquí.
   // Fiscal
   '/facturacion': 'facturacion_electronica',
   '/facturas-recibidas': 'facturacion_electronica',
   '/libro-iva': 'libro_iva',
+  '/libros': 'libros_contables',
+  '/retenciones': 'retenciones',
+  '/conciliacion': 'conciliacion_bancaria',
   '/compras-fiscal': 'compras_fiscal',
   // Packs de servicios
   '/agenda': 'pack_agenda',

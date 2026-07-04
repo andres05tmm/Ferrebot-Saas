@@ -39,6 +39,40 @@ class AsientoCrear(BaseModel):
     lineas: list[LineaAsiento]
 
 
+class CorteApertura(BaseModel):
+    """Corte de saldos iniciales para el asiento de apertura (ADR 0030, cabo a).
+
+    Los activos van al débito (Caja/Bancos/Cartera/Inventario), la CxP al crédito (Proveedores) y el
+    patrimonio es la partida de cierre que cuadra el asiento. Todo monto es sin signo (`>= 0`); el
+    signo del patrimonio lo decide el servicio (activos − pasivos).
+    """
+
+    fecha: datetime
+    caja: Decimal = Decimal("0")
+    bancos: Decimal = Decimal("0")
+    cartera: Decimal = Decimal("0")            # clientes / fiado
+    inventario: Decimal = Decimal("0")         # a costo promedio
+    cuentas_por_pagar: Decimal = Decimal("0")  # proveedores
+
+    @field_validator("caja", "bancos", "cartera", "inventario", "cuentas_por_pagar")
+    @classmethod
+    def _no_negativo(cls, v: Decimal) -> Decimal:
+        if v < 0:
+            raise ValueError("los saldos del corte no pueden ser negativos")
+        return v
+
+
+class AsientoResultado(BaseModel):
+    """Salida compacta de una operación que postea un asiento (apertura, cierre)."""
+
+    entry_id: int | None
+    replay: bool
+
+
+class CierreResultado(AsientoResultado):
+    utilidad: Decimal = Decimal("0")
+
+
 class LineaAsientoLeer(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     cuenta_codigo: str

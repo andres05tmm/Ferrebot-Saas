@@ -45,6 +45,7 @@ import TabKardex from './tabs/TabKardex.jsx'
 import TabReservas from './tabs/TabReservas.jsx'
 import TabDevoluciones from './tabs/TabDevoluciones.jsx'
 import TabLibros from './tabs/TabLibros.jsx'
+import TabEstadosFinancieros from './tabs/TabEstadosFinancieros.jsx'
 import TabRetenciones from './tabs/TabRetenciones.jsx'
 import TabConciliacion from './tabs/TabConciliacion.jsx'
 import { ROUTES } from './routes.jsx'
@@ -81,6 +82,7 @@ const TABS = {
   '/reservas': TabReservas,
   '/devoluciones': TabDevoluciones,
   '/libros': TabLibros,
+  '/estados-financieros': TabEstadosFinancieros,
   '/retenciones': TabRetenciones,
   '/conciliacion': TabConciliacion,
 }

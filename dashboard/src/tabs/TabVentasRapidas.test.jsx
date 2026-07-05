@@ -62,7 +62,8 @@ describe('TabVentasRapidas', () => {
     await agregarMartillo()
     await waitFor(() =>
       expect(fetchMock.mock.calls.some(c => /\/productos\/1\/precio/.test(String(c[0])))).toBe(true))
-    expect(await screen.findByText('$10.000')).toBeInTheDocument()   // total del servidor, no 11900
+    // total del servidor ($10.000), no el precio_venta*cantidad ($11.900). Aparece en el total y el c/u.
+    expect((await screen.findAllByText('$10.000')).length).toBeGreaterThan(0)
   })
 
   it('registrar hace POST /ventas SIN precio_unitario (server-authoritative) + Idempotency-Key', async () => {

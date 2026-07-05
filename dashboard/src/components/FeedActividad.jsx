@@ -36,6 +36,7 @@ function horaCO() {
 export default function FeedActividad() {
   const [items, setItems] = useState([])
   useRealtimeEvent(EVENTOS, (tipo, data) => {
+    if (!TIPOS[tipo]) return   // defensivo: solo tipos conocidos (un mock/stream raro no rompe el feed)
     setItems((prev) => [
       { id: `${Date.now()}-${Math.random()}`, tipo, data, hora: horaCO() },
       ...prev,

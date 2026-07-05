@@ -82,6 +82,23 @@ async def crear_producto(
     return ProductoLeer.model_validate(producto)
 
 
+@router_catalogo.get("/productos/frecuentes", response_model=list[ProductoLeer])
+async def productos_frecuentes(
+    dias: int = Query(default=30, ge=1, le=365),
+    limite: int = Query(default=12, ge=1, le=48),
+    session: AsyncSession = Depends(get_tenant_db),
+    _user: Principal = Depends(require_role("vendedor")),
+) -> list[ProductoLeer]:
+    """Productos más vendidos (últimos `dias`) para la grilla de acceso rápido del POS. Preserva el
+    orden de frecuencia. Vacío si el tenant aún no tiene ventas."""
+    repo = SqlInventarioRepository(session)
+    ids = await repo.ids_frecuentes(dias=dias, limite=limite)
+    if not ids:
+        return []
+    productos = {p.id: p for p in await repo.listar_productos(ids=ids, limite=limite)}
+    return [ProductoLeer.model_validate(productos[i]) for i in ids if i in productos]
+
+
 @router_catalogo.get("/productos/categorias", response_model=list[str])
 async def listar_categorias(
     session: AsyncSession = Depends(get_tenant_db),

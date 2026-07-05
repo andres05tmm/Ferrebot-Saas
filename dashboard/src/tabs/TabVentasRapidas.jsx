@@ -1,149 +1,183 @@
 /*
- * TabVentasRapidas — registro de venta (E6, recableado a endpoints SaaS).
- * Búsqueda: GET /productos?q. Cliente (opcional): GET /clientes?q. Registrar: POST /ventas
- * (VentaCrear) con header Idempotency-Key (UUID por envío). Soporta venta varia (línea sin
- * producto_id → exige descripcion + precio_unitario). Éxito → limpia el carrito + toast; la SSE
- * 'venta_registrada' refresca Hoy/Historial. Diferido: productos frecuentes / top (sin endpoint).
+ * TabVentasRapidas — POS server-authoritative (E6, recableado + rediseño F5).
  *
- * Atajos de teclado POS (ADR 0029): F2 o «/» enfocan el buscador; Enter en el buscador agrega el
- * primer resultado; F9 o Ctrl+Enter cobran; Alt+1..4 elige método de pago; y un lector de código de
- * barras (ráfaga de teclas terminada en Enter) busca y agrega directo. Se eligieron teclas que no
- * chocan con atajos del navegador.
+ * BUG que resuelve: el total ya NO se calcula en el cliente con precio_normal. Cada línea de catálogo
+ * consulta GET /productos/{id}/precio?cantidad= (debounce 250ms + AbortController) y el total es la
+ * SUMA de los totales del servidor — así el motor de precios (escalonado por umbral, fracción, granel)
+ * manda, y lo que ve el cajero == lo que cobra el backend. Al registrar NO se manda precio_unitario
+ * (el backend recalcula), salvo que el cajero elija el precio "especial" (override explícito).
+ *
+ * Extras: grilla de productos frecuentes (GET /productos/frecuentes) cuando el buscador está vacío;
+ * búsqueda con debounce + navegación ↑/↓ + Enter; código/categoría en los resultados; hint de umbral
+ * mayorista; botones de fracción (¼ ½ ¾) para productos fraccionables; recibido/cambio en efectivo.
+ *
+ * Atajos POS (ADR 0029): F2 o «/» enfocan el buscador; ↑/↓ mueven la selección y Enter la agrega;
+ * F9 o Ctrl+Enter cobran; Alt+1..4 método de pago; lector de código de barras (ráfaga + Enter).
  */
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
-import { Plus, Search, Trash2, X } from 'lucide-react'
+import { Plus, Search, Trash2, X, Zap } from 'lucide-react'
 import { api, apiJson } from '@/lib/api'
-import { cop } from '@/components/shared.jsx'
+import { cop, ProductThumb } from '@/components/shared.jsx'
 import { useFeatures } from '@/lib/features.jsx'
 import { Card } from '@/components/ui/card.jsx'
 import { Input } from '@/components/ui/input.jsx'
+import { Button } from '@/components/ui/button.jsx'
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from '@/components/ui/select.jsx'
 
 const METODOS = ['efectivo', 'transferencia', 'datafono', 'fiado']
+const FRACCIONES = [['¼', 0.25], ['½', 0.5], ['¾', 0.75], ['1', 1]]
+const GRANEL = { grm: 'g', gramos: 'g', cms: 'cm' }   // sub-unidades de venta a granel
 
 function nuevaKey() {
   return (crypto?.randomUUID?.() || `k-${Date.now()}-${Math.random()}`)
 }
 
-// Precio efectivo de una línea del carrito: el de la varia, o normal/especial según el toggle.
-function precioEfectivo(it) {
-  if (it.varia) return Number(it.precio_unitario) || 0
-  if (it.usarEspecial && it.precio_especial != null) return Number(it.precio_especial)
-  return Number(it.precio_normal) || 0
-}
-
 export default function TabVentasRapidas() {
   const features = useFeatures()
-  // Documento fiscal por venta (ADR 0014): la intención la rutea el cierre fiscal en el backend.
-  // Selector solo si el tenant tiene capacidad fiscal; con ambas elige, con una sola es estado fijo.
   const puedePos = features.includes('pos_electronico')
   const puedeFe = features.includes('facturacion_electronica')
   const mostrarDocumento = puedePos || puedeFe
-  const documentoDefault = puedePos ? 'pos' : 'fe'   // default por capacidad: POS si hay POS, si no FE
+  const documentoDefault = puedePos ? 'pos' : 'fe'
 
   const [q, setQ] = useState('')
   const [resultados, setResultados] = useState([])
+  const [sel, setSel] = useState(0)          // índice seleccionado en los resultados (teclado)
+  const [frecuentes, setFrecuentes] = useState([])
   const [carrito, setCarrito] = useState([])
+  const [precios, setPrecios] = useState({})  // key → {total, precio_unitario, regla, loading}
   const [metodoPago, setMetodoPago] = useState('efectivo')
+  const [recibido, setRecibido] = useState('')
   const [cliente, setCliente] = useState(null)
   const [documento, setDocumento] = useState(documentoDefault)
   const [enviando, setEnviando] = useState(false)
 
-  // Refs para los atajos de teclado: el listener global se ata UNA vez, así que lee el estado vivo
-  // por ref (resultados y la función registrar, que capturaría valores viejos si se cerrara en ella).
   const searchRef = useRef(null)
   const resultadosRef = useRef(resultados)
+  const selRef = useRef(sel)
   const registrarRef = useRef(null)
-  const bufferRef = useRef('')            // acumulador del lector de código de barras
+  const bufferRef = useRef('')
   const bufferTimerRef = useRef(null)
   resultadosRef.current = resultados
-  registrarRef.current = registrar
+  selRef.current = sel
 
-  // Búsqueda de producto (GET /productos?q). Sin q → sin resultados.
+  // Grilla de frecuentes (una vez): acceso rápido para el mostrador.
   useEffect(() => {
-    if (!q.trim()) { setResultados([]); return undefined }
-    let cancelado = false
-    apiJson(`/productos?q=${encodeURIComponent(q.trim())}&limite=20`)
-      .then(d => { if (!cancelado) setResultados(Array.isArray(d) ? d : []) })
-      .catch(() => { if (!cancelado) setResultados([]) })
-    return () => { cancelado = true }
+    apiJson('/productos/frecuentes?dias=30&limite=12')
+      .then(d => setFrecuentes(Array.isArray(d) ? d : []))
+      .catch(() => setFrecuentes([]))
+  }, [])
+
+  // Búsqueda con debounce (200ms) + AbortController (descarta respuestas viejas de verdad).
+  useEffect(() => {
+    const term = q.trim()
+    if (!term) { setResultados([]); setSel(0); return undefined }
+    const ctrl = new AbortController()
+    const t = setTimeout(() => {
+      apiJson(`/productos?q=${encodeURIComponent(term)}&limite=20`, { signal: ctrl.signal })
+        .then(d => { setResultados(Array.isArray(d) ? d : []); setSel(0) })
+        .catch(err => { if (err?.name !== 'AbortError') { setResultados([]); setSel(0) } })
+    }, 200)
+    return () => { clearTimeout(t); ctrl.abort() }
   }, [q])
 
-  // Lector de código de barras: busca el código y agrega el producto (match exacto por `codigo`, o el
-  // primero). No pasa por el buscador visible: agrega directo, como espera un cajero escaneando.
+  // Precio server-authoritative por línea de catálogo (debounce 250ms + abort). Se dispara cuando
+  // cambian las cantidades. Las líneas "especial" y "varia" NO consultan (su precio es explícito).
+  const firmaPrecios = carrito
+    .filter(it => !it.varia && !it.usarEspecial)
+    .map(it => `${it.key}:${it.producto_id}:${it.cantidad}`).join('|')
+  useEffect(() => {
+    const lineas = carrito.filter(it => !it.varia && !it.usarEspecial && Number(it.cantidad) > 0)
+    if (lineas.length === 0) return undefined
+    const ctrl = new AbortController()
+    const t = setTimeout(async () => {
+      for (const it of lineas) {
+        setPrecios(p => ({ ...p, [it.key]: { ...(p[it.key] || {}), loading: true } }))
+        try {
+          const d = await apiJson(
+            `/productos/${it.producto_id}/precio?cantidad=${encodeURIComponent(it.cantidad)}`,
+            { signal: ctrl.signal })
+          setPrecios(p => ({ ...p, [it.key]: {
+            total: Number(d.total), precio_unitario: Number(d.precio_unitario),
+            regla: d.regla, loading: false } }))
+        } catch (err) {
+          if (err?.name === 'AbortError') return
+          setPrecios(p => ({ ...p, [it.key]: { ...(p[it.key] || {}), loading: false, error: true } }))
+        }
+      }
+    }, 250)
+    return () => { clearTimeout(t); ctrl.abort() }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [firmaPrecios])
+
+  // Total de una línea (fuente de verdad por tipo): varia/especial = cliente; catálogo = servidor.
+  const totalLinea = useCallback((it) => {
+    const cant = Number(it.cantidad) || 0
+    if (it.varia) return (Number(it.precio_unitario) || 0) * cant
+    if (it.usarEspecial && it.precio_especial != null) return Number(it.precio_especial) * cant
+    const srv = precios[it.key]
+    if (srv && srv.total != null && !srv.error) return srv.total
+    return Number(it.precio_normal || 0) * cant   // provisional mientras carga el precio del servidor
+  }, [precios])
+
+  const total = useMemo(
+    () => carrito.reduce((a, it) => a + totalLinea(it), 0), [carrito, totalLinea])
+  const cambio = metodoPago === 'efectivo' && recibido !== ''
+    ? Math.max(0, Number(recibido) - total) : null
+
   async function agregarPorCodigo(codigo) {
     try {
       const d = await apiJson(`/productos?q=${encodeURIComponent(codigo)}&limite=5`)
       const lista = Array.isArray(d) ? d : []
       if (lista.length === 0) { toast.error(`Sin producto para «${codigo}»`); return }
-      const exacto = lista.find(p => String(p.codigo ?? '') === codigo) || lista[0]
-      agregarProducto(exacto)
-    } catch {
-      toast.error('Error al buscar el código')
-    }
+      agregarProducto(lista.find(p => String(p.codigo ?? '') === codigo) || lista[0])
+    } catch { toast.error('Error al buscar el código') }
   }
 
-  // Atajos de teclado del POS (ADR 0029). Listener global atado una sola vez; el estado vivo entra
-  // por refs. Teclas elegidas para no chocar con el navegador (F2/F9 = funciones; Alt+dígito; «/»
-  // solo fuera de un campo). El lector de código de barras se detecta por ráfaga: teclas imprimibles
-  // que llegan más rápido que IDLE_MS se acumulan; Enter con el buffer largo → es un escaneo.
   useEffect(() => {
-    const BARCODE_MIN = 4     // caracteres mínimos del buffer para tratarlo como código escaneado
-    const IDLE_MS = 30        // pausa que descarta el buffer (tecleo humano lo resetea; el lector no)
-
-    const esEditable = (el) => {
-      if (!el || !el.tagName) return false
-      const tag = el.tagName
-      return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el.isContentEditable
-    }
-    const limpiarBuffer = () => {
+    const BARCODE_MIN = 4, IDLE_MS = 30
+    const esEditable = (el) => el?.tagName &&
+      (['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName) || el.isContentEditable)
+    const limpiar = () => {
       bufferRef.current = ''
       if (bufferTimerRef.current) { clearTimeout(bufferTimerRef.current); bufferTimerRef.current = null }
     }
-
     function onKeyDown(e) {
-      // Acumular ráfaga del lector: solo teclas imprimibles sin modificadores.
       if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
         bufferRef.current += e.key
         if (bufferTimerRef.current) clearTimeout(bufferTimerRef.current)
         bufferTimerRef.current = setTimeout(() => { bufferRef.current = '' }, IDLE_MS)
       }
-
-      // F2 o «/» → foco al buscador («/» solo si no estás escribiendo en un campo).
       if (e.key === 'F2' || (e.key === '/' && !esEditable(e.target))) {
-        e.preventDefault()
-        searchRef.current?.focus()
-        searchRef.current?.select?.()
-        return
+        e.preventDefault(); searchRef.current?.focus(); searchRef.current?.select?.(); return
       }
-      // F9 o Ctrl/Cmd+Enter → cobrar.
       if (e.key === 'F9' || (e.key === 'Enter' && (e.ctrlKey || e.metaKey))) {
-        e.preventDefault()
-        registrarRef.current?.()
-        return
+        e.preventDefault(); registrarRef.current?.(); return
       }
-      // Alt+1..N → método de pago.
       if (e.altKey && /^[1-9]$/.test(e.key)) {
         const idx = Number(e.key) - 1
         if (idx < METODOS.length) { e.preventDefault(); setMetodoPago(METODOS[idx]) }
         return
       }
-      // Enter: ráfaga larga = escaneo (busca y agrega); si no, agrega el primer resultado del buscador.
+      // Navegación de resultados con ↑/↓ cuando el foco está en el buscador.
+      if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') &&
+          document.activeElement === searchRef.current && resultadosRef.current.length > 0) {
+        e.preventDefault()
+        const n = resultadosRef.current.length
+        setSel(s => e.key === 'ArrowDown' ? (s + 1) % n : (s - 1 + n) % n)
+        return
+      }
       if (e.key === 'Enter') {
-        const scan = bufferRef.current
-        limpiarBuffer()
-        if (scan.length >= BARCODE_MIN) {
-          e.preventDefault()
-          agregarPorCodigo(scan)
-          return
-        }
+        const scan = bufferRef.current; limpiar()
+        if (scan.length >= BARCODE_MIN) { e.preventDefault(); agregarPorCodigo(scan); return }
         if (document.activeElement === searchRef.current && resultadosRef.current.length > 0) {
           e.preventDefault()
-          agregarProducto(resultadosRef.current[0])
+          agregarProducto(resultadosRef.current[selRef.current] || resultadosRef.current[0])
         }
       }
     }
-
     document.addEventListener('keydown', onKeyDown)
     return () => {
       document.removeEventListener('keydown', onKeyDown)
@@ -157,55 +191,47 @@ export default function TabVentasRapidas() {
       const i = prev.findIndex(it => it.producto_id === p.id)
       if (i >= 0) {
         const copia = [...prev]
-        copia[i] = { ...copia[i], cantidad: copia[i].cantidad + 1 }
+        copia[i] = { ...copia[i], cantidad: Number(copia[i].cantidad) + 1 }
         return copia
       }
       return [...prev, {
         key: nuevaKey(), producto_id: p.id, nombre: p.nombre, cantidad: 1, varia: false,
         precio_normal: Number(p.precio_venta),
-        // Precio especial opcional del producto: habilita el selector por línea (default: normal).
         precio_especial: p.precio_especial != null ? Number(p.precio_especial) : null,
         usarEspecial: false,
+        codigo: p.codigo, categoria: p.categoria,
+        unidad_medida: p.unidad_medida, permite_fraccion: p.permite_fraccion,
+        precio_umbral: p.precio_umbral != null ? Number(p.precio_umbral) : null,
+        precio_sobre_umbral: p.precio_sobre_umbral != null ? Number(p.precio_sobre_umbral) : null,
       }]
     })
-    setQ(''); setResultados([])
+    setQ(''); setResultados([]); setSel(0)
   }
 
   function agregarVaria({ descripcion, cantidad, precio_unitario }) {
     setCarrito(prev => [...prev, {
-      key: nuevaKey(), producto_id: null, nombre: descripcion,
-      cantidad, precio_unitario, varia: true,
+      key: nuevaKey(), producto_id: null, nombre: descripcion, cantidad, precio_unitario, varia: true,
     }])
   }
-
-  function setCantidad(key, cantidad) {
+  const setCantidad = (key, cantidad) =>
     setCarrito(prev => prev.map(it => it.key === key ? { ...it, cantidad } : it))
-  }
-  function setUsarEspecial(key, usarEspecial) {
+  const setUsarEspecial = (key, usarEspecial) =>
     setCarrito(prev => prev.map(it => it.key === key ? { ...it, usarEspecial } : it))
-  }
-  function quitar(key) {
-    setCarrito(prev => prev.filter(it => it.key !== key))
-  }
-
-  const total = carrito.reduce((a, it) => a + precioEfectivo(it) * (Number(it.cantidad) || 0), 0)
+  const quitar = (key) => setCarrito(prev => prev.filter(it => it.key !== key))
 
   async function registrar() {
     if (carrito.length === 0) return
     const lineas = carrito.map(it => {
-      if (it.varia) {
-        return { descripcion: it.nombre, cantidad: Number(it.cantidad), precio_unitario: Number(it.precio_unitario) }
+      if (it.varia) return {
+        descripcion: it.nombre, cantidad: Number(it.cantidad), precio_unitario: Number(it.precio_unitario),
       }
       const linea = { producto_id: it.producto_id, cantidad: Number(it.cantidad) }
-      // Precio especial elegido → override explícito por línea (gana sobre el motor de precios).
-      if (it.usarEspecial && it.precio_especial != null) {
-        linea.precio_unitario = Number(it.precio_especial)
-      }
+      // Override explícito solo si eligió "especial"; si no, el backend recalcula con el motor.
+      if (it.usarEspecial && it.precio_especial != null) linea.precio_unitario = Number(it.precio_especial)
       return linea
     })
     const payload = { metodo_pago: metodoPago, origen: 'web', lineas }
     if (cliente?.id) payload.cliente_id = cliente.id
-    // Solo si el selector está visible (hay capacidad fiscal); sin ella, el backend decide por defecto.
     if (mostrarDocumento) payload.documento = documento
 
     setEnviando(true)
@@ -216,21 +242,19 @@ export default function TabVentasRapidas() {
         body: JSON.stringify(payload),
       })
       if (res.ok) {
-        setCarrito([]); setCliente(null); setMetodoPago('efectivo'); setDocumento(documentoDefault)
+        setCarrito([]); setPrecios({}); setCliente(null); setMetodoPago('efectivo')
+        setRecibido(''); setDocumento(documentoDefault)
         toast.success('Venta registrada')
       } else {
-        toast.error('No se pudo registrar la venta')
+        const err = await res.json().catch(() => ({}))
+        toast.error(err?.detail || 'No se pudo registrar la venta')
       }
-    } catch {
-      toast.error('Error de conexión')
-    } finally {
-      setEnviando(false)
-    }
+    } catch { toast.error('Error de conexión') } finally { setEnviando(false) }
   }
+  registrarRef.current = registrar
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
-      {/* Búsqueda + venta varia */}
       <div className="lg:col-span-2 space-y-3">
         <Card className="p-3">
           <div className="relative">
@@ -239,18 +263,47 @@ export default function TabVentasRapidas() {
               placeholder="Buscar producto…" aria-label="Buscar producto" className="pl-9" />
           </div>
           {resultados.length > 0 && (
-            <ul className="mt-2 divide-y divide-border-subtle max-h-72 overflow-y-auto scrollbar-aurora">
-              {resultados.map(p => (
-                <li key={p.id}>
-                  <button onClick={() => agregarProducto(p)}
-                    className="w-full flex items-center gap-2 py-2 px-1 text-left hover:bg-surface-2 rounded-md">
+            <ul className="mt-2 divide-y divide-border-subtle max-h-80 overflow-y-auto scrollbar-aurora"
+              role="listbox" aria-label="Resultados">
+              {resultados.map((p, i) => (
+                <li key={p.id} role="option" aria-selected={i === sel}>
+                  <button onClick={() => agregarProducto(p)} onMouseEnter={() => setSel(i)}
+                    className={`w-full flex items-center gap-2.5 py-2 px-1.5 text-left rounded-md ${
+                      i === sel ? 'bg-primary/10' : 'hover:bg-surface-2'}`}>
+                    <ProductThumb nombre={p.nombre} className="size-9 shrink-0 rounded-md" />
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-body-sm truncate">{p.nombre}</span>
+                      <span className="block text-caption text-muted-foreground truncate">
+                        {[p.codigo, p.categoria].filter(Boolean).join(' · ') || 'Sin código'}
+                      </span>
+                    </span>
+                    {p.precio_umbral != null && p.precio_sobre_umbral != null && (
+                      <span className="text-caption text-info shrink-0 hidden sm:block">
+                        ≥{cop(p.precio_umbral)} u: {cop(p.precio_sobre_umbral)}
+                      </span>
+                    )}
+                    <span className="text-body-sm tabular text-muted-foreground shrink-0">{cop(Number(p.precio_venta))}</span>
                     <Plus className="size-4 text-primary shrink-0" />
-                    <span className="flex-1 text-[13px] truncate">{p.nombre}</span>
-                    <span className="text-[12px] tabular text-muted-foreground shrink-0">{cop(Number(p.precio_venta))}</span>
                   </button>
                 </li>
               ))}
             </ul>
+          )}
+          {!q.trim() && frecuentes.length > 0 && (
+            <div className="mt-3">
+              <div className="flex items-center gap-1.5 text-caption font-semibold uppercase tracking-wider text-muted-foreground mb-2">
+                <Zap className="size-3.5" /> Frecuentes
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+                {frecuentes.map(p => (
+                  <button key={p.id} onClick={() => agregarProducto(p)}
+                    className="flex flex-col items-start gap-0.5 p-2 rounded-md border border-border bg-surface hover:bg-surface-2 text-left">
+                    <span className="text-caption font-medium leading-tight line-clamp-2">{p.nombre}</span>
+                    <span className="text-caption tabular text-muted-foreground">{cop(Number(p.precio_venta))}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
           )}
         </Card>
 
@@ -258,87 +311,148 @@ export default function TabVentasRapidas() {
         <VariaForm onAdd={agregarVaria} />
       </div>
 
-      {/* Carrito */}
       <Card className="p-3.5 flex flex-col">
-        <h2 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-2.5">Carrito</h2>
+        <h2 className="text-caption font-semibold uppercase tracking-wider text-muted-foreground mb-2.5">Carrito</h2>
         {carrito.length === 0 ? (
-          <p className="py-8 text-center text-sm text-muted-foreground">Agrega productos para vender.</p>
+          <div className="py-10 text-center">
+            <Search className="size-6 mx-auto text-muted-foreground/40 mb-2" />
+            <p className="text-body-sm text-muted-foreground">Busca o escanea un producto para empezar.</p>
+          </div>
         ) : (
           <ul className="divide-y divide-border-subtle mb-3">
             {carrito.map(it => (
-              <li key={it.key} className="py-2">
-                <div className="flex items-center gap-2">
-                  <div className="min-w-0 flex-1">
-                    <div className="text-[13px] truncate">{it.nombre}</div>
-                    <div className="text-[11px] text-muted-foreground tabular">{cop(precioEfectivo(it))} c/u</div>
-                  </div>
-                  <Input type="number" min="0" step="any" value={it.cantidad}
-                    onChange={(e) => setCantidad(it.key, e.target.value)}
-                    aria-label={`Cantidad de ${it.nombre}`} className="w-16 h-8 text-center" />
-                  <button onClick={() => quitar(it.key)} aria-label={`Quitar ${it.nombre}`}
-                    className="size-8 grid place-items-center rounded-md text-muted-foreground hover:text-destructive">
-                    <Trash2 className="size-4" />
-                  </button>
-                </div>
-                {!it.varia && it.precio_especial != null && (
-                  <div className="mt-1.5 flex items-center gap-1" role="group" aria-label={`Precio de ${it.nombre}`}>
-                    <PrecioOpcion activo={!it.usarEspecial} onClick={() => setUsarEspecial(it.key, false)}
-                      aria-label={`Precio normal de ${it.nombre}`}>Normal {cop(it.precio_normal)}</PrecioOpcion>
-                    <PrecioOpcion activo={it.usarEspecial} onClick={() => setUsarEspecial(it.key, true)}
-                      aria-label={`Precio especial de ${it.nombre}`}>Especial {cop(it.precio_especial)}</PrecioOpcion>
-                  </div>
-                )}
-              </li>
+              <LineaCarrito key={it.key} it={it} precio={precios[it.key]}
+                onCantidad={(v) => setCantidad(it.key, v)} onQuitar={() => quitar(it.key)}
+                onEspecial={(v) => setUsarEspecial(it.key, v)} />
             ))}
           </ul>
         )}
 
         <ClientePicker cliente={cliente} onSelect={setCliente} />
         {mostrarDocumento && documento === 'fe' && (
-          <p className="mt-1.5 text-[11px] text-muted-foreground">
+          <p className="mt-1.5 text-caption text-muted-foreground">
             Con cliente → factura a su nombre; sin cliente → consumidor final.
           </p>
         )}
 
-        <label className="text-[10px] uppercase tracking-wider text-muted-foreground mt-3 mb-1">Método de pago</label>
-        <select value={metodoPago} onChange={(e) => setMetodoPago(e.target.value)}
-          aria-label="Método de pago"
-          className="text-sm h-9 px-2 rounded-md border border-border bg-surface text-foreground capitalize">
-          {METODOS.map(m => <option key={m} value={m}>{m}</option>)}
-        </select>
+        <label className="text-caption uppercase tracking-wider text-muted-foreground mt-3 mb-1">Método de pago</label>
+        <Select value={metodoPago} onValueChange={setMetodoPago}>
+          <SelectTrigger aria-label="Método de pago" className="capitalize"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            {METODOS.map(m => <SelectItem key={m} value={m} className="capitalize">{m}</SelectItem>)}
+          </SelectContent>
+        </Select>
+
+        {metodoPago === 'efectivo' && (
+          <div className="mt-2 flex items-center gap-2">
+            <Input type="number" min="0" step="any" value={recibido} onChange={(e) => setRecibido(e.target.value)}
+              placeholder="Recibido" aria-label="Efectivo recibido" className="h-9 flex-1" />
+            {cambio != null && (
+              <span className="text-body-sm tabular shrink-0">
+                Cambio <span className="font-semibold text-success">{cop(cambio)}</span>
+              </span>
+            )}
+          </div>
+        )}
 
         {mostrarDocumento && (
           <>
-            <label className="text-[10px] uppercase tracking-wider text-muted-foreground mt-3 mb-1">Documento</label>
+            <label className="text-caption uppercase tracking-wider text-muted-foreground mt-3 mb-1">Documento</label>
             {puedePos && puedeFe ? (
               <div className="flex items-center gap-1" role="group" aria-label="Documento fiscal">
-                <PrecioOpcion activo={documento === 'pos'} onClick={() => setDocumento('pos')}
-                  aria-label="Documento POS">POS</PrecioOpcion>
-                <PrecioOpcion activo={documento === 'fe'} onClick={() => setDocumento('fe')}
-                  aria-label="Documento factura electrónica">Factura</PrecioOpcion>
+                <Seg activo={documento === 'pos'} onClick={() => setDocumento('pos')} aria-label="Documento POS">POS</Seg>
+                <Seg activo={documento === 'fe'} onClick={() => setDocumento('fe')} aria-label="Documento factura electrónica">Factura</Seg>
               </div>
             ) : (
-              <div className="text-[12px] text-muted-foreground" aria-label="Documento fiscal">
-                {puedePos ? 'POS' : 'Factura electrónica'}
-              </div>
+              <div className="text-body-sm text-muted-foreground">{puedePos ? 'POS' : 'Factura electrónica'}</div>
             )}
           </>
         )}
 
         <div className="flex items-center justify-between mt-3 mb-2">
-          <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Total</span>
-          <span className="text-lg font-semibold tabular">{cop(total)}</span>
+          <span className="text-caption uppercase tracking-wider text-muted-foreground">Total</span>
+          <span className="text-xl font-semibold tabular">{cop(total)}</span>
         </div>
-        <button onClick={registrar} disabled={enviando || carrito.length === 0}
-          className="w-full h-10 rounded-md bg-primary text-primary-foreground font-medium hover:bg-primary-hover disabled:opacity-60">
-          {enviando ? 'Registrando…' : 'Registrar venta'}
-        </button>
+        <Button onClick={registrar} disabled={enviando || carrito.length === 0} className="w-full h-10">
+          {enviando ? 'Registrando…' : 'Registrar venta'} <span className="ml-1.5 opacity-70 text-caption">F9</span>
+        </Button>
       </Card>
     </div>
   )
 }
 
-// Tecla con estilo de <kbd> para el hint de atajos.
+// --- Línea del carrito ------------------------------------------------------
+function LineaCarrito({ it, precio, onCantidad, onQuitar, onEspecial }) {
+  const granel = !it.varia && GRANEL[(it.unidad_medida || '').toLowerCase()]
+  const usaServidor = !it.varia && !it.usarEspecial
+  const cargando = usaServidor && precio?.loading
+  const unit = it.varia ? Number(it.precio_unitario)
+    : it.usarEspecial ? Number(it.precio_especial)
+    : precio?.precio_unitario
+  const faltanMayorista = it.precio_umbral != null && !it.usarEspecial &&
+    Number(it.cantidad) > 0 && Number(it.cantidad) < it.precio_umbral
+
+  return (
+    <li className="py-2">
+      <div className="flex items-center gap-2">
+        <div className="min-w-0 flex-1">
+          <div className="text-body-sm truncate">{it.nombre}</div>
+          <div className="text-caption text-muted-foreground tabular flex items-center gap-1.5">
+            {cargando ? 'calculando…' : unit != null ? `${cop(unit)} c/u` : '—'}
+            {precio?.regla && precio.regla !== 'simple' && !it.usarEspecial && (
+              <span className="rounded bg-info/15 text-info px-1 text-[10px] uppercase">{precio.regla}</span>
+            )}
+            {granel && <span className="text-[10px] uppercase">/{granel}</span>}
+          </div>
+        </div>
+        <Input type="number" min="0" step="any" value={it.cantidad}
+          onChange={(e) => onCantidad(e.target.value)}
+          aria-label={`Cantidad de ${it.nombre}`} className="w-16 h-8 text-center" />
+        <span className="w-20 text-right text-body-sm tabular shrink-0">
+          {cop(it.varia ? Number(it.precio_unitario) * Number(it.cantidad || 0)
+            : it.usarEspecial ? Number(it.precio_especial) * Number(it.cantidad || 0)
+            : (precio?.total ?? Number(it.precio_normal || 0) * Number(it.cantidad || 0)))}
+        </span>
+        <button onClick={onQuitar} aria-label={`Quitar ${it.nombre}`}
+          className="size-8 grid place-items-center rounded-md text-muted-foreground hover:text-destructive">
+          <Trash2 className="size-4" />
+        </button>
+      </div>
+
+      {it.permite_fraccion && !it.usarEspecial && (
+        <div className="mt-1.5 flex items-center gap-1" role="group" aria-label={`Fracción de ${it.nombre}`}>
+          {FRACCIONES.map(([et, val]) => (
+            <Seg key={et} activo={Number(it.cantidad) === val} onClick={() => onCantidad(String(val))}
+              aria-label={`${et} de ${it.nombre}`}>{et}</Seg>
+          ))}
+        </div>
+      )}
+      {faltanMayorista && (
+        <p className="mt-1 text-caption text-info">
+          ≥ {it.precio_umbral} u: {cop(it.precio_sobre_umbral)} c/u — te faltan {it.precio_umbral - Number(it.cantidad)} para mayorista
+        </p>
+      )}
+      {!it.varia && it.precio_especial != null && (
+        <div className="mt-1.5 flex items-center gap-1" role="group" aria-label={`Precio de ${it.nombre}`}>
+          <Seg activo={!it.usarEspecial} onClick={() => onEspecial(false)}>Normal</Seg>
+          <Seg activo={it.usarEspecial} onClick={() => onEspecial(true)}>Especial {cop(it.precio_especial)}</Seg>
+        </div>
+      )}
+    </li>
+  )
+}
+
+function Seg({ activo, onClick, children, ...props }) {
+  return (
+    <button type="button" onClick={onClick} aria-pressed={activo} {...props}
+      className={`flex-1 h-7 px-2 rounded-md border text-caption tabular transition-colors ${
+        activo ? 'border-primary bg-primary/10 text-primary font-medium'
+          : 'border-border bg-surface text-muted-foreground hover:bg-surface-2'}`}>
+      {children}
+    </button>
+  )
+}
+
 function Kbd({ children }) {
   return (
     <kbd className="inline-flex items-center rounded border border-border bg-surface-2 px-1 text-[10px] font-medium text-muted-foreground">
@@ -347,30 +461,16 @@ function Kbd({ children }) {
   )
 }
 
-// Hint discreto de los atajos de teclado del POS (ADR 0029).
 function AtajosHint() {
   return (
-    <p className="flex flex-wrap items-center gap-x-3 gap-y-1 px-1 text-[11px] text-muted-foreground">
+    <p className="flex flex-wrap items-center gap-x-3 gap-y-1 px-1 text-caption text-muted-foreground">
       <span><Kbd>F2</Kbd> o <Kbd>/</Kbd> buscar</span>
+      <span><Kbd>↑</Kbd><Kbd>↓</Kbd> elegir</span>
       <span><Kbd>Enter</Kbd> agrega</span>
       <span><Kbd>F9</Kbd> cobrar</span>
-      <span><Kbd>Alt</Kbd>+<Kbd>1</Kbd>–<Kbd>4</Kbd> método de pago</span>
-      <span>o escanea un código de barras</span>
+      <span><Kbd>Alt</Kbd>+<Kbd>1</Kbd>–<Kbd>4</Kbd> pago</span>
+      <span>o escanea un código</span>
     </p>
-  )
-}
-
-// Botón de un selector segmentado (Normal / Especial) por línea del carrito.
-function PrecioOpcion({ activo, onClick, children, ...props }) {
-  return (
-    <button type="button" onClick={onClick} aria-pressed={activo} {...props}
-      className={`flex-1 h-7 px-2 rounded-md border text-[11px] tabular transition-colors ${
-        activo
-          ? 'border-primary bg-primary/10 text-primary font-medium'
-          : 'border-border bg-surface text-muted-foreground hover:bg-surface-2'
-      }`}>
-      {children}
-    </button>
   )
 }
 
@@ -378,17 +478,15 @@ function VariaForm({ onAdd }) {
   const [descripcion, setDescripcion] = useState('')
   const [cantidad, setCantidad] = useState('1')
   const [precio, setPrecio] = useState('')
-
   function agregar() {
     const c = Number(cantidad), p = Number(precio)
     if (!descripcion.trim() || !c || !p) return
     onAdd({ descripcion: descripcion.trim(), cantidad: c, precio_unitario: p })
     setDescripcion(''); setCantidad('1'); setPrecio('')
   }
-
   return (
     <Card className="p-3">
-      <h2 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">Venta varia (sin catálogo)</h2>
+      <h2 className="text-caption font-semibold uppercase tracking-wider text-muted-foreground mb-2">Venta varia (sin catálogo)</h2>
       <div className="flex flex-wrap items-center gap-2">
         <Input value={descripcion} onChange={(e) => setDescripcion(e.target.value)}
           placeholder="Descripción" aria-label="Descripción varia" className="flex-1 min-w-[140px] h-9" />
@@ -396,8 +494,7 @@ function VariaForm({ onAdd }) {
           aria-label="Cantidad varia" className="w-20 h-9 text-center" />
         <Input type="number" min="0" step="any" value={precio} onChange={(e) => setPrecio(e.target.value)}
           placeholder="Precio" aria-label="Precio varia" className="w-28 h-9" />
-        <button onClick={agregar}
-          className="h-9 px-3 rounded-md border border-border bg-surface text-sm hover:bg-surface-2">Agregar</button>
+        <Button variant="outline" onClick={agregar} className="h-9">Agregar</Button>
       </div>
     </Card>
   )
@@ -406,19 +503,21 @@ function VariaForm({ onAdd }) {
 function ClientePicker({ cliente, onSelect }) {
   const [q, setQ] = useState('')
   const [resultados, setResultados] = useState([])
-
   useEffect(() => {
-    if (!q.trim()) { setResultados([]); return undefined }
-    let cancelado = false
-    apiJson(`/clientes?q=${encodeURIComponent(q.trim())}`)
-      .then(d => { if (!cancelado) setResultados(Array.isArray(d) ? d : []) })
-      .catch(() => { if (!cancelado) setResultados([]) })
-    return () => { cancelado = true }
+    const term = q.trim()
+    if (!term) { setResultados([]); return undefined }
+    const ctrl = new AbortController()
+    const t = setTimeout(() => {
+      apiJson(`/clientes?q=${encodeURIComponent(term)}`, { signal: ctrl.signal })
+        .then(d => setResultados(Array.isArray(d) ? d : []))
+        .catch(err => { if (err?.name !== 'AbortError') setResultados([]) })
+    }, 200)
+    return () => { clearTimeout(t); ctrl.abort() }
   }, [q])
 
   if (cliente) {
     return (
-      <div className="flex items-center gap-2 mt-1 text-[12px]">
+      <div className="flex items-center gap-2 mt-1 text-body-sm">
         <span className="text-muted-foreground">Cliente:</span>
         <span className="font-medium truncate flex-1">{cliente.nombre}</span>
         <button onClick={() => onSelect(null)} aria-label="Quitar cliente"
@@ -428,17 +527,16 @@ function ClientePicker({ cliente, onSelect }) {
       </div>
     )
   }
-
   return (
     <div className="mt-1">
       <Input value={q} onChange={(e) => setQ(e.target.value)}
-        placeholder="Cliente (opcional)…" aria-label="Buscar cliente" className="h-8 text-sm" />
+        placeholder="Cliente (opcional)…" aria-label="Buscar cliente" className="h-8 text-body-sm" />
       {resultados.length > 0 && (
         <ul className="mt-1 divide-y divide-border-subtle max-h-40 overflow-y-auto scrollbar-aurora">
           {resultados.map(c => (
             <li key={c.id}>
               <button onClick={() => { onSelect(c); setQ(''); setResultados([]) }}
-                className="w-full text-left py-1.5 px-1 text-[12px] hover:bg-surface-2 rounded-md truncate">
+                className="w-full text-left py-1.5 px-1 text-body-sm hover:bg-surface-2 rounded-md truncate">
                 {c.nombre}{c.documento ? ` · ${c.documento}` : ''}
               </button>
             </li>

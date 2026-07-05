@@ -440,3 +440,32 @@ async def test_validacion_montos_negativos_e_iva_fuera_de_rango_422(tenant):
         iva = await c.post("/api/v1/productos", json=_payload(iva=200))
     assert neg.status_code == 422, neg.text
     assert iva.status_code == 422, iva.text
+
+
+# ---- Frecuentes ------------------------------------------------------------
+async def test_frecuentes_ordena_por_mas_vendido(tenant):
+    """GET /productos/frecuentes devuelve los más vendidos (por nº de líneas) primero; [] sin ventas."""
+    async with AsyncSession(tenant.engine) as s:
+        uid = await _seed_usuario(s)
+        cemento = (await s.execute(text(
+            "INSERT INTO productos (nombre, unidad_medida, precio_venta, iva, permite_fraccion, activo) "
+            "VALUES ('Cemento', 'unidad', 10000, 0, false, true) RETURNING id"))).scalar_one()
+        puntilla = (await s.execute(text(
+            "INSERT INTO productos (nombre, unidad_medida, precio_venta, iva, permite_fraccion, activo) "
+            "VALUES ('Puntilla', 'unidad', 500, 0, false, true) RETURNING id"))).scalar_one()
+        v = (await s.execute(text(
+            "INSERT INTO ventas (consecutivo, vendedor_id, fecha, subtotal, impuestos, total, "
+            "metodo_pago, estado, origen) VALUES (1, :u, now(), 1000, 0, 1000, 'efectivo', "
+            "'completada', 'web') RETURNING id"), {"u": uid})).scalar_one()
+        for pid in (cemento, cemento, puntilla):   # cemento 2 líneas, puntilla 1
+            await s.execute(text(
+                "INSERT INTO ventas_detalle (venta_id, producto_id, cantidad, precio_unitario, iva) "
+                "VALUES (:v, :p, 1, 1, 0)"), {"v": v, "p": pid})
+        await s.commit()
+
+    app = _app(tenant, user_id=uid)
+    async with _cliente(app) as c:
+        r = await c.get("/api/v1/productos/frecuentes?dias=30&limite=12")
+    assert r.status_code == 200, r.text
+    nombres = [p["nombre"] for p in r.json()]
+    assert nombres[:2] == ["Cemento", "Puntilla"]   # orden por frecuencia

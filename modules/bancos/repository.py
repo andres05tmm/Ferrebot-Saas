@@ -93,6 +93,30 @@ class SqlBancosRepository:
         await self._s.flush()
         return res.rowcount == 1
 
+    async def ingestar_gmail(
+        self, *, gmail_message_id: str, fecha: date, monto: Decimal, remitente: str | None,
+        descripcion: str | None, tipo_transaccion: str | None, hora: str | None,
+    ) -> BancolombiaTransferencia | None:
+        """Inserta una transferencia entrante venida de Gmail; None si el mensaje ya se había ingerido.
+
+        Idempotente por `gmail_message_id` (UNIQUE, la columna de dedup de ESTE canal): `ON CONFLICT
+        DO NOTHING` — reintentos del push Pub/Sub no duplican ni re-notifican. `notificado=True` porque
+        el envío a Telegram lo hace la ingesta tras persistir. `naturaleza='credito'` (dinero que entra).
+        """
+        stmt = (
+            pg_insert(BancolombiaTransferencia)
+            .values(
+                gmail_message_id=gmail_message_id, fecha=fecha, monto=monto, remitente=remitente,
+                descripcion=descripcion, tipo_transaccion=tipo_transaccion, hora=hora,
+                naturaleza="credito", estado_conciliacion="no_conciliado", notificado=True,
+            )
+            .on_conflict_do_nothing(index_elements=["gmail_message_id"])
+            .returning(BancolombiaTransferencia)
+        )
+        mov = (await self._s.execute(stmt)).scalar_one_or_none()
+        await self._s.flush()
+        return mov
+
     # --- lectura -------------------------------------------------------------
     async def obtener(self, mov_id: int) -> BancolombiaTransferencia | None:
         return (

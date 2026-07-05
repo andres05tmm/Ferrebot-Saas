@@ -41,6 +41,8 @@ from modules.devoluciones.router import router as devoluciones_router
 from modules.facturacion.router import router as facturacion_router
 from modules.facturacion.webhook import crear_router_matias
 from modules.facturacion.webhook_wiring import construir_webhook_matias_deps
+from modules.bancos.gmail.webhook import crear_router_bancolombia
+from modules.bancos.gmail.wiring import construir_webhook_bancolombia_deps
 from modules.faq.router import router as faq_router
 from modules.pagar.router import router as pagar_router
 from modules.pagos.router import router as pagos_router
@@ -72,6 +74,8 @@ async def lifespan(app: FastAPI):
     app.state.wa_deps = construir_wa_deps(app.state.arq_pool)
     # Deps del webhook de MATIAS (D7.1): resolver token→empresa+secret, idempotencia en tenant, encolar.
     app.state.matias_webhook_deps = construir_webhook_matias_deps(app.state.arq_pool)
+    # Deps del webhook de Bancolombia (push Gmail/Pub/Sub): resolver token→empresa, encolar la ingesta.
+    app.state.bancolombia_webhook_deps = construir_webhook_bancolombia_deps(app.state.arq_pool)
     yield
     await app.state.arq_pool.aclose()
     await event_hub.dispose_all()
@@ -190,6 +194,9 @@ def create_app(spa_dist: Path | None = None) -> FastAPI:
     # Webhook de MATIAS (D7.1): `/webhooks/matias/{token}`, fuera de /api/ (sin JWT; protegido por firma
     # + token del registro). Resuelve la empresa por el token, jamás por el payload.
     app.include_router(crear_router_matias())
+    # Webhook de Bancolombia (push Gmail/Pub/Sub): `/webhooks/bancolombia/{token}`, fuera de /api/
+    # (sin JWT). La protección es el token opaco de la URL que fija la subscription de Pub/Sub.
+    app.include_router(crear_router_bancolombia())
 
     @app.api_route("/health", methods=["GET", "HEAD"], tags=["infra"])
     async def health() -> dict:

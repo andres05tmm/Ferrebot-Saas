@@ -16,6 +16,7 @@ from arq.cron import cron
 
 from apps.wa.agent import AgenteWa, MemoriaWa
 from apps.wa.kapso import KapsoSender
+from apps.worker.bancolombia import procesar_gmail_push, renovar_watch_gmail
 from apps.worker.jobs import (
     _encolar_descarga,
     atender_mensaje_wa,
@@ -620,7 +621,7 @@ class WorkerSettings:
 
     functions = [
         emitir_documento, descargar_documento, procesar_webhook_matias,
-        atender_mensaje_wa, provisionar_tenant,
+        atender_mensaje_wa, provisionar_tenant, procesar_gmail_push,
     ]
     cron_jobs = [
         # Cron anti-no-show: cada 15 min barre todos los tenants (recordatorios + corte de riesgo).
@@ -644,6 +645,9 @@ class WorkerSettings:
         # Railway): 09:10 UTC ≈ 04:10 a.m. Colombia — hora muerta. La RELATIVIDAD de las fechas la da
         # now_co dentro del seed, así que el dato queda correcto sin importar el reloj del servidor.
         cron(resembrar_demos, hour={9}, minute={10}, run_at_startup=False),
+        # Watch de Gmail (ingesta Bancolombia): el watch caduca a los 7 días. Renovación diaria
+        # anticipada (renueva si expira dentro de 48h) — auto-repara fallos aislados. 08:30 UTC.
+        cron(renovar_watch_gmail, hour={8}, minute={30}, run_at_startup=False),
     ]
     redis_settings = RedisSettings.from_dsn(get_settings().redis_url)
     max_tries = MAX_INTENTOS + 1

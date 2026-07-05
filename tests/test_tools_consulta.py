@@ -189,3 +189,46 @@ async def test_producto_no_encontrado_es_error_recuperable():
     )
     assert isinstance(res, ErrorTool)
     assert res.error == "producto_no_encontrado" and res.recuperable is True
+
+
+# --------------------------- registrar_alias ------------------------------
+class _FakeVentaServiceAlias:
+    """Fake que captura el alias registrado y simula creado/actualizado."""
+
+    def __init__(self, *, creado=True):
+        self._creado = creado
+        self.recibido = None
+
+    async def registrar_alias(self, termino, reemplazo):
+        self.recibido = (termino, reemplazo)
+        return self._creado
+
+
+def test_registrar_alias_registrada_solo_admin_muta():
+    t = POR_NOMBRE["registrar_alias"]
+    assert t in CATALOGO
+    assert t.rol_min == "admin" and t.feature == "ventas"      # cambia la búsqueda de todo el tenant
+    assert t.valida_productos is False and t.confirmable is False   # muta aliases, no es venta
+    assert set(t.spec.parameters["properties"]) >= {"termino", "reemplazo"}
+
+
+async def test_registrar_alias_creado_normaliza_termino():
+    from ai.tools import RegistrarAliasArgs
+    svc = _FakeVentaServiceAlias(creado=True)
+    res = await POR_NOMBRE["registrar_alias"].handler(
+        RegistrarAliasArgs(termino="La Gruesa", reemplazo="tornillo 8x1"), _ctx(rol="admin"), _deps(svc)
+    )
+    assert isinstance(res, Resultado)
+    assert svc.recibido == ("La Gruesa", "tornillo 8x1")       # el handler pasa el término crudo
+    assert res.data["termino"] == "la gruesa"                  # y normaliza a minúsculas en el eco
+    assert res.data["creado"] is True
+    assert "Aprendí" in res.resumen
+
+
+async def test_registrar_alias_actualizado_cuando_ya_existe():
+    from ai.tools import RegistrarAliasArgs
+    svc = _FakeVentaServiceAlias(creado=False)
+    res = await POR_NOMBRE["registrar_alias"].handler(
+        RegistrarAliasArgs(termino="tiner", reemplazo="thinner"), _ctx(rol="admin"), _deps(svc)
+    )
+    assert res.data["creado"] is False and "Actualicé" in res.resumen

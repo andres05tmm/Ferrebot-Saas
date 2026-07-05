@@ -187,6 +187,18 @@ def _fraccion(numerador: str, denominador: str) -> Decimal | None:
         return None
 
 
+# Umbral (COP) desde el cual un producto de venta fraccionada es "de alto valor": un galón de
+# poliuretano/poliamida ronda $180k-$240k. Los cuñetes (1 sola fracción, se venden enteros) y las
+# pinturas normales (vinilo ~$45k) quedan por debajo o con <3 fracciones → no se difieren.
+_UMBRAL_FRACCION_DOMINANTE = Decimal("130000")
+
+
+def _es_fraccion_dominante(esquema: EsquemaPrecio) -> bool:
+    """Producto vendido predominantemente por fracción y de alto valor: ≥3 fracciones distintas y
+    `precio_venta` alto. Sobre estos, un entero pelado es ambiguo (unidad completa vs fracción)."""
+    return len(esquema.fracciones) >= 3 and esquema.precio_venta >= _UMBRAL_FRACCION_DOMINANTE
+
+
 def _motivo_deshabilitado(original: str, norm: str, *, ignorar_para_nombre: bool = False) -> str | None:
     if "," in original or "\n" in original:
         return "multiproducto"
@@ -332,6 +344,14 @@ class Bypass:
             return None                          # no exacto → al modelo (sin adivinar)
 
         componentes = analisis.componentes
+        # Fracción-dominante de alto valor (pinturas en galón: poliuretano/poliamida/esmalte, vendidas
+        # casi siempre por fracción): un ENTERO pelado ("1 poliuretano negro") es ambiguo entre galón
+        # completo (~$240k) y una fracción que el vendedor anotó como "1" → sobre-registro peligroso
+        # (10× lo real). Se difiere al LLM, que confirma "¿galón completo o fracción?". No toca las
+        # fracciones escritas ("1/8 poliuretano" sigue en el bypass) ni los cuñetes (1 sola fracción,
+        # se venden enteros).
+        if _es_fraccion_dominante(prod.esquema) and all(c % 1 == 0 for c in componentes):
+            return None
         # Caja de granel por gramo (puntilla): "2 cajas puntilla" son 2 PAQUETES (cajas), no 2 gramos.
         # Para un producto GRM el motor cobra por gramo (÷ tamaño de paquete), así que N cajas = N ×
         # tamaño_paquete gramos → el total queda N × precio_caja (la caja completa, no migajas). Solo

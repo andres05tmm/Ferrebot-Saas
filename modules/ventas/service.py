@@ -156,6 +156,9 @@ class VentasRepo(Protocol):
     async def lock_inventario(self, producto_id: int) -> Decimal | None: ...
     async def obtener_producto_busqueda(self, producto_id: int) -> "ProductoBusqueda | None": ...
     async def buscar_productos_por_nombre(self, texto: str) -> list[tuple[int, str]]: ...
+    async def registrar_alias(
+        self, termino: str, reemplazo: str, *, producto_id: int | None = ...
+    ) -> bool: ...
     async def listar(
         self, *, desde: date | None = None, hasta: date | None = None, vendedor_id: int | None = None
     ) -> list[VentaLeer]: ...
@@ -309,6 +312,18 @@ class VentaService:
             if prod is not None:
                 productos.append(prod)
         return productos
+
+    async def registrar_alias(self, termino: str, reemplazo: str) -> bool:
+        """Aprende un alias de búsqueda (variante/typo → término canónico) para el catálogo del tenant.
+
+        Alias GLOBAL (producto_id NULL): la búsqueda reescribe `termino`→`reemplazo` y luego resuelve
+        el producto por su vía normal (exacta/trigram/fuzzy). No liga a un producto_id para no fijar
+        una resolución equivocada; el reemplazo es el término canónico que el catálogo sí conoce.
+        Sin commit: la sesión del turno commitea al cierre (igual que registrar_venta). True si es nuevo.
+        """
+        return await self._repo.registrar_alias(
+            termino.strip().lower(), reemplazo.strip(), producto_id=None
+        )
 
     async def _guard_modificacion(
         self, venta_id: int, *, user_id: int, es_admin: bool, accion: str

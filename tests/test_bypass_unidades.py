@@ -143,3 +143,48 @@ async def test_preparar_corrige_typo_universal_tiner_thinner():
     prep = await Bypass(cat, dispatcher=None).preparar("2 tiner", _ctx(), _recursos())
     assert prep is not None
     assert prep.tool_call.arguments["items"][0]["producto_id"] == 42
+
+
+# --------------------------- riel anti-peligroso (fracción-dominante) -----
+
+def _prod_pintura(id_, nombre, precio):
+    """Pintura en galón de alto valor vendida por fracción (5 fracciones): perfil poliuretano."""
+    fracs = [FraccionPrecio(decimal=Decimal(d), precio_total=Decimal(t)) for d, t in
+             (("0.0625", "16000"), ("0.125", "30000"), ("0.25", "60000"),
+              ("0.5", "120000"), ("0.75", "180000"))]
+    return _prod(id_, nombre, precio=precio, fracciones=fracs)
+
+
+async def test_preparar_difiere_entero_pelado_en_fraccion_dominante_alto_valor():
+    # "1 poliuretano negro" es ambiguo (galón $240k vs fracción anotada como "1") → defiere al LLM,
+    # NO registra un sobre-cobro peligroso.
+    cat = _FakeCatalogo({"poliuretano negro": _prod_pintura(701, "poliuretano negro", "240000")})
+    prep = await Bypass(cat, dispatcher=None).preparar("1 poliuretano negro", _ctx(), _recursos())
+    assert prep is None
+
+
+async def test_preparar_resuelve_fraccion_escrita_en_fraccion_dominante():
+    # La ambigüedad es solo del entero pelado: "1/8 poliuretano negro" es inequívoco → se resuelve.
+    cat = _FakeCatalogo({"poliuretano negro": _prod_pintura(701, "poliuretano negro", "240000")})
+    prep = await Bypass(cat, dispatcher=None).preparar("1/8 poliuretano negro", _ctx(), _recursos())
+    assert prep is not None
+    assert prep.tool_call.arguments["items"][0]["cantidad"] == Decimal("0.125")
+
+
+async def test_preparar_no_difiere_cunete_entero_una_sola_fraccion():
+    # Un cuñete de alto valor con 1 sola fracción se vende ENTERO: "1 cuñete vinilo t2" resuelve.
+    cunete = _prod(801, "cunete vinilo t2", precio="170000",
+                   fracciones=[FraccionPrecio(decimal=Decimal("0.5"), precio_total=Decimal("90000"))])
+    cat = _FakeCatalogo({"cunete vinilo t2": cunete})
+    prep = await Bypass(cat, dispatcher=None).preparar("1 cunete vinilo t2", _ctx(), _recursos())
+    assert prep is not None
+    assert prep.tool_call.arguments["items"][0]["producto_id"] == 801
+
+
+async def test_preparar_no_difiere_pintura_barata_por_fraccion():
+    # Vinilo normal ($45k) con fracciones NO es "alto valor": "1 vinilo" sigue siendo venta común.
+    vinilo = _prod_pintura(3, "vinilo t1 blanco", "45000")
+    cat = _FakeCatalogo({"vinilo t1 blanco": vinilo})
+    prep = await Bypass(cat, dispatcher=None).preparar("1 vinilo t1 blanco", _ctx(), _recursos())
+    assert prep is not None
+    assert prep.tool_call.arguments["items"][0]["producto_id"] == 3

@@ -65,6 +65,7 @@ from core.llm.gobierno import Gobierno
 from core.llm.medicion import CostosStore, ProveedorMedido
 from core.logging import get_logger
 from core.voz.filtros import es_transcripcion_silencio
+from core.voz.priming import prompt_para_tenant
 from core.voz.transcriptor import Transcriptor
 from modules.memoria.service import (
     TIPO_ULTIMO_CLIENTE,
@@ -243,7 +244,10 @@ async def _resolver_texto_voz(
         return None
     try:
         audio = await archivos.descargar(update.voz_file_id)   # type: ignore[union-attr]
-        transcripcion = await transcriptor.transcribir(audio, prompt=None)  # type: ignore[union-attr]
+        # Priming: sesga Whisper con el vocabulario del catálogo (menos typos en nombres de ferretería
+        # → menos re-preguntas → menos tokens). Best-effort: si falla, transcribe sin prompt.
+        prompt = await prompt_para_tenant(session, ctx.tenant_id)
+        transcripcion = await transcriptor.transcribir(audio, prompt=prompt)  # type: ignore[union-attr]
     except Exception:
         log.warning("voz_descarga_o_transcripcion_fallo", chat_id=update.chat_id, exc_info=True)
         await notificador.responder(update.chat_id, MENSAJE_RESPALDO)

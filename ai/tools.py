@@ -135,6 +135,13 @@ class ConsultarProductoArgs(ArgsTool):
     nombre: str = Field(min_length=1)
 
 
+class RegistrarAliasArgs(ArgsTool):
+    # `termino` = como lo dicen los clientes/vendedores (variante, typo, apodo). `reemplazo` = el
+    # nombre canónico que el catálogo SÍ conoce. El backend guarda el alias global y la búsqueda lo usa.
+    termino: str = Field(min_length=1, max_length=80)
+    reemplazo: str = Field(min_length=1, max_length=120)
+
+
 # --- Handlers: args validados + contexto → servicio de dominio → envelope ----
 async def _registrar_venta(args: RegistrarVentaArgs, ctx: Contexto, deps: Deps) -> Resultado | ErrorTool:
     lineas = [
@@ -405,6 +412,22 @@ async def _consultar_producto(
     return _resultado_producto(matches[0])
 
 
+async def _registrar_alias(args: RegistrarAliasArgs, ctx: Contexto, deps: Deps) -> Resultado | ErrorTool:
+    """Enseña un alias de búsqueda al catálogo ("apréndete que 'la gruesa' es el tornillo 8x1").
+
+    Reemplaza el `/alias` del bot viejo por una herramienta del agente: el modelo la invoca cuando el
+    dueño/vendedor pide recordar una variante. Muta (crea/actualiza una fila en `aliases`); no toca
+    stock ni caja, así que no pasa por rieles de producto/precio (no es una venta).
+    """
+    creado = await deps.ventas.registrar_alias(args.termino, args.reemplazo)
+    verbo = "Aprendí" if creado else "Actualicé"
+    return Resultado(
+        data={"termino": args.termino.strip().lower(), "reemplazo": args.reemplazo.strip(),
+              "creado": creado},
+        resumen=f"{verbo} que «{args.termino}» es «{args.reemplazo}».",
+    )
+
+
 # --- Tabla del catálogo ------------------------------------------------------
 ArgsModel = type[BaseModel]
 Handler = Callable[[BaseModel, Contexto, Deps], Awaitable[Resultado | ErrorTool]]
@@ -474,6 +497,15 @@ CATALOGO: tuple[Tool, ...] = (
         descripcion="Consulta el precio y el stock de un producto por su nombre. Solo lectura.",
         args_model=ConsultarProductoArgs, rol_min="vendedor", feature="ventas",
         handler=_consultar_producto,     # read-only: valida_productos/confirmable = False (defaults)
+    ),
+    Tool(
+        # Aprender un alias/typo del catálogo ("la gruesa" = "tornillo 8x1"). Solo admin: cambia cómo
+        # busca TODO el tenant, no debe quedar en manos de cualquier vendedor.
+        nombre="registrar_alias",
+        descripcion=("Enseña un alias de búsqueda cuando el usuario pide recordar que una palabra o "
+                     "typo se refiere a un producto (ej: 'apréndete que la gruesa es el tornillo 8x1')."),
+        args_model=RegistrarAliasArgs, rol_min="admin", feature="ventas",
+        handler=_registrar_alias,        # muta aliases; no es venta → sin rieles de producto/precio
     ),
 )
 

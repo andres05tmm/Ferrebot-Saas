@@ -15,6 +15,7 @@ from modules.caja.errors import CajaNoAbierta
 from modules.caja.repository import SqlCajaRepository
 from modules.caja.schemas import (
     AperturaCrear,
+    ArqueoLeer,
     CajaLeer,
     CierreCrear,
     GastoCrear,
@@ -44,6 +45,23 @@ async def caja_actual(
     if caja is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "No hay caja abierta")
     return CajaLeer.model_validate(caja)
+
+
+@router.get("/caja/arqueo", response_model=ArqueoLeer)
+async def caja_arqueo(
+    session: AsyncSession = Depends(get_tenant_db),
+    user: Principal = Depends(require_role("vendedor")),
+) -> ArqueoLeer:
+    """Cuadre en vivo de la caja abierta del usuario (componentes + saldo esperado). Caja cerrada → estado
+    'cerrada' con los componentes en 0 (200, no 404: el panel siempre pinta el estado)."""
+    a = await _service(session).arqueo(user.user_id)
+    if a is None:
+        return ArqueoLeer(estado="cerrada")
+    return ArqueoLeer(
+        estado="abierta", caja_id=a.caja.id, fecha_apertura=a.caja.fecha_apertura,
+        saldo_inicial=a.caja.saldo_inicial, ventas_efectivo=a.ventas_efectivo,
+        ingresos=a.ingresos, egresos=a.egresos, saldo_esperado=a.saldo_esperado,
+    )
 
 
 @router.post("/caja/apertura", response_model=CajaLeer, status_code=status.HTTP_201_CREATED)

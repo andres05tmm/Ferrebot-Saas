@@ -99,5 +99,8 @@ export async function bootConfig() {
     features: config.features || [],
     branding: config.branding || { color_primario: COLOR_PRIMARY_DEFAULT },
     usuario: config.usuario || null,
+    // Preferencias de UI. `facturar_en_venta` (default true) gobierna si el POS auto-factura cada venta
+    // o si ofrece "Sin factura" (venta interna, factura a pedido). Un /config viejo sin el campo → true.
+    facturarEnVenta: config.facturar_en_venta !== false,
   }
 }

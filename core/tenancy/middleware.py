@@ -32,6 +32,11 @@ _AUTH_SIN_TENANT = frozenset({
     "/api/v1/auth/reset/confirmar",
 })
 
+# Manifest PWA (público): resuelve tenant por subdominio SI puede, pero NO exige empresa. En un host
+# sin tenant (link compartido) devuelve un manifest neutro en vez de 404, para no romper la instalación.
+# Solo expone branding público (nombre, color, logo): jamás datos de negocio.
+_TENANT_OPCIONAL = frozenset({"/api/v1/manifest.webmanifest", "/api/v1/icon.svg"})
+
 # Panel super-admin (ADR 0010 §D2): rutas de PLATAFORMA (cross-tenant), no por-empresa. Como cuelgan de
 # un prefijo con sub-rutas, se eximen por prefijo. El gate es `require_platform`.
 _ADMIN_PREFIX = "/api/v1/admin"
@@ -70,6 +75,10 @@ class TenantMiddleware:
                 return
             tenant = await self._resolve(request)
             if tenant is None or tenant.estado != "activa":
+                # Tenant opcional (manifest PWA): sigue sin empresa; el endpoint cae a defaults neutros.
+                if request.url.path in _TENANT_OPCIONAL:
+                    await self.app(scope, receive, send)
+                    return
                 # Un solo 404 genérico para inexistente E inactiva: distinguirlas (404 vs 403)
                 # permitía enumerar tenants y su estado sin autenticación vía X-Tenant-Slug.
                 await self._deny(scope, receive, send, 404, "Empresa no encontrada")

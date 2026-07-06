@@ -754,3 +754,10 @@
     }
   }
 }
+
+/* Escala tipográfica SEMÁNTICA (F6): reemplaza los text-[11px]/text-[13px] hardcodeados por nombres
+   con intención. Un solo lugar donde ajustar densidad/accesibilidad del dashboard. */
+@layer utilities {
+  .text-caption { font-size: 11px; line-height: 1.35; }   /* etiquetas, hints, metadatos */
+  .text-body-sm { font-size: 13px; line-height: 1.45; }   /* cuerpo secundario, celdas de tabla */
+}

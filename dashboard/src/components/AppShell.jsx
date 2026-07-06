@@ -11,6 +11,7 @@ import Sidebar from './Sidebar.jsx'
 import MobileNav from './MobileNav.jsx'
 import CommandPalette from './CommandPalette.jsx'
 import HeaderBar from './HeaderBar.jsx'
+import PwaInstall from './PwaInstall.jsx'
 
 function loadColorScheme() {
   try {
@@ -91,6 +92,7 @@ export default function AppShell() {
       {isMobile && <MobileNav />}
 
       <CommandPalette open={cmdOpen} setOpen={setCmdOpen} onRefresh={doRefresh} />
+      <PwaInstall />
     </div>
     </RealtimeProvider>
   )

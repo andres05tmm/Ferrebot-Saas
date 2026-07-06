@@ -21,6 +21,7 @@ import { Card } from '@/components/ui/card.jsx'
 import { Badge } from '@/components/ui/badge.jsx'
 import BadgeFiscal from '@/components/BadgeFiscal.jsx'
 import KpiCard from '@/components/KpiCard.jsx'
+import FeedActividad from '@/components/FeedActividad.jsx'
 import { cn } from '@/lib/utils'
 
 const HORA_CO = { hour: '2-digit', minute: '2-digit', timeZone: 'America/Bogota' }
@@ -172,10 +173,15 @@ export default function TabHoy() {
         <FeedLive ventas={ultimas} productos={topProductos} loading={ventasQ.loading} onMore={() => navigate('/historial')} />
       </div>
 
-      {/* OPERATIVA — Métodos / Top productos / Stock bajo */}
+      {/* OPERATIVA — Métodos / Top productos / Actividad en vivo del agente */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
         <MetodosPago items={metodosPago} total={totalMetodos} />
         <TopProductos items={topProductos} onMore={() => navigate('/top-productos')} />
+        <FeedActividad />
+      </div>
+
+      {/* Stock bajo */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
         <StockBajo items={stockBajo} total={stockArr.length} onMore={() => navigate('/inventario')} />
       </div>
 

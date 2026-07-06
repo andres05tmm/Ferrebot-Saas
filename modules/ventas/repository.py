@@ -326,6 +326,23 @@ class SqlVentasRepository:
         resultado = await buscador.buscar(texto, limite=limite)
         return [(c.producto_id, c.nombre) for c in resultado.coincidencias]
 
+    async def registrar_alias(
+        self, termino: str, reemplazo: str, *, producto_id: int | None = None
+    ) -> bool:
+        """Upsert de un alias de búsqueda (variante/typo → término canónico). Devuelve True si se
+        creó, False si ya existía y se actualizó el reemplazo. Dedup por `termino` (UNIQUE)."""
+        fila = (await self._s.execute(
+            text(
+                "INSERT INTO aliases (termino, reemplazo, producto_id) "
+                "VALUES (:t, :r, :pid) "
+                "ON CONFLICT (termino) DO UPDATE SET reemplazo = EXCLUDED.reemplazo, "
+                "producto_id = EXCLUDED.producto_id, actualizado_en = now() "
+                "RETURNING (xmax = 0) AS creado"
+            ),
+            {"t": termino, "r": reemplazo, "pid": producto_id},
+        )).scalar_one()
+        return bool(fila)
+
     async def siguiente_consecutivo(self) -> int:
         return (await self._s.execute(text("SELECT nextval('ventas_consecutivo_seq')"))).scalar_one()
 

@@ -1,13 +1,24 @@
 /*
  * HeaderBar — header sticky con el título de la ruta, refresh y (en móvil) tema + búsqueda.
- * Andamiaje E3: se quitaron el selector de vendedor y el pill de caja (dependían de auth/datos);
- * vuelven en E4/E6. El pill "Bot activo" queda estático por ahora.
+ * El pill de conexión refleja el estado REAL del canal SSE (useRealtimeStatus): verde = recibe
+ * eventos en vivo, ámbar = reconectando, gris = sin conexión. Mide el canal de tiempo real, no el
+ * proceso del bot de Telegram (eso sería un heartbeat aparte, diferido).
  */
 import { useLocation } from 'react-router-dom'
 import { Command, RefreshCw, Sun, Moon } from 'lucide-react'
 import { findRoute } from '@/routes.jsx'
+import { useRealtimeStatus } from '@/components/RealtimeProvider.jsx'
+
+const PILL = {
+  conectado: { dot: 'bg-success animate-pulse', texto: 'En vivo' },
+  conectando: { dot: 'bg-muted-foreground/50', texto: 'Conectando…' },
+  reconectando: { dot: 'bg-warning animate-pulse', texto: 'Reconectando…' },
+  'sin-conexion': { dot: 'bg-muted-foreground/40', texto: 'Sin conexión' },
+}
 
 export default function HeaderBar({ isMobile, onOpenCommand, onRefresh, lastRefresh, colorScheme, onToggleColorScheme }) {
+  const { estado } = useRealtimeStatus()
+  const pill = PILL[estado] || PILL.conectando
   const location = useLocation()
   const route = findRoute(location.pathname)
   const title = route?.label || 'Hoy'
@@ -61,9 +72,10 @@ export default function HeaderBar({ isMobile, onOpenCommand, onRefresh, lastRefr
           </>
         )}
 
-        <div className="hidden md:flex items-center gap-2 px-3 h-9 rounded-md border border-border bg-surface text-xs">
-          <span className="size-2 rounded-full bg-success animate-pulse" />
-          <span className="text-muted-foreground">Bot activo</span>
+        <div className="hidden md:flex items-center gap-2 px-3 h-9 rounded-md border border-border bg-surface text-caption"
+          title="Estado del canal de tiempo real" aria-live="polite">
+          <span className={`size-2 rounded-full ${pill.dot}`} />
+          <span className="text-muted-foreground">{pill.texto}</span>
         </div>
       </div>
     </header>

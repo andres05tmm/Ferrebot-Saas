@@ -59,6 +59,12 @@ class Settings(BaseSettings):
     # off-site (solo respaldo local). Si está montada, el backup se copia ahí tras el respaldo local.
     backup_offsite_dir: str = ""
 
+    # Gmail (ingesta bancaria Bancolombia + futuras facturas de compra por correo, nota D2).
+    # Credenciales OAuth de PLATAFORMA (un solo proyecto GCP para todos los tenants): el refresh_token
+    # es POR empresa y va cifrado en secretos_empresa (clave 'gmail_refresh_token_bancolombia'), NO aquí.
+    gmail_client_id: str = ""
+    gmail_client_secret: str = ""
+
     # Auth
     jwt_algorithm: str = "HS256"
     jwt_expire_minutes: int = 720

@@ -192,8 +192,12 @@ def test_catalogo_con_metapack_pos_ve_todo_el_retail():
 
 
 def test_catalogo_visible_helper_filtra_por_rol():
-    # Todas las herramientas del alcance son rol vendedor → admin las ve todas también.
-    assert len(catalogo_visible(_ctx(rol="admin"))) == len(catalogo_visible(_ctx()))
+    # `registrar_alias` es admin-only (cambia la búsqueda de TODO el tenant); el resto es vendedor.
+    # Admin ve las de vendedor + `registrar_alias`; vendedor NO ve `registrar_alias`.
+    admin = {t.nombre for t in catalogo_visible(_ctx(rol="admin"))}
+    vendedor = {t.nombre for t in catalogo_visible(_ctx())}
+    assert admin - vendedor == {"registrar_alias"}
+    assert "registrar_alias" not in vendedor
 
 
 # --------------------------- RBAC / capacidad / validación ----------------

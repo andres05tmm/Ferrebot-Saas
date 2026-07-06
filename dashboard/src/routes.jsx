@@ -9,7 +9,7 @@ import {
   History, TrendingUp, Trophy, BookOpen,
   FileText, FileCheck, Calculator, FileCog,
   CalendarDays, Headset, BookText, HandCoins, ChefHat, Banknote,
-  CreditCard, FileSpreadsheet, Star, BedDouble, Undo2, Percent, Library, Landmark,
+  CreditCard, FileSpreadsheet, Star, BedDouble, Undo2, Percent, Library, Landmark, Scale,
 } from 'lucide-react'
 import { isRouteEnabled } from './lib/features.jsx'
 
@@ -53,6 +53,7 @@ export const ROUTES = [
   { path: '/facturas-recibidas',  label: 'Facturas recibidas',  icon: FileCheck,       group: 'fiscal' },
   { path: '/libro-iva',           label: 'Libro IVA',           icon: Calculator,      group: 'fiscal' },
   { path: '/libros',              label: 'Libros contables',    icon: Library,         group: 'fiscal' },
+  { path: '/estados-financieros', label: 'Estados financieros', icon: Scale,           group: 'fiscal' },
   { path: '/retenciones',         label: 'Retenciones',         icon: Percent,         group: 'fiscal' },
   { path: '/compras-fiscal',      label: 'Compras Fiscal',      icon: FileCog,         group: 'fiscal' },
 ]

@@ -41,9 +41,10 @@ describe('useRealtime', () => {
     const onEvent = vi.fn()
     renderHook(() => useRealtime(onEvent))
 
-    await opts().onopen({ ok: true, status: 200 }) // primera conexión: NO emite
-    expect(onEvent).not.toHaveBeenCalled()
-    await opts().onopen({ ok: true, status: 200 }) // reapertura: emite
+    await opts().onopen({ ok: true, status: 200 }) // primera conexión: estado conectado, sin 'reconnected'
+    expect(onEvent).toHaveBeenCalledWith('__estado', { estado: 'conectado' })
+    expect(onEvent).not.toHaveBeenCalledWith('reconnected', {})
+    await opts().onopen({ ok: true, status: 200 }) // reapertura: emite 'reconnected'
     expect(onEvent).toHaveBeenCalledWith('reconnected', {})
   })
 

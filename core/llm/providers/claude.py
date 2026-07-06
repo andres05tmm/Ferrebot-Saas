@@ -16,10 +16,13 @@ from core.llm.base import (
 
 Cliente = Callable[[dict[str, Any]], Awaitable[dict[str, Any]]]
 
-# Prompt caching (ADR 0024): marca de cache efímera (~5 min) para el PREFIJO estable del prompt
-# (tools del catálogo + system por tenant). Anthropic cachea el prefijo hasta el bloque marcado, así
-# que basta ponerla en la ÚLTIMA tool y en el bloque system: −costo/−latencia sin romper el prefijo.
-_EFIMERO: dict[str, Any] = {"type": "ephemeral"}
+# Prompt caching (ADR 0024): marca de cache efímera para el PREFIJO estable del prompt (tools del
+# catálogo + system por tenant). Anthropic cachea el prefijo hasta el bloque marcado, así que basta
+# ponerla en la ÚLTIMA tool y en el bloque system: −costo/−latencia sin romper el prefijo.
+# TTL de 1h (no los 5 min por defecto): el catálogo y el system NO cambian durante el día de mostrador,
+# y con tráfico intermitente de ventas una ventana de 1h mantiene la caché caliente entre clientes
+# (evita re-escrituras de prefijo). La TTL extendida es GA en la API de Anthropic — sin header beta.
+_EFIMERO: dict[str, Any] = {"type": "ephemeral", "ttl": "1h"}
 
 # Explicit request timeout: the SDK default (10 min) would pin the tenant's DB session
 # (pool_size=2) for the whole hang.

@@ -67,6 +67,7 @@ export const RUTA_FEATURE = {
   '/facturas-recibidas': 'compras_fiscal',
   '/libro-iva': 'libro_iva',
   '/libros': 'libros_contables',
+  '/estados-financieros': 'contabilidad_ledger',
   '/retenciones': 'retenciones',
   '/conciliacion': 'conciliacion_bancaria',
   '/compras-fiscal': 'compras_fiscal',

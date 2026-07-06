@@ -21,10 +21,10 @@ def test_payload_marca_cache_en_ultima_tool_y_system():
     )
     # cache_control SOLO en la última tool (breakpoint del prefijo de herramientas).
     assert "cache_control" not in payload["tools"][0]
-    assert payload["tools"][-1]["cache_control"] == {"type": "ephemeral"}
+    assert payload["tools"][-1]["cache_control"] == {"type": "ephemeral", "ttl": "1h"}
     # system como bloque de texto con cache_control efímero.
     assert payload["system"] == [
-        {"type": "text", "text": "eres un asistente", "cache_control": {"type": "ephemeral"}}
+        {"type": "text", "text": "eres un asistente", "cache_control": {"type": "ephemeral", "ttl": "1h"}}
     ]
 
 

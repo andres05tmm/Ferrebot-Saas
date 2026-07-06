@@ -42,7 +42,7 @@ export function useRealtime(onEvent) {
 
   useEffect(() => {
     const token = getToken()
-    if (!token) return // sin sesión, no conectar
+    if (!token) { onEventRef.current?.('__estado', { estado: 'sin-conexion' }); return }
     if (tokenExpirado(token)) { cerrarSesion(); return }
 
     const ctrl = new AbortController()
@@ -62,6 +62,7 @@ export function useRealtime(onEvent) {
         if (!primeraApertura) onEventRef.current?.('reconnected', {})
         primeraApertura = false
         reintentos = 0
+        onEventRef.current?.('__estado', { estado: 'conectado' })
       },
       onmessage(ev) {
         if (ev.event === 'ping' || !ev.data) return // keepalive
@@ -74,6 +75,7 @@ export function useRealtime(onEvent) {
       },
       onerror(err) {
         if (err instanceof FatalSSEError) throw err // propaga → detiene el retry
+        onEventRef.current?.('__estado', { estado: 'reconectando' })
         const delay = Math.min(2000 * 2 ** reintentos, BACKOFF_MAX)
         reintentos++
         return delay // backoff exponencial

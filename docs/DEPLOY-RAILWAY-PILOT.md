@@ -285,3 +285,103 @@ L–V, reglas en modo_confirmacion=manual) y enciende los dos flags. Imprime el 
    **logs**/métricas de Railway (no por un endpoint).
 7. **Secretos estables.** Cambiar `SECRETS_MASTER_KEY` tras provisionar deja ilegibles los secretos por
    empresa (incl. la URL de conexión del tenant). Trátalo como inmutable; respáldalo fuera de Railway.
+
+---
+
+## 10. Punto Rojo a producción — servicio Bot de Telegram + Bancolombia + corte
+
+Punto Rojo es un tenant **retail** con bot de **Telegram** (no WhatsApp), así que su corte a producción
+añade cosas que el piloto WhatsApp no cubre: un **tercer servicio** (`SERVICE_TYPE=bot`), la ingesta
+**Bancolombia por Gmail**, la migración de datos (**ETL**) y el **corte de webhook** del bot viejo al
+nuevo. La lógica del corte de Telegram está en `docs/migracion-puntorojo.md §10`; esto es el runbook de
+infraestructura que lo rodea.
+
+### 10.1 Servicio Bot de Telegram
+
+Tercer servicio Railway sobre **la misma imagen** (igual que API/Worker), diferenciado por env var:
+
+- **[UI]** New Service → mismo repo → **Variables**: copia las comunes (`*_DATABASE_URL`,
+  `TENANTS_DIRECT_URL_BASE`, `REDIS_URL`, `SECRET_KEY`, `SECRETS_MASTER_KEY`) y añade `SERVICE_TYPE=bot`.
+- `docker-entrypoint.sh` ya ramifica `bot` → `python -m apps.bot.main` (escucha en `PORT`).
+- El bot expone el webhook `POST /tg/{slug}`: necesita ser **público** (Railway le da dominio). Valida
+  `X-Telegram-Bot-Api-Secret-Token` contra el secret cifrado del control DB y dedup por Redis.
+- Healthcheck: el proceso responde HTTP en `PORT`; usa `/health` si está, o el TCP del puerto.
+
+### 10.2 Migraciones y datos
+
+1. **[CLI]** Migraciones (incluye control `0010_gmail_cuentas`):
+   ```bash
+   alembic -c migrations/control/alembic.ini upgrade head
+   python -m tools.migrate_tenants
+   ```
+2. **ETL** de FerreBot → tenant (en-red, **URL directa** para el `setval`, no PgBouncer):
+   ```bash
+   python -m tools.etl_puntorojo --origen-url <dump_legacy_restaurado> --slug puntorojo
+   python -m tools.etl_puntorojo.verify --origen-url <dump_legacy_restaurado> --slug puntorojo   # gate: exit 0
+   ```
+   El `verify` (paridad de conteos, sumas, **continuidad DIAN**, FKs, fechas Colombia y stock↔kardex)
+   es **gate de corte**: no se corta si no da exit 0.
+
+### 10.3 ⚠️ Rotación de secretos ANTES del corte (no negociable)
+
+El manifiesto `tools/onboarding/puntorojo.json` está en `.gitignore` (**no** llegó a git — la copia
+local sí tenía token de Telegram y password de MATIAS en claro; se scrubbearon a placeholders). Como
+esos valores reales existieron fuera de cifrado, antes de mover tráfico real trátalos como comprometidos:
+
+1. **BotFather** → `/revoke` del bot → toma el token NUEVO.
+2. Cambia el **password de MATIAS** en el portal.
+3. Carga los secretos NUEVOS **cifrados** vía el provisionador (`tools/provision_from_manifest.py` con el
+   manifiesto corregido) o directo en `secretos_empresa`.
+4. **Saca los valores reales del JSON versionado** (déjalo con placeholders) y commitea.
+
+### 10.4 Encender contabilidad (opt-in, tras el ETL)
+
+```bash
+python -m tools.set_feature puntorojo contabilidad_ledger on
+# admin, una vez, sobre el tenant migrado:
+#   POST /api/v1/contabilidad/puc/sembrar      → siembra el PUC
+#   POST /api/v1/contabilidad/backfill         → proyecta asientos de lo migrado
+#   POST /api/v1/contabilidad/apertura         → asiento de apertura con los saldos (caja/fiados/inventario/IVA)
+```
+El tab **Estados Financieros** aparece solo con el flag `contabilidad_ledger` encendido.
+
+### 10.5 Bancolombia (Gmail push)
+
+1. **Env vars de plataforma** (un solo proyecto GCP, todos los tenants): `GMAIL_CLIENT_ID`,
+   `GMAIL_CLIENT_SECRET`.
+2. Registrar el buzón del tenant (cifra el refresh_token + da de alta `gmail_cuentas`):
+   ```bash
+   python -m tools.set_gmail_token puntorojo --refresh-token <REFRESH> \
+       --email ferreteria.bancolombia@gmail.com \
+       --pubsub-topic projects/<PROJ>/topics/bancolombia-notif
+   # imprime el webhook_token → configura la subscription de Pub/Sub con push endpoint:
+   #   https://<host-api>/webhooks/bancolombia/<webhook_token>
+   ```
+3. El cron `renovar_watch_gmail` (worker, 08:30 UTC) activa/renueva el watch de Gmail; para arrancar ya,
+   dispara una renovación manual encolando el job o esperando la primera corrida.
+4. Gate por feature: `python -m tools.set_feature puntorojo conciliacion_bancaria on`.
+
+### 10.6 Corte (lo ejecuta el OWNER; ventana de bajo tráfico)
+
+Requisitos previos: §10.1–10.5 hechos, `verify.py` verde, y **acierto del bot re-medido ≥ baseline con
+0 peligrosos** (`tests/evals/replay/replay.py` contra el tenant migrado, gate de `migracion-puntorojo.md §10`).
+
+- **Telegram** (checklist completo en `migracion-puntorojo.md §10`): `deleteWebhook` en el bot viejo →
+  `setWebhook` del MISMO token (el ROTADO en §10.3) a `https://<host-bot>/tg/puntorojo` con
+  `secret_token=<el cifrado en control DB>` → `getWebhookInfo` limpio → smoke "1 vinilo" + reenvío del
+  mismo update (dedup Redis no duplica). **Rollback** posible mientras no se emitan facturas DIAN nuevas.
+- **Bancolombia**: re-apunta la **MISMA** subscription de Pub/Sub al endpoint nuevo
+  (`gcloud pubsub subscriptions update <sub> --push-endpoint=https://<host-api>/webhooks/bancolombia/<token>`).
+  **Nunca crees una segunda subscription** — dos activas notificarían dos veces (la dedup por
+  `gmail_message_id` vive en bases distintas). Corre `renovar_watch` una vez tras el corte.
+- **Post-corte**: monitorea 24–48 h (5xx, p95, % bypass vs modelo, `watch_expira` en `gmail_cuentas`).
+
+### 10.7 Riesgos del corte
+
+- **G4 (zona de timestamps)**: el ETL parametriza `--tz-origen`; la muestra confirmó que el servidor
+  legacy escribía `created_at` en UTC y `fecha`+`hora` en hora Colombia (ya cableado). `verify.py` re-chequea.
+- **Doble notificación Bancolombia**: re-apuntar la subscription existente, jamás duplicarla.
+- **Watch de Gmail (7 días)**: el cron renueva anticipadamente (<48h) y alerta a Telegram si el refresh
+  está revocado.
+- **Consecutivos DIAN**: el ETL arranca `fe_factura_consecutivo_seq` desde el consecutivo embebido en
+  `numero` (no la PK-seq); `verify.py` lo comprueba y el smoke de factura sandbox lo confirma.

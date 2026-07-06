@@ -9,6 +9,9 @@ vi.mock('@/components/RealtimeProvider.jsx', () => ({
   RealtimeProvider: ({ children }) => children,
   useRealtimeEvent: (tipos, handler) => { rtEventos = tipos; rtHandler = handler },
 }))
+// FeedActividad también se suscribe a eventos; se stubbea para que la captura de rtEventos/rtHandler
+// refleje SOLO la suscripción de TabHoy (el feed tiene su propio test).
+vi.mock('@/components/FeedActividad.jsx', () => ({ default: () => null }))
 
 import TabHoy from './TabHoy.jsx'
 

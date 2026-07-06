@@ -49,6 +49,24 @@ class SqlInventarioRepository:
             await self._s.execute(select(Producto).where(Producto.id == producto_id))
         ).scalar_one_or_none()
 
+    async def ids_frecuentes(self, *, dias: int, limite: int) -> list[int]:
+        """IDs de los productos MÁS VENDIDOS en los últimos `dias` (por nº de líneas), activos.
+
+        Alimenta la grilla de acceso rápido de Ventas Rápidas. Cuenta líneas de venta (no cantidad):
+        lo que más se toca en el mostrador, no lo de mayor volumen. Vacío si aún no hay ventas."""
+        filas = (await self._s.execute(
+            text(
+                "SELECT d.producto_id FROM ventas_detalle d "
+                "JOIN ventas v ON v.id = d.venta_id "
+                "JOIN productos p ON p.id = d.producto_id "
+                "WHERE d.producto_id IS NOT NULL AND p.activo "
+                "AND v.fecha >= now() - make_interval(days => :dias) "
+                "GROUP BY d.producto_id ORDER BY count(*) DESC LIMIT :limite"
+            ),
+            {"dias": dias, "limite": limite},
+        )).scalars().all()
+        return list(filas)
+
     # ---- Catálogo (mutaciones) ----------------------------------------------
     async def codigo_existe(self, codigo: str, *, excluir_id: int | None = None) -> bool:
         """¿Otro producto ya usa este código? (`excluir_id` se ignora a sí mismo al editar)."""

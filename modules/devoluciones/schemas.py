@@ -22,6 +22,25 @@ class DevolucionCrear(BaseModel):
     lineas: list[DevolucionLineaCrear] | None = Field(default=None, min_length=1)
 
 
+class VentaFacturadaLeer(BaseModel):
+    """Una venta con documento fiscal VIVO (POS o factura electrónica), candidata a nota crédito.
+
+    Alimenta la lista del tab Devoluciones: solo ventas donde SÍ se emitió un documento DIAN (tipo
+    'pos'/'factura', estado pendiente|aceptada). La nota crédito solo procede sobre una factura aceptada;
+    `fiscal_estado` deja ver cuáles ya lo están. `cufe` es el CUFE/CUDE del documento (buscable)."""
+
+    id: int
+    consecutivo: int
+    fecha: datetime
+    total: Decimal
+    metodo_pago: str
+    fiscal_tipo: str            # 'pos' | 'factura'
+    fiscal_estado: str          # 'pendiente' | 'aceptada'
+    cufe: str | None = None
+    fiscal_numero: int | None = None
+    fiscal_prefijo: str | None = None
+
+
 class DevolucionDetalleLeer(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

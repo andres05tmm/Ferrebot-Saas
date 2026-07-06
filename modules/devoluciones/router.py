@@ -8,7 +8,9 @@ la emisión nunca bloquea el reintegro. Feature fina `ventas` (misma superficie 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.auth import Principal, require_role
+from fastapi import Query
+
+from core.auth import Principal, get_filtro_efectivo, require_role
 from core.auth.features import require_feature
 from core.config import get_settings
 from core.db.session import control_session, get_tenant_db
@@ -24,7 +26,7 @@ from modules.devoluciones.errors import (
     VentaNoEncontrada,
 )
 from modules.devoluciones.repository import SqlDevolucionesRepository
-from modules.devoluciones.schemas import DevolucionCrear, DevolucionLeer
+from modules.devoluciones.schemas import DevolucionCrear, DevolucionLeer, VentaFacturadaLeer
 from modules.devoluciones.service import DevolucionesService
 from modules.facturacion.config import cargar_config_matias
 from modules.facturacion.matias_client import MatiasClient
@@ -63,6 +65,24 @@ async def get_devoluciones_service(
         fiados=FiadosService(SqlFiadosRepository(session)),
         notas=notas,
     )
+
+
+def get_devoluciones_repo(session: AsyncSession = Depends(get_tenant_db)) -> SqlDevolucionesRepository:
+    """Repo de devoluciones sobre la sesión del tenant, para las lecturas (overridable en test)."""
+    return SqlDevolucionesRepository(session)
+
+
+@router.get("/devoluciones/ventas-facturadas", response_model=list[VentaFacturadaLeer])
+async def listar_ventas_facturadas(
+    q: str | None = Query(default=None),
+    limite: int = Query(default=20, ge=1, le=50),
+    repo: SqlDevolucionesRepository = Depends(get_devoluciones_repo),
+    _user: Principal = Depends(require_role("vendedor")),
+    filtro: int | None = Depends(get_filtro_efectivo),
+) -> list[VentaFacturadaLeer]:
+    """Ventas con documento fiscal vivo (POS/FE) para emitir nota crédito: las más recientes, o las que
+    matcheen `q` (número de venta O CUFE). Acotadas al vendedor efectivo (RBAC)."""
+    return await repo.listar_ventas_facturadas(q=q, limite=limite, vendedor_id=filtro)
 
 
 @router.post("/devoluciones", response_model=DevolucionLeer, status_code=status.HTTP_201_CREATED)

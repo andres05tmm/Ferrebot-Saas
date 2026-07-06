@@ -125,6 +125,49 @@ class SqlDevolucionesRepository:
         ).all()
         return {f.producto_id: Decimal(f.cantidad) for f in filas}
 
+    async def listar_ventas_facturadas(
+        self, *, q: str | None = None, limite: int = 20, vendedor_id: int | None = None,
+    ) -> list["VentaFacturadaLeer"]:
+        """Ventas con documento fiscal VIVO (POS/FE, estado pendiente|aceptada), fecha DESC, para el tab
+        Devoluciones (emitir nota crédito). `q` busca por número de venta (consecutivo) O por CUFE
+        (substring, case-insensitive). `vendedor_id` acota por RBAC (None = todas).
+
+        DISTINCT ON (v.id) toma el documento más reciente por venta (la exclusión POS↔FE ya deja uno vivo,
+        pero es defensivo). El SQL vive solo aquí (regla #2)."""
+        from modules.devoluciones.schemas import VentaFacturadaLeer
+
+        filtros = [
+            "f.tipo IN ('pos','factura')",
+            "f.estado IN ('pendiente','aceptada')",
+            "v.estado = 'completada'",
+        ]
+        params: dict = {"limite": limite}
+        if vendedor_id is not None:
+            filtros.append("v.vendedor_id = :vend")
+            params["vend"] = vendedor_id
+        if q:
+            # Número (consecutivo) por prefijo O CUFE por substring (ambos case-insensitive).
+            filtros.append("(CAST(v.consecutivo AS text) LIKE :qnum OR f.cufe ILIKE :qcufe)")
+            params["qnum"] = f"{q.strip()}%"
+            params["qcufe"] = f"%{q.strip()}%"
+        where = " AND ".join(filtros)
+        filas = (
+            await self._s.execute(
+                text(
+                    f"SELECT * FROM ("
+                    f"  SELECT DISTINCT ON (v.id) v.id, v.consecutivo, v.fecha, v.total, v.metodo_pago, "
+                    f"         f.tipo AS fiscal_tipo, f.estado AS fiscal_estado, f.cufe, "
+                    f"         f.consecutivo AS fiscal_numero, f.prefijo AS fiscal_prefijo "
+                    f"  FROM ventas v JOIN facturas_electronicas f ON f.venta_id = v.id "
+                    f"  WHERE {where} "
+                    f"  ORDER BY v.id, f.id DESC"
+                    f") sub ORDER BY sub.fecha DESC LIMIT :limite"
+                ),
+                params,
+            )
+        ).mappings().all()
+        return [VentaFacturadaLeer(**dict(f)) for f in filas]
+
     async def factura_aceptada_de_venta(self, venta_id: int) -> int | None:
         """Id del documento fiscal ACEPTADO por DIAN de la venta (para ligar la nota crédito), o None.
 

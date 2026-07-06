@@ -7,7 +7,7 @@ El stock se bloquea con SELECT ... FOR UPDATE en lock_inventario (evita carreras
 from datetime import date
 from decimal import Decimal
 
-from sqlalchemy import delete, select, text
+from sqlalchemy import delete, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import lazyload, selectinload
 
@@ -19,7 +19,13 @@ from modules.inventario.models import Inventario, MovimientoInventario, Producto
 from modules.inventario.precios import FraccionPrecio
 from modules.inventario.repository import SqlInventarioRepository
 from modules.ventas.models import Venta, VentaDetalle
-from modules.ventas.schemas import VentaConLineas, VentaDetalleLeer, VentaLeer
+from modules.ventas.schemas import (
+    ItemVentaResumen,
+    VentaConLineas,
+    VentaDetalleLeer,
+    VentaLeer,
+    VentaRecienteLeer,
+)
 from modules.ventas.service import (
     EdicionVenta,
     FraccionBusqueda,
@@ -60,6 +66,51 @@ class SqlVentasRepository:
         stmt = stmt.order_by(Venta.fecha.desc()).options(lazyload(Venta.detalles))
         ventas = (await self._s.execute(stmt)).scalars().all()
         return [VentaLeer.model_validate(v) for v in ventas]
+
+    async def listar_recientes(
+        self, *, limite: int = 5, vendedor_id: int | None = None,
+    ) -> list[VentaRecienteLeer]:
+        """Últimas `limite` ventas COMPLETADAS (fecha DESC) con sus items resueltos, para el feed del cockpit.
+
+        Dos queries (sin N+1): (1) las cabeceras recientes; (2) sus renglones en batch, uniendo a `productos`
+        para el nombre de catálogo (COALESCE con la descripción de una venta varia). `vendedor_id` acota por
+        RBAC (None = todas). Excluye anuladas: el pulso del día no debe mostrar ventas revertidas."""
+        cab_stmt = (
+            select(Venta.id, Venta.consecutivo, Venta.fecha, Venta.total, Venta.metodo_pago)
+            .where(Venta.estado == "completada")
+        )
+        if vendedor_id is not None:
+            cab_stmt = cab_stmt.where(Venta.vendedor_id == vendedor_id)
+        cab_stmt = cab_stmt.order_by(Venta.fecha.desc()).limit(limite)
+        cabeceras = (await self._s.execute(cab_stmt)).all()
+        if not cabeceras:
+            return []
+
+        ids = [c.id for c in cabeceras]
+        items_stmt = (
+            select(
+                VentaDetalle.venta_id,
+                VentaDetalle.cantidad,
+                func.coalesce(Producto.nombre, VentaDetalle.descripcion, "Producto").label("nombre"),
+            )
+            .select_from(VentaDetalle)
+            .outerjoin(Producto, Producto.id == VentaDetalle.producto_id)
+            .where(VentaDetalle.venta_id.in_(ids))
+            .order_by(VentaDetalle.venta_id, VentaDetalle.id)
+        )
+        por_venta: dict[int, list[ItemVentaResumen]] = {}
+        for fila in (await self._s.execute(items_stmt)).all():
+            por_venta.setdefault(fila.venta_id, []).append(
+                ItemVentaResumen(nombre=fila.nombre, cantidad=fila.cantidad)
+            )
+        return [
+            VentaRecienteLeer(
+                id=c.id, consecutivo=c.consecutivo, fecha=c.fecha, total=c.total,
+                metodo_pago=c.metodo_pago, items=por_venta.get(c.id, []),
+                num_items=len(por_venta.get(c.id, [])),
+            )
+            for c in cabeceras
+        ]
 
     async def obtener_cabecera(self, venta_id: int) -> VentaLeer | None:
         """Cabecera de una venta (sin líneas) para los guards del borrado: fecha y vendedor_id."""

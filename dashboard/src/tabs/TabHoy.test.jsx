@@ -23,7 +23,11 @@ const SERIE = [
   { fecha: '2026-06-03', total: '8000.00' }, { fecha: '2026-06-04', total: '15000.00' },
   { fecha: '2026-06-05', total: '30000.00' },
 ]
-const VENTAS = [{ id: 1, consecutivo: 5, fecha: '2026-06-05T15:00:00+00:00', total: '30000.00', metodo_pago: 'efectivo' }]
+// Feed 'últimas ventas' (GET /ventas/recientes): cabecera compacta + items resueltos (nombre+cantidad).
+const VENTAS = [{
+  id: 1, consecutivo: 5, fecha: '2026-06-05T15:00:00+00:00', total: '30000.00',
+  metodo_pago: 'efectivo', items: [{ nombre: 'Martillo', cantidad: '2.000' }], num_items: 3,
+}]
 const STOCK = [{ producto_id: 2, nombre: 'Clavo', stock_actual: '3', stock_minimo: '10', bajo: true }]
 const TOP = [{ producto_id: 7, nombre: 'Cemento', cantidad: '4', ingreso: '24000.00' }]
 const GASTOS = [{ id: 1, categoria: 'transporte', monto: '5000.00', creado_en: '2026-06-05T16:00:00+00:00' }]
@@ -59,9 +63,10 @@ describe('TabHoy — paridad', () => {
     expect(screen.getByText('$120.000')).toBeInTheDocument()          // total semana (totales)
     expect(screen.getByText('$500.000')).toBeInTheDocument()          // total mes (totales)
     expect(screen.getByText('Evolución de ventas')).toBeInTheDocument() // gráfica (serie-ventas)
-    expect(screen.getAllByText('Efectivo').length).toBeGreaterThan(0)  // método de pago (capitalizado)
-    expect(screen.getByText('N.º 5')).toBeInTheDocument()             // última venta
-    expect(screen.getAllByText('Cemento').length).toBeGreaterThan(0)  // top productos (feed + panel)
+    expect(screen.getAllByText('Efectivo').length).toBeGreaterThan(0)  // método de pago (chip del feed + panel)
+    expect(screen.getByText('Martillo')).toBeInTheDocument()          // producto de la última venta (feed)
+    expect(screen.getByText('+2 más')).toBeInTheDocument()            // num_items=3 → primero + "+2 más"
+    expect(screen.getByText('Cemento')).toBeInTheDocument()           // top productos (panel)
     expect(screen.getByText('Clavo')).toBeInTheDocument()             // stock bajo
     expect(screen.getByText('Pendiente de apertura')).toBeInTheDocument() // caja 404 → cerrada (no rompe)
   })
@@ -78,35 +83,25 @@ describe('TabHoy — paridad', () => {
   })
 })
 
-describe('TabHoy — estado fiscal', () => {
-  const VENTA_FISCAL = {
-    id: 2, consecutivo: 6, fecha: '2026-06-05T16:00:00+00:00', total: '50000.00', metodo_pago: 'efectivo',
-    fiscal: { tipo: 'pos', estado: 'aceptada', cufe: 'CUDE-9', numero: 7, prefijo: 'DPOS' },
-  }
-
-  it('pinta el badge fiscal en las últimas ventas y se suscribe a los eventos fiscales', async () => {
-    const fetchMock = vi.fn((url) => {
-      const u = String(url)
-      if (u.includes('/reportes/resumen')) return Promise.resolve(jsonResp(RESUMEN))
-      if (u.includes('/ventas')) return Promise.resolve(jsonResp([VENTA_FISCAL]))
-      return Promise.resolve(jsonResp([]))
-    })
-    vi.stubGlobal('fetch', fetchMock)
+describe('TabHoy — feed de ventas', () => {
+  it('el chip del método usa el tono semántico (efectivo → verde)', async () => {
+    instalarFetch()
     render(<MemoryRouter><TabHoy /></MemoryRouter>)
-
-    const badge = await screen.findByText(/POS · aceptada/i)
-    expect(badge).toHaveClass('text-success')                       // aceptada → variante verde
-    expect(rtEventos).toEqual(expect.arrayContaining(['factura_aceptada', 'factura_rechazada', 'factura_anulada']))
+    await screen.findByText('Martillo')
+    // El chip del método muestra el valor crudo ('efectivo', capitalizado por CSS) con el tono de éxito.
+    const chip = screen.getByText('efectivo')
+    expect(chip.className).toContain('text-success')
   })
 
-  it("un evento 'factura_aceptada' dispara re-fetch de las ventas", async () => {
+  it('se suscribe a los eventos fiscales y re-fetchea el feed al aceptarse una factura', async () => {
     const fetchMock = instalarFetch()
     render(<MemoryRouter><TabHoy /></MemoryRouter>)
     await screen.findByText('$10.000')
+    expect(rtEventos).toEqual(expect.arrayContaining(['factura_aceptada', 'factura_rechazada', 'factura_anulada']))
 
-    const ventasCalls = () => fetchMock.mock.calls.filter(c => /\/ventas\b/.test(String(c[0]))).length
-    const antes = ventasCalls()
+    const recientesCalls = () => fetchMock.mock.calls.filter(c => String(c[0]).includes('/ventas/recientes')).length
+    const antes = recientesCalls()
     await act(async () => { rtHandler('factura_aceptada', {}) })
-    expect(ventasCalls()).toBeGreaterThan(antes)
+    expect(recientesCalls()).toBeGreaterThan(antes)
   })
 })

@@ -19,7 +19,6 @@ import { useFetch, cop, num, rangoHoyCO, ProductThumb } from '@/components/share
 import { useRealtimeEvent } from '@/components/RealtimeProvider.jsx'
 import { Card } from '@/components/ui/card.jsx'
 import { Badge } from '@/components/ui/badge.jsx'
-import BadgeFiscal from '@/components/BadgeFiscal.jsx'
 import KpiCard from '@/components/KpiCard.jsx'
 import FeedActividad from '@/components/FeedActividad.jsx'
 import { cn } from '@/lib/utils'
@@ -55,13 +54,13 @@ export default function TabHoy() {
   const totalesQ = useFetch('/reportes/totales', deps)
   const cajaQ = useFetch('/caja/actual', deps)                       // 404 = caja cerrada (useFetch → error)
   const gastosQ = useFetch(`/gastos?desde=${rangoHoy.desde}&hasta=${rangoHoy.hasta}`, deps)
-  const ventasQ = useFetch('/ventas', deps)
+  const recientesQ = useFetch('/ventas/recientes?limite=5', deps)
   const topQ = useFetch(`/reportes/top-productos?desde=${hoyStr}&hasta=${hoyStr}&limite=5`, deps)
   const stockQ = useFetch('/inventario/stock?bajo=true', deps)
 
   useRealtimeEvent(EVENTOS, () => {
     resumenQ.refetch(); serieQ.refetch(); totalesQ.refetch(); cajaQ.refetch()
-    gastosQ.refetch(); ventasQ.refetch(); topQ.refetch(); stockQ.refetch()
+    gastosQ.refetch(); recientesQ.refetch(); topQ.refetch(); stockQ.refetch()
   })
 
   // ── KPIs principales (resumen del día) ──────────────────────────────────────
@@ -113,12 +112,9 @@ export default function TabHoy() {
   const numGastos = gastos.length
 
   // ── Últimas ventas (hoy) ────────────────────────────────────────────────────
-  const ventas = Array.isArray(ventasQ.data) ? ventasQ.data : []
-  const ultimas = useMemo(
-    () => [...ventas].sort((a, b) => String(b.fecha).localeCompare(String(a.fecha))).slice(0, 6),
-    [ventas],
-  )
-  const numMovs = ventas.length + numGastos
+  // El endpoint ya entrega las 5 más recientes (completadas, fecha DESC) con sus items resueltos.
+  const ultimas = Array.isArray(recientesQ.data) ? recientesQ.data : []
+  const numMovs = pedidosHoy + numGastos
 
   // ── Top productos (hoy) ─────────────────────────────────────────────────────
   const topProductos = useMemo(() => {
@@ -170,7 +166,7 @@ export default function TabHoy() {
       {/* HERO — Evolución (2/3) + Feed live (1/3) */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
         <EvolucionChart serie7={serie7} serie30={serie30} loading={serieQ.loading} />
-        <FeedLive ventas={ultimas} productos={topProductos} loading={ventasQ.loading} onMore={() => navigate('/historial')} />
+        <FeedLive ventas={ultimas} loading={recientesQ.loading} onMore={() => navigate('/historial')} />
       </div>
 
       {/* OPERATIVA — Métodos / Top productos / Actividad en vivo del agente */}
@@ -303,9 +299,8 @@ function PeriodPill({ active, onClick, children }) {
   )
 }
 
-// ── FEED LIVE — últimas ventas + productos del día ────────────────────────────
-function FeedLive({ ventas, productos = [], loading, onMore }) {
-  const prodsTop = (productos || []).slice(0, 4)
+// ── FEED LIVE — últimas 5 ventas: método (chip de color) + producto·cantidad + total ──
+function FeedLive({ ventas, loading, onMore }) {
   return (
     <Card className="p-3.5">
       <div className="flex items-center justify-between mb-2.5">
@@ -326,43 +321,38 @@ function FeedLive({ ventas, productos = [], loading, onMore }) {
       ) : ventas.length === 0 ? (
         <p className="py-10 text-center text-sm text-muted-foreground">Sin ventas registradas hoy.</p>
       ) : (
-        <>
-          <ul className="divide-y divide-border-subtle">
-            {ventas.map(v => (
-              <li key={v.id} className="py-1.5 flex items-center gap-2.5">
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-baseline gap-2">
-                    <span className="text-[11px] text-muted-foreground tabular">
-                      {v.fecha ? new Date(v.fecha).toLocaleTimeString('es-CO', HORA_CO) : ''}
-                    </span>
-                    <span className="text-[13px] font-semibold tabular">{cop(Number(v.total))}</span>
-                  </div>
-                  <div className="text-[11px] text-muted-foreground truncate mt-0.5">N.º {v.consecutivo}</div>
-                </div>
-                <BadgeFiscal fiscal={v.fiscal} className="text-[10px] h-5 px-1.5 shrink-0" />
-                <Badge variant="outline" className={cn('text-[10px] h-5 px-1.5 shrink-0 capitalize', metodoTone(v.metodo_pago))}>
-                  {v.metodo_pago || '—'}
-                </Badge>
-              </li>
-            ))}
-          </ul>
-
-          {prodsTop.length > 0 && (
-            <div className="mt-3 pt-2.5 border-t border-border-subtle">
-              <ul className="space-y-1.5">
-                {prodsTop.map((p, i) => (
-                  <li key={`prod-${i}`} className="flex items-center gap-2.5">
-                    <ProductThumb nombre={p.nombre} size={28} />
-                    <span className="flex-1 text-[12px] text-foreground truncate">{p.nombre}</span>
-                    <span className="text-[11px] tabular text-muted-foreground shrink-0">{num(p.cant)} ud</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-        </>
+        <ul className="divide-y divide-border-subtle">
+          {ventas.map(v => <VentaFila key={v.id} venta={v} />)}
+        </ul>
       )}
     </Card>
+  )
+}
+
+// Una venta del feed: la casilla de color del método ENCIMA; debajo, cantidad × producto y el total.
+function VentaFila({ venta }) {
+  const item = venta.items?.[0]
+  const nombre = item?.nombre || 'Venta'
+  const restantes = (venta.num_items || 0) - 1
+  return (
+    <li className="py-2 first:pt-1">
+      <span className={cn(
+        'inline-flex items-center h-[18px] px-1.5 rounded text-[10px] font-semibold uppercase tracking-wide border capitalize',
+        metodoTone(venta.metodo_pago),
+      )}>
+        {venta.metodo_pago || '—'}
+      </span>
+      <div className="mt-1 flex items-baseline gap-2">
+        {item && (
+          <span className="text-[12px] font-semibold tabular text-muted-foreground shrink-0">{num(Number(item.cantidad))}×</span>
+        )}
+        <span className="flex-1 min-w-0 text-[13px] text-foreground truncate">
+          {nombre}
+          {restantes > 0 && <span className="text-muted-foreground font-normal"> +{restantes} más</span>}
+        </span>
+        <span className="text-[13px] font-semibold tabular text-foreground shrink-0">{cop(Number(venta.total))}</span>
+      </div>
+    </li>
   )
 }
 

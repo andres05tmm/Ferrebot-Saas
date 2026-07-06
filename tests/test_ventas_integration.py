@@ -202,3 +202,44 @@ async def test_obtener_trae_lineas(tenant, seed_producto):
     assert linea.producto_id == pid
     assert linea.cantidad == Decimal("2.000")
     assert linea.iva == 19
+
+
+async def test_listar_recientes_resuelve_nombre_y_ordena(tenant, seed_producto):
+    """`listar_recientes` trae las ventas completadas más recientes (fecha DESC) con el nombre de
+    catálogo resuelto en sus items. Dos ventas → la más nueva primero."""
+    async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
+        uid, pid = await seed_producto(s, nombre="Taladro Bosch", stock="100")
+        svc = VentaService(SqlVentasRepository(s))
+        await svc.registrar_venta(_venta(pid, "1", key="v1"), vendedor_id=uid)
+        await s.commit()
+        r2 = await svc.registrar_venta(_venta(pid, "2", key="v2"), vendedor_id=uid)
+        await s.commit()
+        # La segunda venta debe quedar con fecha posterior para un orden determinista.
+        await s.execute(
+            text("UPDATE ventas SET fecha = fecha + interval '1 minute' WHERE id=:i"), {"i": r2.venta.id}
+        )
+        await s.commit()
+
+    async with AsyncSession(tenant.engine) as s:
+        recientes = await SqlVentasRepository(s).listar_recientes(limite=5)
+
+    assert len(recientes) == 2
+    assert recientes[0].id == r2.venta.id                    # la más reciente primero
+    assert recientes[0].items[0].nombre == "Taladro Bosch"   # nombre resuelto del catálogo
+    assert recientes[0].items[0].cantidad == Decimal("2.000")
+    assert recientes[0].num_items == 1
+
+
+async def test_listar_recientes_excluye_anuladas(tenant, seed_producto):
+    """El feed no muestra ventas anuladas: solo las completadas."""
+    async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
+        uid, pid = await seed_producto(s, stock="100")
+        res = await VentaService(SqlVentasRepository(s)).registrar_venta(_venta(pid, "1"), vendedor_id=uid)
+        await s.commit()
+        await s.execute(text("UPDATE ventas SET estado='anulada' WHERE id=:i"), {"i": res.venta.id})
+        await s.commit()
+
+    async with AsyncSession(tenant.engine) as s:
+        recientes = await SqlVentasRepository(s).listar_recientes(limite=5)
+
+    assert recientes == []                                   # la única venta está anulada → feed vacío

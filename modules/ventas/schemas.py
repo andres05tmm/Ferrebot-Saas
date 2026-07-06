@@ -76,3 +76,26 @@ class VentaConLineas(VentaLeer):
     """Detalle de venta: cabecera (VentaLeer) + sus líneas. La LISTA usa VentaLeer (sin líneas)."""
 
     lineas: list[VentaDetalleLeer]
+
+
+class ItemVentaResumen(BaseModel):
+    """Un renglón resumido para el feed de últimas ventas: nombre (catálogo o descripción) + cantidad."""
+
+    nombre: str
+    cantidad: Decimal
+
+
+class VentaRecienteLeer(BaseModel):
+    """Venta compacta para el feed 'Últimas ventas' del cockpit: cabecera mínima + sus items resueltos.
+
+    `items` trae nombre+cantidad de cada renglón (nombre de catálogo, o la descripción de una venta varia);
+    `num_items` es el conteo de renglones (el front muestra el primero + '+N' si hay más). Sin badge fiscal:
+    el feed prioriza método de pago y producto, no el estado DIAN."""
+
+    id: int
+    consecutivo: int
+    fecha: datetime
+    total: Decimal
+    metodo_pago: str
+    items: list[ItemVentaResumen]
+    num_items: int

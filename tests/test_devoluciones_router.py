@@ -143,3 +143,67 @@ async def test_post_devolucion_lineas_vacias_422(tenant):
     async with _cliente(app) as c:
         r = await c.post("/api/v1/devoluciones", json={"venta_id": vid, "lineas": []})
     assert r.status_code == 422, r.text
+
+
+# --- GET /devoluciones/ventas-facturadas (lista para nota crédito) ------------
+
+async def _seed_facturada(tenant, *, tipo="factura", estado="aceptada", cufe="CUFE-ABC-123", con_factura=True):
+    """Siembra una venta y (opcional) su documento fiscal. Devuelve (uid, venta_id, consecutivo)."""
+    async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
+        uid = (await s.execute(text("INSERT INTO usuarios (nombre, rol) VALUES ('V','vendedor') RETURNING id"))).scalar_one()
+        pid = (
+            await s.execute(text(
+                "INSERT INTO productos (nombre, unidad_medida, precio_venta, precio_compra, costo_promedio, "
+                "iva, permite_fraccion, activo) VALUES ('Cemento','unidad',20000,12000,12000,19,false,true) RETURNING id"
+            ))
+        ).scalar_one()
+        await s.execute(text("INSERT INTO inventario (producto_id, stock_actual, stock_minimo) VALUES (:p,100,0)"), {"p": pid})
+        venta = (
+            await VentaService(SqlVentasRepository(s)).registrar_venta(
+                VentaCrear(metodo_pago="efectivo", lineas=[VentaDetalleCrear(producto_id=pid, cantidad=Decimal("2"))]),
+                vendedor_id=uid,
+            )
+        ).venta
+        if con_factura:
+            await s.execute(
+                text("INSERT INTO facturas_electronicas (venta_id, tipo, estado, cufe, consecutivo, prefijo) "
+                     "VALUES (:v, :t, :e, :c, 7, 'FPR')"),
+                {"v": venta.id, "t": tipo, "e": estado, "c": cufe},
+            )
+        await s.commit()
+    return uid, venta.id, venta.consecutivo
+
+
+async def test_ventas_facturadas_lista_solo_las_con_documento(tenant):
+    uid, vid, cons = await _seed_facturada(tenant, cufe="CUFE-XYZ-1")
+    await _seed_facturada(tenant, con_factura=False)     # venta SIN documento → no debe aparecer
+    app = _app(tenant, user_id=uid, rol="admin")
+    async with _cliente(app) as c:
+        r = await c.get("/api/v1/devoluciones/ventas-facturadas")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert len(body) == 1
+    assert body[0]["id"] == vid
+    assert body[0]["fiscal_tipo"] == "factura" and body[0]["fiscal_estado"] == "aceptada"
+    assert body[0]["cufe"] == "CUFE-XYZ-1" and body[0]["fiscal_numero"] == 7
+
+
+async def test_ventas_facturadas_excluye_rechazada_y_anulada(tenant):
+    uid, _vid, _c = await _seed_facturada(tenant, estado="rechazada")
+    app = _app(tenant, user_id=uid, rol="admin")
+    async with _cliente(app) as c:
+        r = await c.get("/api/v1/devoluciones/ventas-facturadas")
+    assert r.status_code == 200, r.text
+    assert r.json() == []                                 # solo pendiente|aceptada son candidatas
+
+
+async def test_ventas_facturadas_busca_por_numero_y_cufe(tenant):
+    uid, vid, cons = await _seed_facturada(tenant, cufe="CUFE-BUSCAME-999")
+    app = _app(tenant, user_id=uid, rol="admin")
+    async with _cliente(app) as c:
+        por_num = await c.get("/api/v1/devoluciones/ventas-facturadas", params={"q": str(cons)})
+        por_cufe = await c.get("/api/v1/devoluciones/ventas-facturadas", params={"q": "BUSCAME"})
+        sin_match = await c.get("/api/v1/devoluciones/ventas-facturadas", params={"q": "zzz-nope"})
+    assert [x["id"] for x in por_num.json()] == [vid]
+    assert [x["id"] for x in por_cufe.json()] == [vid]     # CUFE por substring, case-insensitive
+    assert sin_match.json() == []

@@ -237,6 +237,16 @@ export function useVenta(id: number | null) {
   })
 }
 
+// Ventas con documento fiscal vivo (POS/FE) para emitir nota crédito. `q` busca por número O CUFE;
+// vacío = las más recientes. La clave incluye `q` (debounced en el tab) para cachear por término.
+export function useVentasFacturadas(q: string) {
+  const term = q.trim()
+  return useQuery({
+    queryKey: ['ventas', 'facturadas', term],
+    queryFn: () => apiJson<Fila[]>(`/devoluciones/ventas-facturadas${term ? `?q=${encodeURIComponent(term)}` : ''}`),
+  })
+}
+
 // POST /devoluciones idempotente (Idempotency-Key por venta cargada). El tab lee el body de la
 // Response para el toast (total/método) y ramifica por status (409/422/404).
 export function useRegistrarDevolucion() {

@@ -28,6 +28,7 @@ import App from './App.jsx'
 import './index.css'
 import { consumeTokenFromHash } from './lib/handoff.js'
 import { queryClient } from './lib/queryClient'
+import { registerServiceWorker } from './lib/registerSw.js'
 
 // Handoff de la landing (plan §3): ANTES de montar el router o disparar cualquier fetch, si la URL trae
 // `#token=...` lo guardamos como sesión y borramos el fragmento del historial (que jamás quede en el
@@ -44,3 +45,6 @@ ReactDOM.createRoot(document.getElementById('root')).render(
     </QueryClientProvider>
   </React.StrictMode>,
 )
+
+// PWA: registra el service worker (no-op en dev). Fuera del árbol de React: no afecta el render.
+registerServiceWorker()

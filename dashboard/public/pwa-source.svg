@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Fuente del ícono PWA (rasterizada por @vite-pwa/assets-generator).
+       Colores CONCRETOS a propósito: el generador no resuelve currentColor ni
+       prefers-color-scheme. Fondo crema de marca Melquiadez + sello M en tinta.
+       El ícono del lanzador es neutro (marca del SaaS); el nombre/theme_color
+       de instalación los pone el manifest dinámico por tenant. -->
+  <rect width="512" height="512" fill="#f7f4ee"/>
+  <g transform="translate(38 38) scale(0.85)">
+    <defs>
+      <linearGradient id="cometa" gradientUnits="userSpaceOnUse" x1="360" y1="320" x2="430" y2="90">
+        <stop offset="0" stop-color="#120c08"/>
+        <stop offset=".4" stop-color="#120c08"/>
+        <stop offset="1" stop-color="#c5953b"/>
+      </linearGradient>
+    </defs>
+    <path fill="none" stroke="#120c08" stroke-width="11" stroke-linecap="round"
+          d="M 451.7 143 A 226 226 0 1 1 303 34.9"/>
+    <g fill="none" stroke="#120c08" stroke-linecap="round">
+      <path d="M 138 210 C 148 194 160 180 174 170" stroke-width="9.5"/>
+      <path d="M 174 169 C 166 240 157 315 145 368" stroke-width="23"/>
+      <path d="M 175 166 C 200 232 233 305 259 354" stroke-width="32"/>
+      <path d="M 259 358 C 286 296 315 230 342 168" stroke-width="9"/>
+      <path d="M 343 167 C 350 224 354 270 355 310" stroke-width="25"/>
+    </g>
+    <path fill="url(#cometa)" d="M 340 330
+      C 388 334 428 296 444 240
+      C 458 192 452 128 428 86
+      C 440 140 436 196 419 240
+      C 403 284 374 306 348 308
+      Z"/>
+    <g fill="#c5953b">
+      <path d="M 452 44 C 456 58 458.5 60.5 472.5 64.5 C 458.5 68.5 456 71 452 85 C 448 71 445.5 68.5 431.5 64.5 C 445.5 60.5 448 58 452 44 Z"/>
+      <circle cx="481" cy="102" r="4"/>
+    </g>
+    <circle cx="256" cy="482" r="7" fill="#c5953b"/>
+  </g>
+</svg>

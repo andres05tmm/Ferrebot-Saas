@@ -6,6 +6,13 @@
     <title>Melquiadez — Dashboard</title>
     <link rel="icon" type="image/svg+xml" href="/sello.svg" />
     <meta name="theme-color" content="#f7f4ee" />
+    <!-- PWA: el manifest es DINÁMICO por-tenant (lo sirve la API). Instala con el nombre y theme_color
+         de la empresa resuelta por subdominio. Los íconos son estáticos (marca del SaaS) en v1. -->
+    <link rel="manifest" href="/api/v1/manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon-180x180.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="FerreBot" />
   </head>
   <body>
     <div id="root"></div>

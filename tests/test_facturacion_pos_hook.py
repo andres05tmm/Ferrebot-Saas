@@ -86,6 +86,91 @@ def test_resolver_intencion_fe_sin_capacidad_no_documento():
     assert _resolver_documento(_SIN_FISCAL, "fe") is None    # la intención no crea lo que el tenant no puede
 
 
+# --- toggle `facturar_en_venta` (auto_facturar): venta interna, factura a pedido ---
+
+def test_resolver_auto_facturar_off_sin_intencion_no_documento():
+    # Con la auto-facturación apagada y sin intención explícita, la venta queda INTERNA aunque el
+    # tenant tenga pos_electronico o FE: se facturará a pedido (POST /facturas).
+    assert _resolver_documento(_POS, None, auto_facturar=False) is None
+    assert _resolver_documento(_FE_ONLY, None, auto_facturar=False) is None
+
+
+def test_resolver_auto_facturar_off_respeta_intencion_explicita():
+    # El toggle apaga SOLO el default automático: una intención elegida en esa venta se respeta igual.
+    assert _resolver_documento(_POS, "pos", auto_facturar=False) == "pos"
+    assert _resolver_documento(_POS, "fe", auto_facturar=False) == "fe"
+    assert _resolver_documento(_FE_ONLY, "fe", auto_facturar=False) == "fe"
+
+
+def test_resolver_auto_facturar_default_true_no_cambia_comportamiento():
+    # Sin pasar el flag (default True) todo sigue igual que antes.
+    assert _resolver_documento(_POS, None) == "pos"
+
+
+async def test_core_auto_facturar_off_no_crea_ni_encola():
+    # El núcleo con auto_facturar=False e intención None no consulta el servicio, no commitea ni encola.
+    orden: list[str] = []
+
+    async def enqueue(job, *args):
+        orden.append("enqueue")
+
+    svc = _SvcFake(pos=(_factura(), True))
+    fid = await cerrar_venta_fiscal(
+        servicio=svc, session=_SesionFake(orden), venta_id=10,
+        tenant_id=7, capacidades=_POS, enqueue=enqueue, auto_facturar=False,
+    )
+    assert fid is None and svc.llamado is None and orden == []
+
+
+async def test_core_auto_facturar_off_con_intencion_pos_si_emite():
+    # A pedido: con auto_facturar=False pero intención POS explícita, sí crea el documento POS.
+    orden: list[str] = []
+
+    async def enqueue(job, *args):
+        orden.append("enqueue")
+
+    svc = _SvcFake(pos=(_factura(), True))
+    fid = await cerrar_venta_fiscal(
+        servicio=svc, session=_SesionFake(orden), venta_id=10, tenant_id=7,
+        capacidades=_POS, enqueue=enqueue, intencion="pos", auto_facturar=False,
+    )
+    assert fid == 55 and svc.llamado == "pos" and orden == ["commit", "enqueue"]
+
+
+# --- lector de config `cargar_auto_facturar_venta` (default seguro True) ------
+
+class _FakeResultCfg:
+    def __init__(self, valor):
+        self._valor = valor
+
+    def scalar_one_or_none(self):
+        return self._valor
+
+
+class _FakeSessionCfg:
+    def __init__(self, valor):
+        self._valor = valor
+
+    async def execute(self, *a, **k):
+        return _FakeResultCfg(self._valor)
+
+
+async def test_cargar_auto_facturar_default_true_sin_fila():
+    from core.tenancy.config_empresa import cargar_auto_facturar_venta
+    assert await cargar_auto_facturar_venta(_FakeSessionCfg(None), 1) is True
+
+
+async def test_cargar_auto_facturar_false_apaga():
+    from core.tenancy.config_empresa import cargar_auto_facturar_venta
+    for valor in ("false", "0", "no", "off", "FALSE", " No "):
+        assert await cargar_auto_facturar_venta(_FakeSessionCfg(valor), 1) is False
+
+
+async def test_cargar_auto_facturar_true_explicito():
+    from core.tenancy.config_empresa import cargar_auto_facturar_venta
+    assert await cargar_auto_facturar_venta(_FakeSessionCfg("true"), 1) is True
+
+
 # --- núcleo: ruteo + commit ANTES de encolar ---------------------------------
 
 async def test_core_pos_default_crea_pos_y_commitea_antes_de_encolar():
@@ -338,8 +423,12 @@ async def test_cierrepos_carga_config_solo_en_rama_fe(tenant):
     async def enqueue(job, *args):
         ...
 
+    async def cargar_auto_facturar(tenant_id):
+        return True                                                       # hermético: no toca el control DB
+
     async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
-        cierre = CierrePos(s, enqueue=enqueue, cargar_config=cargar_config)
+        cierre = CierrePos(s, enqueue=enqueue, cargar_config=cargar_config,
+                           cargar_auto_facturar=cargar_auto_facturar)
         vid_pos = await _crear_venta(s)
         await s.commit()
         await cierre.cerrar(vid_pos, tenant_id=7, capacidades=_POS)        # POS-default

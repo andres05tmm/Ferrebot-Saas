@@ -34,6 +34,7 @@ from core.config import get_settings
 from core.db.session import control_session
 from core.logging import get_logger
 from core.tenancy.capacidades import ControlCapacidades
+from core.tenancy.config_empresa import cargar_auto_facturar_venta
 from modules.facturacion.config import cargar_config_matias
 from modules.facturacion.repository import SqlFacturacionRepository
 from modules.facturacion.service import ConfigFiscal, FacturacionService
@@ -53,19 +54,26 @@ CargarConfig = Callable[[int], Awaitable[ConfigFiscal]]
 
 def _resolver_documento(
     capacidades: frozenset[str], intencion: IntencionDocumento | None,
+    auto_facturar: bool = True,
 ) -> IntencionDocumento | None:
     """Decide el documento fiscal de la venta: 'pos', 'fe' o None (PURO; fuente única del ruteo, ADR 0014).
 
     La intención explícita se respeta SOLO si el tenant tiene la capacidad correspondiente; si la pide
     sin tenerla, cae al default por capacidad (nunca emite lo que no puede). Default por capacidad
     (intención None): POS si hay `pos_electronico` (FE a pedido); FE si solo hay `facturacion_electronica`
-    (FE-only); None si no hay capacidad fiscal (la venta queda solo interna, sin documento DIAN)."""
+    (FE-only); None si no hay capacidad fiscal (la venta queda solo interna, sin documento DIAN).
+
+    `auto_facturar=False` (config del tenant `facturar_en_venta`): sin intención explícita, la venta NO
+    auto-emite (queda interna; se factura a pedido con POST /facturas). Una intención explícita —POS o FE
+    elegida en esa venta— SIEMPRE se respeta, así el toggle apaga solo el default automático."""
     tiene_pos = FEATURE_POS in capacidades
     tiene_fe = FEATURE_FE in capacidades
     if intencion == "fe" and tiene_fe:
         return "fe"
     if intencion == "pos" and tiene_pos:
         return "pos"
+    if not auto_facturar:
+        return None
     if tiene_pos:
         return "pos"
     if tiene_fe:
@@ -76,17 +84,18 @@ def _resolver_documento(
 async def cerrar_venta_fiscal(
     *, servicio: FacturacionService, session: AsyncSession, venta_id: int,
     tenant_id: int, capacidades: frozenset[str], enqueue: Enqueue,
-    intencion: IntencionDocumento | None = None,
+    intencion: IntencionDocumento | None = None, auto_facturar: bool = True,
 ) -> int | None:
     """Núcleo del cierre fiscal. Rutea POS/FE/nada, crea el pendiente, **commitea** y luego encola.
 
-    Devuelve `factura_id` o None. None = sin capacidad fiscal / excluido por documento existente (D1) /
-    pendiente ya creado (no se re-encola: evita una segunda emisión y un segundo documento DIAN). El
-    `commit` ocurre SOLO cuando se crea un pendiente nuevo, así que sin documento no altera la venta.
+    Devuelve `factura_id` o None. None = sin capacidad fiscal / auto-facturación apagada sin intención /
+    excluido por documento existente (D1) / pendiente ya creado (no se re-encola: evita una segunda
+    emisión y un segundo documento DIAN). El `commit` ocurre SOLO cuando se crea un pendiente nuevo, así
+    que sin documento no altera la venta.
 
     Para FE el `servicio` DEBE traer `ConfigFiscal` (reserva consecutivo con `config.prefix`); para POS
     no hace falta (número/prefijo los asigna MATIAS, D4). El cableado carga la config solo cuando rutea FE."""
-    documento = _resolver_documento(capacidades, intencion)
+    documento = _resolver_documento(capacidades, intencion, auto_facturar)
     if documento is None:
         return None
     if documento == "pos":
@@ -109,6 +118,20 @@ async def _cargar_config_tenant(tenant_id: int) -> ConfigFiscal:
     async with control_session() as cs:
         _cred, config = await cargar_config_matias(cs, get_settings().secrets_master_key, tenant_id)
     return config
+
+
+async def _cargar_auto_facturar_tenant(tenant_id: int) -> bool:
+    """Lee el toggle `facturar_en_venta` del tenant (control DB). Para el camino del bot.
+
+    FALLA-ABIERTO: ante cualquier error del control DB devuelve True (default histórico: auto-facturar).
+    Así un problema transitorio de config NUNCA suprime la facturación en silencio —el cierre del bot
+    traga excepciones (jamás rompe la venta), y sin este catch un read fallido abortaría el cierre entero."""
+    try:
+        async with control_session() as cs:
+            return await cargar_auto_facturar_venta(cs, tenant_id)
+    except Exception:  # noqa: BLE001 — fail-open al comportamiento histórico
+        log.warning("auto_facturar_config_fallo", tenant_id=tenant_id, exc_info=True)
+        return True
 
 
 # ── Enqueue perezoso para caminos sin pool ARQ inyectado (bot Telegram) ───────
@@ -139,23 +162,27 @@ class CierrePos:
     def __init__(
         self, session: AsyncSession, *, enqueue: Enqueue | None = None,
         cargar_config: CargarConfig | None = None,
+        cargar_auto_facturar: Callable[[int], Awaitable[bool]] | None = None,
     ) -> None:
         self._session = session
         self._enqueue = enqueue or _enqueue_lazy
         self._cargar_config = cargar_config or _cargar_config_tenant
+        self._cargar_auto_facturar = cargar_auto_facturar or _cargar_auto_facturar_tenant
 
     async def cerrar(
         self, venta_id: int, *, tenant_id: int, capacidades: frozenset[str],
         intencion: IntencionDocumento | None = None,
     ) -> None:
         try:
-            documento = _resolver_documento(capacidades, intencion)
+            auto_facturar = await self._cargar_auto_facturar(tenant_id)
+            documento = _resolver_documento(capacidades, intencion, auto_facturar)
             if documento is None:
                 return
             config = await self._cargar_config(tenant_id) if documento == "fe" else None
             await cerrar_venta_fiscal(
                 servicio=_servicio(self._session, config), session=self._session, venta_id=venta_id,
                 tenant_id=tenant_id, capacidades=capacidades, enqueue=self._enqueue, intencion=intencion,
+                auto_facturar=auto_facturar,
             )
         except Exception:  # noqa: BLE001 — el cierre fiscal jamás rompe el registro de la venta
             log.warning("cierre_fiscal_fallo", venta_id=venta_id, exc_info=True)
@@ -176,7 +203,8 @@ async def encolar_cierre_pos(
     try:
         async with control_session() as cs:
             capacidades = await ControlCapacidades(cs).efectivas(tenant.id)
-            documento = _resolver_documento(capacidades, intencion)
+            auto_facturar = await cargar_auto_facturar_venta(cs, tenant.id)
+            documento = _resolver_documento(capacidades, intencion, auto_facturar)
             config = None
             if documento == "fe":
                 _cred, config = await cargar_config_matias(
@@ -185,6 +213,7 @@ async def encolar_cierre_pos(
         factura_id = await cerrar_venta_fiscal(
             servicio=_servicio(session, config), session=session, venta_id=venta_id,
             tenant_id=tenant.id, capacidades=capacidades, enqueue=arq_pool.enqueue_job, intencion=intencion,
+            auto_facturar=auto_facturar,
         )
         if factura_id is not None:
             log.info("cierre_fiscal_encolado", tenant_id=tenant.id, venta_id=venta_id,

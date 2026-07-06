@@ -34,7 +34,7 @@ from modules.facturacion.pos_hook import encolar_cierre_pos
 from modules.retenciones.repository import SqlRetencionesRepository
 from modules.retenciones.service import RetencionesService
 from modules.ventas.repository import SqlVentasRepository
-from modules.ventas.schemas import VentaConLineas, VentaCrear, VentaLeer
+from modules.ventas.schemas import VentaConLineas, VentaCrear, VentaLeer, VentaRecienteLeer
 from modules.ventas.service import RetencionesAplicador, VentaService
 
 # Feature fina `ventas` (ADR 0021, antes pack `pos`): sin la capacidad, todo el router responde 404.
@@ -149,6 +149,19 @@ async def listar_ventas(
     Compone el estado fiscal (badge) de toda la lista en un solo batch si el tenant tiene capacidad fiscal."""
     ventas = await repo.listar(desde=desde, hasta=hasta, vendedor_id=filtro)
     return await _componer_fiscal(ventas, fact_repo, capacidades)
+
+
+@router.get("/ventas/recientes", response_model=list[VentaRecienteLeer])
+async def listar_ventas_recientes(
+    limite: int = Query(default=5, ge=1, le=20),
+    repo: SqlVentasRepository = Depends(get_ventas_repo),
+    _user: Principal = Depends(require_role("vendedor")),
+    filtro: int | None = Depends(get_filtro_efectivo),
+) -> list[VentaRecienteLeer]:
+    """Feed 'Últimas ventas' del cockpit: las N ventas completadas más recientes con sus items
+    (nombre+cantidad) resueltos, acotadas al vendedor efectivo (RBAC). DEBE declararse antes de
+    `/ventas/{venta_id}` para que 'recientes' no matchee el parámetro de path."""
+    return await repo.listar_recientes(limite=limite, vendedor_id=filtro)
 
 
 @router.get("/ventas/{venta_id}", response_model=VentaConLineas)

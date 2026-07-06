@@ -36,14 +36,20 @@ _LINEA = VentaDetalleLeer(
 
 
 class _FakeVentasRepo:
-    def __init__(self, ventas=None) -> None:
+    def __init__(self, ventas=None, recientes=None) -> None:
         self._ventas = ventas or []
+        self._recientes = recientes or []
         self._por_id: dict[int, VentaLeer] = {v.id: v for v in self._ventas}
         self.listar_args: dict | None = None
+        self.recientes_args: dict | None = None
 
     async def listar(self, *, desde=None, hasta=None, vendedor_id=None):
         self.listar_args = {"desde": desde, "hasta": hasta, "vendedor_id": vendedor_id}
         return self._ventas
+
+    async def listar_recientes(self, *, limite=5, vendedor_id=None):
+        self.recientes_args = {"limite": limite, "vendedor_id": vendedor_id}
+        return self._recientes
 
     async def obtener(self, venta_id: int):
         v = self._por_id.get(venta_id)
@@ -150,6 +156,59 @@ async def test_obtener_admin_ve_cualquiera_200():
         r = await c.get("/api/v1/ventas/2")
     assert r.status_code == 200, r.text
     assert r.json()["id"] == 2
+
+
+# --- GET /ventas/recientes (feed del cockpit): RBAC + forma ------------------
+
+from modules.ventas.schemas import ItemVentaResumen, VentaRecienteLeer
+
+
+def _reciente(vid: int = 1, *, items=None, num_items=None) -> VentaRecienteLeer:
+    its = items if items is not None else [ItemVentaResumen(nombre="Martillo", cantidad=Decimal("2"))]
+    return VentaRecienteLeer(
+        id=vid, consecutivo=vid, fecha=datetime(2026, 6, 4, 10, 0, 0), total=Decimal("30000.00"),
+        metodo_pago="efectivo", items=its, num_items=num_items if num_items is not None else len(its),
+    )
+
+
+async def test_recientes_forma_y_default_limite():
+    rec = _reciente(1, items=[ItemVentaResumen(nombre="Cemento", cantidad=Decimal("3"))], num_items=2)
+    repo = _FakeVentasRepo(recientes=[rec])
+    app = _app(repo, rol="admin", user_id=1)
+    async with _cliente(app) as c:
+        r = await c.get("/api/v1/ventas/recientes")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body[0]["items"][0] == {"nombre": "Cemento", "cantidad": "3"}
+    assert body[0]["num_items"] == 2 and body[0]["metodo_pago"] == "efectivo"
+    assert repo.recientes_args["limite"] == 5                # default
+
+
+async def test_recientes_vendedor_solo_ve_lo_suyo():
+    repo = _FakeVentasRepo(recientes=[_reciente(1)])
+    app = _app(repo, rol="vendedor", user_id=5)
+    async with _cliente(app) as c:
+        r = await c.get("/api/v1/ventas/recientes")
+    assert r.status_code == 200, r.text
+    assert repo.recientes_args["vendedor_id"] == 5           # RBAC: acotado al vendedor efectivo
+
+
+async def test_recientes_limite_param():
+    repo = _FakeVentasRepo(recientes=[])
+    app = _app(repo, rol="admin", user_id=1)
+    async with _cliente(app) as c:
+        r = await c.get("/api/v1/ventas/recientes", params={"limite": 3})
+    assert r.status_code == 200
+    assert repo.recientes_args["limite"] == 3
+
+
+async def test_recientes_no_colisiona_con_detalle_por_id():
+    # /ventas/recientes debe matchear su ruta, NO /ventas/{venta_id} (que daría 422 al parsear 'recientes').
+    repo = _FakeVentasRepo(recientes=[_reciente(1)])
+    app = _app(repo, rol="admin", user_id=1)
+    async with _cliente(app) as c:
+        r = await c.get("/api/v1/ventas/recientes")
+    assert r.status_code == 200, r.text
 
 
 # --- F2.3c: composición del estado fiscal (badge) sobre la lista/detalle ------

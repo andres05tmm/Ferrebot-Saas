@@ -25,6 +25,17 @@ class ResultadoApertura:
 
 
 @dataclass(frozen=True, slots=True)
+class ArqueoVivo:
+    """Cuadre de la caja abierta AHORA (para el panel de caja): componentes + esperado, sin cierre."""
+
+    caja: Caja
+    ventas_efectivo: Decimal
+    ingresos: Decimal
+    egresos: Decimal
+    saldo_esperado: Decimal
+
+
+@dataclass(frozen=True, slots=True)
 class ResultadoMovimiento:
     movimiento: CajaMovimiento
     replay: bool
@@ -47,6 +58,25 @@ class CajaService:
 
     async def actual(self, usuario_id: int) -> Caja | None:
         return await self._repo.caja_abierta(usuario_id)
+
+    async def arqueo(self, usuario_id: int) -> ArqueoVivo | None:
+        """Cuadre en vivo de la caja abierta del usuario, o None si no hay caja abierta.
+
+        Reusa los MISMOS agregados y la MISMA fórmula del cierre (`calcular_arqueo`): el `saldo_esperado`
+        que ve el cajero en el panel es idéntico al que se compara al cerrar. `saldo_contado=0` es un
+        placeholder (solo se usa `saldo_esperado`; la diferencia se descarta)."""
+        caja = await self._repo.caja_abierta(usuario_id)
+        if caja is None:
+            return None
+        agg = await self._repo.agregados(caja, hasta=now_co())
+        esperado = calcular_arqueo(
+            saldo_inicial=caja.saldo_inicial, ventas_efectivo=agg.ventas_efectivo,
+            ingresos=agg.ingresos, egresos=agg.egresos, saldo_contado=Decimal(0),
+        ).saldo_esperado
+        return ArqueoVivo(
+            caja=caja, ventas_efectivo=agg.ventas_efectivo, ingresos=agg.ingresos,
+            egresos=agg.egresos, saldo_esperado=esperado,
+        )
 
     async def abrir(self, *, usuario_id: int, saldo_inicial: Decimal) -> ResultadoApertura:
         existente = await self._repo.caja_abierta(usuario_id, lock=True)

@@ -47,6 +47,21 @@ class CajaLeer(BaseModel):
     estado: str
 
 
+class ArqueoLeer(BaseModel):
+    """Cuadre EN VIVO de la caja abierta (misma fórmula que el cierre: fuente única, no se recalcula en
+    el cliente). `saldo_esperado = saldo_inicial + ventas_efectivo + ingresos − egresos` (los egresos ya
+    incluyen los gastos). Con la caja cerrada, `estado='cerrada'` y los componentes van en 0."""
+
+    estado: str                              # 'abierta' | 'cerrada'
+    caja_id: int | None = None
+    fecha_apertura: datetime | None = None
+    saldo_inicial: Decimal = Decimal(0)
+    ventas_efectivo: Decimal = Decimal(0)
+    ingresos: Decimal = Decimal(0)           # movimientos manuales de ingreso
+    egresos: Decimal = Decimal(0)            # movimientos de egreso (incluye los gastos)
+    saldo_esperado: Decimal = Decimal(0)
+
+
 class MovimientoLeer(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

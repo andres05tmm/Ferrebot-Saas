@@ -423,8 +423,12 @@ async def test_cierrepos_carga_config_solo_en_rama_fe(tenant):
     async def enqueue(job, *args):
         ...
 
+    async def cargar_auto_facturar(tenant_id):
+        return True                                                       # hermético: no toca el control DB
+
     async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
-        cierre = CierrePos(s, enqueue=enqueue, cargar_config=cargar_config)
+        cierre = CierrePos(s, enqueue=enqueue, cargar_config=cargar_config,
+                           cargar_auto_facturar=cargar_auto_facturar)
         vid_pos = await _crear_venta(s)
         await s.commit()
         await cierre.cerrar(vid_pos, tenant_id=7, capacidades=_POS)        # POS-default

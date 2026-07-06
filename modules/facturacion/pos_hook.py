@@ -121,9 +121,17 @@ async def _cargar_config_tenant(tenant_id: int) -> ConfigFiscal:
 
 
 async def _cargar_auto_facturar_tenant(tenant_id: int) -> bool:
-    """Lee el toggle `facturar_en_venta` del tenant (control DB). Default True. Para el camino del bot."""
-    async with control_session() as cs:
-        return await cargar_auto_facturar_venta(cs, tenant_id)
+    """Lee el toggle `facturar_en_venta` del tenant (control DB). Para el camino del bot.
+
+    FALLA-ABIERTO: ante cualquier error del control DB devuelve True (default histórico: auto-facturar).
+    Así un problema transitorio de config NUNCA suprime la facturación en silencio —el cierre del bot
+    traga excepciones (jamás rompe la venta), y sin este catch un read fallido abortaría el cierre entero."""
+    try:
+        async with control_session() as cs:
+            return await cargar_auto_facturar_venta(cs, tenant_id)
+    except Exception:  # noqa: BLE001 — fail-open al comportamiento histórico
+        log.warning("auto_facturar_config_fallo", tenant_id=tenant_id, exc_info=True)
+        return True
 
 
 # ── Enqueue perezoso para caminos sin pool ARQ inyectado (bot Telegram) ───────

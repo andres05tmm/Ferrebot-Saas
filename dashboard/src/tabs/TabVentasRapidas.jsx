@@ -20,6 +20,7 @@ import { Plus, Search, Trash2, X, Zap } from 'lucide-react'
 import { api, apiJson } from '@/lib/api'
 import { cop, ProductThumb } from '@/components/shared.jsx'
 import { useFeatures } from '@/lib/features.jsx'
+import { usePreferencias } from '@/lib/preferencias.jsx'
 import { Card } from '@/components/ui/card.jsx'
 import { Input } from '@/components/ui/input.jsx'
 import { Button } from '@/components/ui/button.jsx'
@@ -37,10 +38,19 @@ function nuevaKey() {
 
 export default function TabVentasRapidas() {
   const features = useFeatures()
+  const { facturarEnVenta } = usePreferencias()
   const puedePos = features.includes('pos_electronico')
   const puedeFe = features.includes('facturacion_electronica')
   const mostrarDocumento = puedePos || puedeFe
-  const documentoDefault = puedePos ? 'pos' : 'fe'
+  // Opciones del selector de documento. Con la auto-facturación apagada (`facturarEnVenta=false`) se
+  // ofrece "Sin factura" (venta interna): es el default y NO manda `documento` → el backend no emite.
+  // POS/Factura quedan como opt-in por venta (intención explícita, que el backend respeta igual).
+  const opcionesDocumento = [
+    ...(facturarEnVenta ? [] : [{ v: 'ninguno', label: 'Sin factura' }]),
+    ...(puedePos ? [{ v: 'pos', label: 'POS' }] : []),
+    ...(puedeFe ? [{ v: 'fe', label: 'Factura' }] : []),
+  ]
+  const documentoDefault = facturarEnVenta ? (puedePos ? 'pos' : 'fe') : 'ninguno'
 
   const [q, setQ] = useState('')
   const [resultados, setResultados] = useState([])
@@ -232,7 +242,9 @@ export default function TabVentasRapidas() {
     })
     const payload = { metodo_pago: metodoPago, origen: 'web', lineas }
     if (cliente?.id) payload.cliente_id = cliente.id
-    if (mostrarDocumento) payload.documento = documento
+    // "ninguno" → no se manda `documento`: el backend cae a su default (con facturar_en_venta=false, sin
+    // emisión). POS/FE explícito sí viaja como intención (el backend lo respeta aunque el toggle esté off).
+    if (mostrarDocumento && documento !== 'ninguno') payload.documento = documento
 
     setEnviando(true)
     try {
@@ -358,13 +370,15 @@ export default function TabVentasRapidas() {
         {mostrarDocumento && (
           <>
             <label className="text-caption uppercase tracking-wider text-muted-foreground mt-3 mb-1">Documento</label>
-            {puedePos && puedeFe ? (
-              <div className="flex items-center gap-1" role="group" aria-label="Documento fiscal">
-                <Seg activo={documento === 'pos'} onClick={() => setDocumento('pos')} aria-label="Documento POS">POS</Seg>
-                <Seg activo={documento === 'fe'} onClick={() => setDocumento('fe')} aria-label="Documento factura electrónica">Factura</Seg>
+            {opcionesDocumento.length > 1 ? (
+              <div className="flex items-center gap-1 flex-wrap" role="group" aria-label="Documento fiscal">
+                {opcionesDocumento.map(({ v, label }) => (
+                  <Seg key={v} activo={documento === v} onClick={() => setDocumento(v)}
+                    aria-label={`Documento ${label}`}>{label}</Seg>
+                ))}
               </div>
             ) : (
-              <div className="text-body-sm text-muted-foreground">{puedePos ? 'POS' : 'Factura electrónica'}</div>
+              <div className="text-body-sm text-muted-foreground">{opcionesDocumento[0]?.label}</div>
             )}
           </>
         )}

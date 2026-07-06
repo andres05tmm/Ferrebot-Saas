@@ -10,10 +10,12 @@ from httpx import ASGITransport
 from core.auth import Principal, get_current_user
 from core.auth.features import get_capacidades
 from core.tenancy.catalogo import NUCLEO
-from modules.config.router import Branding, get_branding, router
+from modules.config.router import Branding, get_branding, get_facturar_en_venta, router
 
 
-def _app(caps: frozenset[str], branding: Branding, *, rol: str = "admin") -> FastAPI:
+def _app(
+    caps: frozenset[str], branding: Branding, *, rol: str = "admin", facturar_en_venta: bool = True,
+) -> FastAPI:
     app = FastAPI()
     app.include_router(router, prefix="/api/v1")
 
@@ -23,8 +25,12 @@ def _app(caps: frozenset[str], branding: Branding, *, rol: str = "admin") -> Fas
     async def _brand() -> Branding:
         return branding
 
+    async def _facturar() -> bool:
+        return facturar_en_venta
+
     app.dependency_overrides[get_capacidades] = _caps
     app.dependency_overrides[get_branding] = _brand
+    app.dependency_overrides[get_facturar_en_venta] = _facturar
     app.dependency_overrides[get_current_user] = lambda: Principal(user_id=1, tenant="pr", rol=rol)
     return app
 
@@ -52,6 +58,23 @@ async def test_config_con_features_y_branding():
     assert body["branding"]["color_primario"] == "#000000"
     assert body["branding"]["logo_url"] == "http://x/logo.png"
     assert body["branding"]["tema"] == "aurora"                # tema de UI con nombre (white-label)
+    assert body["facturar_en_venta"] is True                   # default: el POS auto-factura
+
+
+async def test_config_facturar_en_venta_off():
+    # Con el toggle apagado, /config lo refleja → el POS ofrece "Sin factura" (venta interna).
+    app = _app(frozenset(), Branding(color_primario="#C8200E"), facturar_en_venta=False)
+    async with _cliente(app) as c:
+        r = await c.get("/api/v1/config")
+    assert r.status_code == 200, r.text
+    assert r.json()["facturar_en_venta"] is False
+
+
+async def test_config_facturar_en_venta_default_true():
+    app = _app(frozenset(), Branding(color_primario="#C8200E"))
+    async with _cliente(app) as c:
+        r = await c.get("/api/v1/config")
+    assert r.json()["facturar_en_venta"] is True
 
 
 async def test_config_entrega_tokens_planos_del_preset():

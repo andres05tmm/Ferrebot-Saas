@@ -89,6 +89,7 @@ const TABS = {
 import { bootConfig } from './lib/config.js'
 import { FeaturesProvider, useFeatures, resolveHomePath, esAtencionCliente, isRouteEnabled } from './lib/features.jsx'
 import { BrandingProvider } from './lib/branding.jsx'
+import { PreferenciasProvider } from './lib/preferencias.jsx'
 
 // /historial es transversal (ADR 0018): la familia POS ve el historial de ventas; la de servicios ve
 // el suyo por vertical (pedidos/citas/reservas). El wrapper elige el componente por familia. Vive
@@ -147,13 +148,13 @@ function BootError({ msg }) {
 
 // ── ShellBoot — ya autenticado: trae /config, tematiza y monta el shell ──────
 function ShellBoot() {
-  const [estado, setEstado] = useState({ cargando: true, error: null, features: [], branding: {} })
+  const [estado, setEstado] = useState({ cargando: true, error: null, features: [], branding: {}, facturarEnVenta: true })
 
   useEffect(() => {
     let cancelado = false
     bootConfig()
-      .then((cfg) => { if (!cancelado) setEstado({ cargando: false, error: null, features: cfg.features, branding: cfg.branding }) })
-      .catch((e) => { if (!cancelado) setEstado({ cargando: false, error: e.message, features: [], branding: {} }) })
+      .then((cfg) => { if (!cancelado) setEstado({ cargando: false, error: null, features: cfg.features, branding: cfg.branding, facturarEnVenta: cfg.facturarEnVenta }) })
+      .catch((e) => { if (!cancelado) setEstado({ cargando: false, error: e.message, features: [], branding: {}, facturarEnVenta: true }) })
     return () => { cancelado = true }
   }, [])
 
@@ -169,7 +170,9 @@ function ShellBoot() {
   return (
     <FeaturesProvider features={estado.features}>
       <BrandingProvider branding={estado.branding}>
-        <AppShell />
+        <PreferenciasProvider facturarEnVenta={estado.facturarEnVenta}>
+          <AppShell />
+        </PreferenciasProvider>
       </BrandingProvider>
     </FeaturesProvider>
   )

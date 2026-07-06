@@ -14,6 +14,7 @@ from core.auth import Principal, get_current_user
 from core.auth.features import get_capacidades
 from core.db.session import control_session
 from core.tenancy.catalogo import capacidades_completas
+from core.tenancy.config_empresa import cargar_auto_facturar_venta
 from core.tenancy.control_repo import leer_branding
 
 router = APIRouter(tags=["config"])
@@ -50,11 +51,15 @@ class Usuario(BaseModel):
 
 
 class ConfigLeer(BaseModel):
-    """Respuesta de GET /config: capacidades activas, branding y usuario."""
+    """Respuesta de GET /config: capacidades activas, branding, usuario y preferencias de UI.
+
+    `facturar_en_venta` (config del tenant, default True) le dice al POS si debe auto-facturar cada
+    venta: cuando es False, Ventas Rápidas ofrece "Sin factura" (venta interna, factura a pedido)."""
 
     features: list[str]
     branding: Branding
     usuario: Usuario
+    facturar_en_venta: bool = True
 
 
 async def get_branding(request: Request) -> Branding:
@@ -62,6 +67,12 @@ async def get_branding(request: Request) -> Branding:
     async with control_session() as cs:
         datos = await leer_branding(cs, request.state.tenant.id)
     return Branding(**datos)
+
+
+async def get_facturar_en_venta(request: Request) -> bool:
+    """Toggle `facturar_en_venta` del tenant (control DB, default True). Lo consume el POS del dashboard."""
+    async with control_session() as cs:
+        return await cargar_auto_facturar_venta(cs, request.state.tenant.id)
 
 
 async def get_branding_opcional(request: Request) -> Branding | None:
@@ -168,10 +179,12 @@ async def obtener_config(
     user: Principal = Depends(get_current_user),
     capacidades: frozenset[str] = Depends(get_capacidades),
     branding: Branding = Depends(get_branding),
+    facturar_en_venta: bool = Depends(get_facturar_en_venta),
 ) -> ConfigLeer:
-    """Arranque del dashboard: núcleo ∪ efectivas (ordenado), branding y usuario autenticado."""
+    """Arranque del dashboard: núcleo ∪ efectivas (ordenado), branding, usuario y preferencias de UI."""
     return ConfigLeer(
         features=sorted(capacidades_completas(capacidades)),
         branding=branding,
         usuario=Usuario(id=user.user_id, rol=user.rol, tenant=user.tenant),
+        facturar_en_venta=facturar_en_venta,
     )

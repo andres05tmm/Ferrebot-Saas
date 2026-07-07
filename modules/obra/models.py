@@ -29,6 +29,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.dialects.postgresql import ENUM as PgEnum
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from core.db.base import TenantBase
@@ -50,6 +51,9 @@ estado_obra = PgEnum(
 origen_registro = PgEnum(
     "MANUAL", "TELEGRAM_BOT", "IMPORTACION", name="origen_registro", create_type=False
 )
+# Semáforo de rentabilidad de la liquidación (tenant 0048). Minúsculas a propósito: espeja los `.value`
+# de `services.calculations.obra.Semaforo`, para congelar `desglose.semaforo.value` sin traducir.
+semaforo_obra = PgEnum("verde", "amarillo", "rojo", name="semaforo_obra", create_type=False)
 
 
 class CotizacionObra(TenantBase):
@@ -180,6 +184,46 @@ class ConsumoInventario(TenantBase):
     costo_unitario: Mapped[Decimal] = mapped_column(MONEY4, nullable=False)
     responsable: Mapped[str | None] = mapped_column(Text)
     observaciones: Mapped[str | None] = mapped_column(Text)
+    creado_en: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class LiquidacionObra(TenantBase):
+    """Snapshot INMUTABLE del cierre de una obra (spec 04, tenant 0048).
+
+    Al liquidar una obra se congela el gasto real desglosado (los 5 componentes de
+    `services.calculations.obra.DesgloseGasto` + total), el presupuesto contra el que se comparó, la
+    utilidad real y el semáforo del día. `obra_id` es UNIQUE (una liquidación por obra): la operación de
+    liquidar es idempotente (reintentar choca contra el UNIQUE). NO se actualiza tras crearse: el número
+    liquidado es histórico y no se recalcula aunque el algoritmo cambie —`snapshot_json` guarda el detalle
+    completo por si eso pasa. La FK a `obras.id` vive en la migración (patrón del paquete: ids como
+    BigInteger sin `relationship`).
+    """
+
+    __tablename__ = "liquidaciones_obra"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    # 1-1 con la obra (UNIQUE en la migración). NOT NULL: la liquidación pertenece a una obra.
+    obra_id: Mapped[int] = mapped_column(BigInteger, nullable=False, unique=True)
+    fecha_liquidacion: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    # Presupuesto (de la cotización GANADA) contra el que se comparó.
+    ingreso_presupuestado: Mapped[Decimal] = mapped_column(MONEY4, nullable=False)
+    utilidad_presupuestada: Mapped[Decimal] = mapped_column(MONEY4, nullable=False)
+    # Gasto real total (= DesgloseGasto.total) y su desglose congelado por componente.
+    gasto_total: Mapped[Decimal] = mapped_column(MONEY4, nullable=False)
+    total_gastos: Mapped[Decimal] = mapped_column(MONEY4, nullable=False)
+    total_compras: Mapped[Decimal] = mapped_column(MONEY4, nullable=False)
+    total_prorrateo_nomina: Mapped[Decimal] = mapped_column(MONEY4, nullable=False)
+    total_horas_maquina: Mapped[Decimal] = mapped_column(MONEY4, nullable=False)
+    total_consumos_inventario: Mapped[Decimal] = mapped_column(MONEY4, nullable=False)
+    # Utilidad real (= ingreso_presupuestado − gasto_total) y semáforo del día que se liquidó.
+    utilidad_real: Mapped[Decimal] = mapped_column(MONEY4, nullable=False)
+    semaforo: Mapped[str] = mapped_column(semaforo_obra, nullable=False)
+    # Detalle completo del cálculo (por si el algoritmo cambia luego): el número liquidado es histórico.
+    snapshot_json: Mapped[dict] = mapped_column(JSONB, nullable=False)
     creado_en: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

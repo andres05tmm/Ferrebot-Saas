@@ -16,10 +16,23 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.auth import Principal, require_role
 from core.auth.features import require_feature
 from core.db.session import get_tenant_db
-from modules.obra.errors import ObraInexistente, TransicionEstadoInvalida
+from modules.inventario.errors import AjusteDejaStockNegativo, ProductoInexistente
+from modules.inventario.repository import SqlInventarioRepository
+from modules.inventario.service import InventarioService
+from modules.obra.errors import (
+    ConsumoEnObraLiquidada,
+    ObraInexistente,
+    ObraNoFinalizada,
+    TransicionEstadoInvalida,
+)
 from modules.obra.repository import SqlObrasRepository
 from modules.obra.schemas import (
+    ConsumoInventarioCrear,
+    ConsumoInventarioLeer,
+    ConsumoInventarioRegistrado,
     EstadoObra,
+    GastoRealObra,
+    LiquidacionObraLeer,
     ObraActualizar,
     ObraCrear,
     ObraEstadoCambiar,
@@ -34,8 +47,15 @@ router = APIRouter(tags=["obras"], dependencies=[Depends(require_feature("obras"
 
 
 def get_obras_service(session: AsyncSession = Depends(get_tenant_db)) -> ObrasService:
-    """Arma el `ObrasService` sobre la sesión del tenant (los tests lo overridean con un fake)."""
-    return ObrasService(SqlObrasRepository(session))
+    """Arma el `ObrasService` sobre la sesión del tenant (los tests lo overridean con un fake).
+
+    El consumo de inventario mueve stock por `modules.inventario`, así que se inyecta un `InventarioService`
+    sobre la MISMA sesión del tenant (misma transacción: consumo + movimiento se confirman o revierten
+    juntos — invariante "nada mueve inventario sin movimiento")."""
+    return ObrasService(
+        SqlObrasRepository(session),
+        inventario=InventarioService(SqlInventarioRepository(session)),
+    )
 
 
 @router.get("/obras", response_model=list[ObraLeer])
@@ -161,3 +181,104 @@ async def listar_reportes_diarios(
     except ObraInexistente as exc:
         raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
     return [ReporteDiarioLeer.model_validate(r) for r in reportes]
+
+
+# --- Fase 3: gasto real, consumo de inventario y liquidación (financiero → rol admin) ---------------
+
+
+@router.get("/obras/{obra_id}/gasto-real", response_model=GastoRealObra)
+async def gasto_real_obra(
+    obra_id: int,
+    service: ObrasService = Depends(get_obras_service),
+    _user: Principal = Depends(require_role("admin")),
+) -> GastoRealObra:
+    """Gasto real de la obra en tiempo real: presupuesto vs. real, desglose, semáforo y alerta de margen.
+
+    Financiero (márgenes/utilidad): rol `admin`. 404 si la obra no existe."""
+    try:
+        r = await service.gasto_real(obra_id)
+    except ObraInexistente as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
+    d = r.desglose
+    return GastoRealObra(
+        obra_id=r.obra_id,
+        ingreso_presupuestado=r.ingreso_presupuestado,
+        utilidad_presupuestada=r.utilidad_presupuestada,
+        tiene_presupuesto=r.tiene_presupuesto,
+        total_gastos=d.total_gastos,
+        total_compras=d.total_compras,
+        total_prorrateo_nomina=d.total_prorrateo_nomina,
+        total_horas_maquina=d.total_horas_maquina,
+        total_consumos_inventario=d.total_consumos_inventario,
+        gasto_total=d.total,
+        utilidad_real=r.utilidad_real,
+        semaforo=d.semaforo.value,
+        alerta_margen=r.alerta_margen,
+    )
+
+
+@router.post(
+    "/obras/{obra_id}/consumos",
+    response_model=ConsumoInventarioRegistrado,
+    status_code=status.HTTP_201_CREATED,
+)
+async def registrar_consumo(
+    obra_id: int,
+    payload: ConsumoInventarioCrear,
+    service: ObrasService = Depends(get_obras_service),
+    _user: Principal = Depends(require_role("vendedor")),
+) -> ConsumoInventarioRegistrado:
+    """Imputa un consumo de material a la obra y baja el stock en la misma transacción (INVARIANTE).
+
+    Operación de campo (rol `vendedor`). 404 si la obra o el producto no existen; 409 si la obra está
+    LIQUIDADA o si la salida dejaría el stock negativo."""
+    try:
+        consumo, resultado = await service.registrar_consumo(
+            obra_id, payload, usuario_id=_user.user_id
+        )
+    except ObraInexistente as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
+    except ProductoInexistente as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
+    except ConsumoEnObraLiquidada as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+    except AjusteDejaStockNegativo as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+    return ConsumoInventarioRegistrado(
+        **ConsumoInventarioLeer.model_validate(consumo).model_dump(),
+        movimiento_id=resultado.movimiento_id,
+        stock_resultante=resultado.stock_actual,
+    )
+
+
+@router.post("/obras/{obra_id}/liquidar", response_model=LiquidacionObraLeer)
+async def liquidar_obra(
+    obra_id: int,
+    service: ObrasService = Depends(get_obras_service),
+    _user: Principal = Depends(require_role("admin")),
+) -> LiquidacionObraLeer:
+    """Cierra la obra: congela el snapshot inmutable del gasto real y la pasa a LIQUIDADA. IDEMPOTENTE.
+
+    Re-liquidar devuelve la liquidación existente (no recalcula ni duplica). 404 si no existe; 409 si la
+    obra no está FINALIZADA."""
+    try:
+        liquidacion = await service.liquidar(obra_id)
+    except ObraInexistente as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
+    except ObraNoFinalizada as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+    return LiquidacionObraLeer.model_validate(liquidacion)
+
+
+@router.get("/obras/{obra_id}/liquidacion", response_model=LiquidacionObraLeer)
+async def obtener_liquidacion_obra(
+    obra_id: int,
+    service: ObrasService = Depends(get_obras_service),
+    _user: Principal = Depends(require_role("admin")),
+) -> LiquidacionObraLeer:
+    """Snapshot de la liquidación de la obra. 404 si la obra no existe o aún no se ha liquidado."""
+    try:
+        liquidacion = await service.obtener_liquidacion(obra_id)
+    except ObraInexistente as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
+    return LiquidacionObraLeer.model_validate(liquidacion)

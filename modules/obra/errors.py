@@ -20,3 +20,24 @@ class TransicionEstadoInvalida(ObrasError):
         )
         self.actual = actual
         self.destino = destino
+
+
+class ObraNoFinalizada(ObrasError):
+    """Liquidar exige que la obra esté FINALIZADA (el cierre del ciclo de vida). 409."""
+
+    def __init__(self, obra_id: int, estado: str) -> None:
+        super().__init__(
+            f"La obra {obra_id} no se puede liquidar en estado {estado}: debe estar FINALIZADA"
+        )
+        self.obra_id = obra_id
+        self.estado = estado
+
+
+class ConsumoEnObraLiquidada(ObrasError):
+    """No se imputan consumos a una obra ya LIQUIDADA (su snapshot está congelado). 409."""
+
+    def __init__(self, obra_id: int) -> None:
+        super().__init__(
+            f"La obra {obra_id} está LIQUIDADA: su gasto real está congelado y no admite más consumos"
+        )
+        self.obra_id = obra_id

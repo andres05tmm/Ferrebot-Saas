@@ -11,7 +11,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.auth import Principal, require_role
 from core.auth.features import require_feature
 from core.db.session import get_tenant_db
-from modules.maquinaria.errors import CodigoMaquinaDuplicado, MaquinaInexistente
+from modules.maquinaria.errors import (
+    CodigoMaquinaDuplicado,
+    MaquinaInexistente,
+    SinAsignacionActiva,
+)
 from modules.maquinaria.repository import SqlMaquinasRepository
 from modules.maquinaria.schemas import (
     AsignacionMaquinaObraLeer,
@@ -19,7 +23,9 @@ from modules.maquinaria.schemas import (
     MaquinaActualizar,
     MaquinaCrear,
     MaquinaLeer,
+    RegistroHorasCrear,
     RegistroHorasMaquinaLeer,
+    RegistroHorasResultado,
 )
 from modules.maquinaria.service import MaquinariaService
 
@@ -119,6 +125,33 @@ async def listar_horas(
     session: AsyncSession = Depends(get_tenant_db),
     _user: Principal = Depends(require_role("vendedor")),
 ) -> list[RegistroHorasMaquinaLeer]:
-    """Partes de horas de la máquina (solo lectura; el registro es de Fase 3)."""
+    """Partes de horas de la máquina (kárdex de operación)."""
     horas = await _service(session).listar_horas(maquina_id, limite=limite, offset=offset)
     return [RegistroHorasMaquinaLeer.model_validate(h) for h in horas]
+
+
+@router.post(
+    "/maquinas/{maquina_id}/horas",
+    response_model=RegistroHorasResultado,
+    status_code=status.HTTP_201_CREATED,
+)
+async def registrar_horas(
+    maquina_id: int,
+    payload: RegistroHorasCrear,
+    session: AsyncSession = Depends(get_tenant_db),
+    _user: Principal = Depends(require_role("vendedor")),
+) -> RegistroHorasResultado:
+    """Registra el parte de horas del día de una máquina en una obra, aplicando el mínimo facturable.
+
+    Rol `vendedor` (personal de campo). Devuelve el resumen: horas trabajadas/facturables, si se cubrió el
+    mínimo, precio pactado e ingreso. IDEMPOTENTE por `(máquina, obra, fecha)`: reintentar el mismo día NO
+    duplica (responde el mismo registro con `replay=true`). 404 si la máquina no existe; 409 si no hay
+    asignación activa que cubra la fecha.
+    """
+    try:
+        resultado = await _service(session).registrar_horas(maquina_id, payload)
+    except MaquinaInexistente as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
+    except SinAsignacionActiva as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+    return RegistroHorasResultado.model_validate(resultado)

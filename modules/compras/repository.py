@@ -20,9 +20,14 @@ from modules.inventario.models import Inventario, MovimientoInventario
 
 @dataclass(frozen=True, slots=True)
 class ItemCompra:
-    """Una línea ya validada (producto, cantidad, costo) lista para persistir."""
+    """Una línea ya validada (producto, cantidad, costo) lista para persistir.
 
-    producto_id: int
+    `producto_id` es opcional: las compras del vertical construcción imputadas a obra o de viaje de
+    material no llevan producto de catálogo (no mueven stock). En una compra de catálogo el servicio
+    garantiza que viene (lo valida el schema).
+    """
+
+    producto_id: int | None
     cantidad: Decimal
     costo: Decimal
 
@@ -55,7 +60,7 @@ class CompraIdempotente:
 
     compra: CompraLeer
     total: Decimal
-    items: tuple[tuple[int, Decimal, Decimal], ...]
+    items: tuple[tuple[int | None, Decimal, Decimal], ...]
 
 
 class SqlComprasRepository:
@@ -115,24 +120,45 @@ class SqlComprasRepository:
         total: Decimal,
         usuario_id: int | None,
         idempotency_key: str | None = None,
+        obra_id: int | None = None,
+        categoria: str | None = None,
+        es_viaje_material: bool = False,
+        precio_venta_cliente: Decimal | None = None,
+        resbalo: Decimal | None = None,
+        factura_url: str | None = None,
     ) -> CompraLeer:
-        """Inserta compra + detalle; por item suma stock (ENTRADA) y fija productos.precio_compra.
+        """Inserta compra + detalle. Por item suma stock (ENTRADA) y fija productos.precio_compra SOLO
+        en la compra de catálogo.
+
+        INVARIANTE (spec 11 / plan PIM §2): la compra imputada a OBRA (`obra_id`) o de VIAJE DE MATERIAL
+        (`es_viaje_material`) NO mueve stock — solo registra la compra y su detalle como gasto imputado,
+        sin `movimientos_inventario` ni `inventario`/`precio_compra`. La de catálogo (sin obra, sin viaje)
+        SIGUE moviendo stock como hoy (regla #7). El discriminador es una sola verdad: `mueve_stock`.
 
         `idempotency_key` se persiste con UNIQUE parcial (migración 0025): el chequeo previo del servicio
         evita el doble registro y el índice es el respaldo estructural ante una carrera.
         """
-        compra = Compra(proveedor_id=proveedor_id, fecha=fecha, total=total,
-                        idempotency_key=idempotency_key)
+        mueve_stock = obra_id is None and not es_viaje_material
+        compra = Compra(
+            proveedor_id=proveedor_id, fecha=fecha, total=total, idempotency_key=idempotency_key,
+            obra_id=obra_id, categoria=categoria, es_viaje_material=es_viaje_material,
+            precio_venta_cliente=precio_venta_cliente, resbalo=resbalo, factura_url=factura_url,
+        )
         self._s.add(compra)
         await self._s.flush()  # asigna compra.id
 
         for it in items:
+            # El detalle SIEMPRE se registra (deja constancia de la línea, mueva stock o no).
             self._s.add(
                 CompraDetalle(
                     compra_id=compra.id, producto_id=it.producto_id,
                     cantidad=it.cantidad, costo=it.costo,
                 )
             )
+            if not mueve_stock:
+                # Imputada a obra/viaje: solo imputa, no toca inventario (invariante "nada mueve stock
+                # sin movimiento" — aquí no hay movimiento porque no hay entrada al catálogo).
+                continue
             # Lock del producto ANTES de leer stock/promedio: serializa compras concurrentes del mismo
             # producto (sin lost update del promedio, ADR 0025). Orden de locks productos→inventario.
             promedio_actual = await self._lock_costo_promedio(it.producto_id)
@@ -160,7 +186,9 @@ class SqlComprasRepository:
         await publish(self._s, "compra_registrada", {
             "compra_id": compra.id, "proveedor_id": proveedor_id, "total": str(total),
         })
-        await publish(self._s, "inventario_actualizado", {"compra_id": compra.id, "accion": "compra"})
+        if mueve_stock:
+            # Solo la compra de catálogo cambió el inventario: solo ella emite el evento.
+            await publish(self._s, "inventario_actualizado", {"compra_id": compra.id, "accion": "compra"})
         return await self._leer(compra.id)
 
     async def _lock_costo_promedio(self, producto_id: int) -> Decimal | None:
@@ -198,31 +226,41 @@ class SqlComprasRepository:
         )
         return existe
 
+    # Columnas de la cabecera (incluye las del vertical construcción). Una sola verdad para _leer/listar.
+    _COLS_CABECERA = (
+        Compra.id, Compra.proveedor_id, Proveedor.nombre.label("proveedor_nombre"),
+        Compra.fecha, Compra.total, Compra.obra_id, Compra.categoria, Compra.es_viaje_material,
+        Compra.precio_venta_cliente, Compra.resbalo, Compra.factura_url,
+    )
+
+    @staticmethod
+    def _fila_a_leer(f) -> CompraLeer:
+        """Mapea una fila de la cabecera a `CompraLeer`. `mueve_stock` es derivado (obra/viaje → False);
+        los `resbalo_pct`/`resbalo_alerta`/`alerta_precio_proveedor` los completa el servicio."""
+        return CompraLeer(
+            id=f.id, proveedor_id=f.proveedor_id, proveedor_nombre=f.proveedor_nombre,
+            fecha=f.fecha, total=Decimal(f.total) if f.total is not None else Decimal("0"),
+            obra_id=f.obra_id, categoria=f.categoria, es_viaje_material=f.es_viaje_material,
+            precio_venta_cliente=f.precio_venta_cliente, resbalo=f.resbalo, factura_url=f.factura_url,
+            mueve_stock=(f.obra_id is None and not f.es_viaje_material),
+        )
+
     async def _leer(self, compra_id: int) -> CompraLeer:
         fila = (
             await self._s.execute(
-                select(
-                    Compra.id, Compra.proveedor_id,
-                    Proveedor.nombre.label("proveedor_nombre"), Compra.fecha, Compra.total,
-                )
+                select(*self._COLS_CABECERA)
                 .join(Proveedor, Proveedor.id == Compra.proveedor_id, isouter=True)
                 .where(Compra.id == compra_id)
             )
         ).one()
-        return CompraLeer(
-            id=fila.id, proveedor_id=fila.proveedor_id, proveedor_nombre=fila.proveedor_nombre,
-            fecha=fila.fecha, total=Decimal(fila.total) if fila.total is not None else Decimal("0"),
-        )
+        return self._fila_a_leer(fila)
 
     async def listar(
         self, *, inicio: datetime | None = None, fin: datetime | None = None
     ) -> list[CompraLeer]:
         """Compras del rango (hora Colombia; el servicio resuelve el default mes), más reciente primero."""
         stmt = (
-            select(
-                Compra.id, Compra.proveedor_id,
-                Proveedor.nombre.label("proveedor_nombre"), Compra.fecha, Compra.total,
-            )
+            select(*self._COLS_CABECERA)
             .join(Proveedor, Proveedor.id == Compra.proveedor_id, isouter=True)
         )
         if inicio is not None:
@@ -231,10 +269,52 @@ class SqlComprasRepository:
             stmt = stmt.where(Compra.fecha <= fin)
         stmt = stmt.order_by(Compra.id.desc())
         filas = (await self._s.execute(stmt)).all()
-        return [
-            CompraLeer(
-                id=f.id, proveedor_id=f.proveedor_id, proveedor_nombre=f.proveedor_nombre,
-                fecha=f.fecha, total=Decimal(f.total) if f.total is not None else Decimal("0"),
+        return [self._fila_a_leer(f) for f in filas]
+
+    async def listar_resbalos(
+        self, *, inicio: datetime | None = None, fin: datetime | None = None
+    ) -> list[CompraLeer]:
+        """Viajes de material del rango (reporte de resbalos, spec 11), del mayor margen al menor.
+
+        Solo `es_viaje_material` (los que generan margen); el pct/alerta los deriva el servicio con la
+        función pura `calcular_resbalo` para no meter lógica de dominio en el SQL."""
+        stmt = (
+            select(*self._COLS_CABECERA)
+            .join(Proveedor, Proveedor.id == Compra.proveedor_id, isouter=True)
+            .where(Compra.es_viaje_material.is_(True))
+        )
+        if inicio is not None:
+            stmt = stmt.where(Compra.fecha >= inicio)
+        if fin is not None:
+            stmt = stmt.where(Compra.fecha <= fin)
+        stmt = stmt.order_by(Compra.resbalo.desc().nullslast(), Compra.id.desc())
+        filas = (await self._s.execute(stmt)).all()
+        return [self._fila_a_leer(f) for f in filas]
+
+    async def promedio_costo_unitario_proveedor(
+        self,
+        proveedor_id: int,
+        *,
+        desde: datetime,
+        hasta: datetime,
+        categoria: str | None = None,
+    ) -> Decimal | None:
+        """Promedio del costo unitario de las compras del proveedor en [desde, hasta) — None si no hay
+        historial. Filtra por categoría cuando se da (compara peras con peras: asfalto vs asfalto).
+
+        Alimenta la alerta de precio (>15% sobre el promedio de 6 meses, spec 10). Se llama ANTES de
+        insertar la compra nueva, así que la ventana no la incluye."""
+        stmt = (
+            select(func.avg(CompraDetalle.costo))
+            .join(Compra, Compra.id == CompraDetalle.compra_id)
+            .where(
+                Compra.proveedor_id == proveedor_id,
+                Compra.fecha >= desde,
+                Compra.fecha < hasta,
+                CompraDetalle.costo.isnot(None),
             )
-            for f in filas
-        ]
+        )
+        if categoria is not None:
+            stmt = stmt.where(Compra.categoria == categoria)
+        promedio = (await self._s.execute(stmt)).scalar_one_or_none()
+        return Decimal(promedio) if promedio is not None else None

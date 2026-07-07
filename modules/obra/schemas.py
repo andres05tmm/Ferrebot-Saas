@@ -21,6 +21,8 @@ EstadoObra = Literal[
     "PLANIFICADA", "EN_EJECUCION", "SUSPENDIDA", "FINALIZADA", "LIQUIDADA"
 ]
 OrigenRegistro = Literal["MANUAL", "TELEGRAM_BOT", "IMPORTACION"]
+# Semáforo de rentabilidad (espeja `services.calculations.obra.Semaforo.value`, en minúscula).
+SemaforoObra = Literal["verde", "amarillo", "rojo"]
 
 
 class ObraCrear(BaseModel):
@@ -117,4 +119,96 @@ class ReporteDiarioLeer(BaseModel):
     incidentes: str | None
     foto_urls: list[str]
     origen_registro: str
+    creado_en: datetime
+
+
+# --- Fase 3: gasto real, consumo de inventario y liquidación (el diferenciador del producto) --------
+
+
+class GastoRealObra(BaseModel):
+    """Gasto real de una obra en tiempo real: presupuesto vs. real + semáforo + alerta de margen.
+
+    `ingreso_presupuestado`/`utilidad_presupuestada` salen de la cotización GANADA ligada a la obra
+    (subtotal+A+I+U y la U, sin el IVA que no es ingreso). `tiene_presupuesto=False` cuando la obra no
+    tiene cotización (obra suelta): sin presupuesto no hay contra qué medir y el semáforo cae a `rojo`.
+    `alerta_margen` avisa cuando el margen restante (`utilidad_real`) baja del 50% de la utilidad
+    presupuestada — la alarma temprana antes de la pérdida (plan §4).
+    """
+
+    obra_id: int
+    ingreso_presupuestado: Decimal
+    utilidad_presupuestada: Decimal
+    tiene_presupuesto: bool
+    total_gastos: Decimal
+    total_compras: Decimal
+    total_prorrateo_nomina: Decimal
+    total_horas_maquina: Decimal
+    total_consumos_inventario: Decimal
+    gasto_total: Decimal
+    utilidad_real: Decimal
+    semaforo: SemaforoObra
+    alerta_margen: bool
+
+
+class ConsumoInventarioCrear(BaseModel):
+    """Alta de un consumo de material de una obra. Genera SIEMPRE el movimiento de inventario (salida).
+
+    `costo_unitario` es opcional: si no viene, se toma del costo del producto (promedio ponderado, y si
+    no, su precio de compra). `fecha` por defecto es hoy en hora Colombia (se resuelve en el servicio).
+    """
+
+    producto_id: int
+    cantidad: Decimal = Field(gt=0)
+    costo_unitario: Decimal | None = Field(default=None, ge=0)
+    fecha: date | None = None
+    responsable: str | None = None
+    observaciones: str | None = None
+
+
+class ConsumoInventarioLeer(BaseModel):
+    """Vista de salida de un consumo de inventario imputado a la obra."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    producto_id: int
+    obra_id: int
+    fecha: date
+    cantidad: Decimal
+    costo_unitario: Decimal
+    responsable: str | None
+    observaciones: str | None
+    creado_en: datetime
+
+
+class ConsumoInventarioRegistrado(ConsumoInventarioLeer):
+    """Consumo recién registrado + traza del movimiento de inventario que generó (invariante).
+
+    `movimiento_id` y `stock_resultante` confirman que la salida de stock quedó asentada en la misma
+    transacción (nada mueve inventario sin movimiento).
+    """
+
+    movimiento_id: int | None
+    stock_resultante: Decimal
+
+
+class LiquidacionObraLeer(BaseModel):
+    """Vista de salida del snapshot inmutable de la liquidación de una obra."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    obra_id: int
+    fecha_liquidacion: datetime
+    ingreso_presupuestado: Decimal
+    utilidad_presupuestada: Decimal
+    gasto_total: Decimal
+    total_gastos: Decimal
+    total_compras: Decimal
+    total_prorrateo_nomina: Decimal
+    total_horas_maquina: Decimal
+    total_consumos_inventario: Decimal
+    utilidad_real: Decimal
+    semaforo: SemaforoObra
+    snapshot_json: dict
     creado_en: datetime

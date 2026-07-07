@@ -15,6 +15,10 @@ from pydantic import BaseModel, ConfigDict, Field
 # rechazaría por el tipo enum, devolviendo 422 en vez de 500.
 EstadoMaquina = Literal["DISPONIBLE", "OCUPADA", "MANTENIMIENTO", "DAÑADA", "BAJA"]
 
+# Literales EXACTOS al enum `origen_registro` (dueño migración 0044; se reusa). MANUAL = dashboard;
+# TELEGRAM_BOT = parte cargado por el bot de campo (Fase 6); IMPORTACION = ETL.
+OrigenRegistro = Literal["MANUAL", "TELEGRAM_BOT", "IMPORTACION"]
+
 
 class MaquinaCrear(BaseModel):
     """Alta de una máquina. `codigo`/`nombre`/`tipo`/`precio_hora_default` son NOT NULL en la spec."""
@@ -97,7 +101,7 @@ class AsignacionMaquinaObraLeer(BaseModel):
 
 
 class RegistroHorasMaquinaLeer(BaseModel):
-    """Lectura de un parte de horas de una máquina (solo lectura; el registro es de Fase 3)."""
+    """Lectura de un parte de horas de una máquina (kárdex de operación)."""
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -111,3 +115,40 @@ class RegistroHorasMaquinaLeer(BaseModel):
     observaciones: str | None
     origen_registro: str
     creado_en: datetime
+
+
+class RegistroHorasCrear(BaseModel):
+    """Alta de un parte de horas de una máquina en una obra (Fase 3). `maquina_id` viaja por la ruta.
+
+    `idempotency_key` es OPCIONAL y existe para el contrato de reintentos del bot de campo (Fase 6). La
+    idempotencia efectiva se ancla en la CLAVE NATURAL `(maquina_id, obra_id, fecha)` —la spec define un
+    parte POR MÁQUINA POR DÍA—, no en una columna dedicada (models/migraciones son de otro agente). Ver
+    el docstring de `MaquinariaService.registrar_horas` para el porqué y el seam de hardening.
+    """
+
+    obra_id: int
+    fecha: date
+    horas_trabajadas: Decimal = Field(ge=0)   # las horas son la unidad de negocio; no se redondean
+    operador_id: int | None = None
+    observaciones: str | None = None
+    origen_registro: OrigenRegistro = "MANUAL"   # el bot de Fase 6 mandará TELEGRAM_BOT
+    idempotency_key: str | None = Field(default=None, max_length=200)
+
+
+class RegistroHorasResultado(BaseModel):
+    """Resumen de un registro de horas (salida del POST). `replay=True` = el parte de ese día YA existía
+    (idempotencia por clave natural): no se creó un segundo registro."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    registro_id: int
+    maquina_id: int
+    obra_id: int
+    fecha: date
+    horas_trabajadas: Decimal
+    horas_facturables: Decimal
+    minimo_cubierto: bool                # ¿las horas trabajadas alcanzaron el mínimo pactado?
+    precio_hora: Decimal                 # precio PACTADO en la asignación (no el default de la máquina)
+    ingreso: Decimal                     # = horas_facturables × precio_hora
+    origen_registro: str
+    replay: bool

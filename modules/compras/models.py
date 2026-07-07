@@ -13,11 +13,12 @@ que solo tiene cuentas por pagar), así que la extensión del ORM vive en este a
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import BigInteger, DateTime, ForeignKey, Numeric, Text, func
+from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Numeric, Text, func, text
 from sqlalchemy.dialects.postgresql import ENUM as PgEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from core.db.base import TenantBase
+from core.money import MONEY4
 
 MONEY = Numeric(12, 2)
 QTY = Numeric(12, 3)
@@ -26,6 +27,14 @@ QTY = Numeric(12, 3)
 tipo_proveedor = PgEnum(
     "PLANTA_ASFALTO", "CANTERA_ARENA", "REPUESTOS", "COMBUSTIBLE", "TRANSPORTE", "SERVICIOS", "OTRO",
     name="tipo_proveedor", create_type=False,
+)
+
+# Categoría de compra del vertical construcción (spec 11 / tenant 0048): la crea la migración 0048
+# (create_type=False), aquí solo se mapea. Literales EXACTOS a la spec 01_MODELO_DATOS.
+categoria_compra = PgEnum(
+    "MEZCLA_ASFALTICA", "EMULSION_ASFALTICA", "ARENA_AGREGADO", "REPUESTO", "COMBUSTIBLE_GENERAL",
+    "TRANSPORTE", "SERVICIO_MANTENIMIENTO", "OTRO",
+    name="categoria_compra", create_type=False,
 )
 
 
@@ -60,6 +69,20 @@ class Compra(TenantBase):
     # Idempotencia estructural (ai-tools.md §4): UNIQUE parcial (WHERE NOT NULL) creado en la migración
     # 0025. Un reintento con la misma key no duplica la compra ni sus ENTRADAS de inventario.
     idempotency_key: Mapped[str | None] = mapped_column(Text)
+    # --- Vertical construcción (spec 11 / tenant 0048). Columnas nullable salvo `es_viaje_material`.
+    # El dinero nuevo va en MONEY4 (18,4, construcción) aunque `total`/`costo` sigan en MONEY (12,2, POS):
+    # divergencia DOCUMENTADA en core/money.py. La compra imputada a obra NO mueve stock (solo imputa);
+    # la de catálogo sigue moviendo (lo decide el service de Fase 3, no el modelo). ----------------------
+    obra_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("obras.id", ondelete="SET NULL")
+    )
+    es_viaje_material: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("false")
+    )
+    precio_venta_cliente: Mapped[Decimal | None] = mapped_column(MONEY4)   # lo que se cobra al cliente
+    resbalo: Mapped[Decimal | None] = mapped_column(MONEY4)                # = precio_venta − costo_total
+    categoria: Mapped[str | None] = mapped_column(categoria_compra)
+    factura_url: Mapped[str | None] = mapped_column(Text)
     creado_en: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

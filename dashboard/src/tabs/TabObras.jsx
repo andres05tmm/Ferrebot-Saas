@@ -23,6 +23,7 @@ import { useRealtimeEvent } from '@/components/RealtimeProvider.jsx'
 import { Card } from '@/components/ui/card.jsx'
 import { Input } from '@/components/ui/input.jsx'
 import { Semaforo, Chips, Campo, EstadoVacio, Esqueleto, BTN_PRIMARY, BTN_OUTLINE, SELECT_CLS } from './construccion/comunes.jsx'
+import PanelPresupuestoReal from './construccion/PanelPresupuestoReal.jsx'
 
 // Estado de obra (enum del ORM) → tono del semáforo + etiqueta humana. Cada estado un tono distinto:
 // planificada (por arrancar) azul · en ejecución (sana) verde · suspendida (atención) ámbar ·
@@ -212,7 +213,11 @@ function ObraDetalle({ id, obra, onEditar, onCambio }) {
   const transiciones = TRANSICIONES[detalle.estado] || []
 
   return (
-    <div id={id} className="border-t border-border-subtle bg-surface-2/40 px-4 py-3.5">
+    <div id={id} className="border-t border-border-subtle bg-surface-2/40 px-4 py-3.5 space-y-4">
+      {/* PRESUPUESTO VS REAL — el diferenciador de Fase 3, arriba y a lo ancho. Al liquidar, refresca el
+          detalle (para que el estado pase a LIQUIDADA) y el listado padre. */}
+      <PanelPresupuestoReal obra={detalle} onCambio={() => { detalleQ.refetch(); onCambio() }} />
+
       <div className="grid gap-4 lg:grid-cols-[1fr_1.2fr]">
         {/* Metadatos + acciones */}
         <div className="space-y-3">

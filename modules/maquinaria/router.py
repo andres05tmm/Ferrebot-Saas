@@ -9,8 +9,10 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.auth import Principal, require_role
-from core.auth.features import require_feature
+from core.auth.features import get_capacidades, require_feature
 from core.db.session import get_tenant_db
+from core.tenancy.catalogo import expandir_metapacks
+from modules.cartera.service import construir_cartera_service
 from modules.maquinaria.errors import (
     CodigoMaquinaDuplicado,
     MaquinaInexistente,
@@ -32,8 +34,10 @@ from modules.maquinaria.service import MaquinariaService
 router = APIRouter(tags=["maquinaria"], dependencies=[Depends(require_feature("maquinaria"))])
 
 
-def _service(session: AsyncSession) -> MaquinariaService:
-    return MaquinariaService(SqlMaquinasRepository(session))
+def _service(session: AsyncSession, cartera=None) -> MaquinariaService:
+    """Arma el servicio; `cartera` se inyecta SOLO en el write de horas de tenants con `cartera_alquiler`
+    (la señal que enciende el seam de Fase 5). El resto de endpoints no lo necesita."""
+    return MaquinariaService(SqlMaquinasRepository(session), cartera)
 
 
 @router.get("/maquinas", response_model=list[MaquinaLeer])
@@ -139,6 +143,7 @@ async def registrar_horas(
     maquina_id: int,
     payload: RegistroHorasCrear,
     session: AsyncSession = Depends(get_tenant_db),
+    capacidades: frozenset[str] = Depends(get_capacidades),
     _user: Principal = Depends(require_role("vendedor")),
 ) -> RegistroHorasResultado:
     """Registra el parte de horas del día de una máquina en una obra, aplicando el mínimo facturable.
@@ -147,9 +152,18 @@ async def registrar_horas(
     mínimo, precio pactado e ingreso. IDEMPOTENTE por `(máquina, obra, fecha)`: reintentar el mismo día NO
     duplica (responde el mismo registro con `replay=true`). 404 si la máquina no existe; 409 si no hay
     asignación activa que cubra la fecha.
+
+    Cartera de alquiler (Fase 5): si el tenant tiene `cartera_alquiler`, se inyecta el servicio de cartera
+    para que el seam asiente el consumo de horas como cargo en el ledger de fiados (misma transacción). El
+    cargo es idempotente por `registro.id`; sin la capacidad, el registro conserva su comportamiento previo.
     """
+    cartera = (
+        construir_cartera_service(session)
+        if "cartera_alquiler" in expandir_metapacks(capacidades)
+        else None
+    )
     try:
-        resultado = await _service(session).registrar_horas(maquina_id, payload)
+        resultado = await _service(session, cartera).registrar_horas(maquina_id, payload)
     except MaquinaInexistente as exc:
         raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
     except SinAsignacionActiva as exc:

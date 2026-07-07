@@ -50,6 +50,7 @@ from modules.agenda.repository import SqlAgendaRepository
 from modules.agenda.service import AgendaService
 from core.pagos.bold import BoldClient
 from core.pagos.config import cargar_config_bold
+from modules.cartera.service import construir_cartera_service
 from modules.cobranza.repository import SqlCobranzaRepository
 from modules.cobranza.service import CobranzaService, DeudorRecordatorio
 from modules.pagar.repository import SqlPagarRepository
@@ -429,6 +430,45 @@ async def avisos_pagar(ctx: dict) -> str:
     return f"notificadas={notificadas}"
 
 
+async def detectar_colitas_alquiler(ctx: dict) -> str:
+    """Cron de cartera de alquiler (Fase 5, plan §6b): por cada tenant con `cartera_alquiler`, detecta las
+    COLITAS estancadas (obra FINALIZADA/LIQUIDADA con saldo sin abono > `dias_colita`) y avisa al DUEÑO.
+
+    Barre TODOS los tenants (el aviso es interno vía SSE, no depende de WhatsApp —molde de `avisos_pagar`).
+    NO envía nada de cara al cliente: la colita YA está en el ciclo de `pack_cobranza` (que barre a todo
+    cliente con `saldo_fiado > mínimo`); aquí solo se avisa al dueño y se alimenta el semáforo del dashboard.
+    La lógica determinista vive en `CarteraAlquilerService.avisar_colitas` (testeada contra base efímera);
+    aquí solo el barrido multi-tenant con `try/except` por tenant para que un fallo no tumbe el barrido.
+
+    ARQ corre en la hora del servidor (UTC en Railway): 13:20 UTC ≈ 08:20 a.m. Colombia. La relatividad de
+    las fechas la da `now_co()` dentro del motor, así que el corte de días queda correcto.
+    """
+    async with control_session() as cs:
+        tenants = await listar_tenants(cs)
+
+    avisadas = 0
+    for t in tenants:
+        if "cartera_alquiler" not in t.features:
+            continue
+        async with control_session() as cs:
+            tenant = await resolve_tenant_by_id(cs, t.id)
+        if tenant is None:
+            continue
+        try:
+            async for s in tenant_session(tenant):   # commit al cerrar el generador
+                servicio = construir_cartera_service(s)
+                config = await servicio.obtener_config()
+                if not config.activo:
+                    continue
+                n = await servicio.avisar_colitas(ahora=now_co(), dias_umbral=config.dias_colita)
+                avisadas += n
+                if n:
+                    log.info("cartera_colitas_tenant", tenant_id=t.id, colitas=n)
+        except Exception:  # noqa: BLE001 — un fallo en un tenant no debe tumbar el barrido
+            log.exception("detectar_colitas_alquiler_error", tenant_id=t.id)
+    return f"avisadas={avisadas}"
+
+
 def _hacer_enviar_postventa(sender: KapsoSender, settings, phone_number_id: str):
     """Closure `enviar(seguimiento) -> bool` que manda la PLANTILLA de postventa por el número del tenant.
 
@@ -638,6 +678,9 @@ class WorkerSettings:
         cron(avisos_pagar, minute={10, 40}, run_at_startup=False),
         # Pagos (ADR 0013): conciliación por polling cada 5 min (links pagados → estado + SSE).
         cron(conciliar_cobros, minute=set(range(2, 60, 5)), run_at_startup=False),
+        # Cartera de alquiler (Fase 5, plan §6b): diario, detecta colitas estancadas (obra cerrada, saldo
+        # sin abono > N días) y avisa al dueño (SSE interno). 13:20 UTC ≈ 08:20 a.m. Colombia (decalado).
+        cron(detectar_colitas_alquiler, hour={13}, minute={20}, run_at_startup=False),
         # Postventa (plan §2.6): cada hora; la espera tras el evento y el dedup los aplica el motor.
         cron(seguimientos_postventa, minute={50}, run_at_startup=False),
         # Higiene de demos (plan §4): cada noche resetea los tenants demo a su estado canónico con

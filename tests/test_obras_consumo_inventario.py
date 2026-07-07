@@ -188,6 +188,67 @@ async def test_consumo_producto_inexistente(tenant):
         await s.rollback()
 
 
+async def test_consumo_idempotente_por_key(tenant):
+    """M2 (INVARIANTE, test-primero): reintentar el consumo con la misma `idempotency_key` es REPLAY —un
+    solo consumo + un solo movimiento; el stock baja UNA vez (el bot puede reintentar sin duplicar)."""
+    key = "obra-bot:consumo:abc123"
+    async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
+        cid = await _cliente(s)
+        oid = await _obra(s, cid)
+        pid = await _producto(s, stock="100")
+        await s.commit()
+
+        consumo1, res1 = await _servicio(s).registrar_consumo(
+            oid,
+            ConsumoInventarioCrear(
+                producto_id=pid, cantidad=Decimal("30"), costo_unitario=Decimal("28000"),
+                idempotency_key=key,
+            ),
+            usuario_id=None,
+        )
+        await s.commit()
+
+    # Reintento en OTRA sesión (como un segundo request del bot), MISMA key.
+    async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
+        consumo2, res2 = await _servicio(s).registrar_consumo(
+            oid,
+            ConsumoInventarioCrear(
+                producto_id=pid, cantidad=Decimal("30"), costo_unitario=Decimal("28000"),
+                idempotency_key=key,
+            ),
+            usuario_id=None,
+        )
+        await s.commit()
+
+    assert consumo2.id == consumo1.id                 # el mismo consumo (replay)
+    assert res2.replay is True                        # el ajuste NO re-aplicó
+    assert res2.movimiento_id == res1.movimiento_id   # el mismo movimiento
+    # Un solo consumo, un solo movimiento, stock = 100 − 30 = 70 (bajó una vez).
+    assert await _cuenta(tenant.engine, "consumos_inventario", "obra_id", oid) == 1
+    assert await _cuenta(tenant.engine, "movimientos_inventario", "producto_id", pid) == 1
+    assert await _stock(tenant.engine, pid) == Decimal("70.000")
+
+
+async def test_consumo_sin_key_permite_repetidos(tenant):
+    """Sin `idempotency_key` (alta de dashboard) el comportamiento actual se conserva: dos consumos
+    iguales generan DOS filas y DOS movimientos (el único parcial solo aplica WHERE key IS NOT NULL)."""
+    async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
+        cid = await _cliente(s)
+        oid = await _obra(s, cid)
+        pid = await _producto(s, stock="100")
+        await s.commit()
+
+        for _ in range(2):
+            await _servicio(s).registrar_consumo(
+                oid, ConsumoInventarioCrear(producto_id=pid, cantidad=Decimal("10")), usuario_id=None
+            )
+        await s.commit()
+
+    assert await _cuenta(tenant.engine, "consumos_inventario", "obra_id", oid) == 2
+    assert await _cuenta(tenant.engine, "movimientos_inventario", "producto_id", pid) == 2
+    assert await _stock(tenant.engine, pid) == Decimal("80.000")   # 100 − 10 − 10
+
+
 async def test_consumo_aislado_entre_empresas(tenant_factory):
     """El consumo (y su movimiento) de la empresa A jamás toca el inventario de la B (bases distintas)."""
     empresa_a = await tenant_factory()

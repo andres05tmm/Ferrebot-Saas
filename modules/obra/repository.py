@@ -315,6 +315,19 @@ class SqlObrasRepository:
             return None
         return fila[0], fila[1]
 
+    async def consumo_por_key(self, idempotency_key: str) -> ConsumoInventario | None:
+        """Consumo ya asentado con esta `idempotency_key` (o None). Sostiene el replay del bot (M2).
+
+        El índice ÚNICO PARCIAL `uq_consumos_inventario_idempotency_key` WHERE IS NOT NULL garantiza a
+        lo sumo una fila por key."""
+        return (
+            await self._s.execute(
+                select(ConsumoInventario).where(
+                    ConsumoInventario.idempotency_key == idempotency_key
+                )
+            )
+        ).scalar_one_or_none()
+
     async def crear_consumo(
         self,
         *,
@@ -325,9 +338,16 @@ class SqlObrasRepository:
         costo_unitario: Decimal,
         responsable: str | None,
         observaciones: str | None,
+        idempotency_key: str | None = None,
     ) -> ConsumoInventario:
         """Inserta el `ConsumoInventario` (imputación a obra). El MOVIMIENTO de inventario lo emite el
-        service por `modules.inventario` en la misma transacción (no aquí)."""
+        service por `modules.inventario` en la misma transacción (no aquí).
+
+        Con `idempotency_key` (M2, escritura del bot) el flush va en un SAVEPOINT (`begin_nested`) y, ante
+        una carrera que esquive el pre-chequeo del service, la UNIQUE PARCIAL de `idempotency_key` es la
+        frontera última: se re-lee y se devuelve el consumo ya committeado por la ganadora (misma fila),
+        en vez de propagar un 500 (espeja `crear_desde_cotizacion`/`crear_liquidacion`). Sin key (alta de
+        dashboard) el índice parcial no aplica y se inserta directo (se permiten consumos repetidos)."""
         consumo = ConsumoInventario(
             obra_id=obra_id,
             producto_id=producto_id,
@@ -336,9 +356,21 @@ class SqlObrasRepository:
             costo_unitario=costo_unitario,
             responsable=responsable,
             observaciones=observaciones,
+            idempotency_key=idempotency_key,
         )
-        self._s.add(consumo)
-        await self._s.flush()  # asigna consumo.id (ancla la idempotencia del movimiento)
+        if idempotency_key is None:
+            self._s.add(consumo)
+            await self._s.flush()  # asigna consumo.id (ancla la idempotencia del movimiento)
+            return consumo
+        try:
+            async with self._s.begin_nested():   # SAVEPOINT: aísla el flush de la carrera
+                self._s.add(consumo)
+                await self._s.flush()  # dispara la UNIQUE PARCIAL de idempotency_key
+        except IntegrityError:
+            existente = await self.consumo_por_key(idempotency_key)
+            if existente is None:   # la colisión no fue por idempotency_key: no la tragues
+                raise
+            return existente
         return consumo
 
     # ---- Liquidación (Fase 3): snapshot inmutable, idempotente por UNIQUE(obra_id) -----------------

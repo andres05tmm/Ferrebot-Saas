@@ -184,6 +184,10 @@ class ConsumoInventario(TenantBase):
     costo_unitario: Mapped[Decimal] = mapped_column(MONEY4, nullable=False)
     responsable: Mapped[str | None] = mapped_column(Text)
     observaciones: Mapped[str | None] = mapped_column(Text)
+    # Idempotencia (M2, tenant 0049): ancla el reintento del bot al escribir consumos. Índice ÚNICO
+    # PARCIAL `uq_consumos_inventario_idempotency_key` WHERE IS NOT NULL. NULL en el alta de dashboard
+    # (comportamiento actual): el único parcial no aplica sobre NULL, así que no colisiona.
+    idempotency_key: Mapped[str | None] = mapped_column(Text)
     creado_en: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

@@ -163,6 +163,9 @@ class ConsumoInventarioCrear(BaseModel):
     fecha: date | None = None
     responsable: str | None = None
     observaciones: str | None = None
+    # M2 (tenant 0049): idempotencia del consumo cuando lo escribe el bot (reintento → replay, un solo
+    # consumo + un solo movimiento de inventario). None en el alta de dashboard (comportamiento actual).
+    idempotency_key: str | None = None
 
 
 class ConsumoInventarioLeer(BaseModel):

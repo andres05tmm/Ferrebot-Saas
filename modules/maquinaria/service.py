@@ -9,6 +9,7 @@ El WRITE de horas (`registrar_horas`, Fase 3) aplica el MÍNIMO facturable con l
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
+from typing import TYPE_CHECKING
 
 from services.calculations.maquinas import horas_facturables
 
@@ -24,6 +25,9 @@ from modules.maquinaria.models import (
 )
 from modules.maquinaria.repository import SqlMaquinasRepository
 from modules.maquinaria.schemas import MaquinaActualizar, MaquinaCrear, RegistroHorasCrear
+
+if TYPE_CHECKING:   # solo para el type hint: no se acopla maquinaria↔cartera en runtime (import perezoso)
+    from modules.cartera.service import CarteraAlquilerService
 
 
 @dataclass(frozen=True, slots=True)
@@ -45,8 +49,14 @@ class ResultadoRegistroHoras:
 
 
 class MaquinariaService:
-    def __init__(self, repo: SqlMaquinasRepository) -> None:
+    def __init__(
+        self, repo: SqlMaquinasRepository, cartera: "CarteraAlquilerService | None" = None
+    ) -> None:
+        """`cartera` es OPCIONAL: se inyecta SOLO para tenants con la capacidad `cartera_alquiler`
+        (lo decide el wiring del router/worker). Sin ella (default `None`) el registro de horas conserva
+        el comportamiento actual —ningún cargo a cartera— para tenants sin la capacidad."""
         self._repo = repo
+        self._cartera = cartera
 
     async def listar(self, *, estado: str | None = None, q: str | None = None) -> list[Maquina]:
         return await self._repo.listar(estado=estado, q=q)
@@ -173,26 +183,35 @@ class MaquinariaService:
     async def _asentar_consumo_cartera(
         self, registro: RegistroHorasMaquina, asignacion: AsignacionMaquinaObra
     ) -> None:
-        """SEAM Fase 5 (HOY NO-OP). Punto de extensión donde la cartera de alquiler asentará el consumo de
-        horas en el ledger de fiados, EN LA MISMA TRANSACCIÓN que el registro (invariante «nada mueve
-        cartera sin registro de horas»). El registro ya tiene `id` por el flush del repositorio.
+        """SEAM Fase 5: asienta el consumo de horas en el ledger de fiados (cartera de alquiler), EN LA
+        MISMA TRANSACCIÓN que el registro (invariante «nada mueve cartera sin registro de horas»). El
+        registro ya tiene `id` por el flush del repositorio.
 
-        Cuando arranque la Fase 5, este service recibirá un `CarteraAlquilerService` opcional por el
-        `__init__` (para no acoplar maquinaria↔cartera hoy) y aquí se llamará —solo si el tenant tiene la
-        capacidad `cartera_alquiler` activa— el contrato:
+        Compuertas (diseño §2.1, refinado por Fase 5) — se asienta el cargo SOLO si:
+          1. hay `CarteraAlquilerService` inyectado — que ES la señal de que el tenant tiene la capacidad
+             `cartera_alquiler` (el wiring del router/worker solo lo inyecta para esos tenants);
+          2. la obra resuelve a un cliente (`obra.cliente_id`); y
+          3. ese cliente tiene un CUPO de alquiler ACTIVO —sin cupo, las horas no van a la cartera de
+             crédito (el alquiler a crédito solo aplica a clientes con cupo otorgado).
 
-            TODO(Fase5): await self._cartera.asentar_consumo_horas(
-                registro_horas_id=registro.id,          # ancla de idempotencia (UNIQUE en cargos_alquiler)
-                obra_id=registro.obra_id,               # el service resuelve cliente_id por la obra
-                maquina_id=registro.maquina_id,
-                asignacion_id=asignacion.id,            # precio/mínimo aplicados
-                horas_facturables=registro.horas_facturables,
-                precio_hora=asignacion.precio_hora,
-            )
-
-        `asentar_consumo_horas` es idempotente por `registro.id` y reusa
-        `FiadosService.crear(idempotency_key=f"alquiler:horas:{registro.id}")`. Diseño completo en
-        `docs/research/pim-fase5-cartera-diseno.md` §2. Se deja vacío a propósito: mantiene el contrato
-        sin implementar la cartera.
+        Con las tres, delega en `asentar_consumo_horas` (idempotente por `registro.id`; reusa
+        `FiadosService.crear(idempotency_key="alquiler:horas:{registro.id}")`). El cupo dispara la ALERTA
+        de excedido dentro del service (SSE al dueño); NUNCA bloquea. Diseño en
+        `docs/research/pim-fase5-cartera-diseno.md` §2/§4.
         """
-        return None
+        if self._cartera is None:
+            return
+        cliente_id = await self._cartera.cliente_de_obra(registro.obra_id)
+        if cliente_id is None:
+            return
+        if await self._cartera.cupo_activo(cliente_id) is None:
+            return
+        await self._cartera.asentar_consumo_horas(
+            registro_horas_id=registro.id,          # ancla de idempotencia (UNIQUE en cargos_alquiler)
+            obra_id=registro.obra_id,
+            maquina_id=registro.maquina_id,
+            asignacion_id=asignacion.id,            # precio/mínimo pactados de la asignación
+            cliente_id=cliente_id,                  # resuelto por la obra
+            horas_facturables=registro.horas_facturables,
+            precio_hora=asignacion.precio_hora,
+        )

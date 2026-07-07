@@ -396,7 +396,12 @@ async def test_sink_dispatcher_gasto_R3_confirma_y_reusa_key():
         async def gasto_por_key(self, key):
             return self._por_key.get(key)
 
-        async def insertar_gasto(self, *, caja_id, usuario_id, categoria, monto, concepto, idempotency_key):
+        async def insertar_gasto(
+            self, *, caja_id, usuario_id, categoria, monto, concepto, idempotency_key, **kwargs
+        ):
+            # **kwargs absorbe los campos que `registrar_gasto` pasa desde 0048 (obra_id, maquina_id,
+            # categoria_gasto, metodo_pago, comprobante_url, telegram_*, requiere_revision, etc.): este
+            # fake solo ejercita la idempotencia por `idempotency_key`, no la imputación a obra.
             self.insertados += 1
             g = SimpleNamespace(id=self.insertados)
             if idempotency_key:

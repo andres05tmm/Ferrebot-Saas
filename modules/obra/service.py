@@ -79,6 +79,7 @@ class ObrasRepo(Protocol):
     async def costo_producto(
         self, producto_id: int
     ) -> tuple[Decimal | None, Decimal | None] | None: ...
+    async def consumo_por_key(self, idempotency_key: str) -> ConsumoInventario | None: ...
     async def crear_consumo(
         self,
         *,
@@ -89,6 +90,7 @@ class ObrasRepo(Protocol):
         costo_unitario: Decimal,
         responsable: str | None,
         observaciones: str | None,
+        idempotency_key: str | None = None,
     ) -> ConsumoInventario: ...
     async def obtener_liquidacion(self, obra_id: int) -> LiquidacionObra | None: ...
     async def crear_liquidacion(
@@ -291,9 +293,21 @@ class ObrasService:
         deja stock negativo, `ajustar` levanta su error y toda la transacción del tenant se revierte (el
         consumo no queda huérfano). El movimiento lleva `idempotency_key` anclada al id del consumo, para
         que un reintento del ajuste no lo duplique. 404 si la obra no existe; 409 si está LIQUIDADA;
-        `ProductoInexistente` si el producto no existe (lo traduce el router)."""
+        `ProductoInexistente` si el producto no existe (lo traduce el router).
+
+        M2 (cierre): si `datos.idempotency_key` YA generó un consumo (el bot reintentó), se hace REPLAY —se
+        devuelve ese consumo y se re-emite el ajuste con su misma key (idempotente en inventario): ni un
+        segundo consumo ni un segundo movimiento. Sin key (alta de dashboard) el flujo es el de siempre."""
         if self._inventario is None:   # error de wiring, no de dominio
             raise RuntimeError("ObrasService sin MovedorInventario: no puede registrar consumos")
+
+        # Replay del bot: un consumo ya asentado con esta key no se duplica (reintento inocuo). No re-valida
+        # el estado de la obra: la operación ya ocurrió; replicarla es idempotente (patrón de `liquidar`).
+        if datos.idempotency_key is not None:
+            existente = await self._repo.consumo_por_key(datos.idempotency_key)
+            if existente is not None:
+                return existente, await self._salida_stock(existente, usuario_id=usuario_id)
+
         obra = await self.obtener(obra_id)   # 404 si no existe
         if obra.estado == "LIQUIDADA":
             raise ConsumoEnObraLiquidada(obra_id)
@@ -308,15 +322,23 @@ class ObrasService:
             costo_unitario=costo,
             responsable=datos.responsable,
             observaciones=datos.observaciones,
+            idempotency_key=datos.idempotency_key,
         )
-        resultado = await self._inventario.ajustar(
-            producto_id=datos.producto_id,
-            delta=-datos.cantidad,   # salida: baja el stock
-            motivo=f"Consumo obra {obra_id} (consumo {consumo.id})",
+        return consumo, await self._salida_stock(consumo, usuario_id=usuario_id)
+
+    async def _salida_stock(
+        self, consumo: ConsumoInventario, *, usuario_id: int | None
+    ) -> ResultadoAjuste:
+        """Emite la salida de stock del consumo por `modules.inventario` (delta negativo), idempotente por
+        `consumo:{id}`. Reutilizada por el alta y por el REPLAY (M2): en el replay, `ajustar` encuentra el
+        movimiento por su key y devuelve replay sin re-aplicar —ni un segundo movimiento."""
+        return await self._inventario.ajustar(
+            producto_id=consumo.producto_id,
+            delta=-consumo.cantidad,   # salida: baja el stock
+            motivo=f"Consumo obra {consumo.obra_id} (consumo {consumo.id})",
             usuario_id=usuario_id,
             idempotency_key=f"consumo:{consumo.id}",
         )
-        return consumo, resultado
 
     async def _resolver_costo(self, datos: ConsumoInventarioCrear) -> Decimal:
         """Costo unitario a valorar el consumo: el explícito, si no el del producto (promedio→compra→0).

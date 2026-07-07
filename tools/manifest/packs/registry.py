@@ -10,6 +10,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from tools.manifest.packs.agenda import cargar_agenda
+from tools.manifest.packs.construccion import cargar_construccion
 from tools.manifest.packs.faq import cargar_faq
 from tools.manifest.packs.pedidos import cargar_pedidos
 from tools.manifest.packs.pos import cargar_pos
@@ -76,6 +77,17 @@ PACKS: dict[str, Pack] = {
         flag="pack_reservas",
         loader=None,
         tablas=("citas", "recursos", "agenda_config"),
+    ),
+    # Vertical CONSTRUCCIÓN (plan §8): igual que `ventas` respecto a `pos`, el pack se registra bajo UNA
+    # fina del meta-pack —`obras`, el corazón del vertical— para que su loader corra UNA sola vez aunque
+    # `construccion` expanda a siete finas. La sección del manifiesto es `packs.construccion` (explícita,
+    # no la convención flag→sección, porque el flag disparador es `obras`). El loader siembra
+    # `parametros_legales` 2026 + catálogos default; las cuatro tablas las crea la migración de tenant 0043.
+    "obras": Pack(
+        flag="obras",
+        loader=cargar_construccion,
+        seccion="construccion",
+        tablas=("parametros_legales", "maquinas", "herramientas", "trabajadores"),
     ),
 }
 

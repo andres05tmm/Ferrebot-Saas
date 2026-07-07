@@ -355,11 +355,41 @@ class PackPos(_Base):
     aliases: list[AliasPos] = Field(default_factory=list)
 
 
+# ---------------------------------------------------------------------------
+# Pack Construcción (vertical PIM, plan §8) — catálogos default de arranque. Los `parametros_legales`
+# NO se declaran aquí: son constantes de ley que el loader (cargar_construccion) hardcodea. Solo van los
+# placeholders provisionales de máquina/herramienta; el catálogo real lo carga el cliente (plan §7).
+# ---------------------------------------------------------------------------
+class MaquinaConstruccion(_Base):
+    """-> tabla `maquinas`. `codigo` (clave UNIQUE) y `precio_hora_default` son opcionales en el
+    manifiesto: el loader deriva un `codigo` del `nombre` y usa 0 como precio placeholder cuando faltan
+    (fila provisional, [DEFINIR] el precio real). `tipo` es la categoría ("vibrocompactador", …)."""
+
+    nombre: str
+    tipo: str | None = None
+    codigo: str | None = None
+    precio_hora_default: int | None = None
+
+
+class HerramientaConstruccion(_Base):
+    """-> tabla `herramientas`. `codigo` (UNIQUE) opcional: el loader lo deriva del `nombre` si falta."""
+
+    nombre: str
+    categoria: str | None = None
+    codigo: str | None = None
+
+
+class PackConstruccion(_Base):
+    maquinas: list[MaquinaConstruccion] = Field(default_factory=list)
+    herramientas: list[HerramientaConstruccion] = Field(default_factory=list)
+
+
 class Packs(_Base):
     agenda: PackAgenda | None = None
     faq: PackFaq | None = None
     pos: PackPos | None = None
     pedidos: PackPedidos | None = None
+    construccion: PackConstruccion | None = None
 
 
 # ---------------------------------------------------------------------------

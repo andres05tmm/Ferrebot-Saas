@@ -79,6 +79,11 @@ def _errores_coherencia(manifiesto: Manifiesto, efectivas: frozenset[str]) -> li
     pedidos = manifiesto.packs.pedidos
     if pedidos is not None and pedidos.zonas and "pack_pedidos" not in efectivas:
         errores.append("packs.pedidos declarado pero la feature pack_pedidos no está activa")
+    construccion = manifiesto.packs.construccion
+    # El pack construcción se registra bajo la fina `obras` del meta-pack `construccion` (registry.py);
+    # el set efectivo ya viene expandido, así que basta chequear `obras`.
+    if construccion is not None and (construccion.maquinas or construccion.herramientas) and "obras" not in efectivas:
+        errores.append("packs.construccion declarado pero la feature obras (meta-pack construccion) no está activa")
     if manifiesto.canal.whatsapp is not None and "canal_whatsapp" not in efectivas:
         errores.append("canal.whatsapp declarado pero la feature canal_whatsapp no está activa")
     return errores

@@ -5,7 +5,19 @@ FerreBot redondeaba a pesos enteros con `round()`; el SaaS conserva dos decimale
 """
 from decimal import ROUND_HALF_UP, Decimal
 
+from sqlalchemy import Numeric
+
 CENTAVO = Decimal("0.01")
+
+# Dos precisiones de dinero CONVIVEN en la plataforma y NO se deben mezclar (riesgo técnico §7 del
+# plan PIM). Se declaran juntas para que la divergencia quede a la vista:
+#   MONEY  = NUMERIC(12,2) — POS retail (pesos con centavos). Precisión histórica de FerreBot; los
+#            modelos del POS la declaran inline (`MONEY = Numeric(12, 2)`) y `cuantizar` redondea ahí.
+#   MONEY4 = NUMERIC(18,4) — vertical CONSTRUCCIÓN (spec cliente 01_MODELO_DATOS: `@db.Decimal(18,4)`).
+#            AIU con márgenes de 3–4% y prorrateo de nómina necesitan 4 decimales para conciliar sin
+#            perder centavos. Se estrena en la migración tenant 0043 (Construcciones PIM).
+MONEY = Numeric(12, 2)
+MONEY4 = Numeric(18, 4)
 
 
 def cuantizar(valor: Decimal) -> Decimal:

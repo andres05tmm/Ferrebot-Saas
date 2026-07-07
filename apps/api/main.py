@@ -44,6 +44,10 @@ from modules.facturacion.webhook_wiring import construir_webhook_matias_deps
 from modules.bancos.gmail.webhook import crear_router_bancolombia
 from modules.bancos.gmail.wiring import construir_webhook_bancolombia_deps
 from modules.faq.router import router as faq_router
+from modules.herramientas.router import router as herramientas_router
+from modules.maquinaria.router import router as maquinaria_router
+from modules.obra.router import router as obras_router
+from modules.trabajadores.router import router as trabajadores_router
 from modules.pagar.router import router as pagar_router
 from modules.pagos.router import router as pagos_router
 from modules.pedidos.router import router as pedidos_router
@@ -164,6 +168,13 @@ def create_app(spa_dist: Path | None = None) -> FastAPI:
     app.include_router(devoluciones_router, prefix="/api/v1")  # devoluciones + nota crédito (ADR 0026)
     app.include_router(catalogo_router, prefix="/api/v1")    # /productos* — feature `ventas` (ADR 0021)
     app.include_router(inventario_router, prefix="/api/v1")  # /inventario/* — feature `inventario`
+    # Vertical construcción (PIM, Fase 1): cada recurso gatea por su feature fina (feature-flags.md);
+    # sin ella el router responde 404. Las tablas viven en TODO tenant (migración de tenant compartida),
+    # vacías donde no aplique. Ver plan piped-hatching-sloth §5.
+    app.include_router(obras_router, prefix="/api/v1")          # /obras* — feature `obras`
+    app.include_router(maquinaria_router, prefix="/api/v1")     # /maquinas* — feature `maquinaria`
+    app.include_router(herramientas_router, prefix="/api/v1")   # /herramientas* — feature `herramientas`
+    app.include_router(trabajadores_router, prefix="/api/v1")   # /trabajadores* — feature `nomina`
     app.include_router(caja_router, prefix="/api/v1")
     app.include_router(gastos_router, prefix="/api/v1")
     app.include_router(fiados_router, prefix="/api/v1")

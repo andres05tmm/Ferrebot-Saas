@@ -48,6 +48,10 @@ import TabLibros from './tabs/TabLibros.jsx'
 import TabEstadosFinancieros from './tabs/TabEstadosFinancieros.jsx'
 import TabRetenciones from './tabs/TabRetenciones.jsx'
 import TabConciliacion from './tabs/TabConciliacion.jsx'
+import TabObras from './tabs/TabObras.jsx'
+import TabMaquinas from './tabs/TabMaquinas.jsx'
+import TabHerramientas from './tabs/TabHerramientas.jsx'
+import TabTrabajadores from './tabs/TabTrabajadores.jsx'
 import { ROUTES } from './routes.jsx'
 
 // Tabs núcleo (E6) + reportes (S2) + facturación (S3) + compras (S4a) + proveedores (S4b) +
@@ -85,6 +89,11 @@ const TABS = {
   '/estados-financieros': TabEstadosFinancieros,
   '/retenciones': TabRetenciones,
   '/conciliacion': TabConciliacion,
+  // Vertical construcción (Fase 1 PIM)
+  '/obras': TabObras,
+  '/maquinas': TabMaquinas,
+  '/herramientas': TabHerramientas,
+  '/trabajadores': TabTrabajadores,
 }
 import { bootConfig } from './lib/config.js'
 import { FeaturesProvider, useFeatures, resolveHomePath, esAtencionCliente, isRouteEnabled } from './lib/features.jsx'

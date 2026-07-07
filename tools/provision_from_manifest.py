@@ -89,8 +89,10 @@ def _cargar_packs(m: Manifiesto, conn_url: str, efectivas: frozenset[str]) -> No
                 if pack.loader is None:
                     continue  # pack estructural (p. ej. `pos`): sus tablas las crea la migración, sin datos
                 seccion = _seccion_pack(m, pack)
-                if seccion is None:
+                if seccion is None and not pack.siembra_sin_seccion:
                     continue  # flag activo sin datos declarados: válido, el negocio los carga luego
+                # `siembra_sin_seccion` (p. ej. `construccion`): sin sección, se corre igual con seccion=None
+                # para sembrar su cimiento no negociable (parametros_legales). El loader tolera None.
                 pack.loader(seccion, conn)
             conn.commit()
         except Exception:

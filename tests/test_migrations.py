@@ -33,8 +33,11 @@ async def test_tenant_upgrade_downgrade_limpio(tenant):
     # ventas/cotizaciones (cotizacion_estado, 0020) + 1 de pagos (cobro_estado, 0021) + 2 del inbox
     # de conversación (mensaje_direccion, mensaje_autor, 0024_conversacion_mensajes) = 24, + 1 de la
     # conciliación bancaria (conciliacion_estado, 0035, ADR 0028) = 25, + 3 del vertical construcción
-    # (tipo_vinculacion, estado_maquina, estado_herramienta, 0043_construccion_base). Total: 28.
-    assert enums == 28
+    # (tipo_vinculacion, estado_maquina, estado_herramienta, 0043_construccion_base) = 28, + 3 de
+    # cotización/obra (estado_cotizacion, estado_obra, origen_registro, 0044_construccion_obra) = 31,
+    # + 2 de operación (tipo_mantenimiento, tipo_ausencia, 0045_construccion_operacion) = 33, + 2 de la
+    # extensión CRM (estatus_cliente, tipo_proveedor, 0046_ext_clientes_proveedores). Total: 35.
+    assert enums == 35
 
     await tenant.engine.dispose()
     downgrade_tenant(tenant.url, "base")

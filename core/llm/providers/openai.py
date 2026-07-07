@@ -7,7 +7,7 @@ import json
 from collections.abc import Awaitable, Callable
 from typing import Any
 
-from core.llm.base import LLMError, LLMResponse, Message, ToolCall, ToolSpec
+from core.llm.base import ImageBlock, LLMError, LLMResponse, Message, ToolCall, ToolSpec
 
 Cliente = Callable[[dict[str, Any]], Awaitable[dict[str, Any]]]
 
@@ -55,9 +55,30 @@ class OpenAIProvider:
                         for tc in m.tool_calls
                     ],
                 })
+            elif m.images:
+                # Visión: texto (si hay) + partes image_url, en el arreglo multimodal de OpenAI.
+                cuerpo.append({"role": m.role, "content": self._bloques_con_imagenes(m)})
             else:
                 cuerpo.append({"role": m.role, "content": m.content})
         return cuerpo
+
+    @staticmethod
+    def _bloques_con_imagenes(m: Message) -> list[dict[str, Any]]:
+        """Arma las partes de contenido de un mensaje con imágenes: texto primero, luego cada imagen."""
+        partes: list[dict[str, Any]] = []
+        if m.content:
+            partes.append({"type": "text", "text": m.content})
+        partes.extend(OpenAIProvider._bloque_imagen(img) for img in m.images)
+        return partes
+
+    @staticmethod
+    def _bloque_imagen(img: ImageBlock) -> dict[str, Any]:
+        """Traduce un `ImageBlock` canónico a la parte `image_url` de OpenAI (data URL o URL http)."""
+        if img.url is not None:
+            url = img.url
+        else:
+            url = f"data:{img.media_type};base64,{img.data}"
+        return {"type": "image_url", "image_url": {"url": url}}
 
     def _payload(
         self, messages: list[Message], tools: list[ToolSpec], model: str,

@@ -176,6 +176,7 @@ class NominaRepo(Protocol):
     ) -> list[ProrrateoNominaObra]: ...
     async def trabajadores_map(self, ids: list[int]) -> dict[int, Trabajador]: ...
     async def obras_nombres(self, ids: list[int]) -> dict[int, str]: ...
+    async def contar_transmitibles(self, periodo_id: int) -> int: ...
 
 
 class NominaService:
@@ -338,6 +339,14 @@ class NominaService:
         nombres = await self._repo.obras_nombres(obra_ids)
         enriquecidos = [(p, nombres.get(p.obra_id) if p.obra_id is not None else None) for p in prorrateos]
         return detalle, tmap.get(trabajador_id), enriquecidos
+
+    # --- nómina electrónica (ack del endpoint de transmisión) -----------------
+    async def contar_directos_transmitibles(self, periodo_id: int) -> int:
+        """Cuántos trabajadores DIRECTO del periodo faltan por transmitir a DIAN (PENDIENTE/ERROR).
+
+        Solo lectura para el ACK del endpoint `/transmitir-dian`: la transmisión real corre en el worker
+        (job `transmitir_nomina`). El patacaliente no cuenta (no lleva CUNE, spec 08)."""
+        return await self._repo.contar_transmitibles(periodo_id)
 
     # --- asistencia (endpoint opcional) ---------------------------------------
     async def registrar_asistencia(self, datos: AsistenciaCrear) -> RegistroAsistencia:

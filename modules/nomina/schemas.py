@@ -151,6 +151,17 @@ class AccionResultado(BaseModel):
     replay: bool
 
 
+class TransmisionEncolada(BaseModel):
+    """Salida de POST .../transmitir-dian: la transmisión de nómina electrónica se ENCOLA (no corre en el
+    request; la hace el worker con reintentos, como la emisión FE). `transmisibles` = trabajadores DIRECTO
+    del periodo aún por transmitir (los ya TRANSMITIDOS no se reprocesan; el patacaliente no lleva CUNE)."""
+
+    periodo_id: int
+    estado: str
+    transmisibles: int
+    encolado: bool
+
+
 class AsistenciaCrear(BaseModel):
     """Registro de asistencia de un día (insumo de la liquidación). Endpoint opcional (rol vendedor).
 

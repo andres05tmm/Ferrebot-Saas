@@ -8,8 +8,9 @@ mapea a HTTP y se serializan los DTO (componiendo nombre de trabajador/obra, com
 from __future__ import annotations
 
 from decimal import Decimal
+from typing import Protocol
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.auth import Principal, require_role
@@ -36,6 +37,7 @@ from modules.nomina.schemas import (
     ProrrateoLeer,
     TotalesPeriodo,
     TrabajadorLiquidacion,
+    TransmisionEncolada,
 )
 from modules.nomina.service import NominaService
 from modules.trabajadores.models import Trabajador
@@ -50,6 +52,32 @@ _CERO = Decimal("0")
 def get_nomina_service(session: AsyncSession = Depends(get_tenant_db)) -> NominaService:
     """Arma el `NominaService` sobre la sesión del tenant (los tests lo overridean con un fake)."""
     return NominaService(SqlNominaRepository(session))
+
+
+class Enqueuer(Protocol):
+    """Puerto de cola ARQ (mismo contrato que `facturacion.router.Enqueuer`); en tests, un fake."""
+
+    async def enqueue(self, job: str, *args) -> None: ...
+
+
+class _ArqEnqueuer:
+    """Adaptador sobre el pool ARQ del lifespan del API: `enqueue(job, *args)` → `enqueue_job`."""
+
+    def __init__(self, pool) -> None:
+        self._pool = pool
+
+    async def enqueue(self, job: str, *args) -> None:
+        await self._pool.enqueue_job(job, *args)
+
+
+async def get_enqueuer(request: Request) -> Enqueuer:
+    """Encolador sobre el pool ARQ creado en el lifespan del API (`app.state.arq_pool`; overridable en test)."""
+    return _ArqEnqueuer(request.app.state.arq_pool)
+
+
+def get_tenant_id(request: Request) -> int:
+    """tenant_id de la empresa resuelta por el TenantMiddleware (overridable en test)."""
+    return request.state.tenant.id
 
 
 # --- mapeo ORM → DTO ---------------------------------------------------------
@@ -236,6 +264,43 @@ async def pagar_periodo(
     except PeriodoBloqueado as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
     return AccionResultado(periodo_id=resumen.periodo_id, estado=resumen.estado, replay=resumen.replay)
+
+
+# --- nómina electrónica: transmisión CUNE a DIAN (Fase 7) --------------------
+@router.post(
+    "/periodos/{periodo_id}/transmitir-dian",
+    response_model=TransmisionEncolada,
+    status_code=status.HTTP_202_ACCEPTED,
+    dependencies=[Depends(require_feature("nomina_electronica"))],
+)
+async def transmitir_dian(
+    periodo_id: int,
+    service: NominaService = Depends(get_nomina_service),
+    enqueuer: Enqueuer = Depends(get_enqueuer),
+    tenant_id: int = Depends(get_tenant_id),
+    _user: Principal = Depends(require_role("admin")),
+) -> TransmisionEncolada:
+    """Encola la transmisión de la nómina electrónica (CUNE) del periodo a DIAN vía MATIAS.
+
+    Gateado por la capacidad `nomina_electronica` (además del `nomina` del router): 404 sin el flag. Rol
+    admin (dato sensible: salarios). Como la emisión FE, NO transmite en el request: valida y encola
+    `transmitir_nomina(tenant_id, periodo_id)`; el worker transmite cada DIRECTO con reintentos/backoff.
+    404 si el periodo no existe; 409 si está ABIERTO (hay que cerrarlo antes, spec 08). Idempotente: un
+    detalle ya transmitido no se reprocesa, así que re-encolar no duplica el CUNE."""
+    try:
+        periodo = await service.obtener_periodo(periodo_id)
+    except PeriodoNominaInexistente as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
+    if periodo.estado == "ABIERTO":
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            f"periodo {periodo_id} está ABIERTO: ciérralo (LIQUIDADO) antes de transmitir a DIAN",
+        )
+    transmisibles = await service.contar_directos_transmitibles(periodo_id)
+    await enqueuer.enqueue("transmitir_nomina", tenant_id, periodo_id)
+    return TransmisionEncolada(
+        periodo_id=periodo_id, estado=periodo.estado, transmisibles=transmisibles, encolado=True
+    )
 
 
 # --- asistencia (opcional, captura de campo) ---------------------------------

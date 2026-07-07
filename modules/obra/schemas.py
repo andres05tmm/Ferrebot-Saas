@@ -195,6 +195,25 @@ class ConsumoInventarioRegistrado(ConsumoInventarioLeer):
     stock_resultante: Decimal
 
 
+class FacturaObraLeer(BaseModel):
+    """Resultado de facturar una obra (Fase 7 DIAN): el documento FE ligado a la obra + si nació ahora.
+
+    `factura_id`/`estado`/`cufe`/`prefijo`/`consecutivo` describen el documento electrónico (arranca
+    `pendiente` sin CUFE; el worker lo lleva a `aceptada` con su CUFE al emitir contra MATIAS). `creada`
+    distingue el documento NUEVO (se encoló la emisión) del ya existente (idempotencia: no se emite un
+    segundo CUFE). `venta_id` es la venta INTERNA que respalda la factura (reuso del pipeline venta→FE)."""
+
+    obra_id: int
+    factura_id: int
+    venta_id: int | None
+    tipo: str
+    estado: str
+    prefijo: str | None
+    consecutivo: int | None
+    cufe: str | None
+    creada: bool
+
+
 class LiquidacionObraLeer(BaseModel):
     """Vista de salida del snapshot inmutable de la liquidación de una obra."""
 

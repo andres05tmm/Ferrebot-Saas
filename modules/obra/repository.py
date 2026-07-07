@@ -23,6 +23,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.config.timezone import now_co
 from modules.caja.models import Gasto
 from modules.compras.models import Compra
+from modules.facturacion.models import FacturaElectronica
+from modules.facturacion.repository import FacturaLeer
 from modules.inventario.models import Inventario, Producto
 from modules.maquinaria.models import AsignacionMaquinaObra, Maquina, RegistroHorasMaquina
 from modules.nomina.models import ProrrateoNominaObra
@@ -99,6 +101,24 @@ class SqlObrasRepository:
                 select(Obra).where(Obra.cotizacion_id == cotizacion_id)
             )
         ).scalar_one_or_none()
+
+    async def factura_de_obra(self, obra_id: int) -> FacturaLeer | None:
+        """Factura electrónica ya ligada a la obra (rastro `obra_id`, Fase 7 DIAN), o None.
+
+        Sostiene la IDEMPOTENCIA de "facturar desde /obras/{id}": si la obra ya tiene un documento
+        (cualquier estado), facturar de nuevo devuelve ESE, sin emitir un segundo CUFE. Lectura
+        cross-módulo a `facturas_electronicas` (SQL solo en el repo, regla #2), como `tiene_factura_viva`
+        en ventas. Si un histórico dejó varias, gana la más reciente (`id` desc): la reemisión tras
+        rechazo/anulación queda [DEFINIR] fuera de v1 (una obra factura una vez por este endpoint)."""
+        orm = (
+            await self._s.execute(
+                select(FacturaElectronica)
+                .where(FacturaElectronica.obra_id == obra_id)
+                .order_by(FacturaElectronica.id.desc())
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        return FacturaLeer.model_validate(orm) if orm is not None else None
 
     async def crear_desde_cotizacion(self, cotizacion: CotizacionObra) -> Obra:
         """Inserta la Obra 1-1 que nace de una cotización GANADA, poblando `cotizacion_id` (la FK que

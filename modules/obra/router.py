@@ -10,12 +10,18 @@ inyecta por dependencia (los tests lo overridean con un fake, sin red ni Postgre
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.auth import Principal, require_role
 from core.auth.features import require_feature
-from core.db.session import get_tenant_db
+from core.config import get_settings
+from core.db.session import control_session, get_tenant_db
+from core.logging import get_logger
+from modules.facturacion.config import cargar_config_matias
+from modules.facturacion.pos_hook import JOB_EMITIR
+from modules.facturacion.repository import SqlFacturacionRepository
+from modules.facturacion.service import FacturacionService
 from modules.inventario.errors import AjusteDejaStockNegativo, ProductoInexistente
 from modules.inventario.repository import SqlInventarioRepository
 from modules.inventario.service import InventarioService
@@ -23,6 +29,8 @@ from modules.obra.errors import (
     ConsumoEnObraLiquidada,
     ObraInexistente,
     ObraNoFinalizada,
+    ObraSinCliente,
+    ObraSinCotizacion,
     TransicionEstadoInvalida,
 )
 from modules.obra.repository import SqlObrasRepository
@@ -31,6 +39,7 @@ from modules.obra.schemas import (
     ConsumoInventarioLeer,
     ConsumoInventarioRegistrado,
     EstadoObra,
+    FacturaObraLeer,
     GastoRealObra,
     LiquidacionObraLeer,
     ObraActualizar,
@@ -42,6 +51,9 @@ from modules.obra.schemas import (
     ReporteDiarioLeer,
 )
 from modules.obra.service import ObrasService
+from modules.ventas.repository import SqlVentasRepository
+
+log = get_logger("obra.router")
 
 router = APIRouter(tags=["obras"], dependencies=[Depends(require_feature("obras"))])
 
@@ -56,6 +68,40 @@ def get_obras_service(session: AsyncSession = Depends(get_tenant_db)) -> ObrasSe
         SqlObrasRepository(session),
         inventario=InventarioService(SqlInventarioRepository(session)),
     )
+
+
+async def get_obras_facturador(
+    request: Request, session: AsyncSession = Depends(get_tenant_db)
+) -> ObrasService:
+    """Arma el `ObrasService` con los colaboradores de facturación FE (Fase 7 DIAN). Los tests lo overridean.
+
+    Carga la `ConfigFiscal` del tenant desde el control DB (necesaria para que `crear_pendiente_fe` reserve
+    el consecutivo con el `prefix` de la empresa). Cablea sobre la MISMA sesión del tenant: la venta interna,
+    el documento `pendiente` y el estampado del `obra_id` se confirman/revierten juntos. El `MatiasClient` NO
+    se inyecta aquí: la EMISIÓN real (que arma el CUFE) la corre el worker (`emitir_documento`), no el router."""
+    tenant = request.state.tenant
+    async with control_session() as cs:
+        _cred, config = await cargar_config_matias(cs, get_settings().secrets_master_key, tenant.id)
+    fac_repo = SqlFacturacionRepository(session)
+    return ObrasService(
+        SqlObrasRepository(session),
+        ventas=SqlVentasRepository(session),
+        facturacion=FacturacionService(fac_repo, config=config),
+        estampador=fac_repo,
+    )
+
+
+async def _encolar_emision_obra(request: Request, session: AsyncSession, factura_id: int) -> None:
+    """Commitea el documento `pendiente` y ENCOLA su emisión (worker), en ese orden (fix de la carrera
+    commit↔encolado del `pos_hook`: si se encolara antes del commit, el worker correría `emitir` sin ver
+    la fila). Sin tenant/pool ARQ (apps mínimas de test) commitea pero no encola."""
+    await session.commit()   # commit ANTES de encolar: el worker ve la fila (sin carrera)
+    tenant = getattr(request.state, "tenant", None)
+    arq_pool = getattr(getattr(request.app, "state", None), "arq_pool", None)
+    if tenant is None or arq_pool is None:
+        return
+    await arq_pool.enqueue_job(JOB_EMITIR, tenant.id, factura_id)
+    log.info("factura_obra_encolada", tenant_id=tenant.id, factura_id=factura_id)
 
 
 @router.get("/obras", response_model=list[ObraLeer])
@@ -282,3 +328,40 @@ async def obtener_liquidacion_obra(
     except ObraInexistente as exc:
         raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
     return LiquidacionObraLeer.model_validate(liquidacion)
+
+
+# --- Fase 7 (DIAN): facturar desde obra — reusa FacturacionService, gateado por `facturacion_electronica` ---
+
+
+@router.post(
+    "/obras/{obra_id}/facturar",
+    response_model=FacturaObraLeer,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_feature("facturacion_electronica"))],
+)
+async def facturar_obra(
+    request: Request,
+    obra_id: int,
+    session: AsyncSession = Depends(get_tenant_db),
+    service: ObrasService = Depends(get_obras_facturador),
+    _user: Principal = Depends(require_role("admin")),
+) -> FacturaObraLeer:
+    """Emite la factura electrónica de la obra desde su cotización GANADA (AIU, IVA solo sobre utilidad).
+
+    Financiero + fiscal: rol `admin` y capacidad `facturacion_electronica` (sin ella, 404, además del gate
+    `obras` del router). IDEMPOTENTE: una obra ya facturada devuelve su documento (creada=False) sin emitir
+    un segundo CUFE. Si el documento nace ahora (creada=True) se COMMITEA y se encola la emisión (worker).
+    404 si la obra no existe; 409 si no es facturable (sin cotización GANADA / sin cliente)."""
+    try:
+        result = await service.facturar_obra(obra_id, vendedor_id=_user.user_id)
+    except ObraInexistente as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
+    except (ObraSinCotizacion, ObraSinCliente) as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+    if result.creada:
+        await _encolar_emision_obra(request, session, result.factura.id)
+    f = result.factura
+    return FacturaObraLeer(
+        obra_id=obra_id, factura_id=f.id, venta_id=f.venta_id, tipo=f.tipo, estado=f.estado,
+        prefijo=f.prefijo, consecutivo=f.consecutivo, cufe=f.cufe, creada=result.creada,
+    )

@@ -17,7 +17,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import select
+from sqlalchemy import func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -346,3 +346,72 @@ class SqlNominaRepository:
             await self._s.execute(select(Obra.id, Obra.nombre).where(Obra.id.in_(ids)))
         ).all()
         return {oid: nombre for oid, nombre in filas}
+
+    # --- nómina electrónica: transmisión CUNE a DIAN (Fase 7) -----------------
+    async def directos_transmitibles(self, periodo_id: int) -> list[DetalleLiquidacion]:
+        """Detalles del periodo aún por transmitir a DIAN: solo trabajador DIRECTO (spec 08: el
+        PATACALIENTE no genera documento de nómina electrónica) y estado PENDIENTE/ERROR sin CUNE.
+
+        Excluye lo TRANSMITIDO (idempotencia dura: no se re-transmite) y lo RECHAZADO (terminal de
+        negocio, sin reintento). El doble filtro `cune_dian IS NULL` es defensivo: aunque el estado
+        dijera PENDIENTE, una fila con CUNE ya emitido no se vuelve a mandar."""
+        stmt = (
+            select(DetalleLiquidacion)
+            .where(
+                DetalleLiquidacion.periodo_id == periodo_id,
+                DetalleLiquidacion.tipo_vinculacion == "DIRECTO",
+                DetalleLiquidacion.estado_transmision.in_(("PENDIENTE", "ERROR")),
+                DetalleLiquidacion.cune_dian.is_(None),
+            )
+            .order_by(DetalleLiquidacion.id)
+        )
+        return list((await self._s.execute(stmt)).scalars().all())
+
+    async def contar_transmitibles(self, periodo_id: int) -> int:
+        """Cuántos detalles DIRECTO del periodo faltan por transmitir (mismo criterio que
+        `directos_transmitibles`). Lectura ligera para el ack del endpoint."""
+        stmt = (
+            select(func.count())
+            .select_from(DetalleLiquidacion)
+            .where(
+                DetalleLiquidacion.periodo_id == periodo_id,
+                DetalleLiquidacion.tipo_vinculacion == "DIRECTO",
+                DetalleLiquidacion.estado_transmision.in_(("PENDIENTE", "ERROR")),
+                DetalleLiquidacion.cune_dian.is_(None),
+            )
+        )
+        return int((await self._s.execute(stmt)).scalar_one())
+
+    async def marcar_transmision(
+        self,
+        detalle_id: int,
+        *,
+        estado: str,
+        intentos: int,
+        ahora: datetime,
+        cune: str | None = None,
+        fecha_transmision: datetime | None = None,
+        raw: dict | None = None,
+    ) -> None:
+        """Persiste el desenlace de la transmisión en el detalle (SQL solo aquí, regla #2). Solo flush.
+
+        `estado` es el enum de columna (TRANSMITIDO|RECHAZADO|ERROR). En TRANSMITIDO estampa
+        `cune_dian` + `fecha_transmision_dian` (histórico fiscal; una vez set, `directos_transmitibles`
+        ya no la vuelve a elegir → idempotencia dura). RECHAZADO/ERROR solo mueven estado + intentos +
+        `transmision_respuesta` (motivo/diagnóstico), sin tocar el CUNE. Nunca baja intentos ni borra un
+        CUNE existente: `cune`/`fecha_transmision` solo se escriben si vienen (TRANSMITIDO)."""
+        valores: dict = {
+            "estado_transmision": estado,
+            "intentos_transmision": intentos,
+            "actualizado_en": ahora,
+        }
+        if raw is not None:
+            valores["transmision_respuesta"] = raw
+        if cune is not None:
+            valores["cune_dian"] = cune
+        if fecha_transmision is not None:
+            valores["fecha_transmision_dian"] = fecha_transmision
+        await self._s.execute(
+            update(DetalleLiquidacion).where(DetalleLiquidacion.id == detalle_id).values(**valores)
+        )
+        await self._s.flush()

@@ -271,6 +271,17 @@ class SqlFacturacionRepository:
         await publish(self._s, "factura_error", {"id": orm.id, "error": error_msg})
         return FacturaLeer.model_validate(orm)
 
+    async def estampar_obra_id(self, factura_id: int, obra_id: int) -> None:
+        """Liga una factura YA creada a la obra que la originó (rastro obra→documento, Fase 7 DIAN).
+
+        Aditivo y ortogonal a la máquina de estados: la EMISIÓN se sigue montando sobre `venta_id`
+        (reuso de `FacturacionService`); esto solo puebla el vínculo `obra_id` (migración 0050) para la
+        vista "facturas de esta obra" y la idempotencia de "facturar desde /obras/{id}". Idempotente:
+        re-estampar el mismo `obra_id` deja la fila igual. No publica evento (no es una transición)."""
+        orm = await self._cargar(factura_id)
+        orm.obra_id = obra_id
+        await self._s.flush()
+
     async def existe_documento_para_venta(self, venta_id: int) -> bool:
         """True si la venta ya tiene un documento fiscal (FE o POS): exclusión POS↔FE (ADR 0012 D1)."""
         return (

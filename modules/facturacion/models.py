@@ -33,6 +33,12 @@ class FacturaElectronica(TenantBase):
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     venta_id: Mapped[int | None] = mapped_column(BigInteger)
+    # RASTRO obra→documento (Fase 7 DIAN, migración 0050): liga el documento a la obra que lo originó
+    # (spec 15 §1 "facturar desde /obras/[id]"). Columna plana BigInteger —la FK a `obras.id` vive en la
+    # base, no en el ORM, como `venta_id`. La EMISIÓN se sigue montando sobre `venta_id` (reuso de
+    # `FacturacionService`); esto es solo el vínculo para la vista "facturas de esta obra". NULL en toda
+    # factura que no nace de una obra (POS/FE de mostrador).
+    obra_id: Mapped[int | None] = mapped_column(BigInteger)
     tipo: Mapped[str] = mapped_column(fe_tipo_enum, nullable=False)
     prefijo: Mapped[str | None] = mapped_column(Text)
     consecutivo: Mapped[int | None] = mapped_column(BigInteger)

@@ -40,9 +40,11 @@ async def test_tenant_upgrade_downgrade_limpio(tenant):
     # (estado_periodo_nomina, tipo_periodo_nomina, 0047_nomina) = 37, + 4 de la imputación a obra en
     # gastos/compras + liquidación (categoria_gasto, metodo_pago_gasto, categoria_compra, semaforo_obra,
     # 0048_gastos_compras_liquidacion) = 41. 0049_cartera_alquiler_consumo NO añade enums (solo 3 tablas
-    # —cupos_alquiler/cargos_alquiler/cartera_config— y la columna consumos_inventario.idempotency_key).
-    # Total: 41.
-    assert enums == 41
+    # —cupos_alquiler/cargos_alquiler/cartera_config— y la columna consumos_inventario.idempotency_key) = 41,
+    # + 1 de la máquina de estados de transmisión de nómina electrónica (estado_transmision_nomina, Fase 7,
+    # 0050_fe_obra_nomina_cune; esa migración también agrega facturas_electronicas.obra_id y las columnas
+    # de transmisión de detalles_liquidacion, que no son enums) = 42. Total: 42.
+    assert enums == 42
 
     await tenant.engine.dispose()
     downgrade_tenant(tenant.url, "base")

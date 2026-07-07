@@ -23,8 +23,9 @@ verdad): el motor calcula, estos modelos persisten el resultado ya cuantizado.
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import BigInteger, Date, DateTime, Integer, Numeric, Text, func
+from sqlalchemy import BigInteger, Date, DateTime, Integer, Numeric, SmallInteger, Text, func
 from sqlalchemy.dialects.postgresql import ENUM as PgEnum
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from core.db.base import TenantBase
@@ -45,6 +46,14 @@ tipo_periodo_nomina = PgEnum(
 )
 tipo_vinculacion = PgEnum(
     "DIRECTO", "PATACALIENTE", name="tipo_vinculacion", create_type=False
+)
+# Máquina de estados de la transmisión a DIAN de la nómina electrónica (Fase 7, migración 0050). Espeja
+# el operativo de `fe_estado`: TRANSMITIDO≈aceptada (idempotencia dura: no re-transmitir), RECHAZADO≈
+# rechazada (terminal de negocio), ERROR≈error (transitorio/5xx, reintentable). El tipo lo crea 0050
+# (create_type=False): aquí solo se mapea, con literales EXACTOS.
+estado_transmision_nomina = PgEnum(
+    "PENDIENTE", "TRANSMITIDO", "RECHAZADO", "ERROR",
+    name="estado_transmision_nomina", create_type=False,
 )
 
 
@@ -205,9 +214,23 @@ class DetalleLiquidacion(TenantBase):
     # Aportes empleador + provisiones (costeo real, no van al neto).
     aportes_empleador: Mapped[Decimal] = mapped_column(MONEY4, nullable=False)
     provisiones: Mapped[Decimal] = mapped_column(MONEY4, nullable=False)
-    # Nómina electrónica (Fase 7): siempre NULL en la Ola A.
+    # Nómina electrónica (Fase 7, transmisión a DIAN). `cune_dian`/`fecha_transmision_dian` (de 0047) dan
+    # el ancla mínima de idempotencia (NULL=no transmitido, set=transmitido); la migración 0050 completa
+    # la máquina de estados espejo de `fe_estado` para reintentos/observabilidad: `estado_transmision`
+    # (PENDIENTE→TRANSMITIDO|RECHAZADO|ERROR; una vez TRANSMITIDO no se re-transmite), `intentos_transmision`
+    # (acota el dead-letter del pipeline ARQ) y `transmision_respuesta` (respuesta MATIAS completa: motivo
+    # de rechazo + histórico fiscal). Transmisión SOLO de directos (spec 08); el patacaliente queda
+    # PENDIENTE pero el pipeline lo excluye filtrando `tipo_vinculacion='DIRECTO'`. En la Ola A todo esto
+    # queda en su default (PENDIENTE / 0 / NULL): nada transmitido.
     cune_dian: Mapped[str | None] = mapped_column(Text)
     fecha_transmision_dian: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    estado_transmision: Mapped[str] = mapped_column(
+        estado_transmision_nomina, nullable=False, server_default="PENDIENTE"
+    )
+    intentos_transmision: Mapped[int] = mapped_column(
+        SmallInteger, nullable=False, server_default="0"
+    )
+    transmision_respuesta: Mapped[dict | None] = mapped_column(JSONB)
 
     creado_en: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()

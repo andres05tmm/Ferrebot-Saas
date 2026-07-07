@@ -8,11 +8,12 @@ son tres COUNT baratos apoyados en los índices `obra_id` de las tablas asociada
 from dataclasses import dataclass
 
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.config.timezone import now_co
 from modules.maquinaria.models import AsignacionMaquinaObra
-from modules.obra.models import Obra, ReporteDiarioObra
+from modules.obra.models import CotizacionObra, Obra, ReporteDiarioObra
 from modules.obra.schemas import ObraCrear, ReporteDiarioCrear
 from modules.trabajadores.models import AsignacionTrabajadorObra
 
@@ -52,6 +53,43 @@ class SqlObrasRepository:
         obra = Obra(**datos.model_dump())
         self._s.add(obra)
         await self._s.flush()  # asigna obra.id
+        return obra
+
+    async def obtener_por_cotizacion(self, cotizacion_id: int) -> Obra | None:
+        """Obra ligada a una cotización (1-1). No filtra `eliminado_en`: la UNIQUE de `cotizacion_id`
+        cubre también las archivadas, así que devolver la existente hace idempotente la conversión."""
+        return (
+            await self._s.execute(
+                select(Obra).where(Obra.cotizacion_id == cotizacion_id)
+            )
+        ).scalar_one_or_none()
+
+    async def crear_desde_cotizacion(self, cotizacion: CotizacionObra) -> Obra:
+        """Inserta la Obra 1-1 que nace de una cotización GANADA, poblando `cotizacion_id` (la FK que
+        `ObraCrear` no acepta). Arranca PLANIFICADA (default de la base).
+
+        Idempotente ante CARRERA: el servicio pre-chequea `obtener_por_cotizacion`, pero dos
+        conversiones concurrentes de la MISMA cotización pueden pasar ambas ese chequeo (None) y llegar
+        aquí; la UNIQUE(cotizacion_id) es la frontera última. El flush va en un SAVEPOINT
+        (`begin_nested`): si choca, se revierte SOLO el savepoint (sin envenenar la transacción del
+        tenant), se re-lee la obra ya committeada por la ganadora y se devuelve esa (misma id), en vez
+        de propagar un 500. Espeja el patrón de traducción de IntegrityError de
+        `SqlCotizacionObraRepository.crear`."""
+        obra = Obra(
+            cotizacion_id=cotizacion.id,
+            cliente_id=cotizacion.cliente_id,
+            nombre=cotizacion.nombre_obra,
+            ubicacion=cotizacion.ubicacion,
+        )
+        try:
+            async with self._s.begin_nested():   # SAVEPOINT: aísla el flush de la carrera
+                self._s.add(obra)                 # dentro del savepoint → el rollback lo expulsa
+                await self._s.flush()  # asigna obra.id (y dispara la UNIQUE de cotizacion_id)
+        except IntegrityError:
+            existente = await self.obtener_por_cotizacion(cotizacion.id)
+            if existente is None:   # la colisión no fue por cotizacion_id: no la tragues
+                raise
+            return existente
         return obra
 
     async def actualizar(self, obra: Obra, cambios: dict) -> Obra:

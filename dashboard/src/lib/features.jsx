@@ -69,12 +69,14 @@ export const RUTA_FEATURE = {
   '/kardex': 'inventario',
   '/devoluciones': 'ventas',
   '/top-productos': 'ventas',
-  // Vertical construcción (Fase 1 PIM): cada tab por su feature fina. NO son RUTAS_RETAIL (no llevan
-  // la supresión de familia): gate simple `feats.includes(requerida)`.
+  // Vertical construcción (Fase 1 PIM + Ola A): cada tab por su feature fina. NO son RUTAS_RETAIL (no
+  // llevan la supresión de familia): gate simple `feats.includes(requerida)`.
+  '/cotizaciones-obra': 'cotizaciones_aiu',
   '/obras': 'obras',
   '/maquinas': 'maquinaria',
   '/herramientas': 'herramientas',
   '/trabajadores': 'nomina',
+  '/nomina': 'nomina',
   // `/historial` es transversal (POS y servicios) → condición propia en isRouteEnabled, no aquí.
   // Fiscal
   '/facturacion': 'facturacion_electronica',

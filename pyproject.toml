@@ -30,6 +30,7 @@ dependencies = [
     "sentry-sdk[fastapi]>=2.0",    # observabilidad de errores (api/bot ASGI + worker arq)
     "google-auth>=2.35",           # service account del sync write-only con Google Calendar (pack agenda)
     "google-api-python-client>=2.150",  # API de Google Calendar (import perezoso en modules/agenda/gcal.py)
+    "openpyxl>=3.1",               # export Excel del cotizador AIU (services/export/cotizacion.py; import perezoso)
 ]
 
 [project.optional-dependencies]

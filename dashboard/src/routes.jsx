@@ -10,7 +10,7 @@ import {
   FileText, FileCheck, Calculator, FileCog,
   CalendarDays, Headset, BookText, HandCoins, ChefHat, Banknote,
   CreditCard, FileSpreadsheet, Star, BedDouble, Undo2, Percent, Library, Landmark, Scale,
-  HardHat, Wrench,
+  HardHat, Wrench, ClipboardList,
 } from 'lucide-react'
 import { isRouteEnabled } from './lib/features.jsx'
 
@@ -33,11 +33,13 @@ export const ROUTES = [
   { path: '/conversaciones',      label: 'Conversaciones',      icon: Headset,         group: 'operacion' },
   { path: '/conocimiento',        label: 'Conocimiento',        icon: BookText,        group: 'operacion' },
 
-  // Construcción (vertical PIM) — gated por sus flags finas (obras/maquinaria/herramientas/nomina).
+  // Construcción (vertical PIM) — gated por sus flags finas (cotizaciones_aiu/obras/maquinaria/herramientas/nomina).
+  { path: '/cotizaciones-obra',   label: 'Cotizaciones AIU',    icon: ClipboardList,   group: 'construccion' },
   { path: '/obras',               label: 'Obras',               icon: HardHat,         group: 'construccion' },
   { path: '/maquinas',            label: 'Maquinaria',          icon: Truck,           group: 'construccion' },
   { path: '/herramientas',        label: 'Herramientas',        icon: Wrench,          group: 'construccion' },
   { path: '/trabajadores',        label: 'Trabajadores',        icon: Users,           group: 'construccion' },
+  { path: '/nomina',              label: 'Nómina',              icon: Wallet,          group: 'construccion' },
 
   // Gestión
   { path: '/clientes',            label: 'Clientes',            icon: Users,           group: 'gestion' },

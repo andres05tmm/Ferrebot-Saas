@@ -14,7 +14,7 @@ from typing import Protocol
 
 from core.config.timezone import today_co
 from modules.obra.errors import ObraInexistente, TransicionEstadoInvalida
-from modules.obra.models import Obra, ReporteDiarioObra
+from modules.obra.models import CotizacionObra, Obra, ReporteDiarioObra
 from modules.obra.repository import ConteosOperacion
 from modules.obra.schemas import ObraActualizar, ObraCrear, ReporteDiarioCrear
 
@@ -36,6 +36,8 @@ class ObrasRepo(Protocol):
         self, *, cliente_id: int | None = None, estado: str | None = None
     ) -> list[Obra]: ...
     async def crear(self, datos: ObraCrear) -> Obra: ...
+    async def obtener_por_cotizacion(self, cotizacion_id: int) -> Obra | None: ...
+    async def crear_desde_cotizacion(self, cotizacion: CotizacionObra) -> Obra: ...
     async def actualizar(self, obra: Obra, cambios: dict) -> Obra: ...
     async def cambiar_estado(self, obra: Obra, nuevo_estado: str) -> Obra: ...
     async def soft_delete(self, obra: Obra) -> None: ...
@@ -55,6 +57,19 @@ class ObrasService:
     async def crear(self, datos: ObraCrear) -> Obra:
         """Da de alta una obra suelta (arranca PLANIFICADA por el default de la base)."""
         return await self._repo.crear(datos)
+
+    async def crear_desde_cotizacion(self, cotizacion: CotizacionObra) -> Obra:
+        """Crea la Obra 1-1 que nace de una cotización GANADA (método ADITIVO, lo llama la Fase 2).
+
+        IDEMPOTENTE: `obras.cotizacion_id` es UNIQUE, así que una cotización ya convertida NO genera una
+        segunda obra. Se resuelve mirando primero si ya existe una obra para esa cotización y, de ser
+        así, devolviéndola; la UNIQUE de la base es el respaldo último ante una carrera. La `Obra`
+        arranca PLANIFICADA (default de la base) y hereda cliente/nombre/ubicación de la cotización.
+        """
+        existente = await self._repo.obtener_por_cotizacion(cotizacion.id)
+        if existente is not None:
+            return existente
+        return await self._repo.crear_desde_cotizacion(cotizacion)
 
     async def obtener(self, obra_id: int) -> Obra:
         obra = await self._repo.obtener(obra_id)

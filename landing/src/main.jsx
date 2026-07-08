@@ -11,15 +11,18 @@ import './index.css'
 import Landing from './pages/Landing.jsx'
 import Login from './pages/Login.jsx'
 import Demo from './pages/Demo.jsx'
+import EnConstruccion from './pages/EnConstruccion.jsx'
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <BrowserRouter>
       <Routes>
-        <Route path="/" element={<Landing />} />
+        {/* Portada "en obra" mientras se termina la landing definitiva (/preview). */}
+        <Route path="/" element={<EnConstruccion />} />
+        <Route path="/preview" element={<Landing />} />
         <Route path="/login" element={<Login />} />
         <Route path="/demo" element={<Demo />} />
-        <Route path="*" element={<Landing />} />
+        <Route path="*" element={<EnConstruccion />} />
       </Routes>
     </BrowserRouter>
   </React.StrictMode>,

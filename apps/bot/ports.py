@@ -30,6 +30,12 @@ class UpdateBot:
     telegram_id: int                  # id del usuario de Telegram → usuarios.telegram_id
     texto: str | None = None
     voz_file_id: str | None = None     # nota de voz (se transcribe en el entregable 5)
+    # Foto (recibo Bancolombia) — Bot PIM: el `file_id` de mayor resolución. El adaptador de canal la
+    # descarga, la sube al bucket y la inyecta en `recursos.obra.canal` (nunca como arg del modelo).
+    foto_file_id: str | None = None
+    # id del mensaje de Telegram: ancla de idempotencia del gasto por foto (una foto = un mensaje = un
+    # gasto). None si el payload no lo trae (defensivo).
+    telegram_message_id: int | None = None
 
 
 @dataclass(frozen=True, slots=True)

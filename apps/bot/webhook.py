@@ -53,12 +53,31 @@ def parsear_update(payload: dict) -> UpdateBot | CallbackBot | None:
         return None
     texto = mensaje.get("text")
     voz_file_id = (mensaje.get("voice") or {}).get("file_id")
-    if texto is None and voz_file_id is None:
-        return None  # ni texto ni voz: nada que procesar
+    foto_file_id = _mayor_foto(mensaje.get("photo"))
+    # La leyenda de la foto (si la hay) es el texto del turno: deja que el usuario acompañe el recibo
+    # con instrucciones ("imputa a Torre Norte"). Sin leyenda, el handler sintetiza el prompt del recibo.
+    if foto_file_id is not None and texto is None:
+        texto = mensaje.get("caption")
+    if texto is None and voz_file_id is None and foto_file_id is None:
+        return None  # ni texto ni voz ni foto: nada que procesar
+    mensaje_id = mensaje.get("message_id")
     return UpdateBot(
         update_id=int(update_id), chat_id=int(chat_id), telegram_id=int(telegram_id),
-        texto=texto, voz_file_id=voz_file_id,
+        texto=texto, voz_file_id=voz_file_id, foto_file_id=foto_file_id,
+        telegram_message_id=int(mensaje_id) if mensaje_id is not None else None,
     )
+
+
+def _mayor_foto(fotos: object) -> str | None:
+    """`file_id` de la foto de mayor resolución de un `message.photo` (Telegram manda una lista de
+    PhotoSize de menor a mayor). None si el mensaje no trae foto."""
+    if not isinstance(fotos, list) or not fotos:
+        return None
+    ultima = fotos[-1]
+    if isinstance(ultima, dict):
+        file_id = ultima.get("file_id")
+        return str(file_id) if file_id else None
+    return None
 
 
 def _parsear_callback(cb: dict) -> CallbackBot | None:

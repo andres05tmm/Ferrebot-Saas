@@ -176,9 +176,11 @@ function MaquinaFila({ maquina, onEditar, onCambio }) {
         </div>
       </div>
 
+      {/* w-36 por REPLACE (no `${SELECT_CLS} w-36`): SELECT_CLS trae `w-full` y, a igual especificidad,
+          gana la última en el CSS compilado → el select se comía toda la fila y el flex-1 colapsaba. */}
       <select value={maquina.estado} onChange={cambiarEstado} disabled={ocupado}
         aria-label={`Cambiar estado de ${maquina.nombre}`}
-        className={`${SELECT_CLS} hidden w-36 shrink-0 md:block`}>
+        className={`${SELECT_CLS.replace('w-full', 'w-36')} hidden shrink-0 md:block`}>
         {ORDEN_ESTADOS.map((e) => <option key={e} value={e}>{metaEstado(e).label}</option>)}
       </select>
 

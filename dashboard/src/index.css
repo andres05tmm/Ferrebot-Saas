@@ -814,6 +814,17 @@
     -moz-osx-font-smoothing: grayscale;
   }
 
+  /* iOS hace zoom automático al enfocar un control con texto <16px. En móvil forzamos 16px en los
+     controles de formulario (con !important para ganar sobre las utilidades text-sm/text-xs; no aplica a
+     checkbox/radio). Evita el "salto de zoom" al tocar un input/select y mejora la ergonomía táctil. */
+  @media (max-width: 767px) {
+    input:not([type='checkbox']):not([type='radio']),
+    select,
+    textarea {
+      font-size: 16px !important;
+    }
+  }
+
   /* Títulos con la familia temable: base = Inter (idéntico a hoy, mismo stack que el cuerpo);
      aurora la cambia a Nunito. Una utilidad explícita (font-mono, etc.) siempre gana sobre esto. */
   h1, h2, h3 {

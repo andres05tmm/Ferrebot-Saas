@@ -51,6 +51,23 @@ def _promedio_ponderado(
 
 
 @dataclass(frozen=True, slots=True)
+class AnalisisPrecioRow:
+    """Una fila del análisis de precios de proveedor (Fase 8): agregado por (proveedor, categoría).
+
+    `costo_unitario_promedio` es ponderado por cantidad (Σcant·costo / Σcant); `costo_unitario_max`/`_min`
+    son el peor/mejor costo de línea del período — el service deriva la variación y la alerta desde estos."""
+
+    proveedor_id: int | None
+    proveedor_nombre: str | None
+    categoria: str | None
+    n_compras: int
+    cantidad_total: Decimal
+    costo_unitario_promedio: Decimal
+    costo_unitario_min: Decimal
+    costo_unitario_max: Decimal
+
+
+@dataclass(frozen=True, slots=True)
 class CompraIdempotente:
     """Foto de una compra ya registrada bajo una `idempotency_key`, para comparar el payload (§4).
 
@@ -299,22 +316,86 @@ class SqlComprasRepository:
         hasta: datetime,
         categoria: str | None = None,
     ) -> Decimal | None:
-        """Promedio del costo unitario de las compras del proveedor en [desde, hasta) — None si no hay
-        historial. Filtra por categoría cuando se da (compara peras con peras: asfalto vs asfalto).
+        """Costo unitario PONDERADO POR CANTIDAD del proveedor en [desde, hasta) — None si no hay historial.
+        Filtra por categoría cuando se da (compara peras con peras: asfalto vs asfalto).
 
-        Alimenta la alerta de precio (>15% sobre el promedio de 6 meses, spec 10). Se llama ANTES de
-        insertar la compra nueva, así que la ventana no la incluye."""
+        Ponderado = Σ(cantidad·costo) / Σ(cantidad), no un promedio simple de los costos de línea: así una
+        compra chica cara no pesa igual que un viaje grande, y la comparación cuadra con el costo unitario
+        entrante (que el servicio también calcula ponderado, total/Σcantidad). Alimenta la alerta de precio
+        (>15% sobre el promedio de 6 meses, spec 10). Se llama ANTES de insertar la compra nueva, así que la
+        ventana no la incluye. `NULLIF(Σcantidad, 0)` evita división por cero (→ NULL → None)."""
+        cantidad = func.sum(CompraDetalle.cantidad)
         stmt = (
-            select(func.avg(CompraDetalle.costo))
+            select(
+                func.sum(CompraDetalle.cantidad * CompraDetalle.costo)
+                / func.nullif(cantidad, 0)
+            )
             .join(Compra, Compra.id == CompraDetalle.compra_id)
             .where(
                 Compra.proveedor_id == proveedor_id,
                 Compra.fecha >= desde,
                 Compra.fecha < hasta,
                 CompraDetalle.costo.isnot(None),
+                CompraDetalle.cantidad.isnot(None),
             )
         )
         if categoria is not None:
             stmt = stmt.where(Compra.categoria == categoria)
         promedio = (await self._s.execute(stmt)).scalar_one_or_none()
         return Decimal(promedio) if promedio is not None else None
+
+    async def analisis_precios_proveedor(
+        self,
+        *,
+        desde: datetime,
+        hasta: datetime,
+        proveedor_id: int | None = None,
+        categoria: str | None = None,
+    ) -> list[AnalisisPrecioRow]:
+        """Análisis de precios de proveedor (Fase 8, spec 10): agrega el histórico por (proveedor, categoría)
+        en UNA consulta agrupada — costo unitario ponderado, min/max, nº de compras y cantidad total.
+
+        Solo lectura, N+1-free (una sola consulta con GROUP BY, no una por proveedor). El costo unitario
+        promedio es ponderado por cantidad (misma verdad que la alerta de precio). Ordena del promedio más
+        alto al más bajo (los proveedores más caros primero). Filtros opcionales por proveedor y categoría."""
+        cantidad = func.sum(CompraDetalle.cantidad)
+        stmt = (
+            select(
+                Compra.proveedor_id,
+                Proveedor.nombre.label("proveedor_nombre"),
+                Compra.categoria,
+                func.count(func.distinct(Compra.id)).label("n_compras"),
+                func.coalesce(cantidad, 0).label("cantidad_total"),
+                (func.sum(CompraDetalle.cantidad * CompraDetalle.costo) / func.nullif(cantidad, 0)).label("prom"),
+                func.min(CompraDetalle.costo).label("min_costo"),
+                func.max(CompraDetalle.costo).label("max_costo"),
+            )
+            .join(Compra, Compra.id == CompraDetalle.compra_id)
+            .join(Proveedor, Proveedor.id == Compra.proveedor_id, isouter=True)
+            .where(
+                Compra.fecha >= desde,
+                Compra.fecha <= hasta,
+                CompraDetalle.costo.isnot(None),
+                CompraDetalle.cantidad.isnot(None),
+            )
+            .group_by(Compra.proveedor_id, Proveedor.nombre, Compra.categoria)
+        )
+        if proveedor_id is not None:
+            stmt = stmt.where(Compra.proveedor_id == proveedor_id)
+        if categoria is not None:
+            stmt = stmt.where(Compra.categoria == categoria)
+        stmt = stmt.order_by(text("prom DESC NULLS LAST"))
+        filas = (await self._s.execute(stmt)).all()
+        return [
+            AnalisisPrecioRow(
+                proveedor_id=f.proveedor_id,
+                proveedor_nombre=f.proveedor_nombre,
+                categoria=f.categoria,
+                n_compras=int(f.n_compras),
+                cantidad_total=Decimal(f.cantidad_total),
+                costo_unitario_promedio=Decimal(f.prom) if f.prom is not None else Decimal("0"),
+                costo_unitario_min=Decimal(f.min_costo) if f.min_costo is not None else Decimal("0"),
+                costo_unitario_max=Decimal(f.max_costo) if f.max_costo is not None else Decimal("0"),
+            )
+            for f in filas
+        ]

@@ -33,6 +33,20 @@ class ObraNoFinalizada(ObrasError):
         self.estado = estado
 
 
+class ObraNoLiquidada(ObrasError):
+    """La obra EXISTE pero aún no tiene liquidación (snapshot de cierre). 404 del sub-recurso `liquidacion`.
+
+    Distinto de `ObraInexistente`: antes se reusaba ese error para el `GET /obras/{id}/liquidacion` de una
+    obra sin liquidar, y el mensaje ("la obra N no existe") era engañoso cuando la obra sí existía. Este
+    error dedicado da el mensaje correcto ("aún no está liquidada") conservando el 404 (el recurso
+    liquidación todavía no existe).
+    """
+
+    def __init__(self, obra_id: int) -> None:
+        super().__init__(f"La obra {obra_id} aún no está liquidada: no tiene snapshot de cierre")
+        self.obra_id = obra_id
+
+
 class ConsumoEnObraLiquidada(ObrasError):
     """No se imputan consumos a una obra ya LIQUIDADA (su snapshot está congelado). 409."""
 

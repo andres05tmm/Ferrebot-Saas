@@ -14,7 +14,7 @@ from core.auth.features import get_capacidades, require_feature
 from core.db.session import get_tenant_db
 from modules.compras.errors import IdempotenciaConflicto
 from modules.compras.repository import SqlComprasRepository
-from modules.compras.schemas import CompraCrear, CompraLeer
+from modules.compras.schemas import AnalisisPrecioProveedor, CompraCrear, CompraLeer
 from modules.compras.service import ComprasService, RetencionesAplicador
 from modules.retenciones.repository import SqlRetencionesRepository
 from modules.retenciones.service import RetencionesService
@@ -77,6 +77,23 @@ async def reporte_resbalos(
     """Reporte de resbalos (spec 11): viajes de material del rango con margen $ y % + alerta de baja
     rentabilidad. Ordenado del mayor margen al menor (default mes en curso, hora Colombia)."""
     return await _service(session).reporte_resbalos(desde=desde, hasta=hasta)
+
+
+@router.get("/compras/analisis-precios", response_model=list[AnalisisPrecioProveedor])
+async def analisis_precios_proveedor(
+    desde: date | None = Query(default=None),
+    hasta: date | None = Query(default=None),
+    proveedor_id: int | None = Query(default=None, description="Filtra por proveedor"),
+    categoria: str | None = Query(default=None, description="Filtra por categoría de compra"),
+    session: AsyncSession = Depends(get_tenant_db),
+    _user: Principal = Depends(require_role("admin")),
+) -> list[AnalisisPrecioProveedor]:
+    """Análisis de precios de proveedor (spec 10): costo unitario ponderado por (proveedor, categoría) del
+    período con su rango y alerta de sobreprecio (>15% sobre el promedio del proveedor). Vista de solo
+    lectura para vigilar sobreprecios. Default: últimos 6 meses (hora Colombia). Ordenado del más caro."""
+    return await _service(session).analisis_precios(
+        desde=desde, hasta=hasta, proveedor_id=proveedor_id, categoria=categoria,
+    )
 
 
 @router.get("/compras", response_model=list[CompraLeer])

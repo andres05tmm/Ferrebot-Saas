@@ -29,10 +29,12 @@ from modules.obra.errors import (
     ConsumoEnObraLiquidada,
     ObraInexistente,
     ObraNoFinalizada,
+    ObraNoLiquidada,
     ObraSinCliente,
     ObraSinCotizacion,
     TransicionEstadoInvalida,
 )
+from modules.obra.panel_cache import panel_cache
 from modules.obra.repository import SqlObrasRepository
 from modules.obra.schemas import (
     ConsumoInventarioCrear,
@@ -46,6 +48,8 @@ from modules.obra.schemas import (
     ObraCrear,
     ObraEstadoCambiar,
     ObraLeer,
+    ObraPanel,
+    ObraPanelItem,
     ObraResumen,
     ReporteDiarioCrear,
     ReporteDiarioLeer,
@@ -125,6 +129,53 @@ async def crear_obra(
     """Da de alta una obra suelta (arranca PLANIFICADA; la conversión desde cotización es Fase 2)."""
     obra = await service.crear(payload)
     return ObraLeer.model_validate(obra)
+
+
+def _panel_a_schema(p) -> ObraPanel:
+    """Mapea el `PanelObra` del service (dataclass) al schema de salida (Pydantic)."""
+    return ObraPanel(
+        generado_en=p.generado_en,
+        total_obras=p.total_obras,
+        obras_activas=p.obras_activas,
+        por_estado=p.por_estado,
+        ingreso_presupuestado_total=p.ingreso_presupuestado_total,
+        gasto_total=p.gasto_total,
+        utilidad_real_total=p.utilidad_real_total,
+        obras_en_alerta=p.obras_en_alerta,
+        obras=[
+            ObraPanelItem(
+                obra_id=it.obra_id, nombre=it.nombre, estado=it.estado, cliente_id=it.cliente_id,
+                ingreso_presupuestado=it.ingreso_presupuestado, gasto_total=it.gasto_total,
+                utilidad_real=it.utilidad_real, tiene_presupuesto=it.tiene_presupuesto,
+                semaforo=it.semaforo, alerta_margen=it.alerta_margen,
+            )
+            for it in p.obras
+        ],
+    )
+
+
+@router.get("/obras/panel", response_model=ObraPanel)
+async def panel_obras(
+    request: Request,
+    service: ObrasService = Depends(get_obras_service),
+    _user: Principal = Depends(require_role("admin")),
+) -> ObraPanel:
+    """Home de obra (Fase 8): overview del portafolio (conteo por estado + rollup financiero + alertas) +
+    el gasto real de cada obra viva, en un solo request AGREGADO y CACHEADO (TTL corto por empresa).
+
+    Financiero (márgenes/utilidad): rol `admin`. Declarado ANTES de `/obras/{obra_id}` para que 'panel' no
+    caiga en la ruta de id. El cálculo es N+1-free (consultas batcheadas); la caché lo sirve al instante en
+    las recargas del dashboard. Sin tenant resuelto (apps mínimas de test) no cachea: siempre recalcula."""
+    tenant = getattr(request.state, "tenant", None)
+    empresa_id = getattr(tenant, "id", None)
+    if empresa_id is not None:
+        cacheado = panel_cache.get(empresa_id)
+        if cacheado is not None:
+            return cacheado
+    resp = _panel_a_schema(await service.panel())
+    if empresa_id is not None:
+        panel_cache.set(empresa_id, resp)
+    return resp
 
 
 @router.get("/obras/{obra_id}", response_model=ObraResumen)
@@ -322,10 +373,13 @@ async def obtener_liquidacion_obra(
     service: ObrasService = Depends(get_obras_service),
     _user: Principal = Depends(require_role("admin")),
 ) -> LiquidacionObraLeer:
-    """Snapshot de la liquidación de la obra. 404 si la obra no existe o aún no se ha liquidado."""
+    """Snapshot de la liquidación de la obra. 404 si la obra no existe o aún no se ha liquidado.
+
+    Distingue los dos 404: `ObraInexistente` ("la obra no existe") vs. `ObraNoLiquidada` ("existe pero aún
+    no está liquidada"), para no dar un mensaje engañoso cuando la obra sí existe."""
     try:
         liquidacion = await service.obtener_liquidacion(obra_id)
-    except ObraInexistente as exc:
+    except (ObraInexistente, ObraNoLiquidada) as exc:
         raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
     return LiquidacionObraLeer.model_validate(liquidacion)
 

@@ -22,6 +22,7 @@ from modules.obra.errors import (
     ConsumoEnObraLiquidada,
     ObraInexistente,
     ObraNoFinalizada,
+    ObraNoLiquidada,
     ObraSinCliente,
     ObraSinCotizacion,
     TransicionEstadoInvalida,
@@ -112,6 +113,10 @@ class ObrasRepo(Protocol):
     async def crear_liquidacion(
         self, obra_id: int, valores: dict, snapshot_json: dict
     ) -> LiquidacionObra: ...
+    async def agregados_gasto_batch(
+        self, obra_ids: list[int]
+    ) -> dict[int, AgregadosGastoObra]: ...
+    async def cotizaciones_de_obras(self, obras: list[Obra]): ...
 
 
 class ResultadoAjuste(Protocol):
@@ -189,6 +194,37 @@ class GastoRealResultado:
     desglose: DesgloseGasto
     utilidad_real: Decimal
     alerta_margen: bool
+
+
+@dataclass(frozen=True, slots=True)
+class PanelObraItem:
+    """Una obra en el panel/home: su mini-resumen financiero (presupuesto vs. real + semáforo + alerta)."""
+
+    obra_id: int
+    nombre: str
+    estado: str
+    cliente_id: int
+    ingreso_presupuestado: Decimal
+    gasto_total: Decimal
+    utilidad_real: Decimal
+    tiene_presupuesto: bool
+    semaforo: str
+    alerta_margen: bool
+
+
+@dataclass(frozen=True, slots=True)
+class PanelObra:
+    """Home de obra (Fase 8): overview del portafolio + rollup financiero + una fila por obra viva."""
+
+    generado_en: object            # datetime aware Colombia (hora de cálculo del snapshot cacheable)
+    total_obras: int
+    obras_activas: int
+    por_estado: dict[str, int]
+    ingreso_presupuestado_total: Decimal
+    gasto_total: Decimal
+    utilidad_real_total: Decimal
+    obras_en_alerta: int
+    obras: list[PanelObraItem]
 
 
 class ObrasService:
@@ -282,13 +318,14 @@ class ObrasService:
         return await self._repo.listar_reportes(obra_id, limite=limite, offset=offset)
 
     # ---- Gasto real + semáforo + alerta (Fase 3, el diferenciador) ---------------------------------
-    async def _presupuesto(self, obra: Obra) -> tuple[Decimal, Decimal, bool]:
+    @staticmethod
+    def _presupuesto_desde_datos(datos) -> tuple[Decimal, Decimal, bool]:
         """(ingreso_presupuestado, utilidad_presupuestada, tiene_presupuesto) desde la cotización GANADA.
 
         `ingreso_presupuestado = subtotal + A + I + U` (SIN el IVA, que no es ingreso sino impuesto que se
         traslada a la DIAN) y `utilidad_presupuestada = U`, ambos por la función pura AIU (una sola verdad,
-        nunca recalculada a mano). Obra suelta (sin cotización) → (0, 0, False)."""
-        datos = await self._repo.cotizacion_de_obra(obra)
+        nunca recalculada a mano). Obra suelta (sin cotización, `datos is None`) → (0, 0, False). PURA: no
+        toca la BD, para reusarla en el cálculo por obra y en el panel batcheado (sin N+1)."""
         if datos is None:
             return Decimal("0"), Decimal("0"), False
         cotizacion, items = datos
@@ -304,16 +341,16 @@ class ObrasService:
         )
         return ingreso, totales.utilidad, True
 
-    async def _calcular_gasto_real(self, obra: Obra) -> GastoRealResultado:
-        """Corazón del vertical: agrega los 5 componentes y llama a `calcular_gasto_real_obra`.
+    def _gasto_real_desde(
+        self, obra: Obra, agg: AgregadosGastoObra, datos
+    ) -> GastoRealResultado:
+        """Arma el `GastoRealResultado` a partir de los agregados YA sumados y la cotización YA leída.
 
-        La agregación por componente la hace el repo en SQL (money-safe, sin cargar miles de filas). Cada
-        suma agregada se pasa a la función pura como un ÚNICO objeto adaptador (la función re-suma trivial y
-        aporta el TOTAL, el semáforo y la cuantización — su verdadero valor). Las horas ya vienen costeadas
-        por máquina, así que se pasan como dinero con `costo_op_hora=1`; los consumos igual (dinero en
-        `cantidad`, `costo_unitario=1`)."""
-        ingreso, utilidad_pres, tiene_presupuesto = await self._presupuesto(obra)
-        agg = await self._repo.agregados_gasto(obra.id)
+        PURA respecto a la BD (no hace consultas): recibe `agg` (los 5 componentes) y `datos` (cotización +
+        ítems, o None). Así el cálculo por-obra (`_calcular_gasto_real`) y el panel batcheado comparten la
+        MISMA lógica sin duplicarla ni caer en N+1. Las horas ya vienen costeadas por máquina, así que se
+        pasan como dinero con `costo_op_hora=1`; los consumos igual (dinero en `cantidad`, `costo_unitario=1`)."""
+        ingreso, utilidad_pres, tiene_presupuesto = self._presupuesto_desde_datos(datos)
         desglose = calcular_gasto_real_obra(
             gastos=[SimpleNamespace(monto=agg.total_gastos)],
             compras=[SimpleNamespace(costo_total=agg.total_compras)],
@@ -340,10 +377,68 @@ class ObrasService:
             alerta_margen=alerta_margen,
         )
 
+    async def _calcular_gasto_real(self, obra: Obra) -> GastoRealResultado:
+        """Corazón del vertical (una obra): lee sus agregados + su cotización y delega en `_gasto_real_desde`.
+
+        La agregación por componente la hace el repo en SQL (money-safe, sin cargar miles de filas); la
+        lógica de composición (semáforo, utilidad real, alerta) la comparte con el panel batcheado."""
+        datos = await self._repo.cotizacion_de_obra(obra)
+        agg = await self._repo.agregados_gasto(obra.id)
+        return self._gasto_real_desde(obra, agg, datos)
+
     async def gasto_real(self, obra_id: int) -> GastoRealResultado:
         """Gasto real de la obra en tiempo real (presupuesto vs. real + semáforo + alerta). 404 si no existe."""
         obra = await self.obtener(obra_id)
         return await self._calcular_gasto_real(obra)
+
+    # ---- Panel / home de obra (Fase 8): overview del portafolio, agregado y batcheado (sin N+1) -------
+    async def panel(self) -> "PanelObra":
+        """Home de obra: resumen del portafolio (conteo por estado + rollup financiero + alertas) más el
+        gasto real de cada obra viva. Pensado para cachearse (lectura pesada); ver `modules.obra.panel_cache`.
+
+        SIN N+1: en vez de calcular obra por obra (5 agregados + cotización cada una), lee TODO en bloque —
+        `agregados_gasto_batch` (5 consultas agrupadas por obra) + `cotizaciones_de_obras` (2 consultas) — y
+        compone en Python con la MISMA función pura del cálculo por-obra. El conteo por estado cubre todas
+        las obras vivas; el detalle financiero + rollup, solo las NO liquidadas (las liquidadas ya tienen su
+        snapshot congelado y no cambian, así que no ensucian el "en curso")."""
+        obras = await self._repo.listar()
+        por_estado: dict[str, int] = {}
+        for o in obras:
+            por_estado[o.estado] = por_estado.get(o.estado, 0) + 1
+
+        activas = [o for o in obras if o.estado != "LIQUIDADA"]
+        ids = [o.id for o in activas]
+        aggs = await self._repo.agregados_gasto_batch(ids)
+        cotis = await self._repo.cotizaciones_de_obras(activas)
+        _cero = AgregadosGastoObra(
+            total_gastos=Decimal("0"), total_compras=Decimal("0"), total_prorrateo_nomina=Decimal("0"),
+            total_horas_maquina=Decimal("0"), total_consumos_inventario=Decimal("0"),
+        )
+        items: list[PanelObraItem] = []
+        for o in activas:
+            r = self._gasto_real_desde(o, aggs.get(o.id, _cero), cotis.get(o.id))
+            items.append(
+                PanelObraItem(
+                    obra_id=o.id, nombre=o.nombre, estado=o.estado, cliente_id=o.cliente_id,
+                    ingreso_presupuestado=r.ingreso_presupuestado, gasto_total=r.desglose.total,
+                    utilidad_real=r.utilidad_real, tiene_presupuesto=r.tiene_presupuesto,
+                    semaforo=r.desglose.semaforo.value, alerta_margen=r.alerta_margen,
+                )
+            )
+        # Ordena por severidad: primero las que sangran (rojo/alerta), para que el dueño las vea de una.
+        _peso = {"rojo": 0, "amarillo": 1, "verde": 2}
+        items.sort(key=lambda it: (_peso.get(it.semaforo, 3), not it.alerta_margen, -it.gasto_total))
+        return PanelObra(
+            generado_en=now_co(),
+            total_obras=len(obras),
+            obras_activas=len(activas),
+            por_estado=por_estado,
+            ingreso_presupuestado_total=cuantizar(sum((it.ingreso_presupuestado for it in items), Decimal("0"))),
+            gasto_total=cuantizar(sum((it.gasto_total for it in items), Decimal("0"))),
+            utilidad_real_total=cuantizar(sum((it.utilidad_real for it in items), Decimal("0"))),
+            obras_en_alerta=sum(1 for it in items if it.alerta_margen or it.semaforo == "rojo"),
+            obras=items,
+        )
 
     # ---- Consumo de inventario (INVARIANTE: nada mueve inventario sin movimiento) -------------------
     async def registrar_consumo(
@@ -427,7 +522,9 @@ class ObrasService:
         await self.obtener(obra_id)   # 404 si la obra no existe
         liquidacion = await self._repo.obtener_liquidacion(obra_id)
         if liquidacion is None:
-            raise ObraInexistente(obra_id)   # sin liquidación → 404 (el router lo mapea)
+            # La obra EXISTE pero no está liquidada: error dedicado (mensaje correcto), no `ObraInexistente`
+            # (que decía "la obra no existe", engañoso). Ambos los mapea el router a 404.
+            raise ObraNoLiquidada(obra_id)
         return liquidacion
 
     async def liquidar(self, obra_id: int) -> LiquidacionObra:

@@ -150,6 +150,37 @@ class GastoRealObra(BaseModel):
     alerta_margen: bool
 
 
+class ObraPanelItem(BaseModel):
+    """Una obra en el panel/home (Fase 8): su mini-resumen financiero + semáforo + alerta de margen."""
+
+    obra_id: int
+    nombre: str
+    estado: str
+    cliente_id: int
+    ingreso_presupuestado: Decimal
+    gasto_total: Decimal
+    utilidad_real: Decimal
+    tiene_presupuesto: bool
+    semaforo: SemaforoObra
+    alerta_margen: bool
+
+
+class ObraPanel(BaseModel):
+    """Home de obra (Fase 8): overview del portafolio (conteo por estado + rollup financiero + alertas) +
+    una fila por obra viva. Endpoint agregado y cacheado (GET /obras/panel): vista de solo lectura del
+    portafolio para arrancar el dashboard sin abrir cada obra."""
+
+    generado_en: datetime
+    total_obras: int
+    obras_activas: int
+    por_estado: dict[str, int]
+    ingreso_presupuestado_total: Decimal
+    gasto_total: Decimal
+    utilidad_real_total: Decimal
+    obras_en_alerta: int
+    obras: list[ObraPanelItem]
+
+
 class ConsumoInventarioCrear(BaseModel):
     """Alta de un consumo de material de una obra. Genera SIEMPRE el movimiento de inventario (salida).
 

@@ -6,19 +6,23 @@ default usan hora Colombia (regla #4).
 """
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Protocol
 
 from core.config.timezone import COLOMBIA_TZ, now_co, rango_dia_co, today_co
 from core.money import cuantizar
 from modules.compras.errors import IdempotenciaConflicto
 from modules.compras.repository import (
+    AnalisisPrecioRow,
     CompraIdempotente,
     ItemCompra,
     SqlComprasRepository,
 )
-from modules.compras.schemas import CompraCrear, CompraLeer
+from modules.compras.schemas import AnalisisPrecioProveedor, CompraCrear, CompraLeer
 from services.calculations.resbalos import Resbalo, calcular_resbalo
+
+# Ventana por defecto del análisis de precios de proveedor (mismo semestre de la alerta de precio).
+_VENTANA_ANALISIS = timedelta(days=182)
 
 # Ventana del historial de precios del proveedor (spec 10: "promedio de los últimos 6 meses").
 _VENTANA_PRECIO_PROVEEDOR = timedelta(days=182)
@@ -35,13 +39,22 @@ class ResultadoCompra:
 
 
 def _mismo_payload(
-    existente: CompraIdempotente, items: list[ItemCompra], total: Decimal, proveedor_id: int | None
+    existente: CompraIdempotente,
+    items: list[ItemCompra],
+    total: Decimal,
+    proveedor_id: int | None,
+    *,
+    obra_id: int | None,
+    es_viaje_material: bool,
 ) -> bool:
-    """True si la compra previa (misma key) coincide con el payload entrante (líneas + total + prov.).
+    """True si la compra previa (misma key) coincide con el payload entrante (líneas + total + prov. +
+    imputación de obra).
 
-    Compara la sustancia económica (cada línea producto/cantidad/costo y el total). El proveedor solo
-    entra si el entrante lo dio por `id` explícito (resolver nombre/nit aquí crearía un proveedor antes
-    de saber si es replay). Decimales comparan por valor: 10.000 == 10."""
+    Compara la sustancia económica (cada línea producto/cantidad/costo y el total) Y la IMPUTACIÓN de la
+    compra: `obra_id` y `es_viaje_material` cambian qué es la compra (si mueve stock o se imputa a una obra,
+    y con qué margen), así que reusar una key con esos campos distintos es un conflicto, no un replay. El
+    proveedor solo entra si el entrante lo dio por `id` explícito (resolver nombre/nit aquí crearía un
+    proveedor antes de saber si es replay). Decimales comparan por valor: 10.000 == 10."""
     if total != existente.total:
         return False
     # Orden estable aun con `producto_id` NULL (viajes de material / imputadas a obra): None → -1 para no
@@ -54,6 +67,11 @@ def _mismo_payload(
     if actuales != previos:
         return False
     if proveedor_id is not None and proveedor_id != existente.compra.proveedor_id:
+        return False
+    # Imputación: obra distinta o cambiar el marcador de viaje de material NO es el mismo payload.
+    if obra_id != existente.compra.obra_id:
+        return False
+    if es_viaje_material != existente.compra.es_viaje_material:
         return False
     return True
 
@@ -72,6 +90,33 @@ def _enriquecer_resbalo(compra: CompraLeer) -> CompraLeer:
         "resbalo_pct": r.porcentaje,
         "resbalo_alerta": r.alerta,
     })
+
+
+def _analisis_a_schema(f: AnalisisPrecioRow) -> AnalisisPrecioProveedor:
+    """Deriva variación % y alerta de una fila del análisis (misma verdad que la alerta de precio 15%).
+
+    `variacion_pct` = cuánto por encima del promedio ponderado quedó el costo máximo del período; `alerta`
+    se dispara cuando ese máximo supera el umbral (>15%). Sin promedio (>0) no hay base: variación 0, sin
+    alerta (default seguro)."""
+    prom = f.costo_unitario_promedio
+    if prom > 0:
+        variacion = ((f.costo_unitario_max - prom) / prom * 100).quantize(Decimal("0.01"), ROUND_HALF_UP)
+        alerta = f.costo_unitario_max > prom * _UMBRAL_PRECIO_PROVEEDOR
+    else:
+        variacion = Decimal("0.00")
+        alerta = False
+    return AnalisisPrecioProveedor(
+        proveedor_id=f.proveedor_id,
+        proveedor_nombre=f.proveedor_nombre,
+        categoria=f.categoria,
+        n_compras=f.n_compras,
+        cantidad_total=f.cantidad_total,
+        costo_unitario_promedio=cuantizar(prom),
+        costo_unitario_min=cuantizar(f.costo_unitario_min),
+        costo_unitario_max=cuantizar(f.costo_unitario_max),
+        variacion_pct=variacion,
+        alerta=alerta,
+    )
 
 
 def _fecha_compra(fecha: date | None) -> datetime:
@@ -122,7 +167,10 @@ class ComprasService:
         if datos.idempotency_key:
             existente = await self._repo.buscar_por_idempotency(datos.idempotency_key)
             if existente is not None:
-                if not _mismo_payload(existente, items, total, datos.proveedor.id):
+                if not _mismo_payload(
+                    existente, items, total, datos.proveedor.id,
+                    obra_id=datos.obra_id, es_viaje_material=datos.es_viaje_material,
+                ):
                     raise IdempotenciaConflicto(datos.idempotency_key)
                 return ResultadoCompra(compra=existente.compra, replay=True)
 
@@ -195,3 +243,21 @@ class ComprasService:
         inicio, fin = _rango_o_mes(desde, hasta)
         compras = await self._repo.listar_resbalos(inicio=inicio, fin=fin)
         return [_enriquecer_resbalo(c) for c in compras]
+
+    async def analisis_precios(
+        self,
+        *,
+        desde: date | None,
+        hasta: date | None,
+        proveedor_id: int | None = None,
+        categoria: str | None = None,
+    ) -> list[AnalisisPrecioProveedor]:
+        """Análisis de precios de proveedor (Fase 8, spec 10): costo unitario ponderado por (proveedor,
+        categoría) en el período, con su rango y la alerta de sobreprecio. Default: los últimos 6 meses
+        (hora Colombia), la misma ventana de la alerta de precio."""
+        hoy = today_co()
+        inicio, fin = rango_dia_co(desde or (hoy - _VENTANA_ANALISIS), hasta or hoy)
+        filas = await self._repo.analisis_precios_proveedor(
+            desde=inicio, hasta=fin, proveedor_id=proveedor_id, categoria=categoria,
+        )
+        return [_analisis_a_schema(f) for f in filas]

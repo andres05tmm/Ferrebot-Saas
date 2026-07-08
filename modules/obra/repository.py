@@ -287,6 +287,127 @@ class SqlObrasRepository:
             total_consumos_inventario=Decimal(total_consumos),
         )
 
+    async def agregados_gasto_batch(
+        self, obra_ids: list[int]
+    ) -> dict[int, AgregadosGastoObra]:
+        """Como `agregados_gasto` pero para MUCHAS obras a la vez (panel/home, Fase 8): 5 consultas
+        AGRUPADAS por `obra_id` en vez de 5 por obra. Evita el N+1 del panel (regla de performance).
+
+        Devuelve un dict `obra_id → AgregadosGastoObra`; una obra sin filas en un componente simplemente no
+        aparece en ese GROUP BY y cae a 0 al componer (el service usa un cero por defecto). Con `obra_ids`
+        vacío no consulta nada."""
+        if not obra_ids:
+            return {}
+        gastos = dict(
+            (
+                await self._s.execute(
+                    select(Gasto.obra_id, func.coalesce(func.sum(Gasto.monto), 0))
+                    .where(Gasto.obra_id.in_(obra_ids))
+                    .group_by(Gasto.obra_id)
+                )
+            ).all()
+        )
+        compras = dict(
+            (
+                await self._s.execute(
+                    select(Compra.obra_id, func.coalesce(func.sum(Compra.total), 0))
+                    .where(Compra.obra_id.in_(obra_ids))
+                    .group_by(Compra.obra_id)
+                )
+            ).all()
+        )
+        prorrateo = dict(
+            (
+                await self._s.execute(
+                    select(
+                        ProrrateoNominaObra.obra_id,
+                        func.coalesce(func.sum(ProrrateoNominaObra.costo_imputado), 0),
+                    )
+                    .where(ProrrateoNominaObra.obra_id.in_(obra_ids))
+                    .group_by(ProrrateoNominaObra.obra_id)
+                )
+            ).all()
+        )
+        horas = dict(
+            (
+                await self._s.execute(
+                    select(
+                        RegistroHorasMaquina.obra_id,
+                        func.coalesce(
+                            func.sum(
+                                RegistroHorasMaquina.horas_facturables
+                                * func.coalesce(Maquina.costo_operacion_hora, 0)
+                            ),
+                            0,
+                        ),
+                    )
+                    .select_from(RegistroHorasMaquina)
+                    .join(Maquina, Maquina.id == RegistroHorasMaquina.maquina_id)
+                    .where(RegistroHorasMaquina.obra_id.in_(obra_ids))
+                    .group_by(RegistroHorasMaquina.obra_id)
+                )
+            ).all()
+        )
+        consumos = dict(
+            (
+                await self._s.execute(
+                    select(
+                        ConsumoInventario.obra_id,
+                        func.coalesce(
+                            func.sum(ConsumoInventario.cantidad * ConsumoInventario.costo_unitario), 0
+                        ),
+                    )
+                    .where(ConsumoInventario.obra_id.in_(obra_ids))
+                    .group_by(ConsumoInventario.obra_id)
+                )
+            ).all()
+        )
+        return {
+            oid: AgregadosGastoObra(
+                total_gastos=Decimal(gastos.get(oid, 0)),
+                total_compras=Decimal(compras.get(oid, 0)),
+                total_prorrateo_nomina=Decimal(prorrateo.get(oid, 0)),
+                total_horas_maquina=Decimal(horas.get(oid, 0)),
+                total_consumos_inventario=Decimal(consumos.get(oid, 0)),
+            )
+            for oid in obra_ids
+        }
+
+    async def cotizaciones_de_obras(
+        self, obras: list[Obra]
+    ) -> dict[int, tuple[CotizacionObra, list[ItemCotizacionObra]]]:
+        """Cotización GANADA + ítems de VARIAS obras a la vez (panel/home): 2 consultas, no 2 por obra.
+
+        Devuelve `obra_id → (cotizacion, items)` SOLO para las obras que nacieron de una cotización (las
+        sueltas se omiten y el service las trata como sin presupuesto). Evita el N+1 del panel."""
+        pares = [(o.id, o.cotizacion_id) for o in obras if o.cotizacion_id is not None]
+        if not pares:
+            return {}
+        coti_ids = [cid for _oid, cid in pares]
+        cotizaciones = {
+            c.id: c
+            for c in (
+                await self._s.execute(
+                    select(CotizacionObra).where(CotizacionObra.id.in_(coti_ids))
+                )
+            ).scalars().all()
+        }
+        items_por_coti: dict[int, list[ItemCotizacionObra]] = {}
+        for it in (
+            await self._s.execute(
+                select(ItemCotizacionObra)
+                .where(ItemCotizacionObra.cotizacion_id.in_(coti_ids))
+                .order_by(ItemCotizacionObra.orden, ItemCotizacionObra.id)
+            )
+        ).scalars().all():
+            items_por_coti.setdefault(it.cotizacion_id, []).append(it)
+        resultado: dict[int, tuple[CotizacionObra, list[ItemCotizacionObra]]] = {}
+        for oid, cid in pares:
+            cotizacion = cotizaciones.get(cid)
+            if cotizacion is not None:
+                resultado[oid] = (cotizacion, items_por_coti.get(cid, []))
+        return resultado
+
     async def cotizacion_de_obra(
         self, obra: Obra
     ) -> tuple[CotizacionObra, list[ItemCotizacionObra]] | None:

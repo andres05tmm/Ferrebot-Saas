@@ -50,6 +50,7 @@ import TabRetenciones from './tabs/TabRetenciones.jsx'
 import TabConciliacion from './tabs/TabConciliacion.jsx'
 import TabObras from './tabs/TabObras.jsx'
 import TabCotizacionesObra from './tabs/TabCotizacionesObra.jsx'
+import TabResbalos from './tabs/TabResbalos.jsx'
 import TabMaquinas from './tabs/TabMaquinas.jsx'
 import TabHerramientas from './tabs/TabHerramientas.jsx'
 import TabTrabajadores from './tabs/TabTrabajadores.jsx'
@@ -94,6 +95,7 @@ const TABS = {
   // Vertical construcción (Fase 1 PIM + Ola A: cotizador AIU F2, nómina F4)
   '/cotizaciones-obra': TabCotizacionesObra,
   '/obras': TabObras,
+  '/resbalos': TabResbalos,
   '/maquinas': TabMaquinas,
   '/herramientas': TabHerramientas,
   '/trabajadores': TabTrabajadores,

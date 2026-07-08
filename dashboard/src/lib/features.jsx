@@ -77,6 +77,8 @@ export const RUTA_FEATURE = {
   '/herramientas': 'herramientas',
   '/trabajadores': 'nomina',
   '/nomina': 'nomina',
+  // Resbalos + análisis de precios de proveedor (Fase 8): reportes del vertical; flag fina `resbalos`.
+  '/resbalos': 'resbalos',
   // `/historial` es transversal (POS y servicios) → condición propia en isRouteEnabled, no aquí.
   // Fiscal
   '/facturacion': 'facturacion_electronica',

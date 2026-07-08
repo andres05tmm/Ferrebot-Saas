@@ -103,3 +103,24 @@ class CompraLeer(BaseModel):
     factura_url: str | None = None
     mueve_stock: bool = True                  # False si se imputó a obra/viaje (no tocó inventario)
     alerta_precio_proveedor: bool = False     # precio > 15% sobre el promedio 6m del proveedor (derivado)
+
+
+class AnalisisPrecioProveedor(BaseModel):
+    """Fila del análisis de precios de proveedor (Fase 8, spec 10): agregado por (proveedor, categoría).
+
+    Vista de solo lectura para vigilar a los proveedores: costo unitario PONDERADO del período, su rango
+    (min/max) y la señal de alerta (el peor costo superó en >15% el promedio del proveedor). `variacion_pct`
+    = cuánto por encima del promedio quedó el costo máximo (% derivado). Ayuda a detectar sobreprecios sin
+    esperar a que muerdan el margen del viaje de material.
+    """
+
+    proveedor_id: int | None
+    proveedor_nombre: str | None
+    categoria: str | None
+    n_compras: int
+    cantidad_total: Decimal
+    costo_unitario_promedio: Decimal
+    costo_unitario_min: Decimal
+    costo_unitario_max: Decimal
+    variacion_pct: Decimal                    # (max − promedio) / promedio × 100 (derivado)
+    alerta: bool                              # costo máximo > 15% sobre el promedio del proveedor (derivado)

@@ -13,6 +13,15 @@ const authState = vi.hoisted(() => ({ admin: false }))
 vi.mock('@/hooks/useAuth.js', () => ({ useAuth: () => ({ isAdmin: () => authState.admin }) }))
 
 import TabInventario from './TabInventario.jsx'
+import { FeaturesProvider } from '@/lib/features.jsx'
+
+// Render con features (gating por familia). Sin provider, useFeatures() → [] (retail).
+function renderInv(features = []) {
+  return render(
+    <MemoryRouter><FeaturesProvider features={features}><TabInventario /></FeaturesProvider></MemoryRouter>,
+  )
+}
+const CONSTRUCCION = ['construccion', 'obras', 'pos', 'inventario']
 
 const PRODUCTOS = [
   { id: 1, nombre: 'Martillo', precio_venta: '11900', unidad_medida: 'unidad', activo: true, codigo: null, categoria: null, iva: 19 },
@@ -241,5 +250,56 @@ describe('TabInventario — indicador de stock negativo (suave)', () => {
     // Tooltip amable explicativo (sin ⚠️).
     expect(screen.getByTitle(/conteo físico para cuadrar/i)).toBeInTheDocument()
     expect(screen.queryByText('⚠️')).toBeNull()
+  })
+})
+
+// ── Familia construcción: catálogo de consumibles/repuestos, no de venta por mostrador ──────────────
+describe('TabInventario — construcción (consumibles/repuestos)', () => {
+  beforeEach(() => { authState.admin = true })
+
+  it('el formulario oculta escalonado, fracciones y precio especial; el precio se relabela a "Precio"', async () => {
+    instalarFetch()
+    renderInv(CONSTRUCCION)
+    await screen.findByText('Martillo')
+
+    fireEvent.click(screen.getByText('Nuevo producto'))
+    // El precio de venta se conserva (obligatorio en el backend) pero relabelado a "Precio".
+    expect(screen.getByLabelText('Precio')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Precio de venta')).toBeNull()
+    // Se retiran las mecánicas de venta: escalonado, fracciones y precio especial.
+    expect(screen.queryByRole('button', { name: /añadir precio escalonado/i })).toBeNull()
+    expect(screen.queryByLabelText('Permite fracción')).toBeNull()
+    expect(screen.queryByLabelText('Precio especial')).toBeNull()
+    // El costo de compra sí queda (importa para el consumible).
+    expect(screen.getByLabelText('Precio de compra')).toBeInTheDocument()
+  })
+
+  it('crear postea precio_venta (obligatorio) y NADA de venta (sin umbral ni fracción)', async () => {
+    const fetchMock = instalarFetch()
+    renderInv(CONSTRUCCION)
+    await screen.findByText('Martillo')
+
+    fireEvent.click(screen.getByText('Nuevo producto'))
+    fireEvent.change(screen.getByLabelText('Nombre'), { target: { value: 'Broca 1/2' } })
+    fireEvent.change(screen.getByLabelText('Precio'), { target: { value: '8000' } })
+    fireEvent.click(screen.getByText('Crear producto'))
+
+    await waitFor(() => {
+      expect(fetchMock.mock.calls.some(c => String(c[0]).includes('/productos') && c[1]?.method === 'POST')).toBe(true)
+    })
+    const call = fetchMock.mock.calls.find(c => String(c[0]).includes('/productos') && c[1]?.method === 'POST')
+    const body = JSON.parse(call[1].body)
+    expect(body).toMatchObject({ nombre: 'Broca 1/2', precio_venta: 8000, permite_fraccion: false, fracciones: [] })
+    expect(body).not.toHaveProperty('precio_umbral')
+  })
+
+  it('el aviso de stock negativo usa el copy de CONSUMO, no de venta', async () => {
+    instalarFetch([{ producto_id: 2, nombre: 'Clavo', stock_actual: '-5', stock_minimo: '0', bajo: false }])
+    renderInv(CONSTRUCCION)
+    await screen.findByText('Clavo')
+
+    expect(await screen.findByText('por cuadrar')).toBeInTheDocument()
+    expect(screen.getByTitle(/se consumió más de lo registrado/i)).toBeInTheDocument()
+    expect(screen.queryByTitle(/vendiste más/i)).toBeNull()
   })
 })

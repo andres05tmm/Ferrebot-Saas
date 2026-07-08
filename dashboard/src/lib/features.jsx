@@ -63,10 +63,10 @@ const RUTAS_RETAIL = new Set([
   '/top-productos', '/kardex', '/devoluciones',
 ])
 
-// Ruta → capacidad requerida (catalogo.py). Las rutas NO listadas son núcleo → siempre visibles
-// (hoy: /clientes, /resultados). `/inicio` es la portada de servicios: se resuelve aparte
-// (resolveHomePath), no por inclusión de una feature. Las rutas de RUTAS_RETAIL llevan además la
-// regla de supresión de familia (ADR 0021 §D6) en isRouteEnabled.
+// Ruta → capacidad requerida (catalogo.py). Las rutas NO listadas son núcleo → visibles por defecto
+// (hoy: /clientes siempre; /resultados salvo en construcción — ver isRouteEnabled). `/inicio` es la
+// portada de servicios: se resuelve aparte (resolveHomePath), no por inclusión de una feature. Las
+// rutas de RUTAS_RETAIL llevan además la regla de supresión de familia (ADR 0021 §D6) en isRouteEnabled.
 export const RUTA_FEATURE = {
   // Contable/retail por feature fina (ADR 0021). El cockpit `/hoy` es la experiencia integrada de
   // ferretería: sigue siendo del meta-pack `pos`.
@@ -175,6 +175,12 @@ export function isRouteEnabled(path, features = []) {
   // `/historial` es transversal a retail/servicios (ADR 0018): quien registra ventas ve su historial y
   // la familia de servicios el suyo por vertical. La constructora NO (su traza vive en obras/nómina).
   if (path === '/historial') return !esConstruccion(feats) && (feats.includes('ventas') || esAtencionCliente(feats))
+  // `/resultados` es núcleo (P&L) para retail y servicios, pero su cálculo lee SOLO ventas POS. Una
+  // constructora no vende por mostrador (su ingreso es alquiler/resbalos/facturas de obra), así que ese
+  // P&L le mostraría una "pérdida perpetua" falsa; el cockpit `/panel` ya le da la foto financiera real.
+  // Se suprime por familia, igual que `/historial`. BACKLOG: reabrir el P&L de obra cuando el contable
+  // multi-vertical sirva los ingresos de obra (facturas de obra + resbalos), no solo las ventas POS.
+  if (path === '/resultados') return !esConstruccion(feats)
   // Retail/contable (ADR 0021 §D6): feature fina activa, salvo el arrastre histórico del meta-pack
   // en tenants de servicios (restaurante con `pos` por dependencia NO ve caja/kárdex de ferretería).
   if (RUTAS_RETAIL.has(path)) {

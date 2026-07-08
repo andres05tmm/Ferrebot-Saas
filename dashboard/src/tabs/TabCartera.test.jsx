@@ -12,6 +12,7 @@ vi.mock('@/components/RealtimeProvider.jsx', () => ({
 
 import TabCartera from './TabCartera.jsx'
 import { USER_KEY } from '@/lib/api'
+import { FeaturesProvider } from '@/lib/features.jsx'
 
 const DEUDORES = [
   { cliente_id: 1, nombre: 'Ana Pérez', telefono: '3001112233', saldo: '150000.00',
@@ -104,6 +105,37 @@ describe('TabCartera', () => {
     const llamada = fetchMock.mock.calls.find(c => String(c[0]).includes('/opt-out'))
     expect(String(llamada[0])).toBe('/api/v1/cobranza/clientes/1/opt-out')
     expect(JSON.parse(llamada[1].body)).toEqual({ opt_out: true })
+  })
+
+  // ── Orden por familia (cartera de alquiler vs cobranza) ─────────────────────────────────────────
+  // Con el flag `cartera_alquiler` la sección de alquiler se pinta. El ORDEN depende de la familia:
+  // construcción la pone ARRIBA (es su cartera principal); retail la deja al fondo. Solo cambia el orden.
+  function renderCartera(features) {
+    return render(
+      <MemoryRouter><FeaturesProvider features={features}><TabCartera /></FeaturesProvider></MemoryRouter>,
+    )
+  }
+  // `a` precede a `b` en el DOM si compareDocumentPosition marca FOLLOWING (b va después de a).
+  function precede(a, b) {
+    return Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING)
+  }
+
+  // Los títulos de sección son headings ("Deudores" también existe como label de KPI → usar el heading).
+  it('construcción: la cartera de alquiler va ARRIBA de la cobranza (deudores)', async () => {
+    comoAdmin(); instalarFetch()
+    renderCartera(['construccion', 'obras', 'pos', 'inventario', 'fiados', 'pack_cobranza', 'cartera_alquiler'])
+    const alquiler = await screen.findByRole('heading', { name: 'Cartera de alquiler' })
+    const deudores = screen.getByRole('heading', { name: 'Deudores' })
+    expect(precede(alquiler, deudores)).toBe(true)   // alquiler primero
+  })
+
+  it('retail: la cobranza (deudores) va ARRIBA de la cartera de alquiler', async () => {
+    comoAdmin(); instalarFetch()
+    // Retail sintético con el flag para ejercitar la rama de orden (no-construcción).
+    renderCartera(['pos', 'fiados', 'pack_cobranza', 'cartera_alquiler'])
+    const deudores = await screen.findByRole('heading', { name: 'Deudores' })
+    const alquiler = screen.getByRole('heading', { name: 'Cartera de alquiler' })
+    expect(precede(deudores, alquiler)).toBe(true)   // cobranza primero
   })
 
   it('se suscribe a los eventos de cobranza y fiados, y un evento refresca', async () => {

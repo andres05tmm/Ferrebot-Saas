@@ -60,6 +60,13 @@ describe('gating del Sidebar', () => {
     expect(screen.getByText('Panel')).toBeInTheDocument()
     expect(screen.queryByText('Hoy')).toBeNull()      // retail puro suprimido para la familia obra
     expect(screen.queryByText('Inicio')).toBeNull()   // portada de servicios, no la suya
+    // `/resultados` (P&L de ventas POS) se suprime para la obra: el cockpit /panel da su foto financiera.
+    expect(screen.queryByText('Resultados financieros')).toBeNull()
+  })
+
+  it('retail (Punto Rojo) SIGUE viendo Resultados financieros (no-regresión)', () => {
+    renderSidebar(['pos'])
+    expect(screen.getByText('Resultados financieros')).toBeInTheDocument()
   })
 
   it('oculta los tabs fiscales cuando su feature no está activa', () => {

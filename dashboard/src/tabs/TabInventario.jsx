@@ -4,6 +4,13 @@
  * Stock: GET /inventario/stock. Admin: nuevo/editar (POST/PUT /productos), eliminar (DELETE = soft,
  * con confirmación) y ajuste de stock (POST /inventario/ajuste). El vendedor sigue en solo-lectura.
  * Live: re-fetch ante inventario_actualizado / reconnected.
+ *
+ * Familia construcción (esConstruccion): el "catálogo" es de CONSUMIBLES y REPUESTOS de obra, no de venta
+ * por mostrador. Se re-encuadra el formulario: sin precio escalonado, sin fracciones/media unidad, sin
+ * precio especial (todos atados a la venta). El precio de venta es OBLIGATORIO en el backend
+ * (schemas.py: precio_venta ge=0, sin default), así que se conserva pero relabelado a "Precio" y sin
+ * protagonismo. Stock/stock mínimo quedan (sirven para repuestos). El aviso de stock negativo cambia el
+ * copy de "vendiste de más" a "se consumió de más". Retail queda idéntico.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useOutletContext } from 'react-router-dom'
@@ -12,6 +19,7 @@ import { Pencil, Plus, Search, SlidersHorizontal, Trash2 } from 'lucide-react'
 import { api, apiJson } from '@/lib/api'
 import { useFetch, cop, num } from '@/components/shared.jsx'
 import { useRealtimeEvent } from '@/components/RealtimeProvider.jsx'
+import { useFeatures, esConstruccion } from '@/lib/features.jsx'
 import { useAuth } from '@/hooks/useAuth.js'
 import { Card } from '@/components/ui/card.jsx'
 import { Input } from '@/components/ui/input.jsx'
@@ -23,6 +31,7 @@ export default function TabInventario() {
   const { refreshKey } = useOutletContext() ?? {}
   const { isAdmin } = useAuth()
   const admin = isAdmin()
+  const construccion = esConstruccion(useFeatures())
 
   const [q, setQ] = useState('')
   const [productos, setProductos] = useState([])
@@ -113,6 +122,7 @@ export default function TabInventario() {
       {admin && editando && (
         <ProductoForm
           producto={editando === 'nuevo' ? null : editando}
+          construccion={construccion}
           onClose={() => setEditando(null)}
           onSaved={() => { setEditando(null); recargar(); stockQ.refetch() }}
         />
@@ -127,6 +137,7 @@ export default function TabInventario() {
           <ul className="divide-y divide-border-subtle">
             {productos.map(p => (
               <ProductoRow key={p.id} producto={p} stock={stockMap.get(p.id)} admin={admin}
+                construccion={construccion}
                 onAjustado={() => { recargar(); stockQ.refetch() }}
                 onEditar={() => setEditando(p)}
                 onEliminar={() => eliminar(p)} />
@@ -148,14 +159,19 @@ export default function TabInventario() {
 }
 
 // Stock negativo: aviso SUAVE (ámbar atenuado, sin rojo ni ⚠️). El número honesto + "por cuadrar".
+// Construcción reencuadra el copy: la obra no "vende" el material, lo CONSUME (no hay venta que explique
+// el negativo). El resto del aviso (registra compras / conteo físico) es idéntico.
 const TOOLTIP_POR_CUADRAR =
   'Vendiste más de lo registrado; registra tus compras o haz un conteo físico para cuadrar.'
+const TOOLTIP_POR_CUADRAR_CONSUMO =
+  'Se consumió más de lo registrado; registra tus compras o haz un conteo físico.'
 
-function ProductoRow({ producto, stock, admin, onAjustado, onEditar, onEliminar }) {
+function ProductoRow({ producto, stock, admin, construccion, onAjustado, onEditar, onEliminar }) {
   const [abierto, setAbierto] = useState(false)
   const stockActual = stock ? Number(stock.stock_actual) : null
   const bajo = stock?.bajo
   const negativo = stockActual !== null && stockActual < 0
+  const tooltipCuadrar = construccion ? TOOLTIP_POR_CUADRAR_CONSUMO : TOOLTIP_POR_CUADRAR
 
   return (
     <li className="px-3.5 py-2.5">
@@ -174,7 +190,7 @@ function ProductoRow({ producto, stock, admin, onAjustado, onEditar, onEliminar 
           {stockActual !== null && (
             negativo ? (
               <div className="inline-flex items-center justify-end gap-1 text-[11px] tabular text-warning/80"
-                title={TOOLTIP_POR_CUADRAR}>
+                title={tooltipCuadrar}>
                 <span>{num(stockActual)} {producto.unidad_medida}</span>
                 <span className="text-[9px] font-normal px-1 py-px rounded bg-warning/10 border border-warning/20 text-warning/80">
                   por cuadrar
@@ -350,7 +366,7 @@ function tieneEscalonado(p) {
   return !!p && (p.precio_umbral != null || p.precio_bajo_umbral != null || p.precio_sobre_umbral != null)
 }
 
-function ProductoForm({ producto, onClose, onSaved }) {
+function ProductoForm({ producto, construccion = false, onClose, onSaved }) {
   const esEdicion = !!producto
   const [f, setF] = useState(() => (producto ? desdeProducto(producto) : FORM_VACIO))
   const [enviando, setEnviando] = useState(false)
@@ -440,14 +456,24 @@ function ProductoForm({ producto, onClose, onSaved }) {
         </div>
 
         <div className="pt-2 border-t border-border-subtle">
-          <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-2">Precios</p>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-            <Input type="number" value={f.precio_venta} onChange={set('precio_venta')} placeholder="Venta *" aria-label="Precio de venta" className="h-9" />
+          <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-2">
+            {construccion ? 'Precio y costo' : 'Precios'}
+          </p>
+          {/* Construcción: sin "Especial" (precio de venta escalonado por cliente). El precio queda como
+              "Precio" (obligatorio en el backend) + el costo de compra, que sí importa para el consumible. */}
+          <div className={`grid grid-cols-1 gap-2 ${construccion ? 'sm:grid-cols-2' : 'sm:grid-cols-3'}`}>
+            <Input type="number" value={f.precio_venta} onChange={set('precio_venta')}
+              placeholder={construccion ? 'Precio *' : 'Venta *'}
+              aria-label={construccion ? 'Precio' : 'Precio de venta'} className="h-9" />
             <Input type="number" value={f.precio_compra} onChange={set('precio_compra')} placeholder="Compra" aria-label="Precio de compra" className="h-9" />
-            <Input type="number" value={f.precio_especial} onChange={set('precio_especial')} placeholder="Especial" aria-label="Precio especial" className="h-9" />
+            {!construccion && (
+              <Input type="number" value={f.precio_especial} onChange={set('precio_especial')} placeholder="Especial" aria-label="Precio especial" className="h-9" />
+            )}
           </div>
 
-          {!escalonado ? (
+          {/* Precio escalonado por cantidad: es una mecánica de VENTA por volumen; no aplica al consumo
+              de obra. Se oculta para construcción. */}
+          {!construccion && (!escalonado ? (
             <button type="button" onClick={() => setEscalonado(true)}
               className="mt-3 text-[11px] text-primary hover:underline">+ Añadir precio escalonado</button>
           ) : (
@@ -463,23 +489,28 @@ function ProductoForm({ producto, onClose, onSaved }) {
                 <Input type="number" value={f.precio_sobre_umbral} onChange={set('precio_sobre_umbral')} placeholder="Precio sobre umbral" aria-label="Precio sobre umbral" className="h-9" />
               </div>
             </div>
-          )}
+          ))}
         </div>
 
-        <div className="flex flex-wrap items-center gap-4 pt-1">
-          <label className="flex items-center gap-2 text-[13px]">
-            <input type="checkbox" checked={f.permite_fraccion} onChange={setBool('permite_fraccion')} aria-label="Permite fracción" />
-            Permite fracción
-          </label>
-          {esEdicion && (
-            <label className="flex items-center gap-2 text-[13px]">
-              <input type="checkbox" checked={f.activo} onChange={setBool('activo')} aria-label="Activo" />
-              Activo
-            </label>
-          )}
-        </div>
+        {/* "Permite fracción" (media unidad) es venta al detalle de granel: no aplica al consumible de obra. */}
+        {(!construccion || esEdicion) && (
+          <div className="flex flex-wrap items-center gap-4 pt-1">
+            {!construccion && (
+              <label className="flex items-center gap-2 text-[13px]">
+                <input type="checkbox" checked={f.permite_fraccion} onChange={setBool('permite_fraccion')} aria-label="Permite fracción" />
+                Permite fracción
+              </label>
+            )}
+            {esEdicion && (
+              <label className="flex items-center gap-2 text-[13px]">
+                <input type="checkbox" checked={f.activo} onChange={setBool('activo')} aria-label="Activo" />
+                Activo
+              </label>
+            )}
+          </div>
+        )}
 
-        {f.permite_fraccion && (
+        {!construccion && f.permite_fraccion && (
           <div className="pt-2 border-t border-border-subtle">
             <div className="flex items-center justify-between mb-2">
               <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Fracciones</p>

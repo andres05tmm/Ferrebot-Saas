@@ -46,11 +46,16 @@ export default function CommandPalette({ open, setOpen, onRefresh }) {
         <CommandEmpty>Sin resultados.</CommandEmpty>
 
         <CommandGroup heading="Acciones">
-          <CommandItem onSelect={() => run(() => navigate('/ventas'))}>
-            <Plus className="size-4" />
-            <span>Nueva venta rápida</span>
-            <CommandShortcut>⌘N</CommandShortcut>
-          </CommandItem>
+          {/* "Nueva venta rápida" navega a /ventas, que la familia construcción tiene suprimida (no
+              vende por mostrador). Se gatea por la MISMA condición que la ruta: desaparece para obra,
+              sigue para retail. */}
+          {isRouteEnabled('/ventas', features) && (
+            <CommandItem onSelect={() => run(() => navigate('/ventas'))}>
+              <Plus className="size-4" />
+              <span>Nueva venta rápida</span>
+              <CommandShortcut>⌘N</CommandShortcut>
+            </CommandItem>
+          )}
           <CommandItem onSelect={() => run(() => navigate('/gastos'))}>
             <Plus className="size-4" />
             <span>Registrar gasto</span>

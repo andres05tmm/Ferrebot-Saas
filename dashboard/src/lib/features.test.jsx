@@ -209,6 +209,17 @@ describe('familia construcción (vertical PIM)', () => {
     expect(isRouteEnabled('/historial', PIM)).toBe(false)  // su traza vive en obras/nómina
   })
 
+  it('NO ve /resultados: su P&L lee solo ventas POS → "pérdida perpetua" falsa (la da /panel)', () => {
+    // `/resultados` es núcleo para retail/servicios, pero se suprime para la familia obra.
+    expect(isRouteEnabled('/resultados', PIM)).toBe(false)
+    expect(isRouteEnabled('/resultados', ['construccion'])).toBe(false)  // con solo el meta-pack
+    expect(isRouteEnabled('/resultados', ['obras'])).toBe(false)         // con la feature núcleo
+    // Sigue VISIBLE para las demás familias (es núcleo): retail, servicios y sin features.
+    expect(isRouteEnabled('/resultados', ['pos'])).toBe(true)
+    expect(isRouteEnabled('/resultados', ['pack_agenda'])).toBe(true)
+    expect(isRouteEnabled('/resultados', [])).toBe(true)
+  })
+
   it('SÍ conserva la operación de obra (caja, inventario, compras, gastos) y su vertical', () => {
     for (const ruta of ['/caja', '/inventario', '/compras', '/proveedores', '/gastos']) {
       expect(isRouteEnabled(ruta, PIM)).toBe(true)

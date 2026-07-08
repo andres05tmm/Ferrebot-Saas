@@ -5,6 +5,11 @@
  * (abrir o cerrar con arqueo), cuadre de efectivo EN VIVO (GET /caja/arqueo — misma fórmula que el
  * cierre, fuente única), ingresos por método (GET /reportes/resumen), movimientos manuales
  * (POST /caja/movimiento) y gastos del día (GET /gastos). Live: caja/venta/gasto/reconnected.
+ *
+ * Familia construcción (esConstruccion): la caja es CAJA MENOR de campo, no un mostrador. Una obra no
+ * vende tickets, así que se ocultan "Ventas hoy" y los "ingresos por método" (siempre $0), y el cuadre
+ * pierde la fila "+ Ventas en efectivo". Apertura/cierre, movimientos manuales y gastos quedan intactos.
+ * Para retail (Punto Rojo, demos) TODO queda idéntico.
  */
 import { useState } from 'react'
 import { useOutletContext } from 'react-router-dom'
@@ -15,6 +20,7 @@ import {
 import { api } from '@/lib/api'
 import { useFetch, cop, rangoHoyCO } from '@/components/shared.jsx'
 import { useRealtimeEvent } from '@/components/RealtimeProvider.jsx'
+import { useFeatures, esConstruccion } from '@/lib/features.jsx'
 import KpiCard from '@/components/KpiCard.jsx'
 import { Card } from '@/components/ui/card.jsx'
 import { Input } from '@/components/ui/input.jsx'
@@ -30,6 +36,7 @@ function nuevaKey() { return crypto?.randomUUID?.() || `k-${Date.now()}-${Math.r
 
 export default function TabCaja() {
   const { refreshKey } = useOutletContext() ?? {}
+  const construccion = esConstruccion(useFeatures())
   const hoy = rangoHoyCO()
 
   const arqueoQ = useFetch('/caja/arqueo', [refreshKey])
@@ -55,26 +62,38 @@ export default function TabCaja() {
 
   return (
     <div className="space-y-3">
-      {/* KPIs — bandas de color por tipo (apertura / ventas / gastos / efectivo esperado) */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
+      {/* KPIs — bandas de color por tipo. Construcción (caja menor) no muestra "Ventas hoy": su caja no
+          registra ventas de mostrador. La grilla pasa de 4 a 3 columnas para no dejar un hueco. */}
+      <div className={`grid grid-cols-2 gap-2.5 ${construccion ? 'lg:grid-cols-3' : 'lg:grid-cols-4'}`}>
         <KpiCard headerBand tone="muted" icon={Wallet} label="Apertura"
           value={cop(apertura)} sub="Base inicial de la caja" />
-        <KpiCard headerBand tone="success" icon={TrendingUp} label="Ventas hoy"
-          value={cop(ventasHoy)} sub={`${resumen.num_ventas ?? 0} ventas · todos los métodos`} coloredValue />
+        {!construccion && (
+          <KpiCard headerBand tone="success" icon={TrendingUp} label="Ventas hoy"
+            value={cop(ventasHoy)} sub={`${resumen.num_ventas ?? 0} ventas · todos los métodos`} coloredValue />
+        )}
         <KpiCard headerBand tone="danger" icon={TrendingDown} label="Gastos"
           value={cop(totalGastos)} sub={`${gastos.length} egresos del día`} coloredValue />
-        <KpiCard headerBand tone="primary" icon={Coins} label="Efectivo esperado"
-          value={cop(esperado)} sub="Apertura + ventas efectivo − gastos" coloredValue />
+        {/* En construcción el efectivo esperado es el KPI clave de la caja menor: ocupa fila completa en
+            móvil (col-span-2) para que la grilla de 3 no deje una celda vacía abajo. */}
+        <div className={construccion ? 'col-span-2 lg:col-span-1' : 'contents'}>
+          <KpiCard headerBand tone="primary" icon={Coins} label="Efectivo esperado"
+            value={cop(esperado)}
+            sub={construccion ? 'Apertura + movimientos − gastos' : 'Apertura + ventas efectivo − gastos'} coloredValue />
+        </div>
       </div>
 
       {/* Estado de la caja: abrir (cerrada) o cerrar con arqueo (abierta) */}
       <EstadoCaja arqueo={arqueo} abierta={abierta} esperado={esperado} onDone={recargar} />
 
-      {/* Cuadre + ingresos por método */}
-      <div className="grid lg:grid-cols-2 gap-3">
-        <IngresosPorMetodo porMetodo={resumen.por_metodo_pago} />
-        <CuadreEfectivo arqueo={arqueo} abierta={abierta} totalGastos={totalGastos} />
-      </div>
+      {/* Cuadre (+ ingresos por método solo en retail: la caja menor de obra no tiene ventas por método) */}
+      {construccion ? (
+        <CuadreEfectivo arqueo={arqueo} abierta={abierta} totalGastos={totalGastos} construccion />
+      ) : (
+        <div className="grid lg:grid-cols-2 gap-3">
+          <IngresosPorMetodo porMetodo={resumen.por_metodo_pago} />
+          <CuadreEfectivo arqueo={arqueo} abierta={abierta} totalGastos={totalGastos} />
+        </div>
+      )}
 
       {/* Movimientos manuales (solo con caja abierta) */}
       {abierta && <MovimientoForm onDone={recargar} />}
@@ -235,7 +254,7 @@ function IngresosPorMetodo({ porMetodo }) {
 }
 
 // ── Cuadre de efectivo esperado (componentes del arqueo en vivo) ───────────────
-function CuadreEfectivo({ arqueo, abierta, totalGastos }) {
+function CuadreEfectivo({ arqueo, abierta, totalGastos, construccion = false }) {
   if (!abierta) {
     return (
       <Card className="p-3.5">
@@ -246,9 +265,11 @@ function CuadreEfectivo({ arqueo, abierta, totalGastos }) {
       </Card>
     )
   }
+  // Construcción (caja menor): sin ventas de mostrador, la fila "+ Ventas en efectivo" es siempre $0 → se
+  // omite. El resto del arqueo (apertura, ingresos manuales, egresos) es idéntico.
   const filas = [
     { label: 'Apertura', val: num(arqueo.saldo_inicial), signo: '' },
-    { label: '+ Ventas en efectivo', val: num(arqueo.ventas_efectivo), signo: '+' },
+    ...(construccion ? [] : [{ label: '+ Ventas en efectivo', val: num(arqueo.ventas_efectivo), signo: '+' }]),
     ...(num(arqueo.ingresos) > 0 ? [{ label: '+ Ingresos manuales', val: num(arqueo.ingresos), signo: '+' }] : []),
     { label: '− Egresos (gastos)', val: num(arqueo.egresos), signo: '-' },
   ]

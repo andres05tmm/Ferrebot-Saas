@@ -46,6 +46,7 @@ COPY core/ ./core/
 COPY apps/ ./apps/
 COPY modules/ ./modules/
 COPY ai/ ./ai/
+COPY services/ ./services/
 COPY tools/ ./tools/
 COPY migrations/ ./migrations/
 

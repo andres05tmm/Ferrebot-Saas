@@ -50,16 +50,18 @@ export default function TablaObrasRiesgo({ obras = [] }) {
         />
       ) : (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[640px] border-collapse text-[13px]">
+          {/* table-fixed: las columnas numéricas tienen ancho fijo y obra/cliente truncan — la tabla
+              cabe en la columna del grid sin scroll horizontal (el semáforo nunca queda cortado). */}
+          <table className="w-full min-w-[640px] table-fixed border-collapse text-[13px]">
             <thead>
               <tr className="border-b border-border-subtle text-[10px] uppercase tracking-wider text-muted-foreground">
                 <th className="px-4 py-2 text-left font-medium">Obra</th>
-                <th className="px-3 py-2 text-left font-medium">Cliente</th>
-                <th className="px-3 py-2 text-right font-medium">% ppto.</th>
-                <th className="px-3 py-2 text-right font-medium">Presupuesto</th>
-                <th className="px-3 py-2 text-right font-medium">Gastado</th>
-                <th className="px-3 py-2 text-right font-medium">Utilidad</th>
-                <th className="px-4 py-2 text-right font-medium">Estado</th>
+                <th className="w-[19%] px-3 py-2 text-left font-medium">Cliente</th>
+                <th className="w-14 px-3 py-2 text-right font-medium">% ppto.</th>
+                <th className="w-[92px] px-3 py-2 text-right font-medium">Ppto.</th>
+                <th className="w-[92px] px-3 py-2 text-right font-medium">Gastado</th>
+                <th className="w-[100px] px-3 py-2 text-right font-medium">Utilidad</th>
+                <th className="w-[104px] px-4 py-2 text-right font-medium">Estado</th>
               </tr>
             </thead>
             <tbody>
@@ -87,10 +89,10 @@ function FilaObra({ obra }) {
 
   return (
     <tr className={`border-b border-border-subtle last:border-0 ${enPerdida ? 'bg-destructive/[0.06]' : ''}`}>
-      <td className="max-w-[220px] px-4 py-2.5">
+      <td className="px-4 py-2.5">
         <span className="block truncate font-medium text-foreground">{obra.nombre}</span>
       </td>
-      <td className="max-w-[160px] px-3 py-2.5">
+      <td className="px-3 py-2.5">
         <span className="block truncate text-secondary-foreground">{cliente}</span>
       </td>
       <td className="px-3 py-2.5 text-right tabular-nums text-secondary-foreground">
@@ -98,14 +100,14 @@ function FilaObra({ obra }) {
           <span className={pct > 100 ? 'font-semibold text-destructive' : ''}>{pct}%</span>
         )}
       </td>
-      <td className="px-3 py-2.5 text-right tabular-nums text-secondary-foreground">
+      <td className="whitespace-nowrap px-3 py-2.5 text-right tabular-nums text-secondary-foreground">
         {obra.tiene_presupuesto ? cop(n(obra.ingreso_presupuestado)) : <span className="text-muted-foreground">—</span>}
       </td>
-      <td className="px-3 py-2.5 text-right tabular-nums text-secondary-foreground">{cop(n(obra.gasto_total))}</td>
-      <td className={`px-3 py-2.5 text-right font-semibold tabular-nums ${utilidad < 0 ? 'text-destructive' : 'text-foreground'}`}>
+      <td className="whitespace-nowrap px-3 py-2.5 text-right tabular-nums text-secondary-foreground">{cop(n(obra.gasto_total))}</td>
+      <td className={`whitespace-nowrap px-3 py-2.5 text-right font-semibold tabular-nums ${utilidad < 0 ? 'text-destructive' : 'text-foreground'}`}>
         {cop(utilidad)}
       </td>
-      <td className="px-4 py-2.5 text-right">
+      <td className="whitespace-nowrap px-4 py-2.5 text-right">
         <Semaforo tono={sem.tono}>{sem.label}</Semaforo>
       </td>
     </tr>

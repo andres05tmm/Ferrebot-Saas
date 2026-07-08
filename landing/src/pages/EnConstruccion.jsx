@@ -32,26 +32,8 @@ export default function EnConstruccion() {
             Aquí se construye una maravilla.
           </h1>
           <p className="mt-5 text-lg text-texto-2 max-w-[46ch]">
-            Melquiadez está en obra: estamos martillando los últimos detalles de
-            un empleado que no duerme para el WhatsApp de tu negocio. Vuelve
-            pronto, que esto avanza a punta de golpes bien dados.
+            Estamos en obra, martillando los últimos detalles. Vuelve pronto.
           </p>
-          <div className="mt-8 flex flex-wrap items-center gap-5">
-            <Link
-              to="/demo"
-              className="inline-flex items-center rounded-full bg-acento text-acento-sobre px-6 py-3 font-semibold text-sm hover:opacity-90 transition-opacity"
-            >
-              Ver una demo en vivo
-            </Link>
-            <a
-              href="https://wa.me/573206213221?text=Hola%2C%20tengo%20un%20negocio%20y%20quiero%20ver%20a%20Melquiadez%20trabajando"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-sm font-semibold text-oro-vivo hover:opacity-80 transition-opacity"
-            >
-              Escríbenos
-            </a>
-          </div>
         </div>
 
         <div className="order-1 lg:order-2 w-full max-w-xl mx-auto lg:max-w-none">

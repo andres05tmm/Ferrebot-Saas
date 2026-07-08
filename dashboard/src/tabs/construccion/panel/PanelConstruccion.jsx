@@ -93,12 +93,12 @@ export default function PanelConstruccion() {
           <>
             <KpisMes kpis={d.kpis_mes} />
 
-            <div className="grid gap-4 lg:grid-cols-3">
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
               <div className="space-y-4 lg:col-span-2">
                 <ListaAlertas alertas={d.alertas} conteos={d.conteos} />
                 <TablaObrasRiesgo obras={d.portafolio?.obras} />
                 <EstadoMaquinas maquinas={d.maquinas} />
-                <div className="grid gap-4 md:grid-cols-2">
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                   <BarrasUtilidad obras={d.portafolio?.obras} />
                   <TopMaquinasMes maquinas={d.maquinas?.top_mes} />
                 </div>
@@ -136,7 +136,7 @@ function PanelSkeleton() {
           <Card key={i} className="h-24 animate-pulse bg-surface-2" />
         ))}
       </div>
-      <div className="grid gap-4 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <div className="space-y-4 lg:col-span-2">
           <Card className="h-40 animate-pulse bg-surface-2" />
           <Card className="h-64 animate-pulse bg-surface-2" />

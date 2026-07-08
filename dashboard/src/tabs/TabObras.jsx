@@ -222,7 +222,7 @@ function ObraDetalle({ id, obra, onEditar, onCambio }) {
           detalle (para que el estado pase a LIQUIDADA) y el listado padre. */}
       <PanelPresupuestoReal obra={detalle} onCambio={() => { detalleQ.refetch(); onCambio() }} />
 
-      <div className="grid gap-4 lg:grid-cols-[1fr_1.2fr]">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_1.2fr]">
         {/* Metadatos + acciones */}
         <div className="space-y-3">
           <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-[12px]">
@@ -360,7 +360,7 @@ function ObraForm({ obra, onClose, onGuardada }) {
       <h2 className="mb-3 inline-flex items-center gap-1.5 text-sm font-semibold">
         <Building2 className="size-4" aria-hidden="true" /> {edicion ? 'Editar obra' : 'Nueva obra'}
       </h2>
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <Campo label="Nombre de la obra" requerido className="sm:col-span-2">
           <Input value={f.nombre} onChange={set('nombre')} placeholder="Ej. Pavimentación vía La Estrella" className="h-9" />
         </Campo>

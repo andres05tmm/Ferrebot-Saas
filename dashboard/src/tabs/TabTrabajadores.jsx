@@ -253,7 +253,7 @@ function TrabajadorForm({ trabajador, onClose, onGuardado }) {
         </div>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <Campo label="Nombres" requerido>
           <Input value={f.nombres} onChange={set('nombres')} placeholder="Juan Camilo" className="h-9" />
         </Campo>

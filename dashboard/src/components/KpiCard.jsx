@@ -99,7 +99,7 @@ export default function KpiCard({
             : undefined}
         >
           <div className={cn(
-            'font-display text-xl font-semibold tracking-tight tabular leading-none',
+            'font-display text-xl font-semibold tracking-tight tabular leading-none truncate',
             !coloredValue && 'text-foreground',
             loading && 'opacity-50',
           )}
@@ -198,9 +198,9 @@ export default function KpiCard({
       </div>
 
       <div className={cn(
-        'font-display mt-1.5 font-semibold tracking-tight tabular leading-none',
+        'font-display mt-1.5 font-semibold tracking-tight tabular leading-none truncate',
         !coloredValue && 'text-foreground',
-        heroValue ? 'text-2xl' : 'text-lg',
+        heroValue ? 'text-xl sm:text-2xl' : 'text-lg',
         loading && 'opacity-50',
       )}
         style={coloredValue ? { color: t.color } : undefined}

@@ -79,7 +79,7 @@ export default function AppShell() {
         />
 
         <main
-          className="flex-1 px-4 md:px-6 py-5 md:py-6 mx-auto w-full"
+          className="flex-1 min-w-0 overflow-x-clip px-4 md:px-6 py-5 md:py-6 mx-auto w-full"
           style={{
             maxWidth: 1400,
             paddingBottom: isMobile ? 'calc(80px + env(safe-area-inset-bottom))' : undefined,

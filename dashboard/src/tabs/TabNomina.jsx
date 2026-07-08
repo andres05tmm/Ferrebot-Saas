@@ -335,7 +335,7 @@ function DesglosePersonal({ periodoId, detalle }) {
   const prorrateos = Array.isArray(q.data?.prorrateos) ? q.data.prorrateos : []
 
   return (
-    <div className="grid gap-3 lg:grid-cols-2">
+    <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
       {/* Desglose de conceptos */}
       <dl className="grid grid-cols-2 gap-x-4 gap-y-1.5 rounded-md border border-border-subtle bg-surface p-3 text-[12px]">
         <Concepto etiqueta="Salario devengado" valor={detalle.salario_devengado} />
@@ -467,7 +467,7 @@ function PeriodoForm({ onClose, onCreado }) {
       <h2 className="mb-3 inline-flex items-center gap-1.5 text-sm font-semibold">
         <Wallet className="size-4" aria-hidden="true" /> Nuevo periodo de nómina
       </h2>
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <Campo label="Nombre" className="sm:col-span-2">
           <Input value={f.nombre} onChange={set('nombre')} placeholder="Ej. Quincena 1 — julio 2026" className="h-9" />
         </Campo>

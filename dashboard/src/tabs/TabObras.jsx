@@ -24,6 +24,7 @@ import { Card } from '@/components/ui/card.jsx'
 import { Input } from '@/components/ui/input.jsx'
 import { Semaforo, Chips, Campo, EstadoVacio, Esqueleto, BTN_PRIMARY, BTN_OUTLINE, SELECT_CLS } from './construccion/comunes.jsx'
 import PanelPresupuestoReal from './construccion/PanelPresupuestoReal.jsx'
+import ResumenPortafolio from './construccion/ResumenPortafolio.jsx'
 
 // Estado de obra (enum del ORM) → tono del semáforo + etiqueta humana. Cada estado un tono distinto:
 // planificada (por arrancar) azul · en ejecución (sana) verde · suspendida (atención) ámbar ·
@@ -79,6 +80,9 @@ export default function TabObras() {
 
   return (
     <div className="space-y-3">
+      {/* Home de obra (Fase 8): foto agregada y cacheada del portafolio, arriba de la lista. */}
+      <ResumenPortafolio refreshKey={refreshKey} />
+
       <Card className="p-3">
         <div className="flex flex-wrap items-center gap-2">
           <div className="relative min-w-[200px] flex-1">

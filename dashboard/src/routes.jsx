@@ -10,7 +10,7 @@ import {
   FileText, FileCheck, Calculator, FileCog,
   CalendarDays, Headset, BookText, HandCoins, ChefHat, Banknote,
   CreditCard, FileSpreadsheet, Star, BedDouble, Undo2, Percent, Library, Landmark, Scale,
-  HardHat, Wrench, ClipboardList,
+  HardHat, Wrench, ClipboardList, TrendingDown,
 } from 'lucide-react'
 import { isRouteEnabled } from './lib/features.jsx'
 
@@ -40,6 +40,7 @@ export const ROUTES = [
   { path: '/herramientas',        label: 'Herramientas',        icon: Wrench,          group: 'construccion' },
   { path: '/trabajadores',        label: 'Trabajadores',        icon: Users,           group: 'construccion' },
   { path: '/nomina',              label: 'Nómina',              icon: Wallet,          group: 'construccion' },
+  { path: '/resbalos',            label: 'Resbalos y precios',  icon: TrendingDown,    group: 'construccion' },
 
   // Gestión
   { path: '/clientes',            label: 'Clientes',            icon: Users,           group: 'gestion' },

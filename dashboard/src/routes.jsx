@@ -10,7 +10,7 @@ import {
   FileText, FileCheck, Calculator, FileCog,
   CalendarDays, Headset, BookText, HandCoins, ChefHat, Banknote,
   CreditCard, FileSpreadsheet, Star, BedDouble, Undo2, Percent, Library, Landmark, Scale,
-  HardHat, Wrench, ClipboardList, TrendingDown,
+  HardHat, Wrench, ClipboardList, TrendingDown, Gauge,
 } from 'lucide-react'
 import { isRouteEnabled } from './lib/features.jsx'
 
@@ -19,6 +19,10 @@ export const ROUTES = [
   // (cockpit POS). El gating (isRouteEnabled/resolveHomePath) deja visible solo la del tenant.
   { path: '/inicio',              label: 'Inicio',              icon: Home,            group: 'top' },
   { path: '/hoy',                 label: 'Hoy',                 icon: LayoutDashboard, group: 'top' },
+  // Portada de la familia CONSTRUCCIÓN (vertical PIM): cockpit del dueño (KPIs del mes, obras por
+  // riesgo, máquinas, alertas). Solo visible para construcción (isRouteEnabled) y admin (guardia en
+  // el propio panel + resolveHomePath por rol). `/obras` sigue siendo la vista operativa CRUD.
+  { path: '/panel',               label: 'Panel',               icon: Gauge,           group: 'top' },
 
   // Operación
   { path: '/ventas',              label: 'Ventas Rápidas',      icon: ShoppingCart,    group: 'operacion' },

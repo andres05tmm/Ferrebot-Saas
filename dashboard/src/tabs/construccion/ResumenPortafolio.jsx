@@ -17,7 +17,7 @@
 import { Gauge, TriangleAlert, TrendingUp, TrendingDown, Minus, Building2 } from 'lucide-react'
 import { useFetch, cop } from '@/components/shared.jsx'
 import { Card } from '@/components/ui/card.jsx'
-import { Semaforo } from './comunes.jsx'
+import { Semaforo, Kpi } from './comunes.jsx'
 
 const n = (v) => { const x = Number(v); return Number.isFinite(x) ? x : 0 }
 
@@ -56,16 +56,16 @@ export default function ResumenPortafolio({ refreshKey }) {
         )}
       </div>
 
-      <dl className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-        <Kpi etiqueta="Presupuestado" valor={p.ingreso_presupuestado_total} />
-        <Kpi etiqueta="Gasto real" valor={p.gasto_total} />
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+        <Kpi label="Presupuestado" valor={cop(n(p.ingreso_presupuestado_total))} />
+        <Kpi label="Gasto real" valor={cop(n(p.gasto_total))} />
         <div className="rounded-md bg-surface-2 px-3 py-2">
-          <dt className="text-[10px] uppercase tracking-wider text-muted-foreground">Utilidad real</dt>
-          <dd className={`tabular inline-flex items-center gap-1 text-[14px] font-semibold ${tonoUtil}`}>
+          <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Utilidad real</div>
+          <div className={`tabular inline-flex items-center gap-1 text-[14px] font-semibold ${tonoUtil}`}>
             <IconUtil className="size-3.5" aria-hidden="true" />{cop(utilidad)}
-          </dd>
+          </div>
         </div>
-      </dl>
+      </div>
 
       {/* Conteo por estado del portafolio (chips informativos, no filtran). */}
       <div className="mt-3 flex flex-wrap items-center gap-1.5">
@@ -93,14 +93,5 @@ export default function ResumenPortafolio({ refreshKey }) {
         </ul>
       )}
     </Card>
-  )
-}
-
-function Kpi({ etiqueta, valor }) {
-  return (
-    <div className="rounded-md bg-surface-2 px-3 py-2">
-      <dt className="text-[10px] uppercase tracking-wider text-muted-foreground">{etiqueta}</dt>
-      <dd className="tabular text-[14px] font-semibold text-foreground">{cop(n(valor))}</dd>
-    </div>
   )
 }

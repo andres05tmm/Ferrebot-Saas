@@ -226,6 +226,42 @@ describe('familia construcción (vertical PIM)', () => {
     expect(resolveHomePath(['pack_pedidos'])).toBe('/pedidos')  // restaurante intacto
     expect(isRouteEnabled('/hoy', ['pos'])).toBe(true)     // ferretería sigue viendo su cockpit
   })
+
+  // ── Cockpit /panel (F3) — portada exclusiva de la familia + RBAC por rol ────────────────────────
+  it('/panel (cockpit) es visible SOLO para la familia construcción', () => {
+    expect(isRouteEnabled('/panel', PIM)).toBe(true)
+    expect(isRouteEnabled('/panel', ['construccion'])).toBe(true)   // meta-pack
+    expect(isRouteEnabled('/panel', ['obras'])).toBe(true)          // feature núcleo
+    // Ninguna otra familia lo ve (ni ferretería, ni restaurante, ni servicios, ni vacío).
+    for (const feats of [['pos'], ['pos', 'pack_pedidos'], ['pack_agenda'], []]) {
+      expect(isRouteEnabled('/panel', feats)).toBe(false)
+    }
+    // Cuelga de `obras` pero NO se cuela en otras familias sin el vertical.
+    expect(RUTA_FEATURE['/panel']).toBe('obras')
+  })
+
+  it('la portada por ROL: admin → /panel (cockpit), vendedor → /obras (operación)', () => {
+    expect(resolveHomePath(PIM, 'admin')).toBe('/panel')
+    expect(resolveHomePath(PIM, 'super_admin')).toBe('/panel')
+    expect(resolveHomePath(PIM, 'vendedor')).toBe('/obras')
+    // Sin rol (nav interno) el default es la operación, nunca las finanzas del cockpit.
+    expect(resolveHomePath(PIM)).toBe('/obras')
+    // Con solo el meta-pack, misma lógica por rol.
+    expect(resolveHomePath(['construccion'], 'admin')).toBe('/panel')
+    expect(resolveHomePath(['construccion'], 'vendedor')).toBe('/obras')
+  })
+
+  it('la ÚNICA portada top de la familia construcción es /panel (excluye /hoy y /inicio)', () => {
+    const topDe = (features) => ROUTES.filter(r => r.group === 'top' && isRouteEnabled(r.path, features)).map(r => r.path)
+    expect(topDe(PIM)).toEqual(['/panel'])
+    expect(isRouteEnabled('/hoy', PIM)).toBe(false)
+    expect(isRouteEnabled('/inicio', PIM)).toBe(false)
+  })
+
+  it('el rol NO afecta la visibilidad del nav de /panel (solo el RBAC del propio cockpit)', () => {
+    // El nav no conoce el rol: /panel se ve para la familia; el guard del panel manda al vendedor a /obras.
+    expect(isRouteEnabled('/panel', PIM)).toBe(true)
+  })
 })
 
 // ── ADR 0021 — partición del pack `pos`: carril contable de servicios ────────────────────────────

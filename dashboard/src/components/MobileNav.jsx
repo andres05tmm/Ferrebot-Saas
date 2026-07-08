@@ -8,6 +8,7 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import { LayoutDashboard, ChevronUp, X } from 'lucide-react'
 import { GROUPS, routesByGroup, ROUTES } from '@/routes.jsx'
 import { useFeatures, resolveHomePath } from '@/lib/features.jsx'
+import { useAuth } from '@/hooks/useAuth.js'
 import { cn } from '@/lib/utils'
 
 const GROUP_ICONS = {
@@ -24,8 +25,10 @@ export default function MobileNav() {
   const navigate = useNavigate()
   const location = useLocation()
 
-  // Portada del tenant (Inicio de servicios o Hoy POS): un solo botón "home" que resuelve por features.
-  const homePath = resolveHomePath(features)
+  // Portada del tenant (Inicio de servicios, Hoy POS, o Panel/Obras de construcción según rol): un solo
+  // botón "home" que resuelve por features + rol (el admin de obra aterriza en su cockpit /panel).
+  const rol = useAuth().getUser()?.rol
+  const homePath = resolveHomePath(features, rol)
   const homeRoute = ROUTES.find(r => r.path === homePath)
   const HomeIcon = homeRoute?.icon || LayoutDashboard
   const isHome = location.pathname === homePath || location.pathname === '/'

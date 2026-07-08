@@ -82,6 +82,9 @@ export const RUTA_FEATURE = {
   '/top-productos': 'ventas',
   // Vertical construcción (Fase 1 PIM + Ola A): cada tab por su feature fina. NO son RUTAS_RETAIL (no
   // llevan la supresión de familia): gate simple `feats.includes(requerida)`.
+  // `/panel` (cockpit del dueño, F3): portada de la familia construcción. Cuelga de `obras` como el
+  // resto del vertical, pero lleva además la restricción de FAMILIA (solo construcción) en isRouteEnabled.
+  '/panel': 'obras',
   '/cotizaciones-obra': 'cotizaciones_aiu',
   '/obras': 'obras',
   '/maquinas': 'maquinaria',
@@ -138,15 +141,21 @@ export function esConstruccion(features = []) {
  * dependencia (inventario / catálogo) sin ser retail:
  *   - `pack_pedidos`             → `/pedidos` (comandera del restaurante: su home operativa).
  *   - `pack_agenda`/`pack_reservas` → `/inicio` (home del agente: citas, pendientes, KPIs).
- *   - construcción (`obras`)     → `/obras` (portada de obra: portafolio + presupuesto vs. real).
+ *   - construcción (`obras`)     → `/panel` (cockpit del dueño) si admin; `/obras` (vista operativa)
+ *                                   si vendedor. RBAC: el cockpit expone cifras financieras del mes, así
+ *                                   que el vendedor aterriza en la operación. Sin `rol` (nav interno) el
+ *                                   default es `/obras`, el más seguro (nunca expone finanzas por defecto).
  *   - `pos` (y nada de lo anterior) → `/hoy` (cockpit POS de ferretería, intacto).
  *   - resto                       → `/inicio` (núcleo de servicio).
  */
-export function resolveHomePath(features = []) {
+export function resolveHomePath(features = [], rol = null) {
   const feats = expandirMetapacks(features)
   if (feats.includes('pack_pedidos')) return '/pedidos'
   if (feats.includes('pack_agenda') || feats.includes('pack_reservas')) return '/inicio'
-  if (esConstruccion(feats)) return '/obras'
+  if (esConstruccion(feats)) {
+    const esAdmin = rol === 'admin' || rol === 'super_admin'
+    return esAdmin ? '/panel' : '/obras'
+  }
   if (feats.includes('pos')) return '/hoy'
   return '/inicio'
 }
@@ -157,6 +166,10 @@ export function isRouteEnabled(path, features = []) {
   // Familia construcción: suprime el RETAIL PURO (cockpit `/hoy` + venta de mostrador). Una constructora
   // arrastra `pos` por `inventario`, pero no vende tickets: conserva caja/inventario/compras/gastos.
   if (esConstruccion(feats) && RUTAS_RETAIL_PURO.has(path)) return false
+  // `/panel` (cockpit del dueño, F3): portada EXCLUSIVA de la familia construcción. Aunque cuelga de
+  // `obras`, se restringe por FAMILIA para que ningún otro vertical la vea (portadas top mutuamente
+  // excluyentes). El RBAC admin-only lo aplican el guard del panel y resolveHomePath(rol), no el nav.
+  if (path === '/panel') return esConstruccion(feats)
   // Las portadas son mutuamente excluyentes: solo la portada resuelta (resolveHomePath) queda en el nav.
   if (path === '/inicio') return resolveHomePath(feats) === '/inicio'
   // `/historial` es transversal a retail/servicios (ADR 0018): quien registra ventas ve su historial y

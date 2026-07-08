@@ -106,5 +106,7 @@ async def actualizar_config(
     service: CarteraAlquilerService = Depends(get_cartera_service),
     _user: Principal = Depends(require_role("admin")),
 ) -> CarteraConfigLeer:
-    config = await service.guardar_config(payload.model_dump())
+    # `exclude_unset`: PUT PARCIAL — solo se guardan los campos que el cliente envió; los omitidos
+    # conservan su valor (sin `exclude_unset`, los defaults del schema pisarían activo/dias_colita/cadencia).
+    config = await service.guardar_config(payload.model_dump(exclude_unset=True))
     return CarteraConfigLeer.model_validate(config)

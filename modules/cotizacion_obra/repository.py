@@ -13,9 +13,10 @@ huecos ni colisiones. La UNIQUE de `numero` es el respaldo último.
 """
 from __future__ import annotations
 
+from datetime import date
 from decimal import Decimal
 
-from sqlalchemy import delete, select, text
+from sqlalchemy import delete, func, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -104,6 +105,21 @@ class SqlCotizacionObraRepository:
         for item in items_todos:
             por_cotizacion[item.cotizacion_id].append(item)
         return [(c, por_cotizacion[c.id]) for c in cotizaciones]
+
+    async def contar_por_vencer(self, *, hoy: date, limite: date) -> int:
+        """Cotizaciones ENVIADA cuya vigencia vence entre `hoy` y `limite` (venciendo pronto, aún vivas).
+
+        Vigencia = `fecha_emision::date + vigencia_dias`. Badge del cockpit ("cotizaciones por vencer" a ≤N
+        días): sólo ENVIADA (una BORRADOR no está en la calle; GANADA/PERDIDA/VENCIDA ya cerraron)."""
+        vence = func.date(CotizacionObra.fecha_emision) + CotizacionObra.vigencia_dias
+        n = (
+            await self._s.execute(
+                select(func.count())
+                .select_from(CotizacionObra)
+                .where(CotizacionObra.estado == "ENVIADA", vence >= hoy, vence <= limite)
+            )
+        ).scalar_one()
+        return int(n)
 
     # --- escritura --------------------------------------------------------------------
     async def crear(self, datos: CotizacionObraCrear, *, numero: str) -> CotizacionObra:

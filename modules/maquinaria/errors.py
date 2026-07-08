@@ -23,6 +23,17 @@ class CodigoMaquinaDuplicado(MaquinariaError):
         self.codigo = codigo
 
 
+class MantenimientoInexistente(MaquinariaError):
+    """No hay mantenimiento con ese id para la máquina indicada → 404.
+
+    Se acota SIEMPRE por `(maquina_id, mantenimiento_id)`: un mantenimiento de otra máquina se trata como
+    inexistente para ésta (no se filtra por la ruta de una máquina ajena)."""
+
+    def __init__(self, mantenimiento_id: int) -> None:
+        super().__init__(f"El mantenimiento {mantenimiento_id} no existe")
+        self.mantenimiento_id = mantenimiento_id
+
+
 class SinAsignacionActiva(MaquinariaError):
     """No hay asignación ACTIVA de la máquina a la obra que cubra la fecha del parte → 409.
 

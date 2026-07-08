@@ -44,3 +44,8 @@ class PanelCache:
 
 
 panel_cache = PanelCache()
+
+# Caché del cockpit de construcción (GET /obras/dashboard). TTL 5 min (objetivo "<2s" del plan, spec 13):
+# el dashboard agrega muchas secciones (KPIs del mes, máquinas, alertas) y se recarga seguido; un TTL más
+# largo que el del panel operativo lo sirve al instante sin martillar Postgres. Misma semántica por empresa.
+dashboard_cache = PanelCache(ttl=300.0)

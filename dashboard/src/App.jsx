@@ -49,6 +49,7 @@ import TabEstadosFinancieros from './tabs/TabEstadosFinancieros.jsx'
 import TabRetenciones from './tabs/TabRetenciones.jsx'
 import TabConciliacion from './tabs/TabConciliacion.jsx'
 import TabObras from './tabs/TabObras.jsx'
+import PanelConstruccion from './tabs/construccion/panel/PanelConstruccion.jsx'
 import TabCotizacionesObra from './tabs/TabCotizacionesObra.jsx'
 import TabResbalos from './tabs/TabResbalos.jsx'
 import TabMaquinas from './tabs/TabMaquinas.jsx'
@@ -93,6 +94,7 @@ const TABS = {
   '/retenciones': TabRetenciones,
   '/conciliacion': TabConciliacion,
   // Vertical construcción (Fase 1 PIM + Ola A: cotizador AIU F2, nómina F4)
+  '/panel': PanelConstruccion,
   '/cotizaciones-obra': TabCotizacionesObra,
   '/obras': TabObras,
   '/resbalos': TabResbalos,
@@ -102,6 +104,7 @@ const TABS = {
   '/nomina': TabNomina,
 }
 import { bootConfig } from './lib/config.js'
+import { useAuth } from './hooks/useAuth.js'
 import { FeaturesProvider, useFeatures, resolveHomePath, esAtencionCliente, isRouteEnabled } from './lib/features.jsx'
 import { BrandingProvider } from './lib/branding.jsx'
 import { PreferenciasProvider } from './lib/preferencias.jsx'
@@ -114,11 +117,12 @@ export function HistorialPorFamilia() {
   return esAtencionCliente(features) ? <TabHistorialServicios /> : <TabHistorial />
 }
 
-// Redirige a la portada del tenant resuelta por sus features (Hoy POS / Inicio agente). Vive dentro de
-// FeaturesProvider (ShellBoot), así que lee las features del shell ya cargado.
+// Redirige a la portada del tenant resuelta por sus features y ROL (Hoy POS / Inicio agente / Panel
+// construcción admin / Obras construcción vendedor). Vive dentro de FeaturesProvider (ShellBoot).
 function HomeRedirect() {
   const features = useFeatures()
-  return <Navigate to={resolveHomePath(features)} replace />
+  const rol = useAuth().getUser()?.rol
+  return <Navigate to={resolveHomePath(features, rol)} replace />
 }
 
 // Gate por feature del tenant: un deep-link a un tab deshabilitado (Sidebar/CommandPalette ya lo
@@ -126,7 +130,8 @@ function HomeRedirect() {
 // cuyos fetches solo devolverían 403/404.
 function RutaConFeature({ path, children }) {
   const features = useFeatures()
-  if (!isRouteEnabled(path, features)) return <Navigate to={resolveHomePath(features)} replace />
+  const rol = useAuth().getUser()?.rol
+  if (!isRouteEnabled(path, features)) return <Navigate to={resolveHomePath(features, rol)} replace />
   return children
 }
 

@@ -38,7 +38,7 @@ import { useRealtimeEvent } from '@/components/RealtimeProvider.jsx'
 import { useFeatures } from '@/lib/features.jsx'
 import { Card } from '@/components/ui/card.jsx'
 import { Input } from '@/components/ui/input.jsx'
-import { Semaforo, Campo, EstadoVacio, Esqueleto, BTN_PRIMARY, BTN_OUTLINE, SELECT_CLS } from './comunes.jsx'
+import { Semaforo, Campo, EstadoVacio, Esqueleto, Kpi, BTN_PRIMARY, BTN_OUTLINE, SELECT_CLS } from './comunes.jsx'
 
 const arr = (d) => (Array.isArray(d) ? d : [])
 const n = (v) => Number(v || 0)
@@ -132,14 +132,14 @@ function CarteraAlquilerActiva() {
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <Kpi label="Cupo otorgado" value={cuposQ.loading ? '…' : cop(cupoTotal)}
-          hint={`${cupos.length} cliente${cupos.length === 1 ? '' : 's'} con cupo`} />
-        <Kpi label="Consumido" value={cuposQ.loading ? '…' : cop(consumidoTotal)}
-          hint="saldo de alquiler en el ledger" />
-        <Kpi label="Colitas" value={colitasQ.loading ? '…' : colitas.length}
-          hint={`obras estancadas · +${umbral} d sin abono`} />
-        <Kpi label="Cupos excedidos" value={cuposQ.loading ? '…' : nExcedidos}
-          tono={nExcedidos > 0 ? 'destructive' : undefined} hint="pasaron su tope de crédito" />
+        <Kpi variante="card" label="Cupo otorgado" valor={cuposQ.loading ? '…' : cop(cupoTotal)}
+          sublinea={`${cupos.length} cliente${cupos.length === 1 ? '' : 's'} con cupo`} />
+        <Kpi variante="card" label="Consumido" valor={cuposQ.loading ? '…' : cop(consumidoTotal)}
+          sublinea="saldo de alquiler en el ledger" />
+        <Kpi variante="card" label="Colitas" valor={colitasQ.loading ? '…' : colitas.length}
+          sublinea={`obras estancadas · +${umbral} d sin abono`} />
+        <Kpi variante="card" label="Cupos excedidos" valor={cuposQ.loading ? '…' : nExcedidos}
+          tono={nExcedidos > 0 ? 'negativo' : 'neutro'} sublinea="pasaron su tope de crédito" />
       </div>
 
       <Card className="p-3">
@@ -196,17 +196,6 @@ function CarteraAlquilerActiva() {
 
       <SeccionColitas colitas={colitas} umbral={umbral} loading={colitasQ.loading} />
     </section>
-  )
-}
-
-// ── KPI (calca el de TabCartera; `tono` opcional tiñe el valor cuando hay algo que mirar) ─────────
-function Kpi({ label, value, hint, tono }) {
-  return (
-    <Card className="p-3">
-      <div className="text-[11px] uppercase tracking-wider text-muted-foreground">{label}</div>
-      <div className={`text-lg font-semibold tabular-nums ${tono === 'destructive' ? 'text-destructive' : ''}`}>{value}</div>
-      {hint && <div className="text-[11px] text-muted-foreground">{hint}</div>}
-    </Card>
   )
 }
 

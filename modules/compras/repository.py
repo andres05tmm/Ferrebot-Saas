@@ -308,6 +308,35 @@ class SqlComprasRepository:
         filas = (await self._s.execute(stmt)).all()
         return [self._fila_a_leer(f) for f in filas]
 
+    async def agregados_mes(
+        self, *, inicio: datetime, fin: datetime
+    ) -> tuple[Decimal, Decimal]:
+        """(resbalos, compras) del mes para el KPI del cockpit (ventana sobre `fecha`, TIMESTAMPTZ).
+
+        - `resbalos` = Σ `resbalo` de los VIAJES de material (`es_viaje_material`): su MARGEN, que va al
+          lado del INGRESO del mes.
+        - `compras` = Σ `total` de las compras que NO son viaje: su COSTO, que va al lado del GASTO.
+        El split evita el doble conteo (el viaje aporta su margen al ingreso, no su costo al gasto)."""
+        resbalos = (
+            await self._s.execute(
+                select(func.coalesce(func.sum(Compra.resbalo), 0)).where(
+                    Compra.es_viaje_material.is_(True),
+                    Compra.fecha >= inicio,
+                    Compra.fecha <= fin,
+                )
+            )
+        ).scalar_one()
+        compras = (
+            await self._s.execute(
+                select(func.coalesce(func.sum(Compra.total), 0)).where(
+                    Compra.es_viaje_material.is_(False),
+                    Compra.fecha >= inicio,
+                    Compra.fecha <= fin,
+                )
+            )
+        ).scalar_one()
+        return Decimal(resbalos), Decimal(compras)
+
     async def promedio_costo_unitario_proveedor(
         self,
         proveedor_id: int,

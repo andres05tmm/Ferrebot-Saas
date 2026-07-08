@@ -55,6 +55,13 @@ describe('gating del Sidebar', () => {
     expect(screen.queryByText('Inicio')).toBeNull()
   })
 
+  it('un tenant de construcción (PIM) ve la portada Panel (cockpit), no Hoy ni Inicio', () => {
+    renderSidebar(['construccion', 'obras', 'maquinaria', 'pos', 'inventario'])
+    expect(screen.getByText('Panel')).toBeInTheDocument()
+    expect(screen.queryByText('Hoy')).toBeNull()      // retail puro suprimido para la familia obra
+    expect(screen.queryByText('Inicio')).toBeNull()   // portada de servicios, no la suya
+  })
+
   it('oculta los tabs fiscales cuando su feature no está activa', () => {
     renderSidebar(['pos', 'clientes'])
     expect(screen.queryByText('Facturación')).toBeNull()

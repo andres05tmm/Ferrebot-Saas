@@ -17,6 +17,7 @@
  */
 
 import { cloneElement, useId } from 'react'
+import { Card } from '@/components/ui/card.jsx'
 
 // Tonos del semáforo → clases de token semántico. `violeta` usa la var de chart (púrpura) por valor
 // arbitrario porque no hay utilidad Tailwind directa; sirve para el estado "cerrado" (obra liquidada).
@@ -131,6 +132,45 @@ export function Esqueleto({ filas = 4 }) {
       ))}
     </ul>
   )
+}
+
+// Tonos del VALOR de un KPI → clase de color de texto. Nunca color-solo: cuando el signo importa, el
+// consumidor añade flecha/etiqueta (Δ%, semáforo). `marca` = ámbar (acento), reservado a hitos, no a riesgo.
+const KPI_TONO = {
+  neutro:   'text-foreground',
+  positivo: 'text-success',
+  negativo: 'text-destructive',
+  marca:    'text-primary',
+}
+
+/**
+ * Kpi — tesela de indicador del vertical construcción. Concentra el KPI que repetían ResumenPortafolio
+ * y CarteraAlquiler. El `valor` llega YA formateado (string o nodo: cop(), un conteo, '…' al cargar): el
+ * átomo presenta, no formatea. Props:
+ *   - label     etiqueta corta en versalitas.
+ *   - valor     el número/nodo grande (tabular).
+ *   - sublinea  texto pequeño debajo (desglose o hint); opcional.
+ *   - tono      tiñe el valor: 'neutro'(def) | 'positivo' | 'negativo' | 'marca'.
+ *   - tendencia nodo a la derecha del valor (flecha Δ% del cockpit); opcional.
+ *   - variante  'plana'(def): caja compacta sobre bg-surface-2 (densa, dentro de otra Card).
+ *               'card': envuelta en Card, teselas sueltas en una fila (uso de CarteraAlquiler).
+ */
+export function Kpi({ label, valor, sublinea, tono = 'neutro', tendencia = null, variante = 'plana', className = '' }) {
+  const tonoCls = KPI_TONO[tono] || KPI_TONO.neutro
+  const esCard = variante === 'card'
+  const cuerpo = (
+    <>
+      <div className={`uppercase tracking-wider text-muted-foreground ${esCard ? 'text-[11px]' : 'text-[10px]'}`}>{label}</div>
+      <div className={`flex items-baseline gap-1.5 font-semibold tabular-nums ${esCard ? 'text-lg' : 'text-[14px]'} ${tonoCls}`}>
+        <span className="min-w-0 truncate">{valor}</span>
+        {tendencia}
+      </div>
+      {sublinea && <div className="mt-0.5 text-[11px] text-muted-foreground">{sublinea}</div>}
+    </>
+  )
+  return esCard
+    ? <Card className={`p-3 ${className}`}>{cuerpo}</Card>
+    : <div className={`rounded-md bg-surface-2 px-3 py-2 ${className}`}>{cuerpo}</div>
 }
 
 // Clases de botón compartidas (calcan el botón primario del vecino). La altura se pasa por `className`

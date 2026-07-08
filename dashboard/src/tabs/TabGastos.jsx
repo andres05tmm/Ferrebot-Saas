@@ -10,8 +10,10 @@ import { Receipt } from 'lucide-react'
 import { api } from '@/lib/api'
 import { useFetch, cop, rangoHoyCO } from '@/components/shared.jsx'
 import { useRealtimeEvent } from '@/components/RealtimeProvider.jsx'
+import { useAuth } from '@/hooks/useAuth.js'
 import { Card } from '@/components/ui/card.jsx'
 import { Input } from '@/components/ui/input.jsx'
+import BandejaRevision from './construccion/BandejaRevision.jsx'
 
 const CATEGORIAS = ['transporte', 'papeleria', 'servicios', 'nomina', 'mantenimiento', 'otros']
 
@@ -19,6 +21,7 @@ function nuevaKey() { return crypto?.randomUUID?.() || `k-${Date.now()}-${Math.r
 
 export default function TabGastos() {
   const { refreshKey } = useOutletContext() ?? {}
+  const { isAdmin } = useAuth()
   const { desde, hasta } = useMemo(() => rangoHoyCO(), [])
   const gastosQ = useFetch(`/gastos?desde=${encodeURIComponent(desde)}&hasta=${encodeURIComponent(hasta)}`, [refreshKey])
   useRealtimeEvent(['gasto_registrado', 'reconnected'], gastosQ.refetch)
@@ -28,6 +31,9 @@ export default function TabGastos() {
 
   return (
     <div className="space-y-3 max-w-2xl">
+      {/* Cola de recibos que el bot importó con baja confianza (F5). Solo admin y silenciosa si vacía. */}
+      {isAdmin() && <BandejaRevision refreshKey={refreshKey} />}
+
       <GastoForm onDone={gastosQ.refetch} />
 
       <Card className="p-3.5">

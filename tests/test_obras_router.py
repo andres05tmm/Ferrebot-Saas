@@ -53,6 +53,10 @@ class _FakeObras:
         self.ultimo_filtro = (cliente_id, estado)
         return list(self._por_id.values())
 
+    async def nombres_clientes(self, ids):
+        # Azúcar de lectura del listado (cliente_nombre): el fake devuelve un nombre estable por id.
+        return {cid: f"Cliente {cid}" for cid in ids}
+
     async def crear(self, datos):
         o = _obra(oid=self._next, cliente_id=datos.cliente_id, nombre=datos.nombre)
         self._por_id[o.id] = o

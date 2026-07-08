@@ -16,7 +16,7 @@ from core.config import get_settings
 from core.db.urls import tenant_url, to_async, to_libpq
 from core.tenancy.cache import control_cache
 from core.tenancy.capacidades_cache import capacidades_cache
-from modules.obra.panel_cache import panel_cache
+from modules.obra.panel_cache import dashboard_cache, panel_cache
 from tools._alembic import upgrade_tenant
 
 
@@ -27,6 +27,7 @@ def _reset_caches():
     capacidades_cache.clear()
     control_cache.clear()
     panel_cache.clear()
+    dashboard_cache.clear()
     yield
 
 

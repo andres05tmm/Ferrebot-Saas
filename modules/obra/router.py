@@ -14,7 +14,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response,
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.auth import Principal, require_role
-from core.auth.features import require_feature
+from core.auth.features import get_capacidades, require_feature
 from core.config import get_settings
 from core.db.session import control_session, get_tenant_db
 from core.logging import get_logger
@@ -25,6 +25,7 @@ from modules.facturacion.service import FacturacionService
 from modules.inventario.errors import AjusteDejaStockNegativo, ProductoInexistente
 from modules.inventario.repository import SqlInventarioRepository
 from modules.inventario.service import InventarioService
+from modules.obra.dashboard import DashboardConstruccionService, panel_obra_a_schema
 from modules.obra.errors import (
     ConsumoEnObraLiquidada,
     ObraInexistente,
@@ -34,12 +35,13 @@ from modules.obra.errors import (
     ObraSinCotizacion,
     TransicionEstadoInvalida,
 )
-from modules.obra.panel_cache import panel_cache
+from modules.obra.panel_cache import dashboard_cache, panel_cache
 from modules.obra.repository import SqlObrasRepository
 from modules.obra.schemas import (
     ConsumoInventarioCrear,
     ConsumoInventarioLeer,
     ConsumoInventarioRegistrado,
+    DashboardConstruccion,
     EstadoObra,
     FacturaObraLeer,
     GastoRealObra,
@@ -49,7 +51,6 @@ from modules.obra.schemas import (
     ObraEstadoCambiar,
     ObraLeer,
     ObraPanel,
-    ObraPanelItem,
     ObraResumen,
     ReporteDiarioCrear,
     ReporteDiarioLeer,
@@ -72,6 +73,15 @@ def get_obras_service(session: AsyncSession = Depends(get_tenant_db)) -> ObrasSe
         SqlObrasRepository(session),
         inventario=InventarioService(SqlInventarioRepository(session)),
     )
+
+
+def get_dashboard_service(
+    session: AsyncSession = Depends(get_tenant_db),
+    capacidades: frozenset[str] = Depends(get_capacidades),
+) -> DashboardConstruccionService:
+    """Arma el compositor del cockpit sobre la sesión del tenant + sus capacidades (los tests de wiring lo
+    overridean con un fake). Las secciones opcionales del cockpit degradan según `capacidades`."""
+    return DashboardConstruccionService(session, capacidades)
 
 
 async def get_obras_facturador(
@@ -115,9 +125,16 @@ async def listar_obras(
     service: ObrasService = Depends(get_obras_service),
     _user: Principal = Depends(require_role("vendedor")),
 ) -> list[ObraLeer]:
-    """Obras vigentes (excluye las dadas de baja), filtrables por cliente y estado."""
+    """Obras vigentes (excluye las dadas de baja), filtrables por cliente y estado.
+
+    `cliente_nombre` se resuelve en LOTE (sin N+1) e inyecta en cada fila para que el dashboard no tenga
+    que resolver el cliente por su cuenta (repara la referencia muerta del front)."""
     obras = await service.listar(cliente_id=cliente_id, estado=estado)
-    return [ObraLeer.model_validate(o) for o in obras]
+    nombres = await service.nombres_clientes([o.cliente_id for o in obras])
+    return [
+        ObraLeer.model_validate(o).model_copy(update={"cliente_nombre": nombres.get(o.cliente_id)})
+        for o in obras
+    ]
 
 
 @router.post("/obras", response_model=ObraLeer, status_code=status.HTTP_201_CREATED)
@@ -129,29 +146,6 @@ async def crear_obra(
     """Da de alta una obra suelta (arranca PLANIFICADA; la conversión desde cotización es Fase 2)."""
     obra = await service.crear(payload)
     return ObraLeer.model_validate(obra)
-
-
-def _panel_a_schema(p) -> ObraPanel:
-    """Mapea el `PanelObra` del service (dataclass) al schema de salida (Pydantic)."""
-    return ObraPanel(
-        generado_en=p.generado_en,
-        total_obras=p.total_obras,
-        obras_activas=p.obras_activas,
-        por_estado=p.por_estado,
-        ingreso_presupuestado_total=p.ingreso_presupuestado_total,
-        gasto_total=p.gasto_total,
-        utilidad_real_total=p.utilidad_real_total,
-        obras_en_alerta=p.obras_en_alerta,
-        obras=[
-            ObraPanelItem(
-                obra_id=it.obra_id, nombre=it.nombre, estado=it.estado, cliente_id=it.cliente_id,
-                ingreso_presupuestado=it.ingreso_presupuestado, gasto_total=it.gasto_total,
-                utilidad_real=it.utilidad_real, tiene_presupuesto=it.tiene_presupuesto,
-                semaforo=it.semaforo, alerta_margen=it.alerta_margen,
-            )
-            for it in p.obras
-        ],
-    )
 
 
 @router.get("/obras/panel", response_model=ObraPanel)
@@ -172,9 +166,35 @@ async def panel_obras(
         cacheado = panel_cache.get(empresa_id)
         if cacheado is not None:
             return cacheado
-    resp = _panel_a_schema(await service.panel())
+    resp = panel_obra_a_schema(await service.panel())
     if empresa_id is not None:
         panel_cache.set(empresa_id, resp)
+    return resp
+
+
+@router.get("/obras/dashboard", response_model=DashboardConstruccion)
+async def dashboard_construccion(
+    request: Request,
+    service: DashboardConstruccionService = Depends(get_dashboard_service),
+    _user: Principal = Depends(require_role("admin")),
+) -> DashboardConstruccion:
+    """Cockpit del vertical construcción (spec 13): un solo request AGREGADO que arma la portada "todo de un
+    vistazo" — KPIs del mes con semáforo y comparativo, portafolio de obras (reusa `panel()`), tablero de
+    máquinas, alertas accionables y badges.
+
+    Financiero (márgenes/utilidad): rol `admin` (el vendedor no ve cifras). Declarado JUNTO a `/obras/panel`
+    y ANTES de `/obras/{obra_id}` para que 'dashboard' no caiga en la ruta de id (mismo motivo que 'panel').
+    CACHEADO 5 min por empresa (objetivo "<2s" del plan): el 2º hit se sirve al instante. Sin tenant resuelto
+    (apps mínimas de test) no cachea: siempre recalcula. Secciones opcionales degradan por capacidad."""
+    tenant = getattr(request.state, "tenant", None)
+    empresa_id = getattr(tenant, "id", None)
+    if empresa_id is not None:
+        cacheado = dashboard_cache.get(empresa_id)
+        if cacheado is not None:
+            return cacheado
+    resp = await service.construir()
+    if empresa_id is not None:
+        dashboard_cache.set(empresa_id, resp)
     return resp
 
 

@@ -8,13 +8,15 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import { LayoutDashboard, ChevronUp, X } from 'lucide-react'
 import { GROUPS, routesByGroup, ROUTES } from '@/routes.jsx'
 import { useFeatures, resolveHomePath } from '@/lib/features.jsx'
+import { useAuth } from '@/hooks/useAuth.js'
 import { cn } from '@/lib/utils'
 
 const GROUP_ICONS = {
-  operacion: ROUTES.find(r => r.path === '/ventas')?.icon,
-  gestion:   ROUTES.find(r => r.path === '/clientes')?.icon,
-  reportes:  ROUTES.find(r => r.path === '/historial')?.icon,
-  fiscal:    ROUTES.find(r => r.path === '/facturacion')?.icon,
+  operacion:    ROUTES.find(r => r.path === '/ventas')?.icon,
+  construccion: ROUTES.find(r => r.path === '/obras')?.icon,   // HardHat — sin esto el grupo entero desaparecía del bottom nav
+  gestion:      ROUTES.find(r => r.path === '/clientes')?.icon,
+  reportes:     ROUTES.find(r => r.path === '/historial')?.icon,
+  fiscal:       ROUTES.find(r => r.path === '/facturacion')?.icon,
 }
 
 export default function MobileNav() {
@@ -23,8 +25,10 @@ export default function MobileNav() {
   const navigate = useNavigate()
   const location = useLocation()
 
-  // Portada del tenant (Inicio de servicios o Hoy POS): un solo botón "home" que resuelve por features.
-  const homePath = resolveHomePath(features)
+  // Portada del tenant (Inicio de servicios, Hoy POS, o Panel/Obras de construcción según rol): un solo
+  // botón "home" que resuelve por features + rol (el admin de obra aterriza en su cockpit /panel).
+  const rol = useAuth().getUser()?.rol
+  const homePath = resolveHomePath(features, rol)
   const homeRoute = ROUTES.find(r => r.path === homePath)
   const HomeIcon = homeRoute?.icon || LayoutDashboard
   const isHome = location.pathname === homePath || location.pathname === '/'
@@ -90,7 +94,9 @@ export default function MobileNav() {
         />
         {GROUPS.map(group => {
           const Icon = GROUP_ICONS[group.id]
-          if (!Icon) return null
+          // Igual que el Sidebar: ocultar el grupo si el tenant no tiene rutas habilitadas en él
+          // (evita un botón muerto —p. ej. Construcción en un tenant retail— con drawer vacío).
+          if (!Icon || !routesByGroup(group.id, features).length) return null
           const active = activeGroup === group.id
           return (
             <BottomItem

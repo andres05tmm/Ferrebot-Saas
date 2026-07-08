@@ -5,7 +5,7 @@ se valida, se mapea a HTTP y se serializa.
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.auth import Principal, require_role
@@ -15,6 +15,7 @@ from core.tenancy.catalogo import expandir_metapacks
 from modules.cartera.service import construir_cartera_service
 from modules.maquinaria.errors import (
     CodigoMaquinaDuplicado,
+    MantenimientoInexistente,
     MaquinaInexistente,
     SinAsignacionActiva,
 )
@@ -22,6 +23,9 @@ from modules.maquinaria.repository import SqlMaquinasRepository
 from modules.maquinaria.schemas import (
     AsignacionMaquinaObraLeer,
     EstadoMaquina,
+    MantenimientoActualizar,
+    MantenimientoCrear,
+    MantenimientoLeer,
     MaquinaActualizar,
     MaquinaCrear,
     MaquinaLeer,
@@ -38,6 +42,13 @@ def _service(session: AsyncSession, cartera=None) -> MaquinariaService:
     """Arma el servicio; `cartera` se inyecta SOLO en el write de horas de tenants con `cartera_alquiler`
     (la señal que enciende el seam de Fase 5). El resto de endpoints no lo necesita."""
     return MaquinariaService(SqlMaquinasRepository(session), cartera)
+
+
+def get_maquinaria_service(session: AsyncSession = Depends(get_tenant_db)) -> MaquinariaService:
+    """Arma el `MaquinariaService` sobre la sesión del tenant (los tests de wiring lo overridean con un
+    fake, sin red ni Postgres — patrón `get_obras_service`). Sin cartera: los endpoints de mantenimiento
+    no tocan el seam de Fase 5."""
+    return MaquinariaService(SqlMaquinasRepository(session))
 
 
 @router.get("/maquinas", response_model=list[MaquinaLeer])
@@ -169,3 +180,81 @@ async def registrar_horas(
     except SinAsignacionActiva as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
     return RegistroHorasResultado.model_validate(resultado)
+
+
+# --- Mantenimientos (Fase 1 del cockpit): lecturas vendedor, mutaciones admin -----------------------
+# Rutas con segmento estático `/mantenimientos` tras `{maquina_id}`: no colisionan con `/maquinas/{id}`.
+
+
+@router.get("/maquinas/{maquina_id}/mantenimientos", response_model=list[MantenimientoLeer])
+async def listar_mantenimientos(
+    maquina_id: int,
+    limite: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+    service: MaquinariaService = Depends(get_maquinaria_service),
+    _user: Principal = Depends(require_role("vendedor")),
+) -> list[MantenimientoLeer]:
+    """Mantenimientos de la máquina (más recientes primero). 404 si la máquina no existe."""
+    try:
+        mantenimientos = await service.listar_mantenimientos(maquina_id, limite=limite, offset=offset)
+    except MaquinaInexistente as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
+    return [MantenimientoLeer.model_validate(m) for m in mantenimientos]
+
+
+@router.post(
+    "/maquinas/{maquina_id}/mantenimientos",
+    response_model=MantenimientoLeer,
+    status_code=status.HTTP_201_CREATED,
+)
+async def crear_mantenimiento(
+    maquina_id: int,
+    payload: MantenimientoCrear,
+    service: MaquinariaService = Depends(get_maquinaria_service),
+    _user: Principal = Depends(require_role("admin")),
+) -> MantenimientoLeer:
+    """Registra un mantenimiento de la máquina (fecha default hoy Colombia). NO cambia `maquina.estado`.
+    404 si la máquina no existe."""
+    try:
+        mantenimiento = await service.crear_mantenimiento(maquina_id, payload)
+    except MaquinaInexistente as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
+    return MantenimientoLeer.model_validate(mantenimiento)
+
+
+@router.patch(
+    "/maquinas/{maquina_id}/mantenimientos/{mantenimiento_id}", response_model=MantenimientoLeer
+)
+async def actualizar_mantenimiento(
+    maquina_id: int,
+    mantenimiento_id: int,
+    payload: MantenimientoActualizar,
+    service: MaquinariaService = Depends(get_maquinaria_service),
+    _user: Principal = Depends(require_role("admin")),
+) -> MantenimientoLeer:
+    """Edición parcial de un mantenimiento (solo lo enviado). 404 si no existe para esa máquina."""
+    try:
+        mantenimiento = await service.actualizar_mantenimiento(
+            maquina_id, mantenimiento_id, payload
+        )
+    except MantenimientoInexistente as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
+    return MantenimientoLeer.model_validate(mantenimiento)
+
+
+@router.delete(
+    "/maquinas/{maquina_id}/mantenimientos/{mantenimiento_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def eliminar_mantenimiento(
+    maquina_id: int,
+    mantenimiento_id: int,
+    service: MaquinariaService = Depends(get_maquinaria_service),
+    _user: Principal = Depends(require_role("admin")),
+) -> Response:
+    """DELETE duro (la tabla no tiene soft delete). 404 si no existe para esa máquina; 204 si se borró."""
+    try:
+        await service.eliminar_mantenimiento(maquina_id, mantenimiento_id)
+    except MantenimientoInexistente as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

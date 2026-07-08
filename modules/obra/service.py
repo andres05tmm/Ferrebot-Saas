@@ -78,6 +78,7 @@ class ObrasRepo(Protocol):
         self, *, cliente_id: int | None = None, estado: str | None = None
     ) -> list[Obra]: ...
     async def crear(self, datos: ObraCrear) -> Obra: ...
+    async def nombres_clientes(self, ids: list[int]) -> dict[int, str]: ...
     async def obtener_por_cotizacion(self, cotizacion_id: int) -> Obra | None: ...
     async def factura_de_obra(self, obra_id: int) -> FacturaLeer | None: ...
     async def crear_desde_cotizacion(self, cotizacion: CotizacionObra) -> Obra: ...
@@ -210,6 +211,7 @@ class PanelObraItem:
     tiene_presupuesto: bool
     semaforo: str
     alerta_margen: bool
+    cliente_nombre: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -280,6 +282,10 @@ class ObrasService:
         self, *, cliente_id: int | None = None, estado: str | None = None
     ) -> list[Obra]:
         return await self._repo.listar(cliente_id=cliente_id, estado=estado)
+
+    async def nombres_clientes(self, ids: list[int]) -> dict[int, str]:
+        """`cliente_id → nombre` en lote (azúcar de lectura para el listado/portafolio). Delega en el repo."""
+        return await self._repo.nombres_clientes(ids)
 
     async def actualizar(self, obra_id: int, datos: ObraActualizar) -> Obra:
         """Parche parcial de metadatos. 404 si no existe. No toca `estado`."""
@@ -410,6 +416,8 @@ class ObrasService:
         ids = [o.id for o in activas]
         aggs = await self._repo.agregados_gasto_batch(ids)
         cotis = await self._repo.cotizaciones_de_obras(activas)
+        # Nombres de cliente en LOTE (sin N+1): azúcar de lectura para el portafolio del cockpit.
+        nombres = await self._repo.nombres_clientes(list({o.cliente_id for o in activas}))
         _cero = AgregadosGastoObra(
             total_gastos=Decimal("0"), total_compras=Decimal("0"), total_prorrateo_nomina=Decimal("0"),
             total_horas_maquina=Decimal("0"), total_consumos_inventario=Decimal("0"),
@@ -420,6 +428,7 @@ class ObrasService:
             items.append(
                 PanelObraItem(
                     obra_id=o.id, nombre=o.nombre, estado=o.estado, cliente_id=o.cliente_id,
+                    cliente_nombre=nombres.get(o.cliente_id),
                     ingreso_presupuestado=r.ingreso_presupuestado, gasto_total=r.desglose.total,
                     utilidad_real=r.utilidad_real, tiene_presupuesto=r.tiene_presupuesto,
                     semaforo=r.desglose.semaforo.value, alerta_margen=r.alerta_margen,

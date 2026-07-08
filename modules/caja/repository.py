@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import select, text
+from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.events import publish
@@ -229,3 +229,25 @@ class SqlCajaRepository:
         gasto.requiere_revision = False
         await self._s.flush()
         return gasto
+
+    # ---- Agregados del cockpit de construcción (Fase 2 del dashboard) ------------------------------
+    async def suma_gastos(self, *, inicio: datetime, fin: datetime) -> Decimal:
+        """Σ `monto` de los gastos del mes (ventana sobre `creado_en`, TIMESTAMPTZ). KPI de gasto del mes."""
+        total = (
+            await self._s.execute(
+                select(func.coalesce(func.sum(Gasto.monto), 0)).where(
+                    Gasto.creado_en >= inicio, Gasto.creado_en <= fin
+                )
+            )
+        ).scalar_one()
+        return Decimal(total)
+
+    async def contar_gastos_por_revisar(self) -> int:
+        """Cuántos gastos siguen pendientes de revisión (bandeja del bot). Badge del dashboard: es el
+        pendiente VIVO (no acotado al mes), un to-do que el dueño debe despachar."""
+        n = (
+            await self._s.execute(
+                select(func.count()).select_from(Gasto).where(Gasto.requiere_revision.is_(True))
+            )
+        ).scalar_one()
+        return int(n)

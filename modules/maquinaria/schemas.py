@@ -19,6 +19,10 @@ EstadoMaquina = Literal["DISPONIBLE", "OCUPADA", "MANTENIMIENTO", "DAÑADA", "BA
 # TELEGRAM_BOT = parte cargado por el bot de campo (Fase 6); IMPORTACION = ETL.
 OrigenRegistro = Literal["MANUAL", "TELEGRAM_BOT", "IMPORTACION"]
 
+# Literales EXACTOS al enum `tipo_mantenimiento` (migración 0045). Validar aquí devuelve 422 (no 500 por
+# el enum de la BD). PREVENTIVO = programado por horómetro/fecha; CORRECTIVO = falla; INSPECCION = revisión.
+TipoMantenimiento = Literal["PREVENTIVO", "CORRECTIVO", "INSPECCION"]
+
 
 class MaquinaCrear(BaseModel):
     """Alta de una máquina. `codigo`/`nombre`/`tipo`/`precio_hora_default` son NOT NULL en la spec."""
@@ -152,3 +156,63 @@ class RegistroHorasResultado(BaseModel):
     ingreso: Decimal                     # = horas_facturables × precio_hora
     origen_registro: str
     replay: bool
+
+
+# --- Mantenimientos (Fase 1 del cockpit): CRUD sobre la tabla de la migración 0045 ------------------
+
+
+class MantenimientoCrear(BaseModel):
+    """Alta de un mantenimiento de una máquina. `maquina_id` viaja por la ruta.
+
+    `descripcion` es NOT NULL en la spec (min_length ≥ 1). `costo` es NOT NULL en la BD: default 0 (una
+    inspección puede no costar). `fecha` es opcional aquí y se resuelve a HOY en hora Colombia en el
+    service (regla #4: nunca `date.today()` crudo). `proximo_en_horas`/`proximo_en_fecha` programan el
+    siguiente servicio (alimentan la alerta de mantenimiento vencido/próximo del dashboard, Fase 2).
+    """
+
+    tipo: TipoMantenimiento
+    fecha: date | None = None   # default hoy Colombia en el service
+    horas_maquina: Decimal | None = Field(default=None, ge=0)   # horómetro al momento
+    descripcion: str = Field(min_length=1)
+    costo: Decimal = Field(default=Decimal("0"), ge=0)
+    proveedor_id: int | None = None
+    proximo_en_horas: Decimal | None = Field(default=None, ge=0)   # preventivos: cada X horas
+    proximo_en_fecha: date | None = None
+    factura_url: str | None = None
+
+
+class MantenimientoActualizar(BaseModel):
+    """Edición PARCIAL (PATCH): solo los campos presentes en el cuerpo se aplican (`exclude_unset`).
+
+    Todos opcionales; los enviados conservan las validaciones del alta. Los campos NOT NULL de la BD
+    (`tipo`/`descripcion`/`costo`) no admiten `null` de negocio (mismo criterio que `MaquinaActualizar`).
+    """
+
+    tipo: TipoMantenimiento | None = None
+    fecha: date | None = None
+    horas_maquina: Decimal | None = Field(default=None, ge=0)
+    descripcion: str | None = Field(default=None, min_length=1)
+    costo: Decimal | None = Field(default=None, ge=0)
+    proveedor_id: int | None = None
+    proximo_en_horas: Decimal | None = Field(default=None, ge=0)
+    proximo_en_fecha: date | None = None
+    factura_url: str | None = None
+
+
+class MantenimientoLeer(BaseModel):
+    """Vista de salida de un mantenimiento (todas las columnas del ORM)."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    maquina_id: int
+    tipo: str
+    fecha: date
+    horas_maquina: Decimal | None
+    descripcion: str
+    costo: Decimal
+    proveedor_id: int | None
+    proximo_en_horas: Decimal | None
+    proximo_en_fecha: date | None
+    factura_url: str | None
+    creado_en: datetime

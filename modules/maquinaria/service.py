@@ -11,20 +11,29 @@ from datetime import date
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
+from core.config.timezone import today_co
 from services.calculations.maquinas import horas_facturables
 
 from modules.maquinaria.errors import (
     CodigoMaquinaDuplicado,
+    MantenimientoInexistente,
     MaquinaInexistente,
     SinAsignacionActiva,
 )
 from modules.maquinaria.models import (
     AsignacionMaquinaObra,
+    Mantenimiento,
     Maquina,
     RegistroHorasMaquina,
 )
 from modules.maquinaria.repository import SqlMaquinasRepository
-from modules.maquinaria.schemas import MaquinaActualizar, MaquinaCrear, RegistroHorasCrear
+from modules.maquinaria.schemas import (
+    MantenimientoActualizar,
+    MantenimientoCrear,
+    MaquinaActualizar,
+    MaquinaCrear,
+    RegistroHorasCrear,
+)
 
 if TYPE_CHECKING:   # solo para el type hint: no se acopla maquinaria↔cartera en runtime (import perezoso)
     from modules.cartera.service import CarteraAlquilerService
@@ -99,6 +108,44 @@ class MaquinariaService:
         self, maquina_id: int, *, limite: int = 100, offset: int = 0
     ) -> list[RegistroHorasMaquina]:
         return await self._repo.listar_horas(maquina_id, limite=limite, offset=offset)
+
+    # ---- Mantenimientos (Fase 1 del cockpit): CRUD sobre la máquina --------------------------------
+    async def listar_mantenimientos(
+        self, maquina_id: int, *, limite: int = 100, offset: int = 0
+    ) -> list[Mantenimiento]:
+        """Mantenimientos de una máquina (más recientes primero). 404 si la máquina no existe."""
+        await self.obtener(maquina_id)   # valida existencia (404 si no)
+        return await self._repo.listar_mantenimientos(maquina_id, limite=limite, offset=offset)
+
+    async def crear_mantenimiento(
+        self, maquina_id: int, datos: MantenimientoCrear
+    ) -> Mantenimiento:
+        """Registra un mantenimiento de la máquina. 404 si la máquina no existe.
+
+        La `fecha` por defecto es HOY en hora Colombia (regla #4), resuelta aquí antes de persistir. NO
+        cambia `maquina.estado`: pasar la máquina a MANTENIMIENTO/DISPONIBLE es una decisión aparte, por
+        `PATCH /maquinas/{id}` (registrar un servicio no la saca de operación por sí solo)."""
+        await self.obtener(maquina_id)   # valida existencia (404 si no)
+        valores = datos.model_dump()
+        valores["fecha"] = datos.fecha or today_co()
+        return await self._repo.crear_mantenimiento(maquina_id, valores)
+
+    async def actualizar_mantenimiento(
+        self, maquina_id: int, mantenimiento_id: int, datos: MantenimientoActualizar
+    ) -> Mantenimiento:
+        """Edición parcial de un mantenimiento (solo lo enviado). 404 si no existe para esa máquina."""
+        mant = await self._repo.obtener_mantenimiento(maquina_id, mantenimiento_id)
+        if mant is None:
+            raise MantenimientoInexistente(mantenimiento_id)
+        cambios = datos.model_dump(exclude_unset=True)
+        return await self._repo.actualizar_mantenimiento(mant, cambios)
+
+    async def eliminar_mantenimiento(self, maquina_id: int, mantenimiento_id: int) -> None:
+        """Borra (DELETE duro) un mantenimiento de la máquina. 404 si no existe para esa máquina."""
+        mant = await self._repo.obtener_mantenimiento(maquina_id, mantenimiento_id)
+        if mant is None:
+            raise MantenimientoInexistente(mantenimiento_id)
+        await self._repo.eliminar_mantenimiento(mant)
 
     # ---- Registro de horas (WRITE, Fase 3) ----------------------------------
     async def registrar_horas(

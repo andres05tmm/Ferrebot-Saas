@@ -56,13 +56,18 @@ class ObraEstadoCambiar(BaseModel):
 
 
 class ObraLeer(BaseModel):
-    """Vista de salida de una obra. `cotizacion_id` es de solo lectura (lo poblará la Fase 2)."""
+    """Vista de salida de una obra. `cotizacion_id` es de solo lectura (lo poblará la Fase 2).
+
+    `cliente_nombre` es azúcar de lectura (no es columna de `obras`): el router lo resuelve en lote por
+    `SqlObrasRepository.nombres_clientes` y lo inyecta. Default `None` para que `model_validate` sobre el
+    ORM (que no tiene el atributo) no falle; el listado lo rellena antes de responder."""
 
     model_config = ConfigDict(from_attributes=True)
 
     id: int
     cotizacion_id: int | None
     cliente_id: int
+    cliente_nombre: str | None = None
     nombre: str
     ubicacion: str | None
     fecha_inicio: date | None
@@ -151,12 +156,15 @@ class GastoRealObra(BaseModel):
 
 
 class ObraPanelItem(BaseModel):
-    """Una obra en el panel/home (Fase 8): su mini-resumen financiero + semáforo + alerta de margen."""
+    """Una obra en el panel/home (Fase 8): su mini-resumen financiero + semáforo + alerta de margen.
+
+    `cliente_nombre` (Fase cockpit) lo resuelve `panel()` en lote (sin N+1); `None` si el cliente no existe."""
 
     obra_id: int
     nombre: str
     estado: str
     cliente_id: int
+    cliente_nombre: str | None = None
     ingreso_presupuestado: Decimal
     gasto_total: Decimal
     utilidad_real: Decimal
@@ -179,6 +187,119 @@ class ObraPanel(BaseModel):
     utilidad_real_total: Decimal
     obras_en_alerta: int
     obras: list[ObraPanelItem]
+
+
+# --- Cockpit de construcción (GET /obras/dashboard): endpoint agregado del vertical (spec 13) --------
+# Todo el dinero es Decimal (serializa como string). Ventanas de mes calendario en hora Colombia.
+
+# Semáforo de la utilidad del mes: rojo si hay pérdida (<0), amarillo si el margen es 0–3%, verde si ≥3%
+# (márgenes de obra civil de 3–4%: por debajo del 3% ya hay que mirar de cerca).
+SemaforoUtilidad = Literal["verde", "amarillo", "rojo"]
+# Severidad de una alerta accionable (se ordenan rojo→amarillo).
+SeveridadAlerta = Literal["rojo", "amarillo"]
+
+
+class MesRango(BaseModel):
+    """Ventana del mes calendario (hora Colombia) sobre la que se calculan los KPIs."""
+
+    desde: date
+    hasta: date
+
+
+class KpisMesAnterior(BaseModel):
+    """Comparativo del mes anterior (para el Δ% de los tiles del cockpit)."""
+
+    ingreso_total: Decimal
+    gasto_total: Decimal
+
+
+class KpisMes(BaseModel):
+    """KPIs financieros del mes en curso.
+
+    `ingreso_total = ingreso_alquiler + resbalos`; `gasto_total = gastos + compras`;
+    `utilidad_estimada = ingreso_total − gasto_total`; `margen_pct = utilidad_estimada / ingreso_total × 100`
+    (0 si no hubo ingreso). `flujo_caja_neto` en v1 iguala `utilidad_estimada` (no hay un ledger de caja
+    consolidado del mes que lo separe todavía — DOCUMENTADO). Nómina NO entra en `gasto_total` del mes en
+    v1 (el KPI se descompone en `gastos`+`compras`); el costo de nómina se refleja por obra en el portafolio."""
+
+    ingreso_alquiler: Decimal
+    resbalos: Decimal
+    ingreso_total: Decimal
+    gastos: Decimal
+    compras: Decimal
+    gasto_total: Decimal
+    utilidad_estimada: Decimal
+    margen_pct: Decimal
+    semaforo_utilidad: SemaforoUtilidad
+    flujo_caja_neto: Decimal
+    mes_anterior: KpisMesAnterior
+
+
+class MaquinaOcupadaHoy(BaseModel):
+    """Una máquina OCUPADA hoy: obra/operador donde está y horas/ingreso del día (0 si aún sin parte)."""
+
+    maquina_id: int
+    maquina: str
+    obra_nombre: str | None
+    operador_nombre: str | None
+    horas_hoy: Decimal
+    ingreso_hoy: Decimal
+
+
+class TopMaquinaMes(BaseModel):
+    """Una máquina del top del mes por horas facturadas (+ el ingreso que generó)."""
+
+    maquina_id: int
+    maquina: str
+    horas: Decimal
+    ingreso: Decimal
+
+
+class MaquinasDashboard(BaseModel):
+    """Tablero de máquinas: conteo total, conteo por estado, ocupadas hoy y top del mes."""
+
+    total: int
+    por_estado: dict[str, int]
+    ocupadas_hoy: list[MaquinaOcupadaHoy]
+    top_mes: list[TopMaquinaMes]
+
+
+class AlertaDashboard(BaseModel):
+    """Alerta accionable del cockpit. `ruta` es el destino en el dashboard (para el click).
+
+    `tipo`: `mantenimiento_vencido` | `mantenimiento_proximo` | `obra_perdida` | `obra_margen`. `ref_id`
+    identifica la entidad (máquina u obra) para resaltarla al aterrizar. Se listan rojo→amarillo."""
+
+    tipo: str
+    severidad: SeveridadAlerta
+    titulo: str
+    detalle: str
+    ref_id: int | None
+    ruta: str
+
+
+class ConteosDashboard(BaseModel):
+    """Badges numéricos del cockpit (pendientes vivos, no acotados al mes)."""
+
+    gastos_por_revisar: int
+    colitas: int
+    cotizaciones_por_vencer: int
+
+
+class DashboardConstruccion(BaseModel):
+    """Respuesta agregada del cockpit del vertical construcción (GET /obras/dashboard).
+
+    Un solo request que arma la portada "todo de un vistazo": KPIs del mes con semáforo y comparativo,
+    portafolio de obras (reusa el panel + `cliente_nombre`), tablero de máquinas, alertas accionables y
+    badges. Admin-only; secciones opcionales (colitas, cotizaciones) degradan por capacidad. Cacheado 5 min."""
+
+    generado_en: datetime
+    mes: MesRango
+    kpis_mes: KpisMes
+    portafolio: ObraPanel
+    maquinas: MaquinasDashboard
+    alertas: list[AlertaDashboard]
+    conteos: ConteosDashboard
 
 
 class ConsumoInventarioCrear(BaseModel):

@@ -22,6 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.config.timezone import now_co
 from modules.caja.models import Gasto
+from modules.clientes.models import Cliente
 from modules.compras.models import Compra
 from modules.facturacion.models import FacturaElectronica
 from modules.facturacion.repository import FacturaLeer
@@ -92,6 +93,19 @@ class SqlObrasRepository:
         self._s.add(obra)
         await self._s.flush()  # asigna obra.id
         return obra
+
+    async def nombres_clientes(self, ids: list[int]) -> dict[int, str]:
+        """`cliente_id → nombre` de los clientes pedidos (batch, sin N+1). Alimenta `cliente_nombre` del
+        portafolio y del listado de obras (repara la referencia muerta del dashboard). `ids` vacío no
+        consulta. Se resuelve por el ORM de `clientes` (acceso a datos sólo por el repo, regla #2)."""
+        if not ids:
+            return {}
+        filas = (
+            await self._s.execute(
+                select(Cliente.id, Cliente.nombre).where(Cliente.id.in_(ids))
+            )
+        ).all()
+        return {int(cid): nombre for cid, nombre in filas}
 
     async def obtener_por_cotizacion(self, cotizacion_id: int) -> Obra | None:
         """Obra ligada a una cotización (1-1). No filtra `eliminado_en`: la UNIQUE de `cotizacion_id`

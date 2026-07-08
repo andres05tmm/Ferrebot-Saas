@@ -17,6 +17,7 @@ import { useAuth } from '@/hooks/useAuth.js'
 import { Card } from '@/components/ui/card.jsx'
 import { Input } from '@/components/ui/input.jsx'
 import { Button } from '@/components/ui/button.jsx'
+import CarteraAlquilerSection from './construccion/CarteraAlquiler.jsx'
 
 const arr = (d) => (Array.isArray(d) ? d : [])
 
@@ -245,6 +246,10 @@ function CarteraAdmin() {
           <SeccionConfig config={configQ.data} refetch={configQ.refetch} />
         </div>
       </div>
+
+      {/* Cartera de alquiler (vertical construcción, flag `cartera_alquiler`): se auto-gatea por la
+          capacidad — si la empresa no la tiene, no pinta ni pide nada. */}
+      <CarteraAlquilerSection />
     </div>
   )
 }

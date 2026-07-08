@@ -8,6 +8,19 @@ from pydantic import BaseModel, ConfigDict, Field
 CajaMovTipo = Literal["ingreso", "egreso"]
 GastoCategoria = Literal["transporte", "papeleria", "servicios", "nomina", "mantenimiento", "otros"]
 
+# --- Vertical construcción (spec 09). Literales EXACTOS a la spec 01_MODELO_DATOS y a los enums de la
+# migración 0048. La categoría del vertical (`categoria_gasto`) convive con la `categoria` del POS de
+# arriba: son dos taxonomías distintas en la misma tabla. -----------------------------------------------
+CategoriaGastoVertical = Literal[
+    "REPUESTOS", "MANTENIMIENTO_MAQUINA", "ALMUERZOS", "TRANSPORTE_PERSONAL", "COMBUSTIBLE",
+    "PAPELERIA", "SERVICIOS_PUBLICOS", "ARRIENDO", "IMPUESTOS", "OTRO",
+]
+MetodoPagoGasto = Literal[
+    "EFECTIVO", "TRANSFERENCIA_BANCOLOMBIA", "TRANSFERENCIA_OTRO_BANCO", "TARJETA_CREDITO",
+    "TARJETA_DEBITO", "CHEQUE",
+]
+OrigenRegistro = Literal["MANUAL", "TELEGRAM_BOT", "IMPORTACION"]
+
 
 class AperturaCrear(BaseModel):
     saldo_inicial: Decimal = Field(ge=0)
@@ -31,6 +44,20 @@ class GastoCrear(BaseModel):
     # gasto. Con `factura_proveedor_id`, el gasto genera SU único abono (no se registra otro aparte).
     proveedor_id: int | None = None
     factura_proveedor_id: str | None = None
+    # --- Vertical construcción (spec 09). Todo OPCIONAL: el POS retail no lo usa. ---
+    # `obra_id`/`maquina_id` imputan el gasto a una obra/máquina (sigue siendo gasto de caja normal). El
+    # bot rellena `origen_registro`/`telegram_*` y marca `requiere_revision` cuando la extracción tiene
+    # baja confianza. `origen_registro`/`requiere_revision` en None → aplican los server_default (0048).
+    obra_id: int | None = None
+    maquina_id: int | None = None
+    categoria_gasto: CategoriaGastoVertical | None = None
+    metodo_pago: MetodoPagoGasto | None = None
+    numero_referencia: str | None = None
+    comprobante_url: str | None = None
+    origen_registro: OrigenRegistro | None = None
+    telegram_user_id: str | None = None
+    telegram_message_id: str | None = None
+    requiere_revision: bool | None = None
 
 
 class CajaLeer(BaseModel):
@@ -87,3 +114,14 @@ class GastoLeer(BaseModel):
     factura_proveedor_id: str | None = None
     abono_proveedor_id: int | None = None
     creado_en: datetime
+    # --- Vertical construcción (spec 09). Default para las filas del POS (backward-compatible). ---
+    obra_id: int | None = None
+    maquina_id: int | None = None
+    categoria_gasto: str | None = None
+    metodo_pago: str | None = None
+    numero_referencia: str | None = None
+    comprobante_url: str | None = None
+    origen_registro: str = "MANUAL"
+    telegram_user_id: str | None = None
+    telegram_message_id: str | None = None
+    requiere_revision: bool = False

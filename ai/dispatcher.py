@@ -21,6 +21,12 @@ from pydantic import ValidationError
 
 from ai.envelope import Contexto, ErrorTool, Resultado
 from ai.limites import Escalar, LimitesEmpresa, PedirConfirmacion, Permitir, evaluar_venta
+from ai.obra_tools import (
+    ObraDeps,
+    POR_NOMBRE as OBRA_POR_NOMBRE,
+    catalogo_visible as obra_catalogo_visible,
+    ejecutar as obra_ejecutar,
+)
 from ai.ports import CatalogoPrecios, ProductoCatalogo, UmbralesStore
 from ai.saneamiento import revisar as revisar_entrada
 from ai.rieles import (
@@ -66,6 +72,10 @@ class Recursos:
     catalogo: CatalogoPrecios   # resolución de precios para los rieles
     umbrales: UmbralesStore     # umbrales por empresa (config_empresa)
     resueltos: dict[int, ProductoCatalogo] = field(default_factory=dict)  # pre-cargados por-turno
+    # Fase 6 (Bot PIM): dependencias de las herramientas de obra/maquinaria/recibo (pack aparte, atado
+    # a la sesión del tenant + payload del canal de este turno). None = la plataforma no cableó el pack
+    # (p. ej. retail): esas herramientas no se exponen ni se ejecutan (fail-closed).
+    obra: ObraDeps | None = None
 
 
 class Dispatcher:
@@ -90,8 +100,15 @@ class Dispatcher:
 
     # --- Catálogo expuesto al modelo (RBAC + capacidades) ---------------------
     def exponer_catalogo(self, ctx: Contexto) -> list:
-        """Solo las herramientas que el rol alcanza y la empresa tiene habilitadas (ADR 0005)."""
-        return [t.spec for t in catalogo_visible(ctx)]
+        """Solo las herramientas que el rol alcanza y la empresa tiene habilitadas (ADR 0005).
+
+        Suma el pack de obra/maquinaria del Bot PIM (Fase 6), gateado por su propio `rol_min` +
+        `feature` (`obras`/`maquinaria`): solo aparece para tenants de construcción con esos flags; un
+        tenant retail (sin esas capacidades) no lo ve. La disponibilidad de ejecución se comprueba en
+        `ejecutar` (necesita `recursos.obra`)."""
+        return [t.spec for t in catalogo_visible(ctx)] + [
+            t.spec for t in obra_catalogo_visible(ctx)
+        ]
 
     # --- Ejecución de una herramienta (rieles incluidos) ----------------------
     async def ejecutar(self, tool_call: ToolCall, ctx: Contexto, recursos: Recursos) -> Respuesta:
@@ -104,6 +121,15 @@ class Dispatcher:
                 motivo=motivo.detalle, recuperable=motivo.recuperable,
             )
             return ErrorTool("validacion", motivo.detalle, recuperable=motivo.recuperable)
+
+        # Pack de obra/maquinaria/recibo (Bot PIM, Fase 6): es autocontenido y hace su propio
+        # RBAC + capacidad + validación (`obra_tools.ejecutar`). Se delega ANTES del catálogo de venta:
+        # NO pasa por los rieles de producto/precio (no son ventas). Fail-closed si la plataforma no
+        # cableó sus deps para este tenant.
+        if tool_call.name in OBRA_POR_NOMBRE:
+            if recursos.obra is None:
+                return ErrorTool("capacidad_no_habilitada", f"{tool_call.name} no está habilitada")
+            return await obra_ejecutar(tool_call, ctx, recursos.obra)
 
         tool = POR_NOMBRE.get(tool_call.name)
         if tool is None:

@@ -6,13 +6,25 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class ProveedorLeer(BaseModel):
-    """Proveedor registrado para los desplegables (modal de producto). Solo id/nombre/nit."""
+    """Proveedor registrado para los desplegables (modal de producto): id/nombre/nit + mini-CRM.
+
+    El vertical construcción (spec 10 / tenant 0046) suma `tipo` (planta de asfalto, cantera…) y datos
+    de `contacto_*`, para el análisis de precios por rubro. Se exponen OPCIONALES (default None) →
+    backward-compatible: un proveedor del POS sin estos datos los devuelve como null. `tipo` se lee como
+    `str | None` (el valor viene de la BD, ya válido contra el enum `tipo_proveedor`).
+    """
 
     model_config = ConfigDict(from_attributes=True)
 
     id: int
     nombre: str
     nit: str | None
+
+    # --- Mini-CRM construcción (spec 10 / tenant 0046). OPCIONALES, backward-compatible. ---
+    tipo: str | None = None
+    contacto_nombre: str | None = None
+    contacto_telefono: str | None = None
+    contacto_email: str | None = None
 
 
 class FacturaProveedorCrear(BaseModel):

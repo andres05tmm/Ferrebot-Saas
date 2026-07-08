@@ -7,7 +7,7 @@ prueba, forzando la revisión. Tras la 0005, `config_empresa` ya NO existe en la
 from sqlalchemy import inspect
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-# 68 tablas de negocio del esquema tenant en head (sin 'alembic_version').
+# 89 tablas de negocio del esquema tenant en head (sin 'alembic_version').
 # Incluye el pack Agenda/Citas (0008): agenda_config, bloqueos, citas, disponibilidad,
 # recurso_servicio, recursos, servicios; el handoff transversal (0009): conversaciones, y su hilo
 # de mensajes (0024): conversacion_mensajes; el pack FAQ (0012_faq_conocimiento): conocimiento; y el
@@ -37,6 +37,17 @@ _TABLAS_ESPERADAS: frozenset[str] = frozenset({
     "retenciones_documento",    # renglones de retención/INC por documento (0033, ADR 0027)
     # motor contable: ledger de doble partida + PUC (0037-0041, ADR 0030)
     "puc_cuentas", "periodo_contable", "journal_entry", "journal_line", "saldo_cache",
+    # --- vertical construcción PIM (0043-0049) ---
+    # base + obras + operación (0043-0046)
+    "obras", "cotizaciones_obra", "items_cotizacion_obra", "consumos_inventario",
+    "reportes_diarios_obra", "asignaciones_trabajador_obra", "asignaciones_maquina_obra",
+    "trabajadores", "maquinas", "herramientas", "registros_asistencia",
+    "registros_horas_maquina", "mantenimientos",
+    # nómina + liquidación (0047-0048)
+    "periodos_nomina", "detalles_liquidacion", "prorrateo_nomina_obra", "liquidaciones_obra",
+    "parametros_legales",
+    # cartera de alquiler (0049)
+    "cartera_config", "cupos_alquiler", "cargos_alquiler",
 })
 
 

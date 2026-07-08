@@ -5,7 +5,7 @@ y delega el registro transaccional (stock + costo + eventos) en el repositorio. 
 default usan hora Colombia (regla #4).
 """
 from dataclasses import dataclass
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 from typing import Protocol
 
@@ -18,6 +18,12 @@ from modules.compras.repository import (
     SqlComprasRepository,
 )
 from modules.compras.schemas import CompraCrear, CompraLeer
+from services.calculations.resbalos import Resbalo, calcular_resbalo
+
+# Ventana del historial de precios del proveedor (spec 10: "promedio de los últimos 6 meses").
+_VENTANA_PRECIO_PROVEEDOR = timedelta(days=182)
+# Umbral de la alerta de precio: un costo unitario > 15% sobre el promedio histórico dispara la señal.
+_UMBRAL_PRECIO_PROVEEDOR = Decimal("1.15")
 
 
 @dataclass(frozen=True, slots=True)
@@ -38,13 +44,34 @@ def _mismo_payload(
     de saber si es replay). Decimales comparan por valor: 10.000 == 10."""
     if total != existente.total:
         return False
-    actuales = sorted((it.producto_id, it.cantidad, it.costo) for it in items)
-    previos = sorted(existente.items)
+    # Orden estable aun con `producto_id` NULL (viajes de material / imputadas a obra): None → -1 para no
+    # comparar None con int al ordenar.
+    def _clave(t: tuple) -> tuple:
+        return (t[0] if t[0] is not None else -1, t[1], t[2])
+
+    actuales = sorted(((it.producto_id, it.cantidad, it.costo) for it in items), key=_clave)
+    previos = sorted(existente.items, key=_clave)
     if actuales != previos:
         return False
     if proveedor_id is not None and proveedor_id != existente.compra.proveedor_id:
         return False
     return True
+
+
+def _enriquecer_resbalo(compra: CompraLeer) -> CompraLeer:
+    """Completa `resbalo`/`resbalo_pct`/`resbalo_alerta` de una compra de viaje con `calcular_resbalo`.
+
+    El costo del viaje ES `compra.total` (Σ cantidad×costo); recalcular desde la función pura mantiene UNA
+    sola verdad del margen (el monto persistido y el % del reporte no divergen)."""
+    if compra.precio_venta_cliente is None:
+        return compra
+    r = calcular_resbalo(compra.precio_venta_cliente, compra.total)
+    return compra.model_copy(update={
+        # Conserva el monto PERSISTIDO (MONEY4, 4 decimales); solo deriva % y alerta desde la función pura.
+        "resbalo": compra.resbalo if compra.resbalo is not None else r.monto,
+        "resbalo_pct": r.porcentaje,
+        "resbalo_alerta": r.alerta,
+    })
 
 
 def _fecha_compra(fecha: date | None) -> datetime:
@@ -99,21 +126,72 @@ class ComprasService:
                     raise IdempotenciaConflicto(datos.idempotency_key)
                 return ResultadoCompra(compra=existente.compra, replay=True)
 
+        fecha = _fecha_compra(datos.fecha)
         proveedor_id = await self._repo.get_or_create_proveedor(
             proveedor_id=datos.proveedor.id, nombre=datos.proveedor.nombre, nit=datos.proveedor.nit,
         )
+        # Resbalo del viaje de material (spec 11): solo cuando aplica. `total` ES el costo del viaje.
+        resbalo: Resbalo | None = None
+        if datos.es_viaje_material and datos.precio_venta_cliente is not None:
+            resbalo = calcular_resbalo(datos.precio_venta_cliente, total)
+        # Alerta de precio de proveedor (spec 10): se calcula ANTES de insertar la compra nueva (que no
+        # entra a su propia ventana histórica).
+        alerta_precio = await self._alerta_precio_proveedor(
+            proveedor_id, items=items, total=total, categoria=datos.categoria, hasta=fecha,
+        )
         compra = await self._repo.crear_compra(
-            proveedor_id=proveedor_id, fecha=_fecha_compra(datos.fecha),
+            proveedor_id=proveedor_id, fecha=fecha,
             items=items, total=total, usuario_id=usuario_id,
             idempotency_key=datos.idempotency_key,
+            obra_id=datos.obra_id, categoria=datos.categoria,
+            es_viaje_material=datos.es_viaje_material,
+            precio_venta_cliente=datos.precio_venta_cliente,
+            resbalo=resbalo.monto if resbalo is not None else None,
+            factura_url=datos.factura_url,
         )
         if self._retenciones is not None:
             # Retenciones inline (ADR 0027): calcula/persiste los renglones en la MISMA transacción
             # (commit=False), atómico con la compra. Sin config activa no crea renglones (opt-in).
             await self._retenciones.aplicar_a_compra(compra.id, commit=False)
+        # Derivados de salida (no persistidos): % y alertas para que el cliente/bot avise al dueño.
+        compra = compra.model_copy(update={
+            "resbalo_pct": resbalo.porcentaje if resbalo is not None else None,
+            "resbalo_alerta": resbalo.alerta if resbalo is not None else False,
+            "alerta_precio_proveedor": alerta_precio,
+        })
         return ResultadoCompra(compra=compra, replay=False)
+
+    async def _alerta_precio_proveedor(
+        self,
+        proveedor_id: int,
+        *,
+        items: list[ItemCompra],
+        total: Decimal,
+        categoria: str | None,
+        hasta: datetime,
+    ) -> bool:
+        """True si el costo unitario de esta compra supera en >15% el promedio de 6 meses del proveedor.
+
+        El costo unitario de la compra se toma ponderado (total / Σ cantidad). Sin cantidad o sin
+        historial no hay señal (default seguro: no alarmar sin base de comparación)."""
+        cantidad_total = sum((it.cantidad for it in items), Decimal("0"))
+        if cantidad_total <= 0:
+            return False
+        costo_unitario = total / cantidad_total
+        promedio = await self._repo.promedio_costo_unitario_proveedor(
+            proveedor_id, desde=hasta - _VENTANA_PRECIO_PROVEEDOR, hasta=hasta, categoria=categoria,
+        )
+        if promedio is None or promedio <= 0:
+            return False
+        return costo_unitario > promedio * _UMBRAL_PRECIO_PROVEEDOR
 
     async def listar(self, *, desde: date | None, hasta: date | None) -> list[CompraLeer]:
         """Compras del rango (default mes en curso, hora Colombia)."""
         inicio, fin = _rango_o_mes(desde, hasta)
         return await self._repo.listar(inicio=inicio, fin=fin)
+
+    async def reporte_resbalos(self, *, desde: date | None, hasta: date | None) -> list[CompraLeer]:
+        """Reporte de resbalos (spec 11): viajes de material del rango con margen $ y % + alerta."""
+        inicio, fin = _rango_o_mes(desde, hasta)
+        compras = await self._repo.listar_resbalos(inicio=inicio, fin=fin)
+        return [_enriquecer_resbalo(c) for c in compras]

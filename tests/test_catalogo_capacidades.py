@@ -150,3 +150,61 @@ def test_es_feature_valida():
     assert es_feature_valida("facturacion_electronica") is True  # opcional
     assert es_feature_valida("inexistente") is False
     assert OPCIONALES.isdisjoint(NUCLEO)                  # sin solapamiento
+
+
+# --- vertical construcción (plan piped-hatching-sloth §2) ------------------
+
+def test_flags_construccion_son_opcionales_validas():
+    for flag in (
+        "obras", "maquinaria", "herramientas", "cotizaciones_aiu", "nomina",
+        "nomina_electronica", "cartera_alquiler", "resbalos",
+    ):
+        assert es_feature_valida(flag) is True
+        assert flag in OPCIONALES
+
+
+def test_metapack_construccion_expande_las_siete_finas_sin_cune():
+    # El meta-pack agrupa las finas del gremio EXCEPTO nomina_electronica (opt-in por el gate DIAN).
+    assert META_PACKS["construccion"] == frozenset({
+        "obras", "maquinaria", "herramientas", "cotizaciones_aiu", "nomina",
+        "cartera_alquiler", "resbalos",
+    })
+    assert "nomina_electronica" not in META_PACKS["construccion"]
+
+
+def test_flags_construccion_sin_dependencia_dura():
+    # obras/maquinaria/herramientas/cotizaciones_aiu/nomina viven por sí solas (tablas base del gremio).
+    for flag in ("obras", "maquinaria", "herramientas", "cotizaciones_aiu", "nomina"):
+        assert validar_dependencias(frozenset({flag})) == []
+
+
+def test_nomina_electronica_requiere_nomina():
+    assert validar_dependencias(frozenset({"nomina_electronica"})) != []
+    assert validar_dependencias(frozenset({"nomina", "nomina_electronica"})) == []
+
+
+def test_cartera_alquiler_requiere_fiados():
+    assert validar_dependencias(frozenset({"cartera_alquiler"})) != []
+    # fiados necesita a su vez ventas; con la fina o con el meta-pack pos queda válido.
+    assert validar_dependencias(frozenset({"ventas", "fiados", "cartera_alquiler"})) == []
+
+
+def test_resbalos_requiere_inventario():
+    assert validar_dependencias(frozenset({"resbalos"})) != []
+    assert validar_dependencias(frozenset({"pos", "resbalos"})) == []   # pos expande a inventario
+
+
+def test_metapack_construccion_solo_no_valida_arrastra_dependencias():
+    # Un plan con SOLO `construccion` falla: cartera_alquiler→fiados y resbalos→inventario faltan.
+    assert validar_dependencias(frozenset({"construccion"})) != []
+
+
+def test_plan_pim_valido_con_pos_y_fiados():
+    # El set del manifiesto de PIM (construcciones-pim.manifest.example.yaml) debe validar limpio.
+    efectivas = capacidades_completas(
+        frozenset({"pos", "fiados", "construccion", "pack_cobranza", "bot_telegram"})
+    )
+    assert validar_dependencias(efectivas) == []
+    # Y expande a las finas del vertical (registry las lee del set efectivo).
+    for fina in META_PACKS["construccion"]:
+        assert fina in efectivas

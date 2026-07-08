@@ -7,6 +7,7 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 from core.llm.base import (
+    ImageBlock,
     LLMError,
     LLMResponse,
     Message,
@@ -71,10 +72,31 @@ class ClaudeProvider:
                     for tc in m.tool_calls
                 )
                 cuerpo.append({"role": "assistant", "content": bloques})
+            elif m.images:
+                # Visión: texto (si hay) + bloques de imagen, en el arreglo multimodal de Anthropic.
+                cuerpo.append({"role": m.role, "content": self._bloques_con_imagenes(m)})
             else:
                 cuerpo.append({"role": m.role, "content": m.content})
         system = "\n".join(system_partes) if system_partes else None
         return system, cuerpo
+
+    @staticmethod
+    def _bloques_con_imagenes(m: Message) -> list[dict[str, Any]]:
+        """Arma el arreglo de bloques de un mensaje con imágenes: texto primero, luego cada imagen."""
+        bloques: list[dict[str, Any]] = []
+        if m.content:
+            bloques.append({"type": "text", "text": m.content})
+        bloques.extend(ClaudeProvider._bloque_imagen(img) for img in m.images)
+        return bloques
+
+    @staticmethod
+    def _bloque_imagen(img: ImageBlock) -> dict[str, Any]:
+        """Traduce un `ImageBlock` canónico al bloque `image` de Anthropic (source base64 o url)."""
+        if img.url is not None:
+            source: dict[str, Any] = {"type": "url", "url": img.url}
+        else:
+            source = {"type": "base64", "media_type": img.media_type, "data": img.data}
+        return {"type": "image", "source": source}
 
     def _payload(
         self, messages: list[Message], tools: list[ToolSpec], model: str,

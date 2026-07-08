@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.auth import Principal, require_role
 from core.auth.features import require_feature
 from core.db.session import get_tenant_db
-from modules.caja.errors import CajaNoAbierta
+from modules.caja.errors import CajaNoAbierta, GastoInexistente
 from modules.caja.repository import SqlCajaRepository
 from modules.caja.schemas import (
     AperturaCrear,
@@ -123,6 +123,11 @@ async def registrar_gasto(
             usuario_id=user.user_id, categoria=payload.categoria, monto=payload.monto,
             concepto=payload.concepto, idempotency_key=idempotency_key,
             proveedor_id=payload.proveedor_id, factura_proveedor_id=payload.factura_proveedor_id,
+            obra_id=payload.obra_id, maquina_id=payload.maquina_id,
+            categoria_gasto=payload.categoria_gasto, metodo_pago=payload.metodo_pago,
+            numero_referencia=payload.numero_referencia, comprobante_url=payload.comprobante_url,
+            origen_registro=payload.origen_registro, telegram_user_id=payload.telegram_user_id,
+            telegram_message_id=payload.telegram_message_id, requiere_revision=payload.requiere_revision,
         )
     except CajaNoAbierta as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
@@ -133,6 +138,33 @@ async def registrar_gasto(
     if res.replay:
         response.status_code = status.HTTP_200_OK
     return GastoLeer.model_validate(res.gasto)
+
+
+@gastos_router.get("/gastos/revision", response_model=list[GastoLeer])
+async def bandeja_revision(
+    limite: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+    session: AsyncSession = Depends(get_tenant_db),
+    _user: Principal = Depends(require_role("admin")),
+) -> list[GastoLeer]:
+    """Bandeja de revisión (spec 09): gastos que el bot importó con baja confianza (`requiere_revision`).
+    Acción de supervisión → admin."""
+    gastos = await _service(session).listar_revision(limite=limite, offset=offset)
+    return [GastoLeer.model_validate(g) for g in gastos]
+
+
+@gastos_router.post("/gastos/{gasto_id}/aprobar", response_model=GastoLeer)
+async def aprobar_gasto(
+    gasto_id: int,
+    session: AsyncSession = Depends(get_tenant_db),
+    _user: Principal = Depends(require_role("admin")),
+) -> GastoLeer:
+    """Aprueba un gasto de la bandeja (baja `requiere_revision`). Idempotente; 404 si el id no existe."""
+    try:
+        gasto = await _service(session).aprobar_gasto(gasto_id)
+    except GastoInexistente as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
+    return GastoLeer.model_validate(gasto)
 
 
 @gastos_router.get("/gastos", response_model=list[GastoLeer])

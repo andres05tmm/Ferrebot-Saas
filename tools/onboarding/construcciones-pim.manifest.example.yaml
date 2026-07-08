@@ -1,0 +1,82 @@
+# Manifiesto de tenant — EJEMPLO del vertical CONSTRUCCIÓN (Construcciones PIM S.A.S., plan §8).
+# Paralelo a ferreteria-demo (pack POS) y clinica-demo (agenda/faq): este muestra el pack `construccion`
+# (parámetros legales de nómina 2026 + catálogos default de máquina/herramienta).
+# El manifiesto REAL va gitignored bajo tools/onboarding/; solo este *.example.yaml se versiona.
+# Alta = escribir el archivo + correr:  python -m tools.provision_from_manifest --from tools/onboarding/<slug>.yaml
+#
+# COMPANION REQUERIDO (bloqueo de Fase 0): la sección `packs.construccion` de abajo requiere que el
+# esquema del manifiesto (tools/manifest/schema.py) declare `PackConstruccion` + `Packs.construccion`;
+# el esquema tiene extra="forbid", así que sin ese campo `--check` reporta INVALIDO y el provisionador
+# revienta al hacer getattr(m.packs, "construccion"). Ver el reporte del agente para el snippet exacto.
+version: 1
+
+identidad:
+  slug: pim
+  nombre: "Construcciones PIM S.A.S."
+  nit: "901462287"
+  rubro: "construcción"
+
+admin:
+  nombre: "Admin PIM"
+  telegram_id: null          # opcional: solo si el tenant usa el bot de Telegram
+
+# Capacidades. El vertical vive en el meta-pack `construccion` (expande a obras/maquinaria/herramientas/
+# cotizaciones_aiu/nomina/cartera_alquiler/resbalos). Varias finas arrastran dependencias, así que el
+# plan las declara EXPLÍCITAS (validar_dependencias falla si faltan):
+#   - `pos` (meta-pack) → ventas + caja + inventario: base de retail; `inventario` habilita `resbalos`
+#     (viaje de material) y las compras imputadas a obra.
+#   - `fiados` → habilita `cartera_alquiler` (consumo por horas como cargo en el ledger de fiados) y
+#     es dependencia de `pack_cobranza`.
+#   - `pack_cobranza` → recordatorios/promesas para la "colita" de la cartera de alquiler (plan §6).
+#   - `bot_telegram` → el agente de obra (Fase 6: recibos por Vision, reporte diario, horas de máquina).
+# `nomina_electronica` (CUNE) NO se enciende: es opt-in aparte, gated por la habilitación DIAN (Fase 7).
+plan:
+  nombre: "construccion-pim"   # nombre ÚNICO por tenant (plan §7 riesgo 4: el plan del control DB se
+                               # upserta por nombre; un nombre compartido pisaría features de otro tenant).
+  features: ["pos", "fiados", "construccion", "pack_cobranza", "bot_telegram"]
+features_override: {}
+
+branding:
+  # El preset 'obra' NO existe aún en core/tenancy/branding_presets.py (el esquema valida `preset`
+  # contra el registro y rechazaría un preset inexistente). Se usa `color_primario` explícito por ahora;
+  # el preset 'obra' (paleta/tipografía del gremio) queda para la fase de UI (plan §8 Fase 8).
+  color_primario: "#F2A100"        # amarillo maquinaria/obra (provisional hasta el preset 'obra')
+  nombre_comercial: "Construcciones PIM"
+
+# Secretos por-tenant (CIFRADOS en control DB). MATIAS en SANDBOX (matias_ambiente=pruebas en config):
+# placeholders, NUNCA valores reales. El go-live fiscal está gated por la habilitación DIAN (plan §7).
+secretos:
+  matias_email: "facturacion@construccionespim.example"
+  matias_password: "CAMBIA-ESTO-sandbox"
+  # telegram_token/telegram_webhook_secret: se agregan cuando exista el bot BotFather de PIM (plan intro).
+
+config:
+  matias_base_url: "https://api.matias.example/api/ubl2.1"
+  matias_resolution: "18760000001"      # resolución de PRUEBAS (placeholder); la real llega con DIAN.
+  matias_prefix: "FPIM"
+  matias_notes: "Construcciones PIM S.A.S."
+  matias_city_id: "149"
+  matias_ambiente: "pruebas"            # SANDBOX: nada se transmite a producción hasta el go-live gated.
+
+# ----------------------------------------------------------------------------
+# PACK CONSTRUCCIÓN — cimientos del vertical (plan §8.1). El loader (cargar_construccion) siembra:
+#   - parametros_legales 2026 (SMMLV, auxilio, IVA, %s de aportes/provisiones): CONSTANTES en el loader,
+#     no se declaran aquí (son ley, no dato del cliente).
+#   - catálogos default de máquina/herramienta: los de abajo, PROVISIONALES hasta el catálogo real del
+#     cliente (plan §7 [DEFINIR]). Idempotentes por `codigo` (derivado del nombre).
+# ----------------------------------------------------------------------------
+packs:
+  construccion:
+    # Tipos de máquina de arranque (placeholder). costo_operacion_hora queda NULL ([DEFINIR] rentabilidad).
+    maquinas:
+      - { nombre: "Retroexcavadora", tipo: "excavación" }
+      - { nombre: "Vibrocompactador", tipo: "compactación" }
+      - { nombre: "Motoniveladora", tipo: "nivelación" }
+      - { nombre: "Volqueta", tipo: "transporte" }
+      - { nombre: "Minicargador", tipo: "carga" }
+
+    # Categorías de herramienta de arranque (placeholder).
+    herramientas:
+      - { nombre: "Pulidora", categoria: "eléctrica" }
+      - { nombre: "Compactador manual", categoria: "manual" }
+      - { nombre: "Nivel láser", categoria: "medición" }

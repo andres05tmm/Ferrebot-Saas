@@ -10,6 +10,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from tools.manifest.packs.agenda import cargar_agenda
+from tools.manifest.packs.construccion import cargar_construccion
 from tools.manifest.packs.faq import cargar_faq
 from tools.manifest.packs.pedidos import cargar_pedidos
 from tools.manifest.packs.pos import cargar_pos
@@ -25,6 +26,12 @@ class Pack:
     # Sección del manifiesto que alimenta el loader; `None` = convención flag.removeprefix("pack_").
     # Permite que la feature fina `ventas` siga leyendo la sección YAML `packs.pos` (compat ADR 0021).
     seccion: str | None = None
+    # ¿Sembrar aunque el manifiesto NO traiga la sección del pack? Por defecto False: sin sección, el
+    # flag activo se salta (el negocio carga los datos luego). True para packs con un CIMIENTO NO
+    # NEGOCIABLE independiente del manifiesto (p. ej. `construccion`: sus `parametros_legales` 2026 son
+    # constantes de ley que el loader hardcodea, no dato del cliente). El provisionador invoca entonces
+    # `pack.loader(None, conn)` (el loader debe tolerar `seccion=None`).
+    siembra_sin_seccion: bool = False
 
 
 PACKS: dict[str, Pack] = {
@@ -76,6 +83,20 @@ PACKS: dict[str, Pack] = {
         flag="pack_reservas",
         loader=None,
         tablas=("citas", "recursos", "agenda_config"),
+    ),
+    # Vertical CONSTRUCCIÓN (plan §8): igual que `ventas` respecto a `pos`, el pack se registra bajo UNA
+    # fina del meta-pack —`obras`, el corazón del vertical— para que su loader corra UNA sola vez aunque
+    # `construccion` expanda a siete finas. La sección del manifiesto es `packs.construccion` (explícita,
+    # no la convención flag→sección, porque el flag disparador es `obras`). El loader siembra
+    # `parametros_legales` 2026 + catálogos default; las cuatro tablas las crea la migración de tenant 0043.
+    "obras": Pack(
+        flag="obras",
+        loader=cargar_construccion,
+        seccion="construccion",
+        tablas=("parametros_legales", "maquinas", "herramientas", "trabajadores"),
+        # Cimiento no negociable: si el manifiesto no declara `packs.construccion`, igual se siembran los
+        # `parametros_legales` 2026 (el loader corre con seccion=None y solo omite los catálogos default).
+        siembra_sin_seccion=True,
     ),
 }
 

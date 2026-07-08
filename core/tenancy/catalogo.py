@@ -31,6 +31,25 @@ OPCIONALES: frozenset[str] = frozenset({
     # Motor contable (ADR 0030): ledger de doble partida + PUC + estados financieros. Capa DERIVADA,
     # opt-in, apagada por defecto; deriva de los eventos de dinero (ventas/caja) → dep en OR.
     "contabilidad_ledger",
+    # Vertical CONSTRUCCIÓN (plan piped-hatching-sloth §2 — Construcciones PIM). Familia de features
+    # finas del gremio; todas viven en el meta-pack `construccion` salvo `nomina_electronica`, que es
+    # opt-in aparte por el gate DIAN (habilitación Software Propio + certificado + resolución). Las
+    # tablas del vertical están en TODO tenant (migración de tenant compartida) pero vacías donde no
+    # aplique: "tabla vacía no cuesta" (plan §7 riesgo 1).
+    #   - obras: presupuesto vs. gasto real por obra (el corazón del vertical).
+    #   - maquinaria: activos de alquiler por horas (horómetro, mínimo facturable, mantenimiento).
+    #   - herramientas: CRUD ligero de herramienta menor.
+    #   - cotizaciones_aiu: cotización por AIU (IVA solo sobre la utilidad); distinta del quote POS.
+    #   - nomina: motor de liquidación parametrizado por `parametros_legales` (sin transmisión DIAN).
+    #   - nomina_electronica: nómina electrónica CUNE en MATIAS (dep dura en `nomina`; gate DIAN).
+    #   - cartera_alquiler: cupo + consumo por horas + colita (nuestro aporte; reusa el ledger `fiados`).
+    #   - resbalos: viaje de material comprado para revender al cliente de la obra (margen sobre compra).
+    "obras", "maquinaria", "herramientas", "cotizaciones_aiu", "nomina", "nomina_electronica",
+    "cartera_alquiler", "resbalos",
+    # El meta-pack `construccion` también es una feature VÁLIDA (igual que `pos`, que vive en OPCIONALES
+    # y en META_PACKS a la vez): así el plan del manifiesto puede pedir `construccion` sin que
+    # `es_feature_valida` lo rechace, y la expansión a finas la hace `expandir_metapacks`.
+    "construccion",
 })
 
 # Meta-packs: un flag grueso que EXPANDE a features finas. La expansión conserva el flag meta en el
@@ -41,8 +60,18 @@ OPCIONALES: frozenset[str] = frozenset({
 #     sin llevar stock).
 #   - caja: caja + gastos (arqueo híbrido: degrada a 0 ventas_efectivo si no hay `ventas`).
 #   - inventario: stock/kárdex/ajustes + compras + proveedores (mutan stock juntos).
+#   - construccion: el vertical de obra civil/alquiler de maquinaria (plan §2). Expande a las finas
+#     del gremio EXCEPTO `nomina_electronica`: la transmisión CUNE queda opt-in aparte (gate DIAN), así
+#     un tenant nace con el motor de nómina local sin encender la integración fiscal antes de tener la
+#     habilitación. Nótese que varias finas arrastran dependencias (cartera_alquiler→fiados,
+#     resbalos→inventario): un plan con solo `construccion` NO valida; hay que sumar `fiados`/`pos`
+#     (ver validar_dependencias) — el manifiesto de PIM lo hace explícito.
 META_PACKS: dict[str, frozenset[str]] = {
     "pos": frozenset({"ventas", "caja", "inventario"}),
+    "construccion": frozenset({
+        "obras", "maquinaria", "herramientas", "cotizaciones_aiu", "nomina",
+        "cartera_alquiler", "resbalos",
+    }),
 }
 
 
@@ -86,6 +115,20 @@ DEPENDENCIAS: dict[str, frozenset[str]] = {
     "conciliacion_bancaria": frozenset({"caja"}),
     # El ledger proyecta eventos de dinero: basta ventas o caja para tener algo que contabilizar.
     "contabilidad_ledger": frozenset({"ventas", "caja"}),
+    # --- Vertical construcción (plan §2) -----------------------------------------------------------
+    # `obras`, `maquinaria`, `herramientas`, `cotizaciones_aiu` y `nomina` NO llevan dependencia dura:
+    # son tablas base del gremio que existen por sí solas. La cotización AIU se factura DESDE una obra,
+    # pero puede vivir sin el flag `obras` (se cotiza antes de ganar la obra), así que no se acopla.
+    # `nomina` es un motor de liquidación autónomo (asistencia + parámetros); no necesita otra feature.
+    # nomina_electronica (CUNE): la transmisión electrónica extiende la liquidación local → dep en `nomina`.
+    "nomina_electronica": frozenset({"nomina"}),
+    # cartera_alquiler: el consumo por horas nace como CARGO en el ledger de `fiados` (no duplica saldo,
+    # plan §6). Sin `fiados` no hay dónde asentar el consumo ni de dónde leer el saldo/colita.
+    "cartera_alquiler": frozenset({"fiados"}),
+    # resbalos: el "viaje de material" es una COMPRA a la obra para revender al cliente; su margen se
+    # calcula sobre la compra. Las compras viven tras `inventario` (registry: el pack inventario agrupa
+    # compras/proveedores), así que el reporte de resbalos requiere esa superficie.
+    "resbalos": frozenset({"inventario"}),
 }
 
 

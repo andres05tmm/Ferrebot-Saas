@@ -32,8 +32,19 @@ async def test_tenant_upgrade_downgrade_limpio(tenant):
     # (promesa_estado, 0017_cobranza) + 1 del pack pedidos (pedido_estado, 0019) + 1 del pack
     # ventas/cotizaciones (cotizacion_estado, 0020) + 1 de pagos (cobro_estado, 0021) + 2 del inbox
     # de conversación (mensaje_direccion, mensaje_autor, 0024_conversacion_mensajes) = 24, + 1 de la
-    # conciliación bancaria (conciliacion_estado, 0035, ADR 0028). Total: 25.
-    assert enums == 25
+    # conciliación bancaria (conciliacion_estado, 0035, ADR 0028) = 25, + 3 del vertical construcción
+    # (tipo_vinculacion, estado_maquina, estado_herramienta, 0043_construccion_base) = 28, + 3 de
+    # cotización/obra (estado_cotizacion, estado_obra, origen_registro, 0044_construccion_obra) = 31,
+    # + 2 de operación (tipo_mantenimiento, tipo_ausencia, 0045_construccion_operacion) = 33, + 2 de la
+    # extensión CRM (estatus_cliente, tipo_proveedor, 0046_ext_clientes_proveedores) = 35, + 2 de nómina
+    # (estado_periodo_nomina, tipo_periodo_nomina, 0047_nomina) = 37, + 4 de la imputación a obra en
+    # gastos/compras + liquidación (categoria_gasto, metodo_pago_gasto, categoria_compra, semaforo_obra,
+    # 0048_gastos_compras_liquidacion) = 41. 0049_cartera_alquiler_consumo NO añade enums (solo 3 tablas
+    # —cupos_alquiler/cargos_alquiler/cartera_config— y la columna consumos_inventario.idempotency_key) = 41,
+    # + 1 de la máquina de estados de transmisión de nómina electrónica (estado_transmision_nomina, Fase 7,
+    # 0050_fe_obra_nomina_cune; esa migración también agrega facturas_electronicas.obra_id y las columnas
+    # de transmisión de detalles_liquidacion, que no son enums) = 42. Total: 42.
+    assert enums == 42
 
     await tenant.engine.dispose()
     downgrade_tenant(tenant.url, "base")

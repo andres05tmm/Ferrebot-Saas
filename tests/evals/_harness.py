@@ -109,7 +109,11 @@ class CajaRepoFake:
     async def gasto_por_key(self, key):
         return self._por_key.get(key)
 
-    async def insertar_gasto(self, *, caja_id, usuario_id, categoria, monto, concepto, idempotency_key):
+    async def insertar_gasto(
+        self, *, caja_id, usuario_id, categoria, monto, concepto, idempotency_key, **_extra
+    ):
+        # `**_extra` absorbe los kwargs opcionales del vertical construcción (proveedor_id,
+        # factura_proveedor_id, obra_id, maquina_id, metodo_pago, ...) que el eval no ejercita.
         self.insertados += 1
         g = SimpleNamespace(id=self.insertados)
         if idempotency_key:

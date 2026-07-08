@@ -141,16 +141,42 @@ class SqlCajaRepository:
         idempotency_key: str | None = None,
         proveedor_id: int | None = None,
         factura_proveedor_id: str | None = None,
+        obra_id: int | None = None,
+        maquina_id: int | None = None,
+        categoria_gasto: str | None = None,
+        metodo_pago: str | None = None,
+        numero_referencia: str | None = None,
+        comprobante_url: str | None = None,
+        origen_registro: str | None = None,
+        telegram_user_id: str | None = None,
+        telegram_message_id: str | None = None,
+        requiere_revision: bool | None = None,
     ) -> Gasto:
         """Inserta el gasto y SU egreso de caja en la misma tx (gasto → caja_movimientos).
 
         `proveedor_id`/`factura_proveedor_id` son el vínculo opcional a CxP (ADR 0028); el abono que
         salda la factura lo enlaza después el servicio con `set_abono_gasto` (un gasto → un abono).
+
+        Los campos del vertical construcción (spec 09) son opcionales. `origen_registro` y
+        `requiere_revision` son NOT NULL con server_default (0048): si el caller los pasa como None se
+        OMITEN del INSERT para que aplique el default (MANUAL / false), en vez de intentar insertar NULL.
         """
+        # obra/máquina/metadatos: nullable, se pasan tal cual (None inserta NULL, que es correcto).
+        campos_vertical: dict = {
+            "obra_id": obra_id, "maquina_id": maquina_id, "categoria_gasto": categoria_gasto,
+            "metodo_pago": metodo_pago, "numero_referencia": numero_referencia,
+            "comprobante_url": comprobante_url, "telegram_user_id": telegram_user_id,
+            "telegram_message_id": telegram_message_id,
+        }
+        if origen_registro is not None:
+            campos_vertical["origen_registro"] = origen_registro
+        if requiere_revision is not None:
+            campos_vertical["requiere_revision"] = requiere_revision
         gasto = Gasto(
             categoria=categoria, monto=monto, concepto=concepto,
             caja_id=caja_id, usuario_id=usuario_id, idempotency_key=idempotency_key,
             proveedor_id=proveedor_id, factura_proveedor_id=factura_proveedor_id,
+            **campos_vertical,
         )
         self._s.add(gasto)
         await self._s.flush()
@@ -174,11 +200,32 @@ class SqlCajaRepository:
     async def listar_gastos(
         self, *, desde: datetime | None = None, hasta: datetime | None = None,
         limite: int = 100, offset: int = 0,
+        requiere_revision: bool | None = None, obra_id: int | None = None,
+        origen_registro: str | None = None,
     ) -> list[Gasto]:
         stmt = select(Gasto)
         if desde is not None:
             stmt = stmt.where(Gasto.creado_en >= desde)
         if hasta is not None:
             stmt = stmt.where(Gasto.creado_en <= hasta)
+        # Filtros del vertical construcción (spec 09): bandeja de revisión, imputación a obra, origen.
+        if requiere_revision is not None:
+            stmt = stmt.where(Gasto.requiere_revision == requiere_revision)
+        if obra_id is not None:
+            stmt = stmt.where(Gasto.obra_id == obra_id)
+        if origen_registro is not None:
+            stmt = stmt.where(Gasto.origen_registro == origen_registro)
         stmt = stmt.order_by(Gasto.creado_en.desc(), Gasto.id.desc()).limit(limite).offset(offset)
         return list((await self._s.execute(stmt)).scalars().all())
+
+    async def obtener_gasto(self, gasto_id: int) -> Gasto | None:
+        return (
+            await self._s.execute(select(Gasto).where(Gasto.id == gasto_id))
+        ).scalar_one_or_none()
+
+    async def marcar_revisado(self, gasto: Gasto) -> Gasto:
+        """Baja el flag de revisión (aprobar en la bandeja). Idempotente: aprobar un gasto ya revisado
+        lo deja igual (no hay estado que revertir)."""
+        gasto.requiere_revision = False
+        await self._s.flush()
+        return gasto

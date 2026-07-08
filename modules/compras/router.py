@@ -67,6 +67,18 @@ async def crear_compra(
     return resultado.compra
 
 
+@router.get("/compras/resbalos", response_model=list[CompraLeer])
+async def reporte_resbalos(
+    desde: date | None = Query(default=None),
+    hasta: date | None = Query(default=None),
+    session: AsyncSession = Depends(get_tenant_db),
+    _user: Principal = Depends(require_role("admin")),
+) -> list[CompraLeer]:
+    """Reporte de resbalos (spec 11): viajes de material del rango con margen $ y % + alerta de baja
+    rentabilidad. Ordenado del mayor margen al menor (default mes en curso, hora Colombia)."""
+    return await _service(session).reporte_resbalos(desde=desde, hasta=hasta)
+
+
 @router.get("/compras", response_model=list[CompraLeer])
 async def listar_compras(
     desde: date | None = Query(default=None),

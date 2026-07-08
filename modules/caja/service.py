@@ -8,7 +8,7 @@ from decimal import Decimal
 
 from core.config.timezone import now_co, today_co
 from modules.caja.arqueo import calcular_arqueo
-from modules.caja.errors import CajaNoAbierta
+from modules.caja.errors import CajaNoAbierta, GastoInexistente
 from modules.caja.models import Caja, CajaMovimiento, Gasto
 from modules.caja.repository import SqlCajaRepository
 from modules.proveedores.errors import (
@@ -137,12 +137,27 @@ class CajaService:
         idempotency_key: str | None = None,
         proveedor_id: int | None = None,
         factura_proveedor_id: str | None = None,
+        obra_id: int | None = None,
+        maquina_id: int | None = None,
+        categoria_gasto: str | None = None,
+        metodo_pago: str | None = None,
+        numero_referencia: str | None = None,
+        comprobante_url: str | None = None,
+        origen_registro: str | None = None,
+        telegram_user_id: str | None = None,
+        telegram_message_id: str | None = None,
+        requiere_revision: bool | None = None,
     ) -> ResultadoGasto:
         """Registra el gasto (+ su egreso de caja). Si `factura_proveedor_id` viene, salda esa cuenta
         por pagar generando SU único abono (ADR 0028): no se duplica el abono.
 
         El chequeo de idempotencia va ANTES de crear el abono: un replay devuelve el gasto previo sin
         crear un segundo abono (invariante "no duplicar el abono").
+
+        Los campos del vertical construcción (spec 09) son opcionales: `obra_id`/`maquina_id` imputan el
+        gasto (sigue siendo un gasto de caja normal que postea SU egreso — invariante de caja intacto), y
+        los metadatos del bot (`origen_registro`/`telegram_*`/`requiere_revision`) alimentan la bandeja
+        de revisión.
         """
         caja = await self._repo.caja_abierta(usuario_id, lock=True)
         if caja is None:
@@ -165,17 +180,15 @@ class CajaService:
                     f"{factura_proveedor_id!r}"
                 )
 
-        # El vínculo a CxP solo lo usa el router de caja (HTTP); el canal del bot registra gastos
-        # simples. Pasamos los kwargs de enlace SOLO cuando hay enlace, para no exigirlos del repo
-        # en las rutas que no lo tienen.
-        enlace = (
-            {"proveedor_id": proveedor_id, "factura_proveedor_id": factura_proveedor_id}
-            if (proveedor_id is not None or factura_proveedor_id is not None)
-            else {}
-        )
         gasto = await self._repo.insertar_gasto(
             caja_id=caja.id, usuario_id=usuario_id, categoria=categoria, monto=monto,
-            concepto=concepto, idempotency_key=idempotency_key, **enlace,
+            concepto=concepto, idempotency_key=idempotency_key,
+            proveedor_id=proveedor_id, factura_proveedor_id=factura_proveedor_id,
+            obra_id=obra_id, maquina_id=maquina_id, categoria_gasto=categoria_gasto,
+            metodo_pago=metodo_pago, numero_referencia=numero_referencia,
+            comprobante_url=comprobante_url, origen_registro=origen_registro,
+            telegram_user_id=telegram_user_id, telegram_message_id=telegram_message_id,
+            requiere_revision=requiere_revision,
         )
         if factura_proveedor_id is not None:
             assert self._prov is not None   # validado arriba
@@ -184,3 +197,18 @@ class CajaService:
             )
             await self._repo.set_abono_gasto(gasto, abono_id=abono_id)
         return ResultadoGasto(gasto, replay=False)
+
+    async def listar_revision(self, *, limite: int = 100, offset: int = 0) -> list[Gasto]:
+        """Bandeja de revisión (spec 09): gastos con `requiere_revision = true` (normalmente del bot con
+        baja confianza), más recientes primero. Acotada a la empresa del request por la sesión del tenant."""
+        return await self._repo.listar_gastos(
+            requiere_revision=True, limite=limite, offset=offset
+        )
+
+    async def aprobar_gasto(self, gasto_id: int) -> Gasto:
+        """Aprueba un gasto de la bandeja (baja `requiere_revision`). Idempotente: aprobar dos veces deja
+        el mismo resultado. Falla con `GastoInexistente` si el id no existe (default seguro)."""
+        gasto = await self._repo.obtener_gasto(gasto_id)
+        if gasto is None:
+            raise GastoInexistente(gasto_id)
+        return await self._repo.marcar_revisado(gasto)

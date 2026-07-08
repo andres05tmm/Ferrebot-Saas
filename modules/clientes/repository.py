@@ -47,7 +47,18 @@ class SqlClientesRepository:
             ciudad_dane=datos.ciudad_dane,
             regimen=datos.regimen,
             saldo_fiado=Decimal("0"),
+            # Mini-CRM construcción (0046), opcionales. `contacto_*`/`acuerdo_comercial` son nullable sin
+            # default: pasar None inserta NULL, que es lo correcto.
+            contacto_nombre=datos.contacto_nombre,
+            contacto_cargo=datos.contacto_cargo,
+            contacto_telefono=datos.contacto_telefono,
+            contacto_email=datos.contacto_email,
+            acuerdo_comercial=datos.acuerdo_comercial,
         )
+        # `estatus` se OMITE del INSERT cuando viene None para que aplique el server_default 'PROSPECTO'
+        # (0046). Si se pasara None explícito se forzaría NULL, perdiendo el default de la spec.
+        if datos.estatus is not None:
+            cliente.estatus = datos.estatus
         self._s.add(cliente)
-        await self._s.flush()  # asigna cliente.id
+        await self._s.flush()  # asigna cliente.id (y, vía RETURNING, estatus/creado_en server-default)
         return cliente

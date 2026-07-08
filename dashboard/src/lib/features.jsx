@@ -25,9 +25,18 @@ import { createContext, useContext } from 'react'
 // esta re-expansión es fail-safe (tests, cachés viejos durante un deploy).
 const META_POS = ['ventas', 'caja', 'inventario']
 
-function expandirPos(features = []) {
-  if (!features.includes('pos')) return features
-  return [...new Set([...features, ...META_POS])]
+// Meta-pack `construccion` → finas (espeja core/tenancy/catalogo.META_PACKS del vertical construcción).
+// Igual que `pos`, el backend lo expande en /config; esta re-expansión es fail-safe (tests, cachés
+// viejos durante un deploy). Habilita las rutas de obra/maquinaria/herramientas/nómina del vertical.
+const META_CONSTRUCCION = ['obras', 'maquinaria', 'herramientas', 'cotizaciones_aiu', 'nomina', 'cartera_alquiler', 'resbalos']
+
+// Expande los meta-packs conocidos a sus features finas antes de gatear. Fail-safe: si el /config ya
+// vino expandido (caso normal), el Set evita duplicados y el resultado es idéntico.
+function expandirMetapacks(features = []) {
+  let feats = features
+  if (feats.includes('pos')) feats = [...new Set([...feats, ...META_POS])]
+  if (feats.includes('construccion')) feats = [...new Set([...feats, ...META_CONSTRUCCION])]
+  return feats
 }
 
 // Packs de SERVICIO (atención a cliente): el discriminador de FAMILIA de dashboard (ADR 0018). Un tenant
@@ -60,6 +69,14 @@ export const RUTA_FEATURE = {
   '/kardex': 'inventario',
   '/devoluciones': 'ventas',
   '/top-productos': 'ventas',
+  // Vertical construcción (Fase 1 PIM + Ola A): cada tab por su feature fina. NO son RUTAS_RETAIL (no
+  // llevan la supresión de familia): gate simple `feats.includes(requerida)`.
+  '/cotizaciones-obra': 'cotizaciones_aiu',
+  '/obras': 'obras',
+  '/maquinas': 'maquinaria',
+  '/herramientas': 'herramientas',
+  '/trabajadores': 'nomina',
+  '/nomina': 'nomina',
   // `/historial` es transversal (POS y servicios) → condición propia en isRouteEnabled, no aquí.
   // Fiscal
   '/facturacion': 'facturacion_electronica',
@@ -109,7 +126,7 @@ export function resolveHomePath(features = []) {
 
 /** ¿La ruta está habilitada según las features efectivas? Núcleo (sin requisito) → siempre true. */
 export function isRouteEnabled(path, features = []) {
-  const feats = expandirPos(features)
+  const feats = expandirMetapacks(features)
   // Las dos portadas son excluyentes: solo la portada resuelta queda visible en el nav.
   if (path === '/inicio') return resolveHomePath(feats) === '/inicio'
   // `/historial` es transversal a las dos familias (ADR 0018): quien registra ventas ve su historial

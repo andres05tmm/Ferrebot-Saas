@@ -39,6 +39,10 @@ def _a_json(payload: dict) -> str:
 
 # CUFE mínimo válido (FAD06, §9): `success` sin CUFE de ≥40 chars se trata como fallo.
 CUFE_MIN_LEN = 40
+# CUNE mínimo de la nómina electrónica: mismo umbral defensivo que el CUFE (un `success` sin CUNE largo
+# se trata como fallo, no como transmisión válida). [VERIFICAR con MATIAS real]: el CUNE DIAN es un
+# SHA-384 (~96 hex), pero el piso de 40 basta para descartar respuestas vacías/placeholder.
+CUNE_MIN_LEN = 40
 # Expiración por defecto del token si MATIAS no informa `expires_at`/`expires_in` (segundos, §2).
 _EXPIRY_DEFAULT = 86_400
 # Margen para renovar el token antes de que expire (segundos, §2).
@@ -81,6 +85,24 @@ class EmisionResultado:
     # el servicio los persiste en la fila `pos` (que nació con consecutivo/prefijo NULL). None en FE.
     numero: int | None = None
     prefijo: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class TransmisionNominaResultado:
+    """Resultado de transmitir un documento de NÓMINA ELECTRÓNICA a DIAN (CUNE): espejo de `EmisionResultado`.
+
+    La nómina electrónica reutiliza el operativo de la FE (auth JWT, clasificación de 5xx como transitorio,
+    política de reintento) pero su clave DIAN es el CUNE (no el CUFE) y se persiste en
+    `detalles_liquidacion.cune_dian`. `categoria` usa el MISMO vocabulario de `EmisionResultado`
+    ("aceptada"|"rechazada"|"error") a propósito, para consumir `politica.decidir_emision` sin traducir; el
+    servicio mapea ese desenlace al enum de columna (`estado_transmision`: TRANSMITIDO|RECHAZADO|ERROR).
+    `raw` lleva la respuesta MATIAS COMPLETA (histórico fiscal + motivo de rechazo)."""
+
+    ok: bool
+    cune: str | None = None
+    error_msg: str | None = None
+    categoria: str = "error"
+    raw: dict | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -145,6 +167,48 @@ def _resultado_5xx(resp: httpx.Response) -> EmisionResultado:
     except ValueError:
         raw = None
     return EmisionResultado(
+        False, error_msg=f"MATIAS respondió HTTP {resp.status_code}", categoria="error",
+        raw=raw if isinstance(raw, dict) else None,
+    )
+
+
+# Claves donde MATIAS puede exponer el CUNE de la nómina electrónica en el éxito (defensivo: el campo
+# exacto NO está en el doc de extracción, que solo cubre FE/POS/notas). [VERIFICAR con MATIAS real].
+_CLAVES_CUNE = ("cune", "XmlDocumentKey", "document_key", "uuid", "CUNE")
+
+
+def _parsear_transmision_nomina(data: dict) -> TransmisionNominaResultado:
+    """Parsea la respuesta del endpoint de nómina electrónica de MATIAS. PURO; espejo de `_parsear_emision`.
+
+    Éxito = `success` y un CUNE (`cune`|`XmlDocumentKey`|`document_key`|`uuid`) de ≥`CUNE_MIN_LEN` chars; si
+    falta o es corto → fallo de emisión ('error', reintentable — no un rechazo de negocio). En rechazo DIAN
+    (`success` falso) concatena `message` con `errors` (dict) en un `error_msg` legible ('rechazada',
+    terminal). [VERIFICAR con MATIAS real]: el shape del endpoint de nómina no está en la doc de extracción
+    (§ solo cubre FE/POS/notas); las claves aquí son una interfaz razonable espejo de la FE."""
+    cune = next((str(data[k]).strip() for k in _CLAVES_CUNE if data.get(k)), "")
+    if bool(data.get("success")):
+        if not cune or len(cune) < CUNE_MIN_LEN:
+            return TransmisionNominaResultado(
+                False, error_msg="CUNE inválido devuelto por MATIAS API", categoria="error", raw=data
+            )
+        return TransmisionNominaResultado(True, cune=cune, categoria="aceptada", raw=data)
+    msg = data.get("message") or ""
+    errors = data.get("errors")
+    if isinstance(errors, dict) and errors:
+        error_msg = f"{msg} | " + " | ".join(f"{k}: {v}" for k, v in errors.items())
+    else:
+        error_msg = msg or str(data)
+    return TransmisionNominaResultado(False, error_msg=error_msg, categoria="rechazada", raw=data)
+
+
+def _resultado_5xx_nomina(resp: httpx.Response) -> TransmisionNominaResultado:
+    """5xx de MATIAS en la transmisión de nómina = fallo TRANSITORIO del proveedor: categoria 'error'
+    (reintentable), nunca 'rechazada' (terminal de negocio). Espejo de `_resultado_5xx` para el CUNE."""
+    try:
+        raw = resp.json()
+    except ValueError:
+        raw = None
+    return TransmisionNominaResultado(
         False, error_msg=f"MATIAS respondió HTTP {resp.status_code}", categoria="error",
         raw=raw if isinstance(raw, dict) else None,
     )
@@ -451,6 +515,29 @@ class MatiasClient:
         if resp.status_code >= 500:
             return _resultado_5xx(resp)
         return _parsear_emision(resp.json())
+
+    async def transmitir_nomina(self, payload: dict) -> TransmisionNominaResultado:
+        """POST `/payroll` (nómina electrónica, CUNE) con Bearer token; devuelve `TransmisionNominaResultado`.
+
+        Espeja `emitir_factura`: mismo login/token con caché, un 5xx se clasifica ANTES de parsear
+        (`_resultado_5xx_nomina`) como error TRANSITORIO (no un rechazo DIAN), y el desenlace normal se
+        parsea con `_parsear_transmision_nomina` (success + CUNE → 'aceptada'; success falso → 'rechazada').
+        NO persiste (eso es el servicio); NO loguea el payload (datos personales + salario).
+
+        [VERIFICAR con MATIAS real en go-live]: el endpoint (`/payroll`) y el campo del CUNE en la respuesta
+        NO están en `docs/facturacion-matias-extract.md` (solo documenta FE/POS/notas). Se define aquí una
+        interfaz razonable ESPEJO de la FE; el wire exacto (ruta, shape del body, clave del CUNE) se ajusta
+        contra el sandbox cuando el owner habilite la cuenta MATIAS de nómina electrónica de PIM."""
+        tok = await self._token()
+        resp = await self._get_client().post(
+            "/payroll", content=_a_json(payload),
+            headers={"Authorization": f"Bearer {tok}", "Accept": "application/json",
+                     "Content-Type": "application/json"},
+            timeout=30,
+        )
+        if resp.status_code >= 500:
+            return _resultado_5xx_nomina(resp)
+        return _parsear_transmision_nomina(resp.json())
 
     async def consultar_estado(
         self, *, prefijo: str | None, consecutivo: int, resolution: str | None = None

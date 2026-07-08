@@ -29,6 +29,7 @@ from modules.auth.password_reset import router as auth_reset_router
 from modules.auth.router import router as auth_router
 from modules.bancos.router import router as bancos_router
 from modules.caja.router import gastos_router, router as caja_router
+from modules.cartera.router import router as cartera_router
 from modules.clientes.router import router as clientes_router
 from modules.cobranza.router import router as cobranza_router
 from modules.compras.router import router as compras_router
@@ -36,6 +37,7 @@ from modules.compras_fiscal.router import router as compras_fiscal_router
 from modules.config.router import router as config_router
 from modules.contabilidad.router import router as contabilidad_router
 from modules.conversaciones.router import router as conversaciones_router
+from modules.cotizacion_obra.router import router as cotizacion_obra_router
 from modules.cotizaciones.router import router as cotizaciones_router
 from modules.devoluciones.router import router as devoluciones_router
 from modules.facturacion.router import router as facturacion_router
@@ -44,6 +46,11 @@ from modules.facturacion.webhook_wiring import construir_webhook_matias_deps
 from modules.bancos.gmail.webhook import crear_router_bancolombia
 from modules.bancos.gmail.wiring import construir_webhook_bancolombia_deps
 from modules.faq.router import router as faq_router
+from modules.herramientas.router import router as herramientas_router
+from modules.maquinaria.router import router as maquinaria_router
+from modules.nomina.router import router as nomina_router
+from modules.obra.router import router as obras_router
+from modules.trabajadores.router import router as trabajadores_router
 from modules.pagar.router import router as pagar_router
 from modules.pagos.router import router as pagos_router
 from modules.pedidos.router import router as pedidos_router
@@ -164,6 +171,16 @@ def create_app(spa_dist: Path | None = None) -> FastAPI:
     app.include_router(devoluciones_router, prefix="/api/v1")  # devoluciones + nota crédito (ADR 0026)
     app.include_router(catalogo_router, prefix="/api/v1")    # /productos* — feature `ventas` (ADR 0021)
     app.include_router(inventario_router, prefix="/api/v1")  # /inventario/* — feature `inventario`
+    # Vertical construcción (PIM, Fase 1): cada recurso gatea por su feature fina (feature-flags.md);
+    # sin ella el router responde 404. Las tablas viven en TODO tenant (migración de tenant compartida),
+    # vacías donde no aplique. Ver plan piped-hatching-sloth §5.
+    app.include_router(obras_router, prefix="/api/v1")          # /obras* — feature `obras`
+    app.include_router(cotizacion_obra_router, prefix="/api/v1")  # /cotizaciones-obra* — feature `cotizaciones_aiu` (Ola A F2)
+    app.include_router(maquinaria_router, prefix="/api/v1")     # /maquinas* — feature `maquinaria`
+    app.include_router(herramientas_router, prefix="/api/v1")   # /herramientas* — feature `herramientas`
+    app.include_router(cartera_router, prefix="/api/v1")        # /cartera-alquiler* — feature `cartera_alquiler` (Fase 5)
+    app.include_router(trabajadores_router, prefix="/api/v1")   # /trabajadores* — feature `nomina`
+    app.include_router(nomina_router, prefix="/api/v1")         # /nomina* — feature `nomina` (Ola A F4)
     app.include_router(caja_router, prefix="/api/v1")
     app.include_router(gastos_router, prefix="/api/v1")
     app.include_router(fiados_router, prefix="/api/v1")

@@ -10,6 +10,7 @@ import {
   FileText, FileCheck, Calculator, FileCog,
   CalendarDays, Headset, BookText, HandCoins, ChefHat, Banknote,
   CreditCard, FileSpreadsheet, Star, BedDouble, Undo2, Percent, Library, Landmark, Scale,
+  HardHat, Wrench, ClipboardList,
 } from 'lucide-react'
 import { isRouteEnabled } from './lib/features.jsx'
 
@@ -31,6 +32,14 @@ export const ROUTES = [
   { path: '/postventa',           label: 'Postventa',           icon: Star,            group: 'operacion' },
   { path: '/conversaciones',      label: 'Conversaciones',      icon: Headset,         group: 'operacion' },
   { path: '/conocimiento',        label: 'Conocimiento',        icon: BookText,        group: 'operacion' },
+
+  // Construcción (vertical PIM) — gated por sus flags finas (cotizaciones_aiu/obras/maquinaria/herramientas/nomina).
+  { path: '/cotizaciones-obra',   label: 'Cotizaciones AIU',    icon: ClipboardList,   group: 'construccion' },
+  { path: '/obras',               label: 'Obras',               icon: HardHat,         group: 'construccion' },
+  { path: '/maquinas',            label: 'Maquinaria',          icon: Truck,           group: 'construccion' },
+  { path: '/herramientas',        label: 'Herramientas',        icon: Wrench,          group: 'construccion' },
+  { path: '/trabajadores',        label: 'Trabajadores',        icon: Users,           group: 'construccion' },
+  { path: '/nomina',              label: 'Nómina',              icon: Wallet,          group: 'construccion' },
 
   // Gestión
   { path: '/clientes',            label: 'Clientes',            icon: Users,           group: 'gestion' },
@@ -59,8 +68,9 @@ export const ROUTES = [
 ]
 
 export const GROUPS = [
-  { id: 'operacion', label: 'Operación', collapsedByDefault: false },
-  { id: 'gestion',   label: 'Gestión',   collapsedByDefault: false },
+  { id: 'operacion',    label: 'Operación',    collapsedByDefault: false },
+  { id: 'construccion', label: 'Construcción', collapsedByDefault: false },
+  { id: 'gestion',      label: 'Gestión',      collapsedByDefault: false },
   { id: 'reportes',  label: 'Reportes',  collapsedByDefault: false },
   { id: 'fiscal',    label: 'Fiscal',    collapsedByDefault: true  },
 ]

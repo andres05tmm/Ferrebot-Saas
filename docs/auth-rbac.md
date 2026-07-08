@@ -52,3 +52,6 @@ get_filtro_efectivo   # admin puede impersonar un vendedor con ?vendor_id=N
 
 - Toda ruta de negocio: `Depends(get_current_user)` + `require_feature(...)` cuando aplique.
 - Auditoría: cada mutación guarda `usuario_id` y fecha en la app DB de la empresa.
+- **Vertical construcción (PIM):** el mapeo de los roles de la spec (CONTADOR/SUPERVISOR/OPERADOR/
+  SOLO_LECTURA) sobre esta jerarquía, con el gating recomendado por recurso y la propuesta de expansión,
+  vive en `docs/pim-rbac-mapeo.md`. Las fases que gatean por rol lo referencian.

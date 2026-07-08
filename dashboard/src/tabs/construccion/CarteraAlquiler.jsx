@@ -421,7 +421,7 @@ function CupoForm({ cupo, onClose, onGuardado }) {
       <h3 className="mb-3 inline-flex items-center gap-1.5 text-sm font-semibold">
         <Wallet className="size-4" aria-hidden="true" /> {edicion ? 'Editar cupo' : 'Nuevo cupo de alquiler'}
       </h3>
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         {edicion ? (
           <Campo label="Cliente">
             <Input value={cupo.cliente_nombre || `Cliente #${cupo.cliente_id}`} disabled className="h-9" />

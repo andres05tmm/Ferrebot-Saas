@@ -175,11 +175,14 @@ export function Kpi({ label, valor, sublinea, tono = 'neutro', tendencia = null,
 
 // Clases de botón compartidas (calcan el botón primario del vecino). La altura se pasa por `className`
 // en cada uso (h-9 en toolbars, h-10 en formularios).
+// `min-h-10 sm:min-h-0`: target táctil ≥40px en móvil sin tocar la altura por-uso (h-9/h-10); en sm+
+// el min-height se libera y manda la altura densa de escritorio. Alinea con SELECT_CLS (h-10 en móvil).
 export const BTN_PRIMARY =
-  'inline-flex items-center justify-center gap-1.5 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors duration-fast hover:bg-primary-hover disabled:opacity-60'
+  'inline-flex min-h-10 items-center justify-center gap-1.5 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors duration-fast hover:bg-primary-hover disabled:opacity-60 sm:min-h-0'
 export const BTN_OUTLINE =
-  'inline-flex items-center justify-center gap-1.5 rounded-md border border-border bg-surface px-3 text-sm font-medium text-secondary-foreground transition-colors duration-fast hover:bg-surface-2 disabled:opacity-60'
+  'inline-flex min-h-10 items-center justify-center gap-1.5 rounded-md border border-border bg-surface px-3 text-sm font-medium text-secondary-foreground transition-colors duration-fast hover:bg-surface-2 disabled:opacity-60 sm:min-h-0'
 
 // Select nativo con el mismo look que el Input del design system (borde/foco tokenizados).
+// h-10 en móvil (target táctil), h-9 denso en escritorio.
 export const SELECT_CLS =
-  'h-9 w-full rounded-md border border-input bg-surface px-2 text-sm text-foreground transition-colors duration-fast focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50'
+  'h-10 w-full rounded-md border border-input bg-surface px-2 text-sm text-foreground transition-colors duration-fast focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50 sm:h-9'

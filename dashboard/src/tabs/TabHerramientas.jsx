@@ -214,7 +214,7 @@ function HerramientaForm({ herramienta, onClose, onGuardada }) {
       <h2 className="mb-3 inline-flex items-center gap-1.5 text-sm font-semibold">
         <Wrench className="size-4" aria-hidden="true" /> {edicion ? 'Editar herramienta' : 'Nueva herramienta'}
       </h2>
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <Campo label="Código" requerido>
           <Input value={f.codigo} onChange={set('codigo')} placeholder="H-001" className="h-9" />
         </Campo>

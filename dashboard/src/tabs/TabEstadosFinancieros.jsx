@@ -166,7 +166,7 @@ function BalanceGeneral({ d }) {
 function Flujo({ d }) {
   return (
     <div className="space-y-3">
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <Metric label="Entradas" value={cop(d.total_entradas)} tone="text-success" />
         <Metric label="Salidas" value={cop(d.total_salidas)} tone="text-warning" />
         <Metric label="Flujo neto" value={cop(d.flujo_neto)} hero

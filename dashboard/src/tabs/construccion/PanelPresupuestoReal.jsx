@@ -156,7 +156,7 @@ function Encabezado({ g, liquidada, liq }) {
   const tonoUtil = g.utilidadReal < 0 ? 'text-destructive' : g.utilidadReal < g.utilidadPresup ? 'text-warning' : 'text-success'
 
   return (
-    <div className="grid gap-3 sm:grid-cols-[auto_1fr] sm:items-center">
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-[auto_1fr] sm:items-center">
       {/* Semáforo grande: punto + etiqueta, con el porqué debajo. Nunca solo color. */}
       <div className={`flex flex-col gap-1 rounded-lg border px-4 py-3 ${meta.clase}`} role="status" title={meta.titulo}>
         <span className="inline-flex items-center gap-2 text-[15px] font-semibold leading-none">
@@ -167,7 +167,7 @@ function Encabezado({ g, liquidada, liq }) {
       </div>
 
       {/* KPIs */}
-      <dl className="grid grid-cols-3 gap-2 text-center">
+      <dl className="grid grid-cols-1 gap-2 text-center sm:grid-cols-3">
         <Kpi etiqueta={liquidada ? 'Ingreso presup.' : 'Presupuestado'} valor={g.ingreso} tenue={sinPresupuesto} />
         <Kpi etiqueta="Gasto real" valor={g.total} />
         <div className="rounded-md bg-surface-2 px-2 py-2">
@@ -385,7 +385,7 @@ function FormImputarGasto({ obraId, onHecho, onCancelar }) {
 
   return (
     <MarcoForm titulo="Imputar gasto a la obra" onCancelar={onCancelar} enviando={enviando} onGuardar={guardar} textoGuardar="Guardar gasto">
-      <div className="grid gap-2.5 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
         <Campo label="Concepto" requerido className="sm:col-span-2">
           <Input value={f.concepto} onChange={set('concepto')} placeholder="Ej. Combustible retroexcavadora" className="h-8" />
         </Campo>
@@ -447,7 +447,7 @@ function FormRegistrarHoras({ obraId, onHecho, onCancelar }) {
       ) : maquinas.length === 0 ? (
         <p className="rounded-md bg-surface px-3 py-3 text-[12px] text-muted-foreground">No hay máquinas registradas. Da de alta una máquina y asígnala a la obra antes de registrar horas.</p>
       ) : (
-        <div className="grid gap-2.5 sm:grid-cols-3">
+        <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
           <Campo label="Máquina" requerido className="sm:col-span-3">
             <select value={f.maquina_id} onChange={set('maquina_id')} className={SELECT_COMPACTO}>
               <option value="">Elige una máquina…</option>
@@ -549,7 +549,7 @@ function FormRegistrarConsumo({ obraId, onHecho, onCancelar }) {
         </ul>
       )}
 
-      <div className="mt-2.5 grid gap-2.5 sm:grid-cols-3">
+      <div className="mt-2.5 grid grid-cols-1 gap-2.5 sm:grid-cols-3">
         <Campo label="Cantidad" requerido>
           <Input type="number" min="0" step="0.01" value={f.cantidad} onChange={set('cantidad')} className="h-8 text-right" />
         </Campo>
@@ -600,7 +600,7 @@ function BarraLiquidar({ obra, finalizada, onHecho }) {
 function EsqueletoPanel() {
   return (
     <div className="animate-pulse space-y-3" aria-hidden="true">
-      <div className="grid gap-3 sm:grid-cols-[auto_1fr]">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-[auto_1fr]">
         <div className="h-14 w-40 rounded-lg bg-surface-2" />
         <div className="grid grid-cols-3 gap-2">
           <div className="h-14 rounded-md bg-surface-2" />

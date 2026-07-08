@@ -27,7 +27,9 @@ const DialogContent = React.forwardRef(({ className, children, ...props }, ref) 
     <DialogPrimitive.Content
       ref={ref}
       className={cn(
-        'fixed left-1/2 top-1/2 z-50 grid w-full max-w-lg -translate-x-1/2 -translate-y-1/2 gap-4 border border-border bg-surface p-6 shadow-md duration-base sm:rounded-lg',
+        // Móvil: card centrada con gutter lateral (16px), esquinas redondeadas, alto máximo con scroll
+        // interno y padding inferior con safe-area. sm+: diálogo denso de escritorio (ancho max-w-lg).
+        'fixed left-1/2 top-1/2 z-50 grid max-h-[85dvh] w-[calc(100%-2rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 gap-4 overflow-y-auto overflow-x-hidden rounded-lg border border-border bg-surface p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] shadow-md duration-base sm:w-full sm:p-6 sm:pb-6',
         'data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95',
         className,
       )}

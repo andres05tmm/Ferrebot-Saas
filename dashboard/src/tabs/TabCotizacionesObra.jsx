@@ -243,7 +243,7 @@ function CotizacionDetalle({ id, cotizacion, onEditar, onCambio }) {
 
   return (
     <div id={id} className="border-t border-border-subtle bg-surface-2/40 px-4 py-3.5">
-      <div className="grid gap-4 lg:grid-cols-[1.4fr_1fr]">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1.4fr_1fr]">
         {/* Ítems */}
         <div className="rounded-md border border-border-subtle bg-surface p-3">
           <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Ítems</h3>
@@ -422,7 +422,7 @@ function CotizacionForm({ cotizacion, onClose, onGuardada }) {
       </h2>
 
       {/* Cabecera */}
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {!edicion && (
           <Campo label="Número" hint="Autogenerado si se deja vacío">
             <Input value={f.numero} onChange={set('numero')} placeholder="PIM-0XX-2026" className="h-9" />
@@ -488,7 +488,7 @@ function CotizacionForm({ cotizacion, onClose, onGuardada }) {
       </div>
 
       {/* AIU: porcentajes + desglose en vivo */}
-      <div className="mt-4 grid gap-4 lg:grid-cols-[1fr_1fr]">
+      <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-[1fr_1fr]">
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-2">
           <Campo label="Administración %"><Input type="number" min="0" step="0.01" value={f.administracion_pct} onChange={set('administracion_pct')} className="h-9 text-right" /></Campo>
           <Campo label="Imprevistos %"><Input type="number" min="0" step="0.01" value={f.imprevistos_pct} onChange={set('imprevistos_pct')} className="h-9 text-right" /></Campo>

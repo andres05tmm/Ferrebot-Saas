@@ -89,7 +89,7 @@ export default function FichaMaquina({ id, maquina, isAdmin = false, obrasNombre
     <div id={id} className="border-t border-border-subtle bg-surface-2/40 px-4 py-3.5 space-y-4">
       <Cabecera maquina={maquina} isAdmin={isAdmin} onEditar={onEditar} onCambio={onCambio} />
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <SeccionAsignaciones
           q={asignacionesQ} asignaciones={asignaciones} obraLabel={obraLabel} hoy={hoyCO()}
         />
@@ -422,7 +422,7 @@ function FormMantenimiento({ maquinaId, hoy, onCancelar, onCreado }) {
 
   return (
     <div className="mb-3 rounded-md border border-border bg-surface-2/60 p-3">
-      <div className="grid gap-2.5 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
         <Campo label="Tipo">
           <select value={f.tipo} onChange={set('tipo')} className={SELECT_CLS}>
             {Object.entries(TIPO_MANT).map(([v, l]) => <option key={v} value={v}>{l}</option>)}

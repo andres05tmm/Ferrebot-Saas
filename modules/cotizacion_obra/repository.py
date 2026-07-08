@@ -146,10 +146,15 @@ class SqlCotizacionObraRepository:
         return cotizacion
 
     async def actualizar_cabecera(self, cotizacion: CotizacionObra, cambios: dict) -> CotizacionObra:
-        """Aplica un parche parcial de cabecera sobre una cotización ya cargada (sólo claves presentes)."""
+        """Aplica un parche parcial de cabecera sobre una cotización ya cargada (sólo claves presentes).
+
+        Nota async: `actualizado_en` tiene `onupdate=func.now()`; tras el UPDATE queda EXPIRADO (su valor
+        lo computa el servidor). Sin `refresh`, la serialización del router dispararía IO perezoso fuera
+        del contexto greenlet → `MissingGreenlet` (500). Mismo fix que `modules/obra/repository.py`."""
         for campo, valor in cambios.items():
             setattr(cotizacion, campo, valor)
         await self._s.flush()
+        await self._s.refresh(cotizacion)
         return cotizacion
 
     async def reemplazar_items(
@@ -163,9 +168,13 @@ class SqlCotizacionObraRepository:
         await self._s.flush()
 
     async def cambiar_estado(self, cotizacion: CotizacionObra, nuevo_estado: str) -> CotizacionObra:
-        """Persiste el nuevo estado (la validación de la transición la hace el servicio)."""
+        """Persiste el nuevo estado (la validación de la transición la hace el servicio).
+
+        `refresh` tras el flush por la misma nota async de `actualizar_cabecera` (evita MissingGreenlet
+        al serializar `actualizado_en` expirado por su `onupdate`)."""
         cotizacion.estado = nuevo_estado
         await self._s.flush()
+        await self._s.refresh(cotizacion)
         return cotizacion
 
     def _insertar_items(self, cotizacion_id: int, items: list[ItemCotizacionObraCrear]) -> None:

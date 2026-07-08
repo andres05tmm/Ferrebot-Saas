@@ -76,6 +76,15 @@ from modules.memoria.service import (
 
 log = get_logger("ai.turno")
 
+# Adaptador de canal para la FOTO del recibo (Bot PIM): cuando llega una foto, descarga la imagen, la
+# sube al bucket y la inyecta en `recursos.obra.canal` (la imagen NUNCA viaja como arg del modelo);
+# devuelve el `Recursos` actualizado + el texto para el modelo (sintetiza uno si la foto no traía
+# leyenda). Opcional e inyectado por el composition root (apps.bot): un despliegue sin el pack de obra
+# lo deja en None y el pipeline de texto/voz queda intacto.
+PrepararRecibo = Callable[
+    [UpdateBot, Contexto, Recursos, "str | None"], Awaitable["tuple[Recursos, str | None]"]
+]
+
 # Mensaje al usuario ante un fallo no recuperable del proveedor (nunca 500 ni silencio).
 MENSAJE_RESPALDO = (
     "Tuve un problema para procesar tu mensaje. Inténtalo de nuevo en un momento, por favor."
@@ -414,6 +423,7 @@ def crear_turno_handler(
     crear_bypass: BypassFactory | None = None,
     pendientes: VentaPendienteStore | None = None,
     gobierno: Gobierno | None = None,
+    preparar_recibo: PrepararRecibo | None = None,
 ) -> TurnoHandler:
     """Captura el dispatcher + stores (+ voz, opcional) y devuelve el `TurnoHandler` del webhook.
 
@@ -456,6 +466,18 @@ def crear_turno_handler(
         entidades = await memoria_svc.leer_entidades(update.chat_id)          # best-effort
         system = construir_system_prompt(entidades, rubro=ctx.rubro)
         recursos_turno = crear_recursos(session)                              # fresco por turno
+
+        # Foto de recibo (Bot PIM): descarga la imagen, la sube al bucket y la inyecta en
+        # `recursos.obra.canal` (la imagen NUNCA viaja como arg del modelo). Solo materializa la imagen
+        # para tenants con el pack de obra; para el resto es no-op. Puede sintetizar el texto del turno.
+        if update.foto_file_id and preparar_recibo is not None:
+            recursos_turno, texto = await preparar_recibo(update, ctx, recursos_turno, texto)
+
+        # Sin texto tras resolver voz/foto (p. ej. una foto que este tenant no puede aprovechar): nada
+        # que despachar. El bypass y el modelo exigen un prompt; se corta barato sin gastar la llamada.
+        if texto is None:
+            log.info("bot_update_sin_texto", chat_id=update.chat_id)
+            return
 
         # Bypass (Paso A: ventas): camino rápido sin IA, ANTES del modelo. None/False = CaeAlModelo.
         # Con `pendientes`, el bypass NO ejecuta: ofrece método de pago con botones (R3-bot).

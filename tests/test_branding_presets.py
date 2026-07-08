@@ -21,8 +21,8 @@ def test_default_es_melquiadez():
     assert "melquiadez" in PRESETS
 
 
-def test_los_seis_presets_existen():
-    assert set(PRESETS) == {"aurora", "brasa", "navaja", "brisa", "lienzo", "melquiadez"}
+def test_los_presets_existen():
+    assert set(PRESETS) == {"aurora", "brasa", "navaja", "brisa", "lienzo", "obra", "melquiadez"}
 
 
 @pytest.mark.parametrize("nombre", sorted(PRESETS))

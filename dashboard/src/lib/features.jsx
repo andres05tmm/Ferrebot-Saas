@@ -44,6 +44,17 @@ function expandirMetapacks(features = []) {
 // restaurante reusa el catálogo POS)— y por tanto NO ve el dashboard de retail.
 const PACKS_ATENCION_CLIENTE = ['pack_agenda', 'pack_pedidos', 'pack_reservas']
 
+// FAMILIA CONSTRUCCIÓN (vertical PIM): tercera familia de dashboard, junto a retail y servicios. Un
+// tenant es de construcción si tiene el vertical (`construccion` o su feature núcleo `obras`), aunque
+// arrastre `pos` por la dependencia de `inventario` (materiales/compras de obra). Como los de servicios
+// respecto al retail, NO ve el cockpit ni la venta de mostrador de la ferretería: su operación es la obra.
+const FEATURES_CONSTRUCCION = ['construccion', 'obras']
+
+// Rutas de RETAIL PURO (venta de mostrador): no tienen sentido para una constructora ni para servicios.
+// Se suprimen para la familia construcción (ver isRouteEnabled). NO incluye caja/inventario/compras/
+// gastos: esos son operación compartida (una obra maneja caja, materiales, compras y gastos).
+const RUTAS_RETAIL_PURO = new Set(['/hoy', '/ventas', '/devoluciones', '/top-productos', '/kardex'])
+
 // Rutas RETAIL/CONTABLES. Cada una se gatea por su feature FINA (ADR 0021) con la regla de supresión
 // de familia (ver isRouteEnabled). `/historial` NO está aquí: es transversal a las dos familias
 // (ventas en POS, pedidos/citas/reservas en servicios) y lleva su propia condición en isRouteEnabled.
@@ -113,27 +124,44 @@ export function esAtencionCliente(features = []) {
 }
 
 /**
- * Portada del tenant según su vertical (sin hardcodear slug), ADR 0018:
+ * ¿El tenant es de la familia "construcción" (vertical PIM)? True si tiene el vertical (`construccion`
+ * o su núcleo `obras`). Es el discriminador de familia análogo a `esAtencionCliente`: separa la obra
+ * civil del retail, aun cuando arrastra `pos` por la dependencia de `inventario`.
+ */
+export function esConstruccion(features = []) {
+  return FEATURES_CONSTRUCCION.some((f) => features.includes(f))
+}
+
+/**
+ * Portada del tenant según su vertical (sin hardcodear slug), ADR 0018. Las FAMILIAS se evalúan en
+ * orden de especificidad; construcción y servicios van ANTES que `pos` porque ambos lo arrastran por
+ * dependencia (inventario / catálogo) sin ser retail:
  *   - `pack_pedidos`             → `/pedidos` (comandera del restaurante: su home operativa).
  *   - `pack_agenda`/`pack_reservas` → `/inicio` (home del agente: citas, pendientes, KPIs).
+ *   - construcción (`obras`)     → `/obras` (portada de obra: portafolio + presupuesto vs. real).
  *   - `pos` (y nada de lo anterior) → `/hoy` (cockpit POS de ferretería, intacto).
  *   - resto                       → `/inicio` (núcleo de servicio).
  */
 export function resolveHomePath(features = []) {
-  if (features.includes('pack_pedidos')) return '/pedidos'
-  if (features.includes('pack_agenda') || features.includes('pack_reservas')) return '/inicio'
-  if (features.includes('pos')) return '/hoy'
+  const feats = expandirMetapacks(features)
+  if (feats.includes('pack_pedidos')) return '/pedidos'
+  if (feats.includes('pack_agenda') || feats.includes('pack_reservas')) return '/inicio'
+  if (esConstruccion(feats)) return '/obras'
+  if (feats.includes('pos')) return '/hoy'
   return '/inicio'
 }
 
 /** ¿La ruta está habilitada según las features efectivas? Núcleo (sin requisito) → siempre true. */
 export function isRouteEnabled(path, features = []) {
   const feats = expandirMetapacks(features)
-  // Las dos portadas son excluyentes: solo la portada resuelta queda visible en el nav.
+  // Familia construcción: suprime el RETAIL PURO (cockpit `/hoy` + venta de mostrador). Una constructora
+  // arrastra `pos` por `inventario`, pero no vende tickets: conserva caja/inventario/compras/gastos.
+  if (esConstruccion(feats) && RUTAS_RETAIL_PURO.has(path)) return false
+  // Las portadas son mutuamente excluyentes: solo la portada resuelta (resolveHomePath) queda en el nav.
   if (path === '/inicio') return resolveHomePath(feats) === '/inicio'
-  // `/historial` es transversal a las dos familias (ADR 0018): quien registra ventas ve su historial
-  // y la familia de servicios el suyo por vertical (pedidos/citas/reservas).
-  if (path === '/historial') return feats.includes('ventas') || esAtencionCliente(feats)
+  // `/historial` es transversal a retail/servicios (ADR 0018): quien registra ventas ve su historial y
+  // la familia de servicios el suyo por vertical. La constructora NO (su traza vive en obras/nómina).
+  if (path === '/historial') return !esConstruccion(feats) && (feats.includes('ventas') || esAtencionCliente(feats))
   // Retail/contable (ADR 0021 §D6): feature fina activa, salvo el arrastre histórico del meta-pack
   // en tenants de servicios (restaurante con `pos` por dependencia NO ve caja/kárdex de ferretería).
   if (RUTAS_RETAIL.has(path)) {

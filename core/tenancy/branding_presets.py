@@ -91,6 +91,14 @@ PRESETS: dict[str, BrandingPreset] = {
         ok="#16a34a", warn="#d97706", bad="#dc2626",
         radius="14px", font_display="Sora", font_ui="Inter",
     ),
+    # Construcción PIM (vertical obra civil) — ámbar de maquinaria sobre grises industriales, tipografía
+    # condensada (Oswald) y radio cuadrado: identidad de gremio, no "retail recoloreado". Claro.
+    "obra": BrandingPreset(
+        primario="#e07a00", primario_up="#f2a100", superficie="#f5f4f2", card="#ffffff",
+        linea="#e4e1dc", tinta="#1c1917", tinta_suave="#57534e",
+        ok="#3f8f4f", warn="#d97706", bad="#c2410c",
+        radius="8px", font_display="Oswald", font_ui="Inter",
+    ),
     # Melquiadez — DEFAULT de plataforma (plan §1): papel cálido, tinta noche, oro viejo de acento.
     "melquiadez": BrandingPreset(
         primario="#b8924f", primario_up="#cda863", superficie="#f7f4ee", card="#fffdf9",

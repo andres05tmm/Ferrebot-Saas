@@ -183,6 +183,51 @@ describe('dos familias de dashboard (ADR 0018)', () => {
   })
 })
 
+// ── Familia construcción (vertical PIM) — TERCERA familia de dashboard ────────────────────────────
+// Una constructora tiene el vertical `construccion` (+ `pos` arrastrado por `inventario`). NO es retail:
+// su portada es la de obra y NO ve la venta de mostrador (cockpit /hoy, ventas rápidas, top productos…),
+// pero SÍ conserva la operación compartida (caja, inventario/materiales, compras, gastos).
+describe('familia construcción (vertical PIM)', () => {
+  // PIM real: pack construccion + pos (por inventario) + fiados + cobranza + facturación.
+  const PIM = ['construccion', 'obras', 'maquinaria', 'herramientas', 'cotizaciones_aiu', 'nomina',
+    'cartera_alquiler', 'resbalos', 'pos', 'ventas', 'caja', 'inventario', 'fiados', 'pack_cobranza',
+    'facturacion_electronica']
+  // Retail PURO que una constructora NO debe ver.
+  const RETAIL_PURO = ['/hoy', '/ventas', '/devoluciones', '/top-productos', '/kardex']
+
+  it('la portada es /obras (NO el cockpit /hoy de ferretería)', () => {
+    expect(resolveHomePath(PIM)).toBe('/obras')
+    expect(resolveHomePath(['construccion'])).toBe('/obras')  // con solo el meta-pack
+    expect(resolveHomePath(['obras'])).toBe('/obras')         // con la feature núcleo
+  })
+
+  it('NO ve el retail puro (cockpit ni venta de mostrador)', () => {
+    for (const ruta of RETAIL_PURO) {
+      expect(isRouteEnabled(ruta, PIM)).toBe(false)
+    }
+    expect(isRouteEnabled('/inicio', PIM)).toBe(false)   // portada de servicios, no la suya
+    expect(isRouteEnabled('/historial', PIM)).toBe(false)  // su traza vive en obras/nómina
+  })
+
+  it('SÍ conserva la operación de obra (caja, inventario, compras, gastos) y su vertical', () => {
+    for (const ruta of ['/caja', '/inventario', '/compras', '/proveedores', '/gastos']) {
+      expect(isRouteEnabled(ruta, PIM)).toBe(true)
+    }
+    for (const ruta of ['/obras', '/maquinas', '/herramientas', '/cotizaciones-obra', '/nomina',
+      '/trabajadores', '/resbalos']) {
+      expect(isRouteEnabled(ruta, PIM)).toBe(true)
+    }
+    expect(isRouteEnabled('/clientes', PIM)).toBe(true)   // núcleo
+    expect(isRouteEnabled('/cartera', PIM)).toBe(true)    // cartera de alquiler (pack_cobranza)
+  })
+
+  it('esConstruccion no confunde a las otras familias', () => {
+    expect(resolveHomePath(['pos'])).toBe('/hoy')          // ferretería intacta
+    expect(resolveHomePath(['pack_pedidos'])).toBe('/pedidos')  // restaurante intacto
+    expect(isRouteEnabled('/hoy', ['pos'])).toBe(true)     // ferretería sigue viendo su cockpit
+  })
+})
+
 // ── ADR 0021 — partición del pack `pos`: carril contable de servicios ────────────────────────────
 // Una peluquería activa `caja`+`ventas` EXPLÍCITAS (sin `pos`): ve su contabilidad junto a la agenda.
 // El arrastre histórico (`pos` en tenants de servicios) sigue suprimido como en ADR 0018.

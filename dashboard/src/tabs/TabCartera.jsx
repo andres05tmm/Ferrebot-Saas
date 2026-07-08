@@ -14,6 +14,7 @@ import { api } from '@/lib/api'
 import { cop, useFetch } from '@/components/shared.jsx'
 import { useRealtimeEvent } from '@/components/RealtimeProvider.jsx'
 import { useAuth } from '@/hooks/useAuth.js'
+import { useFeatures, esConstruccion } from '@/lib/features.jsx'
 import { Card } from '@/components/ui/card.jsx'
 import { Input } from '@/components/ui/input.jsx'
 import { Button } from '@/components/ui/button.jsx'
@@ -195,6 +196,7 @@ export default function TabCartera() {
 }
 
 function CarteraAdmin() {
+  const construccion = esConstruccion(useFeatures())
   const deudoresQ = useFetch('/cobranza/deudores')
   const pagosQ = useFetch('/cobranza/pagos-reportados')
   const promesasQ = useFetch('/cobranza/promesas?estado=vigente')
@@ -224,12 +226,11 @@ function CarteraAdmin() {
     )
   }
 
-  return (
-    <div className="space-y-3">
-      <h1 className="text-base font-semibold inline-flex items-center gap-2">
-        <HandCoins className="size-4.5 text-primary" /> Cartera
-      </h1>
-
+  // Cobranza retail (KPIs + deudores + pagos + reglas). Sus números son REALES también para la obra:
+  // la cartera de alquiler comparte el ledger de fiados, así que los deudores de cobranza son los suyos.
+  // Solo cambia el ORDEN por familia (ver abajo), no el contenido.
+  const cobranza = (
+    <>
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
         <Kpi label="En cartera" value={deudoresQ.loading ? '…' : cop(total)} />
         <Kpi label="Recuperado" value={recuperadoQ.loading ? '…' : cop(recuperadoQ.data?.total)}
@@ -246,10 +247,23 @@ function CarteraAdmin() {
           <SeccionConfig config={configQ.data} refetch={configQ.refetch} />
         </div>
       </div>
+    </>
+  )
 
-      {/* Cartera de alquiler (vertical construcción, flag `cartera_alquiler`): se auto-gatea por la
-          capacidad — si la empresa no la tiene, no pinta ni pide nada. */}
-      <CarteraAlquilerSection />
+  // Cartera de alquiler (vertical construcción, flag `cartera_alquiler`): se auto-gatea por la capacidad
+  // — si la empresa no la tiene, no pinta ni pide nada.
+  const alquiler = <CarteraAlquilerSection />
+
+  return (
+    <div className="space-y-3">
+      <h1 className="text-base font-semibold inline-flex items-center gap-2">
+        <HandCoins className="size-4.5 text-primary" /> Cartera
+      </h1>
+
+      {/* Orden por familia: para la constructora, la cartera de ALQUILER es su cartera principal → va
+          ARRIBA; la cobranza (compartida) queda debajo. Para retail, el orden original (cobranza primero,
+          alquiler al fondo si acaso la tuviera). Solo cambia el orden, no el contenido. */}
+      {construccion ? <>{alquiler}{cobranza}</> : <>{cobranza}{alquiler}</>}
     </div>
   )
 }

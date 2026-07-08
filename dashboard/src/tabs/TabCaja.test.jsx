@@ -10,6 +10,15 @@ vi.mock('@/components/RealtimeProvider.jsx', () => ({
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), message: vi.fn() } }))
 
 import TabCaja from './TabCaja.jsx'
+import { FeaturesProvider } from '@/lib/features.jsx'
+
+// Render con features de empresa (para el gating por familia). Sin provider, useFeatures() → [] (retail).
+function renderCaja(features = []) {
+  return render(
+    <MemoryRouter><FeaturesProvider features={features}><TabCaja /></FeaturesProvider></MemoryRouter>,
+  )
+}
+const CONSTRUCCION = ['construccion', 'obras', 'caja', 'inventario']
 
 const ARQUEO_ABIERTA = {
   estado: 'abierta', caja_id: 1, fecha_apertura: '2026-06-05T13:00:00+00:00',
@@ -46,11 +55,13 @@ afterEach(() => { cleanup(); vi.restoreAllMocks() })
 describe('TabCaja — caja abierta', () => {
   it('pinta KPIs, ingresos por método, cuadre y gastos del día', async () => {
     instalarFetch()
-    render(<MemoryRouter><TabCaja /></MemoryRouter>)
+    renderCaja()
     await screen.findByText('Caja abierta')
     expect(screen.getAllByText('$72.000').length).toBeGreaterThan(0)   // efectivo esperado (KPI + cuadre)
+    expect(screen.getByText('Ventas hoy')).toBeInTheDocument()     // KPI de ventas (retail)
     expect(screen.getByText('Efectivo')).toBeInTheDocument()       // ingreso por método
     expect(screen.getByText('Transferencia')).toBeInTheDocument()
+    expect(screen.getByText('+ Ventas en efectivo')).toBeInTheDocument()  // fila del cuadre (retail)
     expect(screen.getByText('= Efectivo esperado')).toBeInTheDocument()   // cuadre
     expect(screen.getByText('Gasolina')).toBeInTheDocument()       // gasto del día
   })
@@ -82,10 +93,32 @@ describe('TabCaja — caja abierta', () => {
   })
 })
 
+describe('TabCaja — construcción (caja menor de obra)', () => {
+  it('oculta "Ventas hoy", los ingresos por método y la fila "+ Ventas en efectivo" del cuadre', async () => {
+    instalarFetch()
+    renderCaja(CONSTRUCCION)
+    await screen.findByText('Caja abierta')
+
+    // La obra no vende por mostrador: fuera el KPI de ventas y la card de ingresos por método.
+    expect(screen.queryByText('Ventas hoy')).toBeNull()
+    expect(screen.queryByText(/Ingresos por método/)).toBeNull()
+    // El cuadre pierde la fila de ventas efectivo (siempre $0), pero conserva el resto.
+    expect(screen.queryByText('+ Ventas en efectivo')).toBeNull()
+    expect(screen.getByText('= Efectivo esperado')).toBeInTheDocument()
+    expect(screen.getByText('− Egresos (gastos)')).toBeInTheDocument()
+    // Sub-copy del KPI de efectivo esperado reencuadrado a caja menor.
+    expect(screen.getByText(/Apertura \+ movimientos/)).toBeInTheDocument()
+    expect(screen.queryByText(/Apertura \+ ventas efectivo/)).toBeNull()
+    // La operación de caja se conserva: apertura (KPI + fila del cuadre) y gastos del día.
+    expect(screen.getAllByText('Apertura').length).toBeGreaterThan(0)
+    expect(screen.getByText('Gasolina')).toBeInTheDocument()
+  })
+})
+
 describe('TabCaja — caja cerrada', () => {
   it('muestra el formulario de apertura y abre la caja (POST /caja/apertura)', async () => {
     const fetchMock = instalarFetch({ arqueo: ARQUEO_CERRADA })
-    render(<MemoryRouter><TabCaja /></MemoryRouter>)
+    renderCaja()
     await screen.findByText('Caja cerrada')
 
     fireEvent.change(screen.getByLabelText('Saldo inicial'), { target: { value: '100000' } })

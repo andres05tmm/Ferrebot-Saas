@@ -183,6 +183,72 @@ async def test_liquidar_directo_acceptance(tenant):
         assert detalle.neto_pagar == esperado.neto_pagar
 
 
+# --- flag aplica_aux_transporte (LOW): el DIRECTO que no lo aplica no recibe auxilio ---------
+async def test_liquidar_directo_sin_aux_transporte(tenant):
+    """Un DIRECTO con `aplica_aux_transporte=false` NO recibe auxilio, aunque su salario esté bajo el
+    tope legal (el flag del trabajador manda además del tope por salario). El resto del devengado intacto."""
+    async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
+        await _seed_parametros(s)
+        tid = (
+            await s.execute(
+                text(
+                    "INSERT INTO trabajadores "
+                    "(tipo_vinculacion, documento, nombres, apellidos, cargo, salario_base, aplica_aux_transporte) "
+                    "VALUES ('DIRECTO', 'noaux', 'Ana', 'Ruiz', 'Operador', 1500000, false) RETURNING id"
+                )
+            )
+        ).scalar_one()
+        periodo = await _svc(s).crear_periodo(_periodo_quincena())
+        await s.commit()
+        pid = periodo.id
+        await _asistencia(_svc(s), tid, 15)   # 15 días, salario bajo el tope (elegible por salario)
+        await s.commit()
+
+    async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
+        await _svc(s).liquidar_periodo(pid)
+        await s.commit()
+
+    async with AsyncSession(tenant.engine) as s:
+        detalle = await SqlNominaRepository(s).detalle_de(pid, tid)
+        assert detalle.auxilio_transporte == Decimal("0")        # el flag lo anula
+        assert detalle.salario_devengado == Decimal("750000")    # salario proporcional intacto
+        assert detalle.total_devengado == Decimal("750000")      # sin el auxilio en el devengado
+        assert detalle.total_deducciones == Decimal("60000")     # base sin auxilio: 750000 × (4%+4%)
+        assert detalle.neto_pagar == Decimal("690000")           # 750000 − 60000 (sin el auxilio)
+
+
+# --- clave natural de asistencia (LOW): re-registrar el mismo día es idempotente --------------
+async def test_registrar_asistencia_mismo_dia_es_idempotente(tenant):
+    """Dos altas del MISMO (trabajador, fecha) dejan UNA sola fila (UPSERT por la clave natural de 0051):
+    la 2ª corrige la 1ª en vez de duplicar —dos filas inflarían `dias_trabajados` en la liquidación."""
+    async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
+        tid = await _seed_trabajador(s, documento="idem", salario="1500000")
+        await s.commit()
+        svc = _svc(s)
+        await svc.registrar_asistencia(
+            AsistenciaCrear(trabajador_id=tid, fecha=_INICIO, horas_trabajadas=Decimal("8"))
+        )
+        r2 = await svc.registrar_asistencia(
+            AsistenciaCrear(trabajador_id=tid, fecha=_INICIO, horas_trabajadas=Decimal("6"))
+        )
+        await s.commit()
+
+    async with AsyncSession(tenant.engine) as s:
+        n = (
+            await s.execute(
+                text("SELECT count(*) FROM registros_asistencia WHERE trabajador_id=:t"), {"t": tid}
+            )
+        ).scalar_one()
+        horas = (
+            await s.execute(
+                text("SELECT horas_trabajadas FROM registros_asistencia WHERE trabajador_id=:t"), {"t": tid}
+            )
+        ).scalar_one()
+    assert n == 1                          # una sola fila (idempotente por trabajador_id+fecha)
+    assert horas == Decimal("6")           # la 2ª alta ACTUALIZÓ (no duplicó)
+    assert r2.horas_trabajadas == Decimal("6")
+
+
 # --- liquidación PATACALIENTE (acceptance) -----------------------------------
 async def test_liquidar_patacaliente_48h(tenant):
     """PATACALIENTE 48 h × 12.000 = 576.000; sin deducciones, aportes ni provisiones (spec 08)."""

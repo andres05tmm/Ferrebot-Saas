@@ -6,7 +6,7 @@ reintentar). El resto cubre: cupo excedido avisa sin bloquear (SSE al dueño), u
 cliente, el seam de maquinaria (genera el cargo con cupo; NO lo genera sin capacidad ni sin cupo),
 detección de colita y aislamiento multi-tenant.
 """
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 
 import pytest
@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 import modules.cartera.repository as cartera_repo
 from core.config.timezone import now_co
-from modules.cartera.schemas import CupoCrear
+from modules.cartera.schemas import CarteraConfigActualizar, CupoCrear
 from modules.cartera.service import construir_cartera_service
 from modules.fiados.repository import SqlFiadosRepository
 from modules.fiados.service import FiadosService
@@ -407,6 +407,57 @@ async def test_cartera_de_obra_trae_maquina_horas_y_abonos(tenant):
     # Abonos reales imputados a la obra: no "Sin abonos".
     assert len(vista.abonos) == 1
     assert vista.abonos[0].monto == Decimal("200000.00")
+
+
+# --- DEDUP del aviso de colitas (MEDIUM-1): respeta cadencia_aviso_dias -----------------------------
+async def test_avisar_colitas_respeta_cadencia(tenant, monkeypatch):
+    """El cron NO re-avisa la misma colita dentro de `cadencia_aviso_dias`: la 1ª corrida avisa y sella
+    `obras.ultimo_aviso_colita_en`; una 2ª el mismo día no re-avisa; pasada la cadencia vuelve a avisar."""
+    async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
+        cid = await _cliente(s)
+        oid = await _obra(s, cid, estado="FINALIZADA")
+        mid = await _maquina(s)
+        aid = await _asignacion(s, mid, oid)
+        rid = await _registro(s, mid, oid)
+        await _cupo_sql(s, cid)
+        await s.commit()
+
+        svc = construir_cartera_service(s)
+        await svc.asentar_consumo_horas(
+            registro_horas_id=rid, obra_id=oid, maquina_id=mid, asignacion_id=aid, cliente_id=cid,
+            horas_facturables=Decimal("8"), precio_hora=Decimal("160000"),
+        )
+        await s.commit()
+
+        eventos = _espia_publish(monkeypatch)
+        ahora = now_co()
+        n1 = await svc.avisar_colitas(ahora=ahora, dias_umbral=15, cadencia_dias=7)
+        await s.commit()
+        n2 = await svc.avisar_colitas(ahora=ahora, dias_umbral=15, cadencia_dias=7)
+        await s.commit()
+        n3 = await svc.avisar_colitas(ahora=ahora + timedelta(days=8), dias_umbral=15, cadencia_dias=7)
+        await s.commit()
+
+    assert (n1, n2, n3) == (1, 0, 1)                       # avisa, dedup, re-avisa pasada la cadencia
+    assert [e[0] for e in eventos] == ["cartera_colita", "cartera_colita"]   # solo 1ª y 3ª corrida
+
+
+# --- PUT /config parcial (exclude_unset): no pisa los campos omitidos con sus defaults --------------
+async def test_config_put_parcial_preserva_campos(tenant):
+    """El fix de `exclude_unset` en `PUT /config`: cambiar un solo campo NO resetea los demás. Se prueba
+    el dict que ahora arma el router (`model_dump(exclude_unset=True)`) contra el repo."""
+    cambios = CarteraConfigActualizar(cadencia_aviso_dias=10).model_dump(exclude_unset=True)
+    assert cambios == {"cadencia_aviso_dias": 10}          # sin exclude_unset traería activo/dias_colita default
+    async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
+        svc = construir_cartera_service(s)
+        await svc.guardar_config({"dias_colita": 30, "cadencia_aviso_dias": 5, "activo": True})
+        await s.commit()
+        cfg = await svc.guardar_config(cambios)
+        await s.commit()
+
+    assert cfg.cadencia_aviso_dias == 10
+    assert cfg.dias_colita == 30                           # preservado (sin el fix se reseteaba a 15)
+    assert cfg.activo is True
 
 
 # --- aislamiento multi-tenant ----------------------------------------------------------------------

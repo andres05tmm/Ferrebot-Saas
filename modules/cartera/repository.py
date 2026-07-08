@@ -259,6 +259,21 @@ class SqlCarteraAlquilerRepository:
             "dias_sin_abono": dias_sin_abono, "generado_en": generado_en.isoformat(),
         })
 
+    async def sellar_avisos_colita(self, obra_ids: list[int], *, cuando: datetime) -> None:
+        """Sella el DEDUP del aviso de colita: marca `obras.ultimo_aviso_colita_en = cuando` para las obras
+        avisadas (patrón `pagar_avisos.sellar_avisos`). Solo un aviso emitido sella; corre en la MISMA
+        transacción del `pg_notify`, así el sellado viaja al COMMIT junto con el evento (un fallo del
+        barrido no deja el dedup marcado sin haber avisado). No-op si `obra_ids` está vacío."""
+        if not obra_ids:
+            return
+        # UPDATE por `text` (como el resto del acceso a `obras` en este repo: sin acoplar el ORM de otro
+        # módulo). `= ANY(:ids)` sella todas las obras avisadas en una sola sentencia.
+        await self._s.execute(
+            text("UPDATE obras SET ultimo_aviso_colita_en = :cuando WHERE id = ANY(:ids)"),
+            {"cuando": cuando, "ids": obra_ids},
+        )
+        await self._s.flush()
+
     # --- config (una fila, get-or-create con defaults) ------------------------
     async def obtener_config(self) -> CarteraConfig:
         config = (await self._s.execute(select(CarteraConfig).limit(1))).scalar_one_or_none()
@@ -287,7 +302,8 @@ class SqlCarteraAlquilerRepository:
                 text(
                     "SELECT o.cliente_id, ca.obra_id, o.nombre AS obra_nombre, "
                     "       cl.nombre AS cliente_nombre, SUM(f.saldo) AS saldo, "
-                    "       MAX(ab.ultimo_abono) AS ultimo_abono_en, MIN(ca.creado_en) AS primer_cargo "
+                    "       MAX(ab.ultimo_abono) AS ultimo_abono_en, MIN(ca.creado_en) AS primer_cargo, "
+                    "       o.ultimo_aviso_colita_en AS ultimo_aviso_colita_en "
                     "FROM cargos_alquiler ca "
                     "JOIN obras o ON o.id = ca.obra_id "
                     "LEFT JOIN clientes cl ON cl.id = o.cliente_id "
@@ -297,7 +313,7 @@ class SqlCarteraAlquilerRepository:
                     "    WHERE fm.fiado_id = ca.fiado_id AND fm.tipo = 'abono'"
                     ") ab ON true "
                     "WHERE o.estado IN ('FINALIZADA', 'LIQUIDADA') "
-                    "GROUP BY o.cliente_id, ca.obra_id, o.nombre, cl.nombre "
+                    "GROUP BY o.cliente_id, ca.obra_id, o.nombre, cl.nombre, o.ultimo_aviso_colita_en "
                     "HAVING SUM(f.saldo) > 0 "
                     "   AND (MAX(ab.ultimo_abono) IS NULL OR MAX(ab.ultimo_abono) < :corte)"
                 ),

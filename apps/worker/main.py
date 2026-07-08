@@ -440,6 +440,10 @@ async def detectar_colitas_alquiler(ctx: dict) -> str:
     La lógica determinista vive en `CarteraAlquilerService.avisar_colitas` (testeada contra base efímera);
     aquí solo el barrido multi-tenant con `try/except` por tenant para que un fallo no tumbe el barrido.
 
+    DEDUP (MEDIUM-1): el motor respeta `cartera_config.cadencia_aviso_dias` (sella `obras.ultimo_aviso_colita_en`
+    al avisar y no re-avisa una colita dentro de la cadencia), así el cron ya NO re-avisa la misma colita todos
+    los días.
+
     ARQ corre en la hora del servidor (UTC en Railway): 13:20 UTC ≈ 08:20 a.m. Colombia. La relatividad de
     las fechas la da `now_co()` dentro del motor, así que el corte de días queda correcto.
     """
@@ -460,7 +464,11 @@ async def detectar_colitas_alquiler(ctx: dict) -> str:
                 config = await servicio.obtener_config()
                 if not config.activo:
                     continue
-                n = await servicio.avisar_colitas(ahora=now_co(), dias_umbral=config.dias_colita)
+                n = await servicio.avisar_colitas(
+                    ahora=now_co(),
+                    dias_umbral=config.dias_colita,
+                    cadencia_dias=config.cadencia_aviso_dias,
+                )
                 avisadas += n
                 if n:
                     log.info("cartera_colitas_tenant", tenant_id=t.id, colitas=n)

@@ -2,8 +2,9 @@
  * TabMaquinas — parque de maquinaria del vertical construcción (Fase 1, flag `maquinaria`). Activos que
  * se alquilan/facturan por HORA: cada máquina tiene un `precio_hora_default` y un `minimo_horas_factura`
  * (piso facturable), más un `costo_operacion_hora` interno para la rentabilidad neta por obra (Fase 3).
- * Aquí, la capa de Fase 1: listar con su estado visible (DISPONIBLE / OCUPADA / MANTENIMIENTO / DAÑADA /
- * BAJA), crear/editar y cambiar el estado en línea.
+ * Aquí: listar con su estado visible (DISPONIBLE / OCUPADA / MANTENIMIENTO / DAÑADA / BAJA) y crear.
+ * Cada fila expande a una FICHA rica (FichaMaquina): asignaciones, kárdex de horas, mantenimientos y las
+ * acciones de admin (cambio de estado, editar, dar de baja) — mismo patrón fila-expandible que ObraDetalle.
  *
  * Contrato de API (pinneado): /api/v1/maquinas — GET lista, POST crea, GET /{id}, PATCH /{id} (incl.
  * cambio de `estado`), DELETE /{id} = soft delete. Campos JSON = columnas del ORM en español (codigo,
@@ -13,13 +14,15 @@
 import { useState } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import { toast } from 'sonner'
-import { Truck, Plus, Search, Pencil, Trash2, Gauge } from 'lucide-react'
+import { Truck, Plus, Search, Gauge, ChevronDown, ChevronRight } from 'lucide-react'
 import { api } from '@/lib/api'
 import { useFetch, cop, num } from '@/components/shared.jsx'
 import { useRealtimeEvent } from '@/components/RealtimeProvider.jsx'
+import { useAuth } from '@/hooks/useAuth'
 import { Card } from '@/components/ui/card.jsx'
 import { Input } from '@/components/ui/input.jsx'
-import { Semaforo, Chips, Campo, EstadoVacio, Esqueleto, BTN_PRIMARY, BTN_OUTLINE, SELECT_CLS } from './construccion/comunes.jsx'
+import { Semaforo, Chips, Campo, EstadoVacio, Esqueleto, BTN_PRIMARY, BTN_OUTLINE } from './construccion/comunes.jsx'
+import FichaMaquina from './construccion/FichaMaquina.jsx'
 
 // Estado de máquina (enum del ORM) → tono + etiqueta. OCUPADA se rotula "En obra" (más claro para el
 // operador); el VALOR sigue siendo OCUPADA, tal cual el ORM.
@@ -39,7 +42,14 @@ function metaEstado(estado) {
 export default function TabMaquinas() {
   const { refreshKey } = useOutletContext() ?? {}
   const maquinasQ = useFetch('/maquinas', [refreshKey])
+  // Obras UNA sola vez (no por ficha): mapa obra_id→nombre para resolver los nombres del kárdex y las
+  // asignaciones sin N+1. Degrada en silencio (mapa vacío → "Obra #id") si el vendedor no puede listarlas.
+  const obrasQ = useFetch('/obras', [refreshKey])
   useRealtimeEvent(['reconnected'], maquinasQ.refetch)
+
+  const admin = useAuth().isAdmin()
+  const obrasNombre = (Array.isArray(obrasQ.data) ? obrasQ.data : [])
+    .reduce((acc, o) => { acc[o.id] = o.nombre; return acc }, {})
 
   const [q, setQ] = useState('')
   const [estado, setEstado] = useState(null)
@@ -115,7 +125,8 @@ export default function TabMaquinas() {
         ) : (
           <ul className="divide-y divide-border-subtle">
             {visibles.map((m) => (
-              <MaquinaFila key={m.id} maquina={m} onEditar={() => setEditando(m)} onCambio={maquinasQ.refetch} />
+              <MaquinaFila key={m.id} maquina={m} admin={admin} obrasNombre={obrasNombre}
+                onEditar={() => setEditando(m)} onCambio={maquinasQ.refetch} />
             ))}
           </ul>
         )}
@@ -124,74 +135,57 @@ export default function TabMaquinas() {
   )
 }
 
-function MaquinaFila({ maquina, onEditar, onCambio }) {
+// Fila = cabecera clicable (expande) + FichaMaquina perezosa. El cambio de estado, editar y dar de baja
+// viven ahora DENTRO de la ficha (no se pueden anidar controles en un <button>, y el detalle es su sitio
+// natural). La cabecera colapsada conserva el vistazo: nombre, semáforo, código/tipo/placa y tarifa.
+function MaquinaFila({ maquina, admin, obrasNombre, onEditar, onCambio }) {
+  const [abierta, setAbierta] = useState(false)
   const est = metaEstado(maquina.estado)
-  const [ocupado, setOcupado] = useState(false)
-
-  async function cambiarEstado(e) {
-    const nuevo = e.target.value
-    if (nuevo === maquina.estado) return
-    setOcupado(true)
-    try {
-      const res = await api(`/maquinas/${maquina.id}`, {
-        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ estado: nuevo }),
-      })
-      if (!res.ok) { toast.error('No se pudo cambiar el estado'); return }
-      toast.success(`Máquina: ${metaEstado(nuevo).label.toLowerCase()}`)
-      onCambio()
-    } catch { toast.error('Error de conexión') } finally { setOcupado(false) }
-  }
-
-  async function eliminar() {
-    if (!window.confirm(`¿Dar de baja "${maquina.nombre}"? Dejará de aparecer en el parque.`)) return
-    try {
-      const res = await api(`/maquinas/${maquina.id}`, { method: 'DELETE' })
-      if (res.ok) { toast.success('Máquina dada de baja'); onCambio() }
-      else toast.error('No se pudo dar de baja la máquina')
-    } catch { toast.error('Error de conexión') }
-  }
+  const panelId = `maquina-ficha-${maquina.id}`
 
   return (
-    <li className="flex items-center gap-3 px-4 py-3">
-      <span className="grid size-9 shrink-0 place-items-center rounded-md bg-surface-2 text-muted-foreground">
-        <Truck className="size-[18px]" aria-hidden="true" />
-      </span>
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          <span className="truncate text-[14px] font-medium text-foreground">{maquina.nombre}</span>
-          <Semaforo tono={est.tono}>{est.label}</Semaforo>
+    <li>
+      <button
+        type="button"
+        onClick={() => setAbierta((v) => !v)}
+        aria-expanded={abierta}
+        aria-controls={panelId}
+        className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors duration-fast hover:bg-surface-2"
+      >
+        <span className="grid size-9 shrink-0 place-items-center rounded-md bg-surface-2 text-muted-foreground">
+          <Truck className="size-[18px]" aria-hidden="true" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <span className="truncate text-[14px] font-medium text-foreground">{maquina.nombre}</span>
+            <Semaforo tono={est.tono}>{est.label}</Semaforo>
+          </div>
+          <div className="mt-0.5 flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-[11px] text-muted-foreground">
+            <span className="tabular font-medium text-secondary-foreground">{maquina.codigo}</span>
+            {maquina.tipo && <span className="truncate">· {maquina.tipo}</span>}
+            {maquina.placa && <span>· {maquina.placa}</span>}
+          </div>
         </div>
-        <div className="mt-0.5 flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-[11px] text-muted-foreground">
-          <span className="tabular font-medium text-secondary-foreground">{maquina.codigo}</span>
-          {maquina.tipo && <span className="truncate">· {maquina.tipo}</span>}
-          {maquina.placa && <span>· {maquina.placa}</span>}
+
+        {/* Tarifa por hora + mínimo facturable (vistazo rápido, oculto en móvil estrecho). */}
+        <div className="hidden shrink-0 text-right sm:block">
+          <div className="tabular text-[13px] font-semibold text-foreground">{cop(Number(maquina.precio_hora_default))}<span className="text-[10px] font-normal text-muted-foreground">/h</span></div>
+          <div className="inline-flex items-center gap-1 text-[10px] text-muted-foreground">
+            <Gauge className="size-3" aria-hidden="true" /> mín. {num(maquina.minimo_horas_factura)} h
+          </div>
         </div>
-      </div>
 
-      {/* Tarifa por hora + mínimo facturable */}
-      <div className="hidden shrink-0 text-right sm:block">
-        <div className="tabular text-[13px] font-semibold text-foreground">{cop(Number(maquina.precio_hora_default))}<span className="text-[10px] font-normal text-muted-foreground">/h</span></div>
-        <div className="inline-flex items-center gap-1 text-[10px] text-muted-foreground">
-          <Gauge className="size-3" aria-hidden="true" /> mín. {num(maquina.minimo_horas_factura)} h
-        </div>
-      </div>
-
-      {/* w-36 por REPLACE (no `${SELECT_CLS} w-36`): SELECT_CLS trae `w-full` y, a igual especificidad,
-          gana la última en el CSS compilado → el select se comía toda la fila y el flex-1 colapsaba. */}
-      <select value={maquina.estado} onChange={cambiarEstado} disabled={ocupado}
-        aria-label={`Cambiar estado de ${maquina.nombre}`}
-        className={`${SELECT_CLS.replace('w-full', 'w-36')} hidden shrink-0 md:block`}>
-        {ORDEN_ESTADOS.map((e) => <option key={e} value={e}>{metaEstado(e).label}</option>)}
-      </select>
-
-      <button onClick={onEditar} aria-label={`Editar ${maquina.nombre}`}
-        className="grid size-8 shrink-0 place-items-center rounded-md border border-border bg-surface text-muted-foreground transition-colors hover:bg-surface-2 hover:text-foreground">
-        <Pencil className="size-4" />
+        {abierta
+          ? <ChevronDown className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+          : <ChevronRight className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />}
       </button>
-      <button onClick={eliminar} aria-label={`Dar de baja ${maquina.nombre}`}
-        className="grid size-8 shrink-0 place-items-center rounded-md border border-border bg-surface text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive">
-        <Trash2 className="size-4" />
-      </button>
+
+      {abierta && (
+        <FichaMaquina
+          id={panelId} maquina={maquina} isAdmin={admin} obrasNombre={obrasNombre}
+          onEditar={onEditar} onCambio={onCambio}
+        />
+      )}
     </li>
   )
 }

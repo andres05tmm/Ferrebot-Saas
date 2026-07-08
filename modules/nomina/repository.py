@@ -149,22 +149,45 @@ class SqlNominaRepository:
         return list((await self._s.execute(stmt)).scalars().all())
 
     async def registrar_asistencia(self, datos: AsistenciaCrear, fecha: date) -> RegistroAsistencia:
-        """Inserta un registro de asistencia (la `fecha` ya viene resuelta a hoy Colombia si faltaba)."""
-        registro = RegistroAsistencia(
-            trabajador_id=datos.trabajador_id,
-            fecha=fecha,
-            obra_id=datos.obra_id,
-            horas_trabajadas=datos.horas_trabajadas,
-            horas_extra_diurnas=datos.horas_extra_diurnas,
-            horas_extra_nocturnas=datos.horas_extra_nocturnas,
-            horas_dominical_festivo=datos.horas_dominical_festivo,
-            ausencia=datos.ausencia,
-            observaciones=datos.observaciones,
-            origen_registro="MANUAL",
-        )
-        self._s.add(registro)
-        await self._s.flush()  # asigna registro.id
-        return registro
+        """UPSERT del registro de asistencia del día (la `fecha` ya viene resuelta a hoy Colombia si
+        faltaba). IDEMPOTENTE por la clave natural UNIQUE(trabajador_id, fecha) de 0051: re-registrar el
+        mismo día ACTUALIZA la fila (corrige horas/obra/ausencia) en vez de insertar otra —dos altas del
+        mismo día inflarían `dias_trabajados` (cada registro suma +1 en el agregado de la liquidación).
+
+        `INSERT ... ON CONFLICT (trabajador_id, fecha) DO UPDATE` (upsert de Postgres): atómico frente a
+        dos capturas concurrentes del mismo día. `origen_registro` se fija a MANUAL (captura de campo)."""
+        valores = {
+            "trabajador_id": datos.trabajador_id,
+            "fecha": fecha,
+            "obra_id": datos.obra_id,
+            "horas_trabajadas": datos.horas_trabajadas,
+            "horas_extra_diurnas": datos.horas_extra_diurnas,
+            "horas_extra_nocturnas": datos.horas_extra_nocturnas,
+            "horas_dominical_festivo": datos.horas_dominical_festivo,
+            "ausencia": datos.ausencia,
+            "observaciones": datos.observaciones,
+            "origen_registro": "MANUAL",
+        }
+        stmt = pg_insert(RegistroAsistencia).values(**valores)
+        set_ = {
+            col: getattr(stmt.excluded, col)
+            for col in valores
+            if col not in ("trabajador_id", "fecha")
+        }
+        stmt = stmt.on_conflict_do_update(
+            index_elements=["trabajador_id", "fecha"], set_=set_
+        ).returning(RegistroAsistencia.id)
+        registro_id = (await self._s.execute(stmt)).scalar_one()
+        await self._s.flush()
+        # `populate_existing` refresca la instancia mapeada con los valores ya persistidos (evita devolver
+        # una copia obsoleta si el registro estuviera en el identity map de la sesión).
+        return (
+            await self._s.execute(
+                select(RegistroAsistencia)
+                .where(RegistroAsistencia.id == registro_id)
+                .execution_options(populate_existing=True)
+            )
+        ).scalar_one()
 
     # --- detalles de liquidación (UPSERT idempotente) -------------------------
     async def upsert_detalle(

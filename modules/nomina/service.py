@@ -17,7 +17,7 @@ mayor resto; aquí se preserva persistiendo fielmente lo que devuelve.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Protocol
@@ -274,6 +274,11 @@ class NominaService:
         if t.tipo_vinculacion == "DIRECTO":
             if t.salario_base is None:
                 raise TrabajadorNoLiquidable(t.id, "DIRECTO sin salario_base")
+            # Honra el flag `aplica_aux_transporte` del trabajador (además del tope legal por salario que ya
+            # aplica el motor): si NO aplica, se liquida contra un snapshot con auxilio_transporte=0 → el
+            # motor lo deriva a 0 (y de ahí sus provisiones prestacionales), sin duplicar la fórmula del
+            # motor puro (`services.calculations.nomina`, que a propósito no conoce el flag del trabajador).
+            params_trab = params if t.aplica_aux_transporte else replace(params, auxilio_transporte=CERO)
             liq = liquidar_directo(
                 _TrabDirecto(salario_base=t.salario_base),
                 _Asistencia(
@@ -282,7 +287,7 @@ class NominaService:
                     horas_extra_nocturnas=agg.horas_extra_nocturnas,
                     horas_dominicales=agg.horas_dominicales,
                 ),
-                params,
+                params_trab,
             )
             return liq, agg.dias_trabajados
         # PATACALIENTE: por hora, sin deducciones/aportes/provisiones (spec 08).

@@ -59,6 +59,9 @@ class Colita:
     ultimo_abono_en: datetime | None
     cliente_nombre: str | None = None
     obra_nombre: str | None = None
+    # DEDUP del aviso: `obras.ultimo_aviso_colita_en` (NULL = nunca avisada). Lo usa `avisar_colitas` para
+    # respetar la cadencia; no lo consume el dashboard.
+    ultimo_aviso_colita_en: datetime | None = None
 
 
 def _semaforo(cupo: Decimal, consumido: Decimal) -> str:
@@ -186,23 +189,37 @@ class CarteraAlquilerService:
                     cliente_id=fila["cliente_id"], obra_id=fila["obra_id"],
                     saldo=Decimal(fila["saldo"]), dias_sin_abono=dias, ultimo_abono_en=ultimo,
                     cliente_nombre=fila.get("cliente_nombre"), obra_nombre=fila.get("obra_nombre"),
+                    ultimo_aviso_colita_en=fila.get("ultimo_aviso_colita_en"),
                 )
             )
         return colitas
 
-    async def avisar_colitas(self, *, ahora: datetime, dias_umbral: int) -> int:
-        """Corrida del cron: detecta colitas y publica el aviso INTERNO al dueño (SSE) por cada una.
+    async def avisar_colitas(self, *, ahora: datetime, dias_umbral: int, cadencia_dias: int) -> int:
+        """Corrida del cron: detecta colitas y publica el aviso INTERNO al dueño (SSE) por cada una,
+        respetando la CADENCIA de dedup (MEDIUM-1). NO re-avisa una colita cuyo último aviso al dueño fue
+        hace menos de `cadencia_dias` (mismo criterio que `PagarService.procesar_avisos` con
+        `cartera_config.cadencia_aviso_dias`); sin esto el cron re-avisaba todos los días.
 
         NO envía nada de cara al cliente: la colita YA está en el ciclo de `pack_cobranza` (el motor barre
         a todo cliente con `saldo_fiado > mínimo`). Aquí solo se avisa al dueño y se alimenta el semáforo
-        del dashboard. Devuelve cuántas colitas se avisaron."""
+        del dashboard. Sella el dedup (`obras.ultimo_aviso_colita_en`) SOLO de las obras avisadas, en la
+        misma transacción del `pg_notify`. Devuelve cuántas colitas se avisaron en esta corrida."""
         colitas = await self.detectar_colitas(ahora=ahora, dias_umbral=dias_umbral)
+        cadencia = timedelta(days=cadencia_dias)
+        avisadas: list[int] = []
         for c in colitas:
+            if (
+                c.ultimo_aviso_colita_en is not None
+                and ahora - c.ultimo_aviso_colita_en < cadencia
+            ):
+                continue   # cadencia: ya se avisó de esta colita hace poco (dedup)
             await self._repo.avisar_colita(
                 cliente_id=c.cliente_id, obra_id=c.obra_id, saldo=c.saldo,
                 dias_sin_abono=c.dias_sin_abono, generado_en=ahora,
             )
-        return len(colitas)
+            avisadas.append(c.obra_id)
+        await self._repo.sellar_avisos_colita(avisadas, cuando=ahora)
+        return len(avisadas)
 
     # ---- Cupos (CRUD dashboard) ----------------------------------------------
     async def listar_cupos(self) -> list[CupoLeer]:

@@ -680,10 +680,136 @@
     }
   }
 
+  /* ════════════════════════════════════════════════════════════════════════════
+     TEMA "obra" — construcción (PIM) — ámbar de maquinaria sobre grises stone industriales.
+     Identidad de gremio (no "retail recoloreado"): tipografía condensada (Oswald en títulos) y radio
+     cuadrado (8px). Deriva del preset backend `core/tenancy/branding_presets.py` ('obra': #e07a00 ámbar,
+     stone #f5f4f2/#e4e1dc, tinta #1c1917). Mismo patrón que aurora (light default · dark explícito · dark
+     por SO). Tema base y los demás temas intactos.
+
+     SIDEBAR CLARO EN LIGHT (decisión documentada): la dirección estética pedía un sidebar carbón
+     ámbar, pero `SidebarLink`/footer del Sidebar consumen los tokens GLOBALES de texto
+     (`--text-secondary`/`--text-primary`/`--text-muted`) y `bg-surface`; no hay tokens propios del
+     sidebar. Con tinta stone oscura sobre `--bg-sidebar` carbón el texto quedaría ilegible (oscuro sobre
+     oscuro) y arreglarlo exigiría tocar Sidebar.jsx (fuera de alcance). Por eso el sidebar es claro en
+     light (`0 0% 100%`, como los demás temas) y carbón SOLO en dark, donde los tokens de texto ya son
+     claros y el contraste funciona.
+     ════════════════════════════════════════════════════════════════════════════ */
+  [data-tema="obra"] {
+    /* ── Forma + tipografía (igual en light y dark): radios cuadrados industriales ──────────── */
+    --radius-sm: 6px;
+    --radius-md: 8px;      /* botones / inputs */
+    --radius-lg: 10px;     /* cards */
+    --radius-xl: 10px;
+    --font-display: 'Oswald', 'Inter', ui-sans-serif, system-ui, sans-serif;
+    --font-ui: 'Inter', ui-sans-serif, system-ui, sans-serif;
+
+    /* ── Paleta LIGHT (default del tema) — preset 'obra' → vars semánticas ───────────────────── */
+    --bg-body:        40 13% 96%;   /* stone #f5f4f2 */
+    --bg-body-strong: 36 30% 93%;   /* hover/elevation cálido */
+    --bg-surface:     0 0% 100%;    /* card */
+    --bg-surface-2:   40 15% 94%;
+    --bg-sidebar:     0 0% 100%;    /* claro (ver nota de cabecera: carbón sería ilegible en light) */
+
+    --border-subtle:  38 13% 90%;
+    --border:         38 13% 88%;   /* linea #e4e1dc */
+    --border-strong:  33 5% 45%;
+    --input:          38 13% 88%;
+    --ring:           33 100% 44%;  /* ámbar (foco = marca) */
+
+    --text-primary:   24 10% 10%;   /* tinta stone #1c1917 */
+    --text-secondary: 30 6% 25%;
+    --text-muted:     33 5% 38%;
+    --text-disabled:  33 6% 62%;
+
+    --accent:         33 100% 44%;  /* ámbar #e07a00 */
+    --accent-hover:   40 100% 47%;  /* #f2a100 */
+    --accent-soft:    36 90% 92%;
+    --accent-on:      0 0% 100%;
+
+    --accent-yellow:  32 95% 44%;
+    --accent-blue:    215 55% 45%;
+    --accent-green:   132 39% 40%;
+    --accent-orange:  17 88% 40%;
+
+    --success:        132 39% 36%;
+    --warning:        32 95% 42%;
+    --danger:         17 88% 40%;   /* rojo-ladrillo (bad #c2410c del preset) */
+    --info:           215 55% 45%;
+
+    --chart-1:        33 100% 44%;
+    --chart-2:        132 39% 40%;
+    --chart-3:        215 55% 45%;
+    --chart-4:        32 95% 44%;
+    --chart-5:        262 45% 50%;
+    --chart-6:        33 5% 38%;
+
+    /* Sombra cálida teñida de stone (rgba warm). */
+    --shadow-xs: 0 1px 2px rgba(28,25,23,.06);
+    --shadow-sm: 0 1px 3px rgba(28,25,23,.08), 0 10px 26px rgba(28,25,23,.06);
+    --shadow-md: 0 4px 12px rgba(28,25,23,.10), 0 14px 34px rgba(28,25,23,.07);
+  }
+
+  /* Obra — variante DARK (carbón stone). El compuesto gana al [data-theme="dark"] base (0,2,0+orden).
+     Aquí SÍ el sidebar es carbón (`--bg-sidebar` más oscuro que el body): los tokens de texto ya son
+     claros, así que el contraste funciona. */
+  [data-tema="obra"][data-theme="dark"] {
+    --bg-body:        24 10% 8%;
+    --bg-body-strong: 24 9% 11%;
+    --bg-surface:     24 8% 12%;
+    --bg-surface-2:   26 8% 17%;
+    --bg-sidebar:     24 12% 6%;    /* carbón (señalética negro/ámbar de maquinaria pesada) */
+
+    --border-subtle:  26 8% 16%;
+    --border:         26 8% 22%;
+    --border-strong:  26 8% 40%;
+    --input:          26 8% 22%;
+    --ring:           36 100% 52%;
+
+    --text-primary:   40 15% 94%;
+    --text-secondary: 38 10% 78%;
+    --text-muted:     33 6% 58%;
+    --text-disabled:  26 8% 32%;
+
+    --accent:         36 100% 52%;  /* ámbar más brillante para fondo oscuro */
+    --accent-hover:   40 100% 60%;
+    --accent-soft:    36 100% 52%;  /* usar con alpha (/10..15) */
+    --accent-on:      24 40% 8%;    /* tinta oscura: el ámbar brillante pide texto oscuro */
+
+    --accent-yellow:  32 95% 54%;
+    --accent-blue:    215 55% 58%;
+    --accent-green:   132 39% 48%;
+    --accent-orange:  17 88% 55%;
+
+    --success:        132 39% 46%;
+    --warning:        32 95% 52%;
+    --danger:         17 88% 50%;
+    --info:           215 55% 55%;
+
+    --chart-1:        36 100% 52%;
+    --chart-2:        132 39% 48%;
+    --chart-3:        215 55% 58%;
+    --chart-4:        32 95% 54%;
+    --chart-5:        262 55% 65%;
+    --chart-6:        33 6% 58%;
+
+    --shadow-xs: 0 2px 4px rgba(0,0,0,.35);
+    --shadow-sm: 0 2px 4px rgba(0,0,0,.4), 0 14px 34px rgba(0,0,0,.3);
+    --shadow-md: 0 6px 16px rgba(0,0,0,.5), 0 18px 40px rgba(0,0,0,.4);
+  }
+  @media (prefers-color-scheme: dark) {
+    [data-tema="obra"]:not([data-theme]) {
+      --bg-body: 24 10% 8%; --bg-body-strong: 24 9% 11%; --bg-surface: 24 8% 12%; --bg-surface-2: 26 8% 17%; --bg-sidebar: 24 12% 6%; --border-subtle: 26 8% 16%; --border: 26 8% 22%; --border-strong: 26 8% 40%; --input: 26 8% 22%; --ring: 36 100% 52%; --text-primary: 40 15% 94%; --text-secondary: 38 10% 78%; --text-muted: 33 6% 58%; --text-disabled: 26 8% 32%; --accent: 36 100% 52%; --accent-hover: 40 100% 60%; --accent-soft: 36 100% 52%; --accent-on: 24 40% 8%; --accent-yellow: 32 95% 54%; --accent-blue: 215 55% 58%; --accent-green: 132 39% 48%; --accent-orange: 17 88% 55%; --success: 132 39% 46%; --warning: 32 95% 52%; --danger: 17 88% 50%; --info: 215 55% 55%; --chart-1: 36 100% 52%; --chart-2: 132 39% 48%; --chart-3: 215 55% 58%; --chart-4: 32 95% 54%; --chart-5: 262 55% 65%; --chart-6: 33 6% 58%;
+      --shadow-xs: 0 2px 4px rgba(0,0,0,.35);
+      --shadow-sm: 0 2px 4px rgba(0,0,0,.4), 0 14px 34px rgba(0,0,0,.3);
+      --shadow-md: 0 6px 16px rgba(0,0,0,.5), 0 18px 40px rgba(0,0,0,.4);
+    }
+  }
+
   html, body {
     background-color: hsl(var(--bg-body));
     color: hsl(var(--text-primary));
-    font-family: 'Inter', ui-sans-serif, system-ui, sans-serif;
+    font-family: var(--font-ui, 'Inter'), ui-sans-serif, system-ui, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }

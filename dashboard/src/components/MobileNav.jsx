@@ -11,10 +11,11 @@ import { useFeatures, resolveHomePath } from '@/lib/features.jsx'
 import { cn } from '@/lib/utils'
 
 const GROUP_ICONS = {
-  operacion: ROUTES.find(r => r.path === '/ventas')?.icon,
-  gestion:   ROUTES.find(r => r.path === '/clientes')?.icon,
-  reportes:  ROUTES.find(r => r.path === '/historial')?.icon,
-  fiscal:    ROUTES.find(r => r.path === '/facturacion')?.icon,
+  operacion:    ROUTES.find(r => r.path === '/ventas')?.icon,
+  construccion: ROUTES.find(r => r.path === '/obras')?.icon,   // HardHat — sin esto el grupo entero desaparecía del bottom nav
+  gestion:      ROUTES.find(r => r.path === '/clientes')?.icon,
+  reportes:     ROUTES.find(r => r.path === '/historial')?.icon,
+  fiscal:       ROUTES.find(r => r.path === '/facturacion')?.icon,
 }
 
 export default function MobileNav() {
@@ -90,7 +91,9 @@ export default function MobileNav() {
         />
         {GROUPS.map(group => {
           const Icon = GROUP_ICONS[group.id]
-          if (!Icon) return null
+          // Igual que el Sidebar: ocultar el grupo si el tenant no tiene rutas habilitadas en él
+          // (evita un botón muerto —p. ej. Construcción en un tenant retail— con drawer vacío).
+          if (!Icon || !routesByGroup(group.id, features).length) return null
           const active = activeGroup === group.id
           return (
             <BottomItem

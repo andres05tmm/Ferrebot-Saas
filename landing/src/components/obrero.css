@@ -1,0 +1,124 @@
+/* Escena "en obra" — un ciclo de martillazo de 1.4s sincroniza brazo, chispa,
+   letrero, clavo y cuerpo. Todo con transform-box: view-box para que los
+   orígenes queden en coordenadas del viewBox. */
+
+.obrero {
+  width: 100%;
+  height: auto;
+  color: var(--texto);
+}
+
+.obrero .tabla  { fill: var(--panel) }
+.obrero .madera { fill: var(--fondo-2) }
+.obrero .piel   { fill: var(--fondo) }
+.obrero .overol { fill: var(--oro-suave) }
+.obrero .oro-fill   { fill: var(--oro-vivo) }
+.obrero .oro-stroke { stroke: var(--oro-vivo) }
+
+.obrero .letrero-texto {
+  font-family: var(--fuente-display);
+  font-weight: 600;
+  font-size: 32px;
+  fill: currentColor;
+}
+
+/* ---- ciclo del martillazo (1.4s) ---- */
+
+.obrero .brazo-martillo {
+  transform-box: view-box;
+  transform-origin: 428px 222px;
+  animation: obrero-martillar 1.4s infinite;
+}
+
+@keyframes obrero-martillar {
+  0%   { transform: rotate(58deg); animation-timing-function: ease-in-out }
+  40%  { transform: rotate(74deg); animation-timing-function: cubic-bezier(.75, 0, .95, .45) }
+  50%  { transform: rotate(0deg);  animation-timing-function: ease-out }
+  58%  { transform: rotate(10deg); animation-timing-function: ease-in-out }
+  100% { transform: rotate(58deg) }
+}
+
+.obrero .chispa {
+  transform-box: view-box;
+  transform-origin: 328px 120px;
+  opacity: 0;
+  animation: obrero-chispa 1.4s infinite;
+}
+
+@keyframes obrero-chispa {
+  0%, 49%  { opacity: 0; transform: scale(.3) }
+  52%      { opacity: 1; transform: scale(1) }
+  62%, 100% { opacity: 0; transform: scale(1.5) }
+}
+
+.obrero .letrero {
+  transform-box: view-box;
+  transform-origin: 80px 154px;
+  transform: rotate(-2.2deg);
+  animation: obrero-tambalear 1.4s infinite;
+}
+
+@keyframes obrero-tambalear {
+  0%, 48%   { transform: rotate(-2.2deg) }
+  53%       { transform: rotate(-.7deg) }
+  62%       { transform: rotate(-2.7deg) }
+  75%, 100% { transform: rotate(-2.2deg) }
+}
+
+.obrero .clavo {
+  animation: obrero-clavo 1.4s infinite;
+}
+
+@keyframes obrero-clavo {
+  0%, 49%, 60%, 100% { transform: translateY(0) }
+  52%                { transform: translateY(2.5px) }
+}
+
+.obrero .personaje {
+  animation: obrero-esfuerzo 1.4s infinite;
+}
+
+@keyframes obrero-esfuerzo {
+  0%, 100% { transform: translateY(0) }
+  40%      { transform: translateY(-3px) }
+  52%      { transform: translateY(1.5px) }
+}
+
+.obrero .ojo {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: obrero-parpadear 4.2s infinite;
+}
+
+@keyframes obrero-parpadear {
+  0%, 91%, 100% { transform: scaleY(1) }
+  94%           { transform: scaleY(.12) }
+}
+
+.obrero .mota {
+  fill: var(--oro-vivo);
+  opacity: .35;
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: obrero-flotar 7s ease-in-out infinite;
+}
+.obrero .mota-2 { animation-duration: 9s; animation-delay: -3s }
+.obrero .mota-3 { animation-duration: 8s; animation-delay: -5.5s }
+
+@keyframes obrero-flotar {
+  0%, 100% { transform: translateY(0);     opacity: .2 }
+  50%      { transform: translateY(-14px); opacity: .55 }
+}
+
+/* Sin movimiento: pose de descanso, martillo apoyado en el clavo. */
+@media (prefers-reduced-motion: reduce) {
+  .obrero .brazo-martillo,
+  .obrero .chispa,
+  .obrero .letrero,
+  .obrero .clavo,
+  .obrero .personaje,
+  .obrero .ojo,
+  .obrero .mota {
+    animation: none;
+  }
+}

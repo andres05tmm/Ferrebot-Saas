@@ -31,8 +31,12 @@ from modules.ventas.errors import (
     ProductoNoEncontrado,
     StockInsuficiente,
 )
-from modules.ventas.schemas import MetodoPago, VentaCrear, VentaDetalleCrear
+from modules.ventas.schemas import VentaCrear, VentaDetalleCrear
 from modules.ventas.service import VentaService
+
+# Métodos que el AGENTE puede usar al registrar una venta: sin 'mixto' (F5) — el cobro dividido
+# exige capturar las partes y eso es un flujo de POS (UI), no de chat (v1).
+MetodoPagoBot = Literal["efectivo", "transferencia", "datafono", "fiado"]
 
 
 class CierreVentaPort(Protocol):
@@ -102,7 +106,7 @@ class ItemVentaArg(ArgsTool):
 
 class RegistrarVentaArgs(ArgsTool):
     items: list[ItemVentaArg] = Field(min_length=1, max_length=200)
-    metodo_pago: MetodoPago
+    metodo_pago: MetodoPagoBot
     cliente_id: int | None = Field(default=None, gt=0)   # requerido si metodo_pago = fiado
 
 

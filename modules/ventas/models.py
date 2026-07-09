@@ -12,7 +12,7 @@ from core.db.base import TenantBase
 # históricos tarjeta/nequi/daviplata): la columna debe poder escribir 'datafono' y leer los viejos.
 # Los métodos vigentes para ventas nuevas los acota `MetodoPago` en schemas (Pydantic), no esta capa.
 metodo_pago_enum = PgEnum(
-    "efectivo", "transferencia", "tarjeta", "nequi", "daviplata", "fiado", "datafono",
+    "efectivo", "transferencia", "tarjeta", "nequi", "daviplata", "fiado", "datafono", "mixto",
     name="metodo_pago", create_type=False,
 )
 venta_estado_enum = PgEnum("completada", "anulada", name="venta_estado", create_type=False)
@@ -38,6 +38,18 @@ class Venta(TenantBase):
     detalles: Mapped[list["VentaDetalle"]] = relationship(
         back_populates="venta", cascade="all, delete-orphan", lazy="selectin",
     )
+
+
+class VentaPago(TenantBase):
+    """Una parte del cobro de una venta MIXTA (0053). Solo las ventas con `metodo_pago='mixto'`
+    escriben filas aquí; la suma de las partes == total de la venta (lo valida el servicio)."""
+
+    __tablename__ = "ventas_pagos"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    venta_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("ventas.id", ondelete="CASCADE"), nullable=False)
+    metodo: Mapped[str] = mapped_column(metodo_pago_enum, nullable=False)
+    monto: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
 
 
 class VentaDetalle(TenantBase):

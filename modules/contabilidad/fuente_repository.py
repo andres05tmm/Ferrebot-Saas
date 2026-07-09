@@ -27,6 +27,9 @@ class VentaEvento:
     metodo_pago: str
     estado: str
     costo: Decimal   # Σ costo_unitario·cantidad de las SALIDA de esta venta (COGS)
+    # Partes del cobro si la venta es MIXTA (F5/0053): [(metodo, monto)]; vacío en las normales.
+    # El proyector reparte el débito del recaudo entre CAJA/BANCOS según estas partes.
+    pagos: tuple[tuple[str, Decimal], ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -123,9 +126,19 @@ class FuenteContableRepository:
         ).one_or_none()
         if row is None:
             return None
+        pagos: tuple[tuple[str, Decimal], ...] = ()
+        if row.metodo_pago == "mixto":
+            filas = (
+                await self._s.execute(
+                    text("SELECT metodo, monto FROM ventas_pagos WHERE venta_id=:id ORDER BY id"),
+                    {"id": venta_id},
+                )
+            ).all()
+            pagos = tuple((f.metodo, _dec(f.monto)) for f in filas)
         return VentaEvento(
             id=row.id, fecha=row.fecha, subtotal=_dec(row.subtotal), impuestos=_dec(row.impuestos),
             total=_dec(row.total), metodo_pago=row.metodo_pago, estado=row.estado, costo=_dec(row.costo),
+            pagos=pagos,
         )
 
     async def gasto(self, gasto_id: int) -> GastoEvento | None:

@@ -29,9 +29,27 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select.jsx'
 
-const METODOS = ['efectivo', 'transferencia', 'datafono', 'fiado']
+const METODOS = ['efectivo', 'transferencia', 'datafono', 'fiado', 'mixto']
+// Segundo método de un cobro MIXTO (F5): dinero que entra YA — fiado queda fuera (v1).
+const METODOS_MIXTO_RESTO = ['transferencia', 'datafono']
 const FRACCIONES = [['¼', 0.25], ['½', 0.5], ['¾', 0.75], ['1', 1]]
 const GRANEL = { grm: 'g', gramos: 'g', cms: 'cm' }   // sub-unidades de venta a granel
+
+// Carrito persistente + ventas en espera (F5, patrón CART_KEY del FerreBot viejo): el carrito vivo
+// sobrevive un refresh y los carritos aparcados esperan su turno, todo client-side (localStorage).
+const CART_KEY = 'pos_carrito_v1'
+const ESPERA_KEY = 'pos_espera_v1'
+
+function leerLS(key, fallback) {
+  try {
+    const d = JSON.parse(localStorage.getItem(key))
+    return Array.isArray(d) ? d : fallback
+  } catch { return fallback }
+}
+
+function guardarLS(key, valor) {
+  try { localStorage.setItem(key, JSON.stringify(valor)) } catch { /* almacenamiento lleno/privado */ }
+}
 
 function nuevaKey() {
   return (crypto?.randomUUID?.() || `k-${Date.now()}-${Math.random()}`)
@@ -57,10 +75,14 @@ export default function TabVentasRapidas() {
   const [resultados, setResultados] = useState([])
   const [sel, setSel] = useState(0)          // índice seleccionado en los resultados (teclado)
   const [frecuentes, setFrecuentes] = useState([])
-  const [carrito, setCarrito] = useState([])
+  const [carrito, setCarrito] = useState(() => leerLS(CART_KEY, []))
+  const [enEspera, setEnEspera] = useState(() => leerLS(ESPERA_KEY, []))
   const [precios, setPrecios] = useState({})  // key → {total, precio_unitario, regla, loading}
   const [metodoPago, setMetodoPago] = useState('efectivo')
   const [recibido, setRecibido] = useState('')
+  // Cobro dividido (mixto): cuánto entra en efectivo; el resto va al segundo método.
+  const [efectivoMixto, setEfectivoMixto] = useState('')
+  const [metodoResto, setMetodoResto] = useState('transferencia')
   const [cliente, setCliente] = useState(null)
   const [documento, setDocumento] = useState(documentoDefault)
   const [enviando, setEnviando] = useState(false)
@@ -77,6 +99,10 @@ export default function TabVentasRapidas() {
   const bufferTimerRef = useRef(null)
   resultadosRef.current = resultados
   selRef.current = sel
+
+  // Persistencia del carrito vivo y de los aparcados (sobreviven refresh/corte de luz).
+  useEffect(() => { guardarLS(CART_KEY, carrito) }, [carrito])
+  useEffect(() => { guardarLS(ESPERA_KEY, enEspera) }, [enEspera])
 
   // Grilla de frecuentes (una vez): acceso rápido para el mostrador.
   useEffect(() => {
@@ -141,6 +167,12 @@ export default function TabVentasRapidas() {
     () => carrito.reduce((a, it) => a + totalLinea(it), 0), [carrito, totalLinea])
   const cambio = metodoPago === 'efectivo' && recibido !== ''
     ? Math.max(0, Number(recibido) - total) : null
+  // Cobro dividido: el resto sale solo (total − efectivo), redondeado a centavos para que la suma
+  // cuadre EXACTA con el total (el backend rechaza con 422 si no).
+  const restanteMixto = metodoPago === 'mixto'
+    ? Math.max(0, Math.round((total - (Number(efectivoMixto) || 0)) * 100) / 100) : null
+  const mixtoValido = metodoPago === 'mixto' &&
+    Number(efectivoMixto) > 0 && Number(efectivoMixto) < total
 
   async function agregarPorCodigo(codigo) {
     try {
@@ -228,6 +260,29 @@ export default function TabVentasRapidas() {
       key: nuevaKey(), producto_id: null, nombre: descripcion, cantidad, precio_unitario, varia: true,
     }])
   }
+  // Ventas en espera: aparca el carrito actual (con su cliente) y deja el mostrador libre para
+  // atender al siguiente; "Retomar" lo trae de vuelta (si había uno vivo, se aparca primero).
+  function ponerEnEspera() {
+    if (carrito.length === 0) return
+    setEnEspera(prev => [...prev, { id: nuevaKey(), ts: Date.now(), carrito, cliente }])
+    setCarrito([]); setPrecios({}); setCliente(null); setRecibido(''); setEfectivoMixto('')
+  }
+
+  function retomarEspera(id) {
+    const aparcado = enEspera.find(e => e.id === id)
+    if (!aparcado) return
+    setEnEspera(prev => {
+      const sinEste = prev.filter(e => e.id !== id)
+      return carrito.length > 0
+        ? [...sinEste, { id: nuevaKey(), ts: Date.now(), carrito, cliente }]
+        : sinEste
+    })
+    setCarrito(aparcado.carrito); setCliente(aparcado.cliente || null)
+    setPrecios({}); setRecibido(''); setEfectivoMixto('')
+  }
+
+  const quitarEspera = (id) => setEnEspera(prev => prev.filter(e => e.id !== id))
+
   const setCantidad = (key, cantidad) =>
     setCarrito(prev => prev.map(it => it.key === key ? { ...it, cantidad } : it))
   const setUsarEspecial = (key, usarEspecial) =>
@@ -247,7 +302,8 @@ export default function TabVentasRapidas() {
       if (res.ok) {
         setVentaPendiente(null)
         setCarrito([]); setPrecios({}); setCliente(null); setMetodoPago('efectivo')
-        setRecibido(''); setDocumento(documentoDefault)
+        setRecibido(''); setEfectivoMixto(''); setMetodoResto('transferencia')
+        setDocumento(documentoDefault)
         toast.success('Venta registrada')
         return true
       }
@@ -279,6 +335,16 @@ export default function TabVentasRapidas() {
       return linea
     })
     const payload = { metodo_pago: metodoPago, origen: 'web', lineas }
+    if (metodoPago === 'mixto') {
+      if (!mixtoValido) {
+        toast.error('El efectivo del cobro mixto debe ser mayor que 0 y menor que el total')
+        return
+      }
+      payload.pagos = [
+        { metodo: 'efectivo', monto: Number(efectivoMixto) },
+        { metodo: metodoResto, monto: restanteMixto },
+      ]
+    }
     if (cliente?.id) payload.cliente_id = cliente.id
     // "ninguno" → no se manda `documento`: el backend cae a su default (con facturar_en_venta=false, sin
     // emisión). POS/FE explícito sí viaja como intención (el backend lo respeta aunque el toggle esté off).
@@ -357,7 +423,28 @@ export default function TabVentasRapidas() {
       </div>
 
       <Card className="p-3.5 flex flex-col">
-        <h2 className="text-caption font-semibold uppercase tracking-wider text-muted-foreground mb-2.5">Carrito</h2>
+        <div className="flex items-center justify-between mb-2.5">
+          <h2 className="text-caption font-semibold uppercase tracking-wider text-muted-foreground">Carrito</h2>
+          <Button variant="outline" size="sm" onClick={ponerEnEspera} disabled={carrito.length === 0}
+            className="h-7 text-caption">En espera</Button>
+        </div>
+        {enEspera.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 mb-2.5" role="group" aria-label="Ventas en espera">
+            {enEspera.map((e, i) => (
+              <span key={e.id} className="inline-flex items-center gap-1 rounded-md border border-border bg-surface-2 pl-2 pr-1 h-7 text-caption">
+                <button onClick={() => retomarEspera(e.id)} className="hover:text-primary"
+                  aria-label={`Retomar venta en espera ${i + 1}`}>
+                  #{i + 1} · {e.carrito.length} ítem{e.carrito.length === 1 ? '' : 's'}
+                  {e.cliente?.nombre ? ` · ${e.cliente.nombre}` : ''}
+                </button>
+                <button onClick={() => quitarEspera(e.id)} aria-label={`Descartar venta en espera ${i + 1}`}
+                  className="size-5 grid place-items-center rounded text-muted-foreground hover:text-destructive">
+                  <X className="size-3" />
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
         {carrito.length === 0 ? (
           <div className="py-10 text-center">
             <Search className="size-6 mx-auto text-muted-foreground/40 mb-2" />
@@ -400,6 +487,27 @@ export default function TabVentasRapidas() {
           </div>
         )}
 
+        {metodoPago === 'mixto' && (
+          <div className="mt-2 space-y-1.5">
+            <div className="flex items-center gap-2">
+              <Input type="number" min="0" step="any" value={efectivoMixto}
+                onChange={(e) => setEfectivoMixto(e.target.value)}
+                placeholder="Efectivo" aria-label="Parte en efectivo" className="h-9 flex-1" />
+              <div className="flex items-center gap-1" role="group" aria-label="Método del resto">
+                {METODOS_MIXTO_RESTO.map(m => (
+                  <Seg key={m} activo={metodoResto === m} onClick={() => setMetodoResto(m)}
+                    aria-label={`Resto por ${m}`}>{m}</Seg>
+                ))}
+              </div>
+            </div>
+            <p className={`text-caption tabular ${mixtoValido ? 'text-muted-foreground' : 'text-destructive'}`}>
+              {mixtoValido
+                ? <>Resto por {metodoResto}: <span className="font-semibold">{cop(restanteMixto)}</span></>
+                : 'El efectivo debe ser mayor que 0 y menor que el total'}
+            </p>
+          </div>
+        )}
+
         {mostrarDocumento && (
           <>
             <label className="text-caption uppercase tracking-wider text-muted-foreground mt-3 mb-1">Documento</label>
@@ -420,7 +528,9 @@ export default function TabVentasRapidas() {
           <span className="text-caption uppercase tracking-wider text-muted-foreground">Total</span>
           <span className="text-xl font-semibold tabular">{cop(total)}</span>
         </div>
-        <Button onClick={registrar} disabled={enviando || carrito.length === 0} className="w-full h-10">
+        <Button onClick={registrar}
+          disabled={enviando || carrito.length === 0 || (metodoPago === 'mixto' && !mixtoValido)}
+          className="w-full h-10">
           {enviando ? 'Registrando…' : 'Registrar venta'} <span className="ml-1.5 opacity-70 text-caption">F9</span>
         </Button>
       </Card>
@@ -524,7 +634,7 @@ function AtajosHint() {
       <span><Kbd>↑</Kbd><Kbd>↓</Kbd> elegir</span>
       <span><Kbd>Enter</Kbd> agrega</span>
       <span><Kbd>F9</Kbd> cobrar</span>
-      <span><Kbd>Alt</Kbd>+<Kbd>1</Kbd>–<Kbd>4</Kbd> pago</span>
+      <span><Kbd>Alt</Kbd>+<Kbd>1</Kbd>–<Kbd>5</Kbd> pago</span>
       <span>o escanea un código</span>
     </p>
   )

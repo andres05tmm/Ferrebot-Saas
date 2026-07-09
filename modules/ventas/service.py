@@ -28,7 +28,7 @@ from modules.ventas.errors import (
     VentaNoEncontrada,
     VentaNoEsDeHoy,
 )
-from modules.ventas.schemas import VentaConLineas, VentaCrear, VentaLeer
+from modules.ventas.schemas import PagoParte, VentaConLineas, VentaCrear, VentaLeer
 
 
 def es_de_hoy_co(fecha: datetime) -> bool:
@@ -123,6 +123,8 @@ class VentaHeader:
     origen: str
     idempotency_key: str | None
     lineas: list[LineaResuelta] = field(default_factory=list)
+    # Partes del cobro de una venta MIXTA (F5/0053); vacío en las ventas normales.
+    pagos: list[PagoParte] = field(default_factory=list)
 
 
 @dataclass(frozen=True, slots=True)
@@ -164,6 +166,8 @@ class VentasRepo(Protocol):
     ) -> list[VentaLeer]: ...
     async def siguiente_consecutivo(self) -> int: ...
     async def crear_venta(self, header: VentaHeader) -> VentaLeer: ...
+    async def pagos_de_venta(self, venta_id: int) -> list[tuple[str, Decimal]]: ...
+    async def reemplazar_pagos(self, venta_id: int, pagos: list[PagoParte]) -> None: ...
     async def obtener_cabecera(self, venta_id: int) -> VentaLeer | None: ...
     async def obtener(self, venta_id: int) -> VentaConLineas | None: ...
     async def tiene_factura_viva(self, venta_id: int) -> bool: ...
@@ -244,6 +248,14 @@ class VentaService:
 
         lineas = [await self._resolver_linea(ln, control_stock_estricto) for ln in datos.lineas]
         subtotal, impuestos, total = calcular_totales(lineas)
+        if datos.metodo_pago == "mixto":
+            # Invariante de dinero (F5/0053): las partes del cobro deben sumar EXACTO el total
+            # calculado por el catálogo — el POS no puede cobrar de menos ni inventar dinero.
+            suma_pagos = _money(sum((p.monto for p in datos.pagos), Decimal("0")))
+            if suma_pagos != total:
+                raise LineaInvalida(
+                    f"Las partes del pago mixto suman {suma_pagos} pero la venta vale {total}"
+                )
         consecutivo = await self._repo.siguiente_consecutivo()
         header = VentaHeader(
             consecutivo=consecutivo,
@@ -256,6 +268,7 @@ class VentaService:
             origen=datos.origen,
             idempotency_key=datos.idempotency_key,
             lineas=lineas,
+            pagos=datos.pagos,
         )
         venta = await self._repo.crear_venta(header)
         if datos.metodo_pago == "fiado" and self._fiados is not None:
@@ -280,6 +293,13 @@ class VentaService:
         """
         if datos.metodo_pago != existente.metodo_pago or datos.cliente_id != existente.cliente_id:
             return False
+        if datos.metodo_pago == "mixto":
+            # El desglose del cobro también es parte del payload: la misma key con otras partes
+            # (p. ej. menos efectivo y más transferencia) es un bug del caller, no un replay.
+            persistidos = sorted(await self._repo.pagos_de_venta(existente.id))
+            entrantes = sorted((p.metodo, _money(p.monto)) for p in datos.pagos)
+            if entrantes != persistidos:
+                return False
         detalle = await self._repo.obtener(existente.id)
         if detalle is None:
             return True   # carrera improbable (venta borrada): el replay de cabecera basta
@@ -377,6 +397,13 @@ class VentaService:
         await self._repo.revertir_lineas(venta_id)
         lineas = [await self._resolver_linea(ln, control_stock_estricto) for ln in datos.lineas]
         subtotal, impuestos, total = calcular_totales(lineas)
+        if datos.metodo_pago == "mixto":
+            # Mismo invariante que al registrar: el desglose nuevo debe sumar el total nuevo.
+            suma_pagos = _money(sum((p.monto for p in datos.pagos), Decimal("0")))
+            if suma_pagos != total:
+                raise LineaInvalida(
+                    f"Las partes del pago mixto suman {suma_pagos} pero la venta vale {total}"
+                )
         edicion = EdicionVenta(
             cliente_id=datos.cliente_id, metodo_pago=datos.metodo_pago,
             subtotal=subtotal, impuestos=impuestos, total=total, lineas=lineas,
@@ -384,6 +411,9 @@ class VentaService:
         venta = await self._repo.aplicar_edicion(venta_id, edicion)
         if venta is None:  # carrera improbable: la venta se borró entre el guard y el apply
             raise VentaNoEncontrada(venta_id)
+        # El desglose del cobro sigue al método editado: partes nuevas si quedó mixta, ninguna si no
+        # (una mixta editada a efectivo no puede dejar partes viejas colgando).
+        await self._repo.reemplazar_pagos(venta_id, datos.pagos)
         return venta
 
     async def _resolver_linea(self, ln, control_stock_estricto: bool) -> LineaResuelta:

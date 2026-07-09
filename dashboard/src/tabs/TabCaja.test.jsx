@@ -115,6 +115,61 @@ describe('TabCaja — construcción (caja menor de obra)', () => {
   })
 })
 
+describe('TabCaja — cuadre en un clic (F5)', () => {
+  function instalarFetchCierre() {
+    const fetchMock = vi.fn((url, opts) => {
+      const u = String(url)
+      if (u.includes('/caja/arqueo')) return Promise.resolve(jsonResp(ARQUEO_ABIERTA))
+      if (u.includes('/caja/cierre')) return Promise.resolve(jsonResp({ diferencia: '0' }))
+      if (u.includes('/ventas') && opts?.method === 'POST') return Promise.resolve(jsonResp({ id: 9 }, 201))
+      if (u.includes('/reportes/resumen')) return Promise.resolve(jsonResp(RESUMEN))
+      if (u.includes('/gastos')) return Promise.resolve(jsonResp(GASTOS))
+      return Promise.resolve(jsonResp({}))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    return fetchMock
+  }
+
+  it('con sobrante ofrece registrarlo como venta varia y cerrar (2 POSTs en orden)', async () => {
+    const fetchMock = instalarFetchCierre()
+    renderCaja()
+    await screen.findByText('Caja abierta')
+
+    // esperado 72000, contado 75000 → sobrante de 3000.
+    fireEvent.change(screen.getByLabelText('Saldo contado'), { target: { value: '75000' } })
+    const boton = await screen.findByText(/Registrar sobrante/)
+    expect(boton.textContent).toContain('$3.000')
+    fireEvent.click(boton)
+
+    await waitFor(() =>
+      expect(fetchMock.mock.calls.some(c => String(c[0]).includes('/caja/cierre') && c[1]?.method === 'POST')).toBe(true))
+    const posts = fetchMock.mock.calls.filter(c => c[1]?.method === 'POST').map(c => String(c[0]))
+    const iVenta = posts.findIndex(u => u.includes('/ventas'))
+    const iCierre = posts.findIndex(u => u.includes('/caja/cierre'))
+    expect(iVenta).toBeGreaterThanOrEqual(0)
+    expect(iVenta).toBeLessThan(iCierre)   // primero la venta varia, después el cierre
+
+    const venta = fetchMock.mock.calls.find(c => String(c[0]).includes('/ventas') && c[1]?.method === 'POST')
+    expect(new Headers(venta[1].headers).get('Idempotency-Key')).toBeTruthy()
+    expect(JSON.parse(venta[1].body)).toMatchObject({
+      metodo_pago: 'efectivo',
+      lineas: [{ descripcion: 'Sobrante cierre de caja', cantidad: 1, precio_unitario: 3000 }],
+    })
+    const cierre = fetchMock.mock.calls.find(c => String(c[0]).includes('/caja/cierre'))
+    expect(JSON.parse(cierre[1].body)).toMatchObject({ saldo_contado: 75000 })
+  })
+
+  it('con faltante NO ofrece el atajo (solo el cierre normal con su diferencia)', async () => {
+    instalarFetchCierre()
+    renderCaja()
+    await screen.findByText('Caja abierta')
+
+    fireEvent.change(screen.getByLabelText('Saldo contado'), { target: { value: '70000' } })
+    await screen.findByText(/faltante/)
+    expect(screen.queryByText(/Registrar sobrante/)).toBeNull()
+  })
+})
+
 describe('TabCaja — caja cerrada', () => {
   it('muestra el formulario de apertura y abre la caja (POST /caja/apertura)', async () => {
     const fetchMock = instalarFetch({ arqueo: ARQUEO_CERRADA })

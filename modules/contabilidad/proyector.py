@@ -71,8 +71,17 @@ class Proyector:
             raise ProyeccionInvalida(f"venta {venta_id} inexistente")
         if ev.estado != "completada":
             raise ProyeccionInvalida(f"venta {venta_id} en estado '{ev.estado}': no proyectable")
+        if ev.metodo_pago == "mixto" and ev.pagos:
+            # Venta MIXTA (F5/0053): el recaudo se reparte entre sus partes reales — la porción
+            # efectivo debita CAJA y el resto BANCOS; nada se asienta "como mixto".
+            recaudo = [
+                _debit(_cuenta_cobro(metodo), monto, f"Recaudo de la venta ({metodo})")
+                for metodo, monto in ev.pagos
+            ]
+        else:
+            recaudo = [_debit(_cuenta_cobro(ev.metodo_pago), ev.total, "Recaudo de la venta")]
         lineas = [
-            _debit(_cuenta_cobro(ev.metodo_pago), ev.total, "Recaudo de la venta"),
+            *recaudo,
             _credit(puc.INGRESOS_VENTAS, ev.subtotal, "Ingreso por venta de mercancía"),
         ]
         if ev.impuestos > 0:

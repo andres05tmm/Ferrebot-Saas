@@ -42,6 +42,7 @@ EXP_UNIDAD_DIAN = {
 EXP_MEDIOS_PAGO = {
     "efectivo": 10, "transferencia": 42, "nequi": 42, "daviplata": 42,
     "tarjeta": 48, "datafono": 48,
+    "mixto": 1,   # cobro dividido (F5/0053): DIAN no modela partes → 1 = instrumento no definido
 }
 
 

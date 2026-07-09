@@ -1,0 +1,299 @@
+{
+  "global": {
+    "n": 22,
+    "ok": 22,
+    "peligrosos": 0,
+    "equivocaciones": 0,
+    "resolvio": 14,
+    "defirio": 8
+  },
+  "categorias": {
+    "entero": {
+      "n": 4,
+      "ok": 4,
+      "peligrosos": 0,
+      "equivocaciones": 0
+    },
+    "plural": {
+      "n": 1,
+      "ok": 1,
+      "peligrosos": 0,
+      "equivocaciones": 0
+    },
+    "fraccion": {
+      "n": 1,
+      "ok": 1,
+      "peligrosos": 0,
+      "equivocaciones": 0
+    },
+    "fraccion_escrita": {
+      "n": 1,
+      "ok": 1,
+      "peligrosos": 0,
+      "equivocaciones": 0
+    },
+    "mixta": {
+      "n": 2,
+      "ok": 2,
+      "peligrosos": 0,
+      "equivocaciones": 0
+    },
+    "por_caja": {
+      "n": 1,
+      "ok": 1,
+      "peligrosos": 0,
+      "equivocaciones": 0
+    },
+    "por_peso": {
+      "n": 1,
+      "ok": 1,
+      "peligrosos": 0,
+      "equivocaciones": 0
+    },
+    "unidad_empaque": {
+      "n": 1,
+      "ok": 1,
+      "peligrosos": 0,
+      "equivocaciones": 0
+    },
+    "escalonado": {
+      "n": 1,
+      "ok": 1,
+      "peligrosos": 0,
+      "equivocaciones": 0
+    },
+    "fraccion_inexistente": {
+      "n": 1,
+      "ok": 1,
+      "peligrosos": 0,
+      "equivocaciones": 0
+    },
+    "multiproducto": {
+      "n": 1,
+      "ok": 1,
+      "peligrosos": 0,
+      "equivocaciones": 0
+    },
+    "consulta": {
+      "n": 1,
+      "ok": 1,
+      "peligrosos": 0,
+      "equivocaciones": 0
+    },
+    "cliente_credito": {
+      "n": 1,
+      "ok": 1,
+      "peligrosos": 0,
+      "equivocaciones": 0
+    },
+    "modificacion": {
+      "n": 1,
+      "ok": 1,
+      "peligrosos": 0,
+      "equivocaciones": 0
+    },
+    "producto_desconocido": {
+      "n": 1,
+      "ok": 1,
+      "peligrosos": 0,
+      "equivocaciones": 0
+    },
+    "cliente_nombre": {
+      "n": 1,
+      "ok": 1,
+      "peligrosos": 0,
+      "equivocaciones": 0
+    },
+    "gasto": {
+      "n": 1,
+      "ok": 1,
+      "peligrosos": 0,
+      "equivocaciones": 0
+    },
+    "fiado_abono": {
+      "n": 1,
+      "ok": 1,
+      "peligrosos": 0,
+      "equivocaciones": 0
+    }
+  },
+  "filas": [
+    {
+      "frase": "3 vinilo",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "12 lija",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "5 drywall",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "10 puntillas",
+      "categoria": "plural",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1/2 manguera",
+      "categoria": "fraccion",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "medio vinilo",
+      "categoria": "fraccion_escrita",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "2 1/2 manguera",
+      "categoria": "mixta",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 1/2 vinilo",
+      "categoria": "mixta",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "4 tornillos caja",
+      "categoria": "por_caja",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "2 thinner",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1/2 puntilla",
+      "categoria": "por_peso",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "2 galones de thinner",
+      "categoria": "unidad_empaque",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "3 cemento",
+      "categoria": "escalonado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1/4 lija",
+      "categoria": "fraccion_inexistente",
+      "espera": "defiere",
+      "got": "defiere",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "2 vinilo, 3 puntilla",
+      "categoria": "multiproducto",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "cuanto vale el vinilo",
+      "categoria": "consulta",
+      "espera": "defiere",
+      "got": "defiere",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "2 vinilo fiado",
+      "categoria": "cliente_credito",
+      "espera": "defiere",
+      "got": "defiere",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "cambia el precio del vinilo",
+      "categoria": "modificacion",
+      "espera": "defiere",
+      "got": "defiere",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "2 taladro",
+      "categoria": "producto_desconocido",
+      "espera": "defiere",
+      "got": "defiere",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "3 vinilo para Andres",
+      "categoria": "cliente_nombre",
+      "espera": "defiere",
+      "got": "defiere",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "anota un gasto de 20mil en transporte",
+      "categoria": "gasto",
+      "espera": "defiere",
+      "got": "defiere",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "abono de 20mil a Juan",
+      "categoria": "fiado_abono",
+      "espera": "defiere",
+      "got": "defiere",
+      "outcome": "ok",
+      "detalle": ""
+    }
+  ],
+  "umbral": 0.95
+}

@@ -8,12 +8,14 @@ from __future__ import annotations
 
 from datetime import date
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.auth import Principal, get_filtro_efectivo, require_role
 from core.auth.features import require_feature
+from core.auth.rbac import satisface
 from core.db.session import get_tenant_db
+from modules.obra.panel_cache import PanelCache
 from modules.reportes.consolidacion import (
     ConsolidacionIVAService,
     SqlConsolidacionRepository,
@@ -26,6 +28,7 @@ from modules.reportes.schemas import (
     DiaCalendarioLeer,
     EstadoResultados,
     FlujoDinero,
+    HoyDashboard,
     LibroIVA,
     MargenProducto,
     MovimientoAuxiliar,
@@ -39,6 +42,11 @@ from modules.reportes.schemas import (
 from modules.reportes.service import ReportesService
 
 router = APIRouter(tags=["reportes"])
+
+# Caché del agregado /hoy (patrón del cockpit PIM, TTL corto): el tab se recarga seguido y por SSE;
+# 60s lo sirven al instante sin martillar Postgres. Se cachea la versión COMPLETA (admin) y el rol
+# vendedor recibe una copia sin la utilidad.
+hoy_cache = PanelCache(ttl=60.0)
 
 
 def get_reportes_repo(session: AsyncSession = Depends(get_tenant_db)) -> SqlReportesRepository:
@@ -175,6 +183,31 @@ async def listar_iva_saldos(
 ) -> list[SaldoBimestral]:
     """Saldos bimestrales de IVA ya consolidados (todos, o los del año dado). Admin-only, feature `libro_iva`."""
     return await ConsolidacionIVAService(repo).listar_saldos(anio=anio)
+
+
+@router.get(
+    "/reportes/hoy-dashboard",
+    response_model=HoyDashboard,
+    dependencies=[Depends(require_feature("ventas"))],
+)
+async def hoy_dashboard(
+    request: Request,
+    repo: SqlReportesRepository = Depends(get_reportes_repo),
+    user: Principal = Depends(require_role("vendedor")),
+) -> HoyDashboard:
+    """Agregado del cockpit /hoy (F4): utilidad estimada del día (solo admin), alertas de pedidos a
+    proveedor, CxP por vencer/vencidas, fiados y avance del inventario progresivo. Cacheado 60s por
+    empresa; el vendedor recibe la copia SIN utilidad (monto sensible del negocio completo)."""
+    tenant = getattr(request.state, "tenant", None)
+    empresa_id = getattr(tenant, "id", None)
+    datos = hoy_cache.get(empresa_id) if empresa_id is not None else None
+    if datos is None:
+        datos = await ReportesService(repo).hoy_dashboard()
+        if empresa_id is not None:
+            hoy_cache.set(empresa_id, datos)
+    if not satisface(user.rol, "admin"):
+        return datos.model_copy(update={"utilidad_estimada": None})
+    return datos
 
 
 @router.get(

@@ -12,8 +12,8 @@ import {
   AreaChart, Area, ResponsiveContainer, CartesianGrid, XAxis, YAxis, Tooltip,
 } from 'recharts'
 import {
-  ArrowRight, Plus, AlertTriangle, ShoppingCart, Receipt, Package, Search, Activity,
-  CreditCard, Briefcase, CalendarDays,
+  ArrowRight, Plus, AlertTriangle, ShoppingCart, Receipt, Package, Activity,
+  CreditCard, Briefcase, CalendarDays, Timer, Banknote, HandCoins, Wallet, PackageSearch,
 } from 'lucide-react'
 import { useFetch, cop, num, rangoHoyCO, ProductThumb } from '@/components/shared.jsx'
 import { useRealtimeEvent } from '@/components/RealtimeProvider.jsx'
@@ -21,6 +21,9 @@ import { Card } from '@/components/ui/card.jsx'
 import { Badge } from '@/components/ui/badge.jsx'
 import KpiCard from '@/components/KpiCard.jsx'
 import FeedActividad from '@/components/FeedActividad.jsx'
+import ModalGastoRapido from '@/components/ModalGastoRapido.jsx'
+import ModalAbonoProveedor from '@/components/ModalAbonoProveedor.jsx'
+import { useFeatures } from '@/lib/features.jsx'
 import { cn } from '@/lib/utils'
 
 const HORA_CO = { hour: '2-digit', minute: '2-digit', timeZone: 'America/Bogota' }
@@ -29,10 +32,15 @@ const EVENTOS = [
   'caja_movimiento', 'gasto_registrado', 'inventario_actualizado', 'reconnected',
   // Estado fiscal en vivo: al emitir/aceptar/rechazar/anular un documento, refrescar las ventas (badge).
   'factura_pendiente', 'factura_aceptada', 'factura_rechazada', 'factura_error', 'factura_anulada',
+  // Pedidos a proveedor (F4): el cronómetro y las alertas del cockpit se refrescan en vivo.
+  // 'pedido_demorado' lo emite el cron de F6 al avisar al dueño.
+  'pedido_proveedor_creado', 'pedido_proveedor_recibido', 'pedido_proveedor_cancelado',
+  'pedido_demorado',
 ]
 
 export default function TabHoy() {
   const navigate = useNavigate()
+  const features = useFeatures()
   const { refreshKey } = useOutletContext() ?? {}
   const deps = [refreshKey]
 
@@ -57,10 +65,13 @@ export default function TabHoy() {
   const recientesQ = useFetch('/ventas/recientes?limite=5', deps)
   const topQ = useFetch(`/reportes/top-productos?desde=${hoyStr}&hasta=${hoyStr}&limite=5`, deps)
   const stockQ = useFetch('/inventario/stock?bajo=true', deps)
+  // Agregado del cockpit (F4): utilidad estimada (admin), pedidos a proveedor, CxP, fiados e
+  // inventario confiable. Cacheado 60s en el backend.
+  const hoyQ = useFetch('/reportes/hoy-dashboard', deps)
 
   useRealtimeEvent(EVENTOS, () => {
     resumenQ.refetch(); serieQ.refetch(); totalesQ.refetch(); cajaQ.refetch()
-    gastosQ.refetch(); recientesQ.refetch(); topQ.refetch(); stockQ.refetch()
+    gastosQ.refetch(); recientesQ.refetch(); topQ.refetch(); stockQ.refetch(); hoyQ.refetch()
   })
 
   // ── KPIs principales (resumen del día) ──────────────────────────────────────
@@ -131,8 +142,14 @@ export default function TabHoy() {
     [stockArr],
   )
 
+  // ── Agregado del cockpit (F4): alertas accionables + utilidad estimada ──────
+  const hoy = hoyQ.data && !Array.isArray(hoyQ.data) ? hoyQ.data : null
+  const utilidad = hoy?.utilidad_estimada != null ? Number(hoy.utilidad_estimada) : null
+
   return (
     <div className="space-y-3">
+      <AlertasHoy datos={hoy} navigate={navigate} />
+
       {/* KPI STRIP — Ventas / Caja / Gastos */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         <KpiCard
@@ -151,16 +168,21 @@ export default function TabHoy() {
         />
       </div>
 
-      {/* MINI METRIC STRIP — Pedidos / Ticket / Semana / Mes */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <KpiCard headerBand tone="primary" icon={CalendarDays} label="Pedidos" value={num(pedidosHoy)}
-          sub={pedidosHoy > 0 ? `de ${cop(totalHoy)}` : 'sin ventas'} />
+      {/* MINI METRIC STRIP — Utilidad (admin) / Ticket / Semana / Mes / Fiados */}
+      <div className={cn('grid grid-cols-2 gap-3', utilidad != null ? 'md:grid-cols-5' : 'md:grid-cols-4')}>
+        {utilidad != null && (
+          <KpiCard headerBand coloredValue tone={utilidad >= 0 ? 'success' : 'danger'} icon={Wallet}
+            label="Utilidad estimada hoy" value={cop(utilidad)} sub="ventas − costo − gastos" />
+        )}
         <KpiCard headerBand tone="info" icon={CalendarDays} label="Ticket prom." value={cop(ticketProm)}
-          sub="por venta" />
+          sub={`${num(pedidosHoy)} ${pedidosHoy === 1 ? 'venta' : 'ventas'}`} />
         <KpiCard headerBand tone="success" icon={CalendarDays} label="Total semana" value={cop(totalSemana)}
           sub="últimos 7 días" />
         <KpiCard headerBand coloredValue tone="warning" icon={CalendarDays} label="Total mes" value={cop(totalMes)}
           sub="mes en curso" />
+        <KpiCard headerBand tone="primary" icon={HandCoins} label="Fiados en la calle"
+          value={cop(Number(hoy?.fiados_total ?? 0))} sub="por cobrar a clientes"
+          onClick={features.includes('pack_cobranza') ? () => navigate('/cartera') : undefined} />
       </div>
 
       {/* HERO — Evolución (2/3) + Feed live (1/3) */}
@@ -181,7 +203,67 @@ export default function TabHoy() {
         <StockBajo items={stockBajo} total={stockArr.length} onMore={() => navigate('/inventario')} />
       </div>
 
-      <QuickActions navigate={navigate} />
+      <QuickActions navigate={navigate} onRefetch={() => { gastosQ.refetch(); hoyQ.refetch() }} />
+    </div>
+  )
+}
+
+// ── ALERTAS ACCIONABLES (F4) — lo urgente arriba, cada una lleva a su tab ─────
+function AlertasHoy({ datos, navigate }) {
+  if (!datos) return null
+  const alertas = []
+  if (!datos.caja_abierta) {
+    alertas.push({
+      tono: 'warning', icon: Briefcase, to: '/caja',
+      texto: 'La caja no se ha abierto hoy — ábrela para que el cuadre del día arranque bien.',
+    })
+  }
+  if (datos.pedidos_demorados > 0) {
+    alertas.push({
+      tono: 'destructive', icon: Timer, to: '/pedidos-proveedor',
+      texto: `${datos.pedidos_demorados} pedido${datos.pedidos_demorados === 1 ? '' : 's'} a proveedor demorado${datos.pedidos_demorados === 1 ? '' : 's'} — revisa qué pasó.`,
+    })
+  }
+  if (datos.cxp_vencidas > 0) {
+    alertas.push({
+      tono: 'destructive', icon: Banknote, to: '/cuentas-por-pagar',
+      texto: `${cop(Number(datos.cxp_monto_vencido))} vencidos a proveedores (${datos.cxp_vencidas} factura${datos.cxp_vencidas === 1 ? '' : 's'}).`,
+    })
+  }
+  if (datos.cxp_por_vencer_7d > 0) {
+    alertas.push({
+      tono: 'warning', icon: Banknote, to: '/cuentas-por-pagar',
+      texto: `${cop(Number(datos.cxp_monto_por_vencer))} por pagar en los próximos 7 días.`,
+    })
+  }
+  if (datos.stock_bajo_confiables > 0) {
+    alertas.push({
+      tono: 'warning', icon: Package, to: '/inventario',
+      texto: `${datos.stock_bajo_confiables} producto${datos.stock_bajo_confiables === 1 ? '' : 's'} con stock bajo — considera pedir al proveedor.`,
+    })
+  }
+  if (alertas.length === 0) return null
+
+  const TONO = {
+    warning: 'border-warning/30 bg-warning/10 text-warning',
+    destructive: 'border-destructive/30 bg-destructive/10 text-destructive',
+  }
+  return (
+    <div className="space-y-1.5" role="region" aria-label="Alertas del día">
+      {alertas.map((a, i) => {
+        const Icon = a.icon
+        return (
+          <button key={i} onClick={() => navigate(a.to)}
+            className={cn(
+              'w-full flex items-center gap-2 px-3 py-2 rounded-md border text-left text-[12.5px] font-medium',
+              'hover:opacity-90 transition-opacity', TONO[a.tono],
+            )}>
+            <Icon className="size-4 shrink-0" aria-hidden="true" />
+            <span className="flex-1">{a.texto}</span>
+            <ArrowRight className="size-3.5 shrink-0" aria-hidden="true" />
+          </button>
+        )
+      })}
     </div>
   )
 }
@@ -487,12 +569,15 @@ function StockBajo({ items, total, onMore }) {
   )
 }
 
-function QuickActions({ navigate }) {
+function QuickActions({ navigate, onRefetch }) {
+  // Gasto y abono se registran AQUÍ MISMO (modales compartidos, F4): registrar rápido sin navegar.
+  const [gastoAbierto, setGastoAbierto] = useState(false)
+  const [abonoAbierto, setAbonoAbierto] = useState(false)
   const actions = [
-    { label: 'Nueva venta', icon: Plus, tone: 'primary', to: '/ventas' },
-    { label: 'Gasto', icon: Receipt, tone: 'warning', to: '/gastos' },
-    { label: 'Cliente', icon: Search, tone: 'info', to: '/clientes' },
-    { label: 'Inventario', icon: Package, tone: 'success', to: '/inventario' },
+    { label: 'Nueva venta', icon: Plus, tone: 'primary', run: () => navigate('/ventas') },
+    { label: 'Gasto', icon: Receipt, tone: 'warning', run: () => setGastoAbierto(true) },
+    { label: 'Abono a proveedor', icon: Banknote, tone: 'info', run: () => setAbonoAbierto(true) },
+    { label: 'Pedido a proveedor', icon: PackageSearch, tone: 'success', run: () => navigate('/pedidos-proveedor') },
   ]
   const toneStyles = {
     primary: { color: 'hsl(var(--accent))', bg: 'bg-primary/10' },
@@ -512,7 +597,7 @@ function QuickActions({ navigate }) {
           const t = toneStyles[a.tone]
           const Icon = a.icon
           return (
-            <button key={a.label} onClick={() => navigate(a.to)}
+            <button key={a.label} onClick={a.run}
               className="group flex items-center gap-2.5 p-3 rounded-md border border-border bg-surface hover:border-primary/40 hover:bg-primary/[0.03] transition-colors text-left">
               <span className={cn('grid place-items-center rounded-md size-8 shrink-0', t.bg)} style={{ color: t.color }}>
                 <Icon className="size-4" />
@@ -522,6 +607,8 @@ function QuickActions({ navigate }) {
           )
         })}
       </div>
+      <ModalGastoRapido abierto={gastoAbierto} onCerrar={() => setGastoAbierto(false)} onRegistrado={onRefetch} />
+      <ModalAbonoProveedor abierto={abonoAbierto} onCerrar={() => setAbonoAbierto(false)} onRegistrado={onRefetch} />
     </Card>
   )
 }

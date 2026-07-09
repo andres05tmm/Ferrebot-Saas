@@ -74,7 +74,7 @@ describe('TabProveedores', () => {
     expect(await screen.findByText(/vence 2026-07-05/)).toBeTruthy()
   })
 
-  it('registrar abono postea el shape correcto y el saldo se actualiza', async () => {
+  it('registrar abono vía el modal COMPARTIDO postea el shape y el saldo se actualiza', async () => {
     let pendiente = '100000.00'
     const factura = () => ({ id: 'A', proveedor: 'X', total: '100000.00', pagado: '0.00', pendiente, estado: 'pendiente', foto_url: null })
     const fetchMock = vi.fn((url, opts) => {
@@ -92,9 +92,11 @@ describe('TabProveedores', () => {
 
     expect(await screen.findByText('$100.000')).toBeInTheDocument()   // pendiente inicial
 
-    fireEvent.change(screen.getByLabelText('Factura a abonar'), { target: { value: 'A' } })
+    // El abono va por ModalAbonoProveedor (F4): el MISMO modal del cockpit /hoy.
+    fireEvent.click(screen.getByRole('button', { name: /Nuevo abono/ }))
+    fireEvent.change(await screen.findByLabelText('Factura'), { target: { value: 'A' } })
     fireEvent.change(screen.getByLabelText('Monto del abono'), { target: { value: '30000' } })
-    fireEvent.click(screen.getByText('Registrar abono'))
+    fireEvent.click(screen.getByRole('button', { name: 'Registrar abono' }))
 
     await waitFor(() => {
       const call = fetchMock.mock.calls.find(c => String(c[0]).includes('/proveedores/abonos') && c[1]?.method === 'POST')

@@ -170,3 +170,26 @@ class DiaCalendarioLeer(BaseModel):
     total: Decimal
     num_ventas: int
     gastos: Decimal
+
+
+class HoyDashboard(BaseModel):
+    """Agregado del cockpit /hoy (reforma F4): las señales que NO salen de los endpoints del día ya
+    existentes — utilidad estimada (solo admin: None para vendedor), alertas de pedidos a proveedor,
+    vencimientos de CxP, cartera de fiados y el avance del inventario progresivo."""
+
+    fecha: date
+    caja_abierta: bool
+    ingresos_hoy: Decimal
+    gastos_hoy: Decimal
+    utilidad_estimada: Decimal | None = None   # ventas − costo − gastos del día; solo admin
+    pedidos_en_camino: int
+    pedidos_demorados: int
+    pedido_mas_viejo_horas: float | None
+    cxp_vencidas: int
+    cxp_monto_vencido: Decimal
+    cxp_por_vencer_7d: int
+    cxp_monto_por_vencer: Decimal
+    fiados_total: Decimal
+    productos_activos: int
+    productos_cuadrados: int
+    stock_bajo_confiables: int

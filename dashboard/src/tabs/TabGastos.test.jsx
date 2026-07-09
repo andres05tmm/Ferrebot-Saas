@@ -28,19 +28,22 @@ beforeEach(() => { localStorage.clear() })
 afterEach(() => { cleanup(); vi.restoreAllMocks() })
 
 describe('TabGastos', () => {
-  it('lista gastos del día y registra uno (POST con shape + Idempotency-Key)', async () => {
+  it('lista gastos del día y registra uno vía el modal COMPARTIDO (POST + Idempotency-Key)', async () => {
     const fetchMock = instalarFetch()
     render(<MemoryRouter><TabGastos /></MemoryRouter>)
     expect(await screen.findByText('Taxi')).toBeInTheDocument()
 
-    fireEvent.change(screen.getByLabelText('Monto'), { target: { value: '8000' } })
-    fireEvent.click(screen.getByText('Registrar'))
+    // El registro va por ModalGastoRapido (F4): el MISMO modal del cockpit /hoy.
+    fireEvent.click(screen.getByRole('button', { name: /Nuevo gasto/ }))
+    fireEvent.change(await screen.findByLabelText('Monto'), { target: { value: '8000' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Transporte' }))
+    fireEvent.click(screen.getByRole('button', { name: /^Registrar gasto$/ }))
 
     await waitFor(() => {
       expect(fetchMock.mock.calls.some(c => String(c[0]).includes('/gastos') && c[1]?.method === 'POST')).toBe(true)
     })
     const call = fetchMock.mock.calls.find(c => String(c[0]).includes('/gastos') && c[1]?.method === 'POST')
-    expect(call[1].headers.get('Idempotency-Key')).toBeTruthy()
+    expect(new Headers(call[1].headers).get('Idempotency-Key')).toBeTruthy()
     expect(JSON.parse(call[1].body)).toMatchObject({ categoria: 'transporte', monto: 8000 })
   })
 

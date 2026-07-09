@@ -25,6 +25,8 @@ OPCIONALES: frozenset[str] = frozenset({
     "multi_vendedor", "pack_agenda", "pack_faq", "pack_cobranza", "pack_pedidos", "pack_ventas",
     "pack_reservas", "pack_postventa", "pack_pagar", "canal_whatsapp", "pagos_online",
     "conciliacion_bancaria",
+    # Pedidos a proveedor con lead time (reforma dashboard F2): la orden antes de la mercancía.
+    "pedidos_proveedor",
     # Contable C (ADR 0027): retenciones/INC editables por tenant + libros auxiliar/mayor. Opt-in,
     # sin dependencias duras (un negocio puede retener sin FE; los libros derivan de datos existentes).
     "retenciones", "libros_contables",
@@ -129,6 +131,9 @@ DEPENDENCIAS: dict[str, frozenset[str]] = {
     # calcula sobre la compra. Las compras viven tras `inventario` (registry: el pack inventario agrupa
     # compras/proveedores), así que el reporte de resbalos requiere esa superficie.
     "resbalos": frozenset({"inventario"}),
+    # Pedidos a proveedor (F2): al recibir crea la compra (ENTRADA + costo) — vive sobre la
+    # superficie de compras/inventario, igual que pack_pagar.
+    "pedidos_proveedor": frozenset({"inventario"}),
 }
 
 

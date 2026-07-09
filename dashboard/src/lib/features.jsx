@@ -76,6 +76,7 @@ export const RUTA_FEATURE = {
   '/gastos': 'caja',
   '/inventario': 'inventario',
   '/compras': 'inventario',
+  '/pedidos-proveedor': 'pedidos_proveedor',
   '/proveedores': 'inventario',
   '/kardex': 'inventario',
   '/devoluciones': 'ventas',

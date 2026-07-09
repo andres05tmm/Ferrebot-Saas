@@ -16,6 +16,8 @@ from modules.compras.errors import IdempotenciaConflicto
 from modules.compras.repository import SqlComprasRepository
 from modules.compras.schemas import AnalisisPrecioProveedor, CompraCrear, CompraLeer
 from modules.compras.service import ComprasService, RetencionesAplicador
+from modules.proveedores.errors import FacturaProveedorDuplicada
+from modules.proveedores.repository import SqlProveedoresRepository
 from modules.retenciones.repository import SqlRetencionesRepository
 from modules.retenciones.service import RetencionesService
 
@@ -38,6 +40,9 @@ def _service(
     return ComprasService(
         SqlComprasRepository(session),
         retenciones=_aplicador_retenciones(session, capacidades),
+        # Puente compra→CxP (reforma dashboard F2): una compra `a_credito` da de alta su deuda en
+        # `facturas_proveedores` en la misma transacción (misma sesión del tenant).
+        proveedores=SqlProveedoresRepository(session),
     )
 
 
@@ -60,7 +65,7 @@ async def crear_compra(
         payload = payload.model_copy(update={"idempotency_key": idempotency_key})
     try:
         resultado = await _service(session, capacidades).registrar(payload, usuario_id=user.user_id)
-    except IdempotenciaConflicto as exc:
+    except (IdempotenciaConflicto, FacturaProveedorDuplicada) as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
     if resultado.replay:
         response.status_code = status.HTTP_200_OK  # idempotencia: ya existía

@@ -7,6 +7,7 @@ lock de la fila de inventario → movimiento AJUSTE → actualización de stock 
 from dataclasses import dataclass
 from decimal import Decimal
 
+from core.config.timezone import now_co
 from modules.inventario.busqueda import BuscadorProductos, ResultadoBusqueda
 from modules.inventario.errors import (
     AjusteDejaStockNegativo,
@@ -185,6 +186,9 @@ class InventarioService:
         base = actual if actual is not None else Decimal("0")
         delta = cantidad_contada - base
         if delta == 0:
+            # No-op de stock, pero el conteo CONFIRMA el físico: el sello de inventario progresivo
+            # (`cuadrado_at`) se estampa igual — el producto pasa a "inventario confiable".
+            await self._repo.sellar_cuadre(producto_id, fecha=now_co())
             return AjusteResultado(producto_id, Decimal("0"), base, replay=False, movimiento_id=None)
 
         # `nuevo` == cantidad_contada, pero con la escala del stock (NUMERIC 12,3) heredada de `base`.
@@ -193,4 +197,8 @@ class InventarioService:
             producto_id=producto_id, delta=delta, nuevo_stock=nuevo,
             referencia=motivo or "conteo físico", usuario_id=usuario_id, idempotency_key=idempotency_key,
         )
+        # Inventario progresivo: todo conteo físico sella `cuadrado_at` (stock bajo / valor de
+        # inventario solo confían en productos cuadrados). El AJUSTE relativo (`ajustar`) NO sella:
+        # corregir un delta no equivale a haber contado el físico.
+        await self._repo.sellar_cuadre(producto_id, fecha=now_co())
         return AjusteResultado(producto_id, delta, nuevo, replay=False, movimiento_id=movimiento_id)

@@ -10,7 +10,7 @@ import {
   FileText, FileCheck, Calculator, FileCog,
   CalendarDays, Headset, BookText, HandCoins, ChefHat, Banknote,
   CreditCard, FileSpreadsheet, Star, BedDouble, Undo2, Percent, Library, Landmark, Scale,
-  HardHat, Wrench, ClipboardList, TrendingDown, Gauge,
+  HardHat, Wrench, ClipboardList, TrendingDown, Gauge, PackageSearch,
 } from 'lucide-react'
 import { isRouteEnabled } from './lib/features.jsx'
 
@@ -51,6 +51,7 @@ export const ROUTES = [
   { path: '/cartera',             label: 'Cartera',             icon: HandCoins,       group: 'gestion' },
   { path: '/cobros',              label: 'Cobros',              icon: CreditCard,      group: 'gestion' },
   { path: '/compras',             label: 'Compras',             icon: Truck,           group: 'gestion' },
+  { path: '/pedidos-proveedor',   label: 'Pedidos a proveedor', icon: PackageSearch,   group: 'gestion' },
   { path: '/proveedores',         label: 'Proveedores',         icon: Building2,       group: 'gestion' },
   { path: '/cuentas-por-pagar',   label: 'Cuentas por pagar',   icon: Banknote,        group: 'gestion' },
   { path: '/gastos',              label: 'Gastos',              icon: Receipt,         group: 'gestion' },

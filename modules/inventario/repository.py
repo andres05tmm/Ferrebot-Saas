@@ -294,6 +294,19 @@ class SqlInventarioRepository:
         })
         return movimiento.id
 
+    async def sellar_cuadre(self, producto_id: int, *, fecha) -> None:
+        """Sella `inventario.cuadrado_at` (inventario progresivo, 0052): el producto quedó CONTADO
+        físicamente y su stock es confiable. Upsert: un producto sin fila de inventario (nunca movido)
+        nace con stock 0 ya cuadrado."""
+        await self._s.execute(
+            text(
+                "INSERT INTO inventario (producto_id, stock_actual, stock_minimo, cuadrado_at) "
+                "VALUES (:p, 0, 0, :f) "
+                "ON CONFLICT (producto_id) DO UPDATE SET cuadrado_at = :f"
+            ),
+            {"p": producto_id, "f": fecha},
+        )
+
     # ---- Búsqueda (4 capas; implementa BusquedaRepo) ------------------------
     async def buscar_exacta(self, query: str, limite: int) -> list[tuple[int, str]]:
         rows = (

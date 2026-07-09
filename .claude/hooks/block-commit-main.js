@@ -19,6 +19,11 @@ process.stdin.on('end', () => {
   if (!esCommit) return;
   if (cmd.includes('ALLOW_MAIN_COMMIT=1')) return;
 
+  // Comando compuesto que crea la rama ANTES de commitear (git checkout -b X && ... && git commit):
+  // la rama actual todavía es main al evaluar, pero el commit no caerá en main → permitir.
+  const creaRama = cmd.match(/git\s+(checkout\s+-b|switch\s+-c)\b/);
+  if (creaRama && creaRama.index < cmd.search(/git\s+(-[cC]\s+\S+\s+)*commit\b/)) return;
+
   let branch = '';
   try {
     branch = execSync('git rev-parse --abbrev-ref HEAD', {

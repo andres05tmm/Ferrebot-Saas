@@ -6,6 +6,44 @@ on:
     branches: [main]
 
 jobs:
+  # Todo paquete Python top-level debe tener COPY en el Dockerfile: CI corre con el repo entero en
+  # PYTHONPATH y no ve el hueco; prod sí (ModuleNotFoundError de `services/` tras el PR #77).
+  dockerfile-copy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Paquetes top-level vs COPYs del Dockerfile
+        run: python3 tools/ci/check_dockerfile_copy.py
+
+  # El frontend nunca corría en CI: los tests del handoff/gating existían pero nadie los verificaba
+  # en PR (el flujo login→handoff rompió 3 veces con "CI en verde"). Node 20 espeja node:20-slim
+  # del Dockerfile. Incluye el test de contrato landing↔dashboard (handoff.contract.test.js).
+  frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: |
+            dashboard/package-lock.json
+            landing/package-lock.json
+      - name: Dashboard - deps + tests + build
+        working-directory: dashboard
+        run: |
+          npm ci
+          npm run test
+          npm run build
+      - name: Landing - deps + tests + build
+        working-directory: landing
+        run: |
+          npm ci
+          npm run test
+          npm run build
+
   test:
     runs-on: ubuntu-latest
     # La suite completa son ~784 tests que crean BD efímeras + migran (alembic) por test: ~12 min en

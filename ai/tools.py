@@ -58,6 +58,10 @@ class Deps:
     # Cierre fiscal de mostrador (POS electrónico). Opcional: None cuando la plataforma no lo cablea
     # (tests, despliegues sin facturación); el handler de venta lo invoca solo si está presente.
     cierre_pos: CierreVentaPort | None = None
+    # Guard de caja (toggle `caja_obligatoria` del control DB, paridad con POST /ventas del API):
+    # loader por empresa que dice si la venta exige caja abierta. None = guard apagado (default
+    # seguro: tests y despliegues sin el toggle no cambian).
+    caja_obligatoria: Callable[[int], Awaitable[bool]] | None = None
 
 
 # Topes de cordura por campo (rango razonable de mostrador). Defensa además del saneamiento previo
@@ -159,6 +163,21 @@ async def _registrar_venta(args: RegistrarVentaArgs, ctx: Contexto, deps: Deps) 
         )
         for it in args.items
     ]
+    # Guard de caja (paridad con POST /ventas del API): con `caja_obligatoria` ON y sin caja abierta
+    # EN LA EMPRESA (modo un-cajón), la venta no se registra — el arqueo del día debe cuadrar desde
+    # la primera venta. Solo si el tenant tiene la capacidad `caja` (default seguro ante misconfig).
+    if (
+        deps.caja_obligatoria is not None
+        and ctx.tiene_capacidad("caja")
+        and await deps.caja_obligatoria(ctx.tenant_id)
+        and await deps.caja.actual(ctx.usuario_id, modo_empresa=True) is None
+    ):
+        return ErrorTool(
+            "caja_no_abierta",
+            "No hay caja abierta. Abre la caja con el efectivo actual (dashboard → Caja) y "
+            "vuelve a intentar la venta.",
+            recuperable=True,
+        )
     datos = VentaCrear(
         metodo_pago=args.metodo_pago,
         cliente_id=args.cliente_id,

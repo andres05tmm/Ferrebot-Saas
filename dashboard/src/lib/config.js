@@ -102,5 +102,8 @@ export async function bootConfig() {
     // Preferencias de UI. `facturar_en_venta` (default true) gobierna si el POS auto-factura cada venta
     // o si ofrece "Sin factura" (venta interna, factura a pedido). Un /config viejo sin el campo → true.
     facturarEnVenta: config.facturar_en_venta !== false,
+    // `caja_obligatoria` (default false) activa el guard de caja del POS: sin caja abierta no se cobra;
+    // el modal de apertura pide el efectivo actual y registra la venta pendiente.
+    cajaObligatoria: config.caja_obligatoria === true,
   }
 }

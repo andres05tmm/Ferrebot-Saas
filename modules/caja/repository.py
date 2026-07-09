@@ -33,6 +33,20 @@ class SqlCajaRepository:
             stmt = stmt.with_for_update()
         return (await self._s.execute(stmt)).scalar_one_or_none()
 
+    async def caja_abierta_empresa(self, *, lock: bool = False) -> Caja | None:
+        """La caja abierta de la EMPRESA (modo un-cajón, `caja_obligatoria`): cualquier caja en estado
+        'abierta' sin importar quién la abrió. Si conviven varias (historial del modo por-usuario),
+        gana la más antigua: es el cajón del día."""
+        stmt = (
+            select(Caja)
+            .where(Caja.estado == "abierta")
+            .order_by(Caja.fecha_apertura, Caja.id)
+            .limit(1)
+        )
+        if lock:
+            stmt = stmt.with_for_update()
+        return (await self._s.execute(stmt)).scalars().first()
+
     async def crear_caja(self, *, usuario_id: int, saldo_inicial: Decimal, fecha: datetime) -> Caja:
         caja = Caja(
             usuario_id=usuario_id, fecha_apertura=fecha, saldo_inicial=saldo_inicial,
@@ -45,15 +59,22 @@ class SqlCajaRepository:
         })
         return caja
 
-    async def agregados(self, caja: Caja, *, hasta: datetime) -> AgregadosCaja:
+    async def agregados(
+        self, caja: Caja, *, hasta: datetime, todos_vendedores: bool = False
+    ) -> AgregadosCaja:
+        """Componentes del arqueo. Con `todos_vendedores` (modo un-cajón por empresa) el efectivo
+        suma las ventas de TODOS los vendedores en la ventana de la caja: el cajón físico es uno solo
+        y recibe el efectivo de cualquiera que venda."""
+        filtro_vendedor = "" if todos_vendedores else "vendedor_id = :uid AND "
         ventas_efectivo = (
             await self._s.execute(
                 text(
                     "SELECT COALESCE(SUM(total), 0) FROM ventas "
-                    "WHERE vendedor_id = :uid AND metodo_pago = 'efectivo' AND estado = 'completada' "
+                    f"WHERE {filtro_vendedor}metodo_pago = 'efectivo' AND estado = 'completada' "
                     "AND fecha >= :apertura AND fecha <= :hasta"
                 ),
-                {"uid": caja.usuario_id, "apertura": caja.fecha_apertura, "hasta": hasta},
+                {"apertura": caja.fecha_apertura, "hasta": hasta}
+                | ({} if todos_vendedores else {"uid": caja.usuario_id}),
             )
         ).scalar_one()
         ingresos = await self._suma_movimientos(caja.id, "ingreso")

@@ -43,6 +43,7 @@ from core.tenancy.cache import control_cache
 from core.tenancy.config_empresa import cargar_rubro
 from core.tenancy.context import ResolvedTenant
 from core.tenancy.control_repo import resolve_tenant_by_slug
+from modules.caja.config import cargar_caja_obligatoria
 from modules.caja.repository import SqlCajaRepository
 from modules.caja.service import CajaService
 from modules.clientes.repository import SqlClientesRepository
@@ -131,6 +132,18 @@ class RubroControl:
             return await cargar_rubro(s, empresa_id)
 
 
+class CajaObligatoriaControl:
+    """Toggle `caja_obligatoria` (guard de caja del POS) por empresa, per-call sobre el control DB
+    (mismo patrón que RubroControl). Lo consume el handler `registrar_venta` del bot vía `Deps`."""
+
+    def __init__(self, abrir_control: ControlSession) -> None:
+        self._abrir = abrir_control
+
+    async def activa(self, empresa_id: int) -> bool:
+        async with self._abrir() as s:
+            return await cargar_caja_obligatoria(s, empresa_id)
+
+
 class ConfigControl:
     """Satisface `core.llm.factory.ConfigStore`. Por llamada: `ControlLLMConfigStore(s).overrides(eid)`."""
 
@@ -169,7 +182,9 @@ def _crear_cargar(
 
 
 def _crear_recursos_factory(
-    config: ConfigControl, resolver_vision: ResolverVision
+    config: ConfigControl,
+    resolver_vision: ResolverVision,
+    caja_obligatoria: CajaObligatoriaControl | None = None,
 ) -> Callable[[AsyncSession], Recursos]:
     """Devuelve `crear_recursos(session)` → `Recursos` FRESCO por turno (servicios atados a esa sesión).
     Los umbrales salen del control (config_empresa), NO de la sesión del tenant.
@@ -197,6 +212,8 @@ def _crear_recursos_factory(
             # Cierre fiscal de mostrador (ADR 0012 D2): atado a la sesión del turno; encola la emisión POS
             # tras commitear (enqueue perezoso por `redis_url`). Inerte si la empresa no tiene el flag.
             cierre_pos=CierrePos(session),
+            # Guard de caja del POS (toggle `caja_obligatoria`, control DB): paridad con el API.
+            caja_obligatoria=(caja_obligatoria.activa if caja_obligatoria is not None else None),
         )
         obra = ObraDeps(
             maquinaria=MaquinariaService(SqlMaquinasRepository(session)),
@@ -317,7 +334,9 @@ def construir_deps(
         dispatcher; reusa la selección por empresa del control DB."""
         return await dispatcher.seleccionar_proveedor(tenant_id, turno=Turno.ORQUESTADOR)
 
-    crear_recursos = _crear_recursos_factory(config, resolver_vision)
+    crear_recursos = _crear_recursos_factory(
+        config, resolver_vision, caja_obligatoria=CajaObligatoriaControl(abrir_control)
+    )
     # Gobierno de agentes (ADR 0024): compuertas Redis (rate-limit + presupuesto) por empresa. Inerte
     # mientras los límites de plataforma sean 0 y la empresa no los active en config_empresa (opt-in).
     gobierno = Gobierno(

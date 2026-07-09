@@ -89,6 +89,18 @@ class ArqueoLeer(BaseModel):
     saldo_esperado: Decimal = Decimal(0)
 
 
+class EstadoCajaLeer(BaseModel):
+    """Estado liviano para el guard del POS (`GET /caja/estado`): ¿se puede cobrar ya?
+
+    En modo empresa (`caja_obligatoria`) refleja LA caja abierta de la empresa (sin importar quién la
+    abrió); si no, la del usuario del request. Siempre 200: `abierta=false` es un estado, no un error."""
+
+    abierta: bool
+    caja_id: int | None = None
+    saldo_inicial: Decimal | None = None
+    fecha_apertura: datetime | None = None
+
+
 class MovimientoLeer(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

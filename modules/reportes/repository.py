@@ -7,10 +7,10 @@ calcula derivados (ticket promedio) y arma el contrato de salida.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 
-from sqlalchemy import case as sa_case, func, select
+from sqlalchemy import case as sa_case, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules.caja.models import CajaMovimiento, Gasto
@@ -18,7 +18,7 @@ from modules.compras_fiscal.models import CompraFiscal
 from modules.fiados.models import FiadoMovimiento
 from modules.inventario.models import MovimientoInventario, Producto
 from modules.proveedores.models import AbonoProveedor, FacturaProveedor
-from modules.ventas.models import Venta, VentaDetalle
+from modules.ventas.models import Venta, VentaDetalle, VentaPago
 
 
 @dataclass(frozen=True, slots=True)
@@ -113,6 +113,34 @@ class DiaCalendario:
     gastos: Decimal
 
 
+@dataclass(frozen=True, slots=True)
+class EstadoPedidosProveedor:
+    """Pedidos a proveedor EN CAMINO para las alertas del cockpit /hoy."""
+
+    en_camino: int
+    demorados: int          # pasaron la fecha estimada o el promedio histórico del proveedor
+    mas_viejo_horas: float | None
+
+
+@dataclass(frozen=True, slots=True)
+class VencimientosCxP:
+    """Cuentas por pagar con vencimiento explícito: vencidas y por vencer en 7 días."""
+
+    vencidas: int
+    monto_vencido: Decimal
+    por_vencer_7d: int
+    monto_por_vencer: Decimal
+
+
+@dataclass(frozen=True, slots=True)
+class InventarioConfiable:
+    """Avance del inventario progresivo: productos activos vs cuadrados, y stock bajo CONFIABLE."""
+
+    productos_activos: int
+    productos_cuadrados: int
+    stock_bajo_confiables: int
+
+
 class SqlReportesRepository:
     def __init__(self, session: AsyncSession) -> None:
         self._s = session
@@ -141,9 +169,39 @@ class SqlReportesRepository:
         por_metodo = {fila.metodo_pago: Decimal(fila.total) for fila in filas}
         num_ventas = sum(fila.num for fila in filas)
         total_vendido = sum((Decimal(fila.total) for fila in filas), Decimal("0"))
+        await self._expandir_mixtas(por_metodo, inicio=inicio, fin=fin, vendedor_id=vendedor_id)
         return AgregadoDia(
             num_ventas=num_ventas, total_vendido=total_vendido, por_metodo_pago=por_metodo
         )
+
+    async def _expandir_mixtas(
+        self, por_metodo: dict[str, Decimal], *,
+        inicio: datetime, fin: datetime, vendedor_id: int | None = None,
+    ) -> None:
+        """Reemplaza el agregado 'mixto' por sus partes reales (`ventas_pagos`, F5/0053), in place.
+
+        En un desglose de DINERO nada puede aparecer como "mixto": la plata entró por métodos
+        concretos (efectivo + transferencia, p. ej.) y cada porción suma a su método. `num_ventas`
+        y el total no cambian: la mixta sigue siendo UNA venta con UN total.
+        """
+        if por_metodo.pop("mixto", None) is None:
+            return
+        condiciones = [
+            Venta.estado == "completada",
+            Venta.fecha >= inicio,
+            Venta.fecha <= fin,
+            Venta.metodo_pago == "mixto",
+        ]
+        if vendedor_id is not None:
+            condiciones.append(Venta.vendedor_id == vendedor_id)
+        stmt = (
+            select(VentaPago.metodo, func.coalesce(func.sum(VentaPago.monto), 0).label("total"))
+            .join(Venta, Venta.id == VentaPago.venta_id)
+            .where(*condiciones)
+            .group_by(VentaPago.metodo)
+        )
+        for fila in (await self._s.execute(stmt)).all():
+            por_metodo[fila.metodo] = por_metodo.get(fila.metodo, Decimal("0")) + Decimal(fila.total)
 
     async def serie_ventas(
         self, *, inicio: datetime, fin: datetime, vendedor_id: int | None
@@ -291,6 +349,9 @@ class SqlReportesRepository:
         ).all()
         por_metodo = {f.metodo_pago: Decimal(f.total) for f in filas_ventas}
         ventas_fiado = por_metodo.pop("fiado", Decimal("0"))
+        # Las mixtas entran al flujo por sus partes reales (efectivo/transferencia/datafono), nunca
+        # como "mixto" (F5/0053).
+        await self._expandir_mixtas(por_metodo, inicio=inicio, fin=fin)
 
         abonos_fiados = Decimal(
             (
@@ -537,6 +598,107 @@ class SqlReportesRepository:
             if d not in por_dia:
                 por_dia[d] = DiaCalendario(fecha=d, total=Decimal("0"), num_ventas=0, gastos=g)
         return sorted(por_dia.values(), key=lambda x: x.fecha)
+
+    async def estado_pedidos_proveedor(
+        self, *, hoy: date, ahora: datetime
+    ) -> EstadoPedidosProveedor:
+        """Pedidos en camino + demorados. MISMO criterio que el cron F6 (`procesar_avisos_demorados`):
+        con `fecha_estimada` la promesa del proveedor GANA (demorado solo si ya pasó); sin fecha, la
+        vara es el promedio histórico; sin promesa ni historial no cuenta como demorado."""
+        fila = (
+            await self._s.execute(
+                text(
+                    "WITH prom AS ("
+                    "  SELECT proveedor_id, "
+                    "         AVG(EXTRACT(EPOCH FROM (fecha_recepcion - fecha_pedido)) / 3600.0) AS h "
+                    "  FROM pedidos_proveedor WHERE estado = 'recibido' GROUP BY proveedor_id) "
+                    "SELECT COUNT(*) AS en_camino, "
+                    "  COUNT(*) FILTER (WHERE "
+                    "    (pp.fecha_estimada IS NOT NULL AND pp.fecha_estimada < :hoy) "
+                    "    OR (pp.fecha_estimada IS NULL AND prom.h IS NOT NULL AND "
+                    "        EXTRACT(EPOCH FROM (CAST(:ahora AS timestamptz) - pp.fecha_pedido)) / 3600.0 > prom.h)"
+                    "  ) AS demorados, "
+                    "  MIN(pp.fecha_pedido) AS mas_viejo "
+                    "FROM pedidos_proveedor pp "
+                    "LEFT JOIN prom ON prom.proveedor_id = pp.proveedor_id "
+                    "WHERE pp.estado = 'pedido'"
+                ),
+                {"hoy": hoy, "ahora": ahora},
+            )
+        ).one()
+        mas_viejo_horas = (
+            round((ahora - fila.mas_viejo).total_seconds() / 3600.0, 2)
+            if fila.mas_viejo is not None else None
+        )
+        return EstadoPedidosProveedor(
+            en_camino=int(fila.en_camino), demorados=int(fila.demorados),
+            mas_viejo_horas=mas_viejo_horas,
+        )
+
+    async def vencimientos_cxp(self, *, hoy: date) -> VencimientosCxP:
+        """CxP con `fecha_vencimiento` explícita: vencidas y por vencer en 7 días (pendiente > 0)."""
+        limite = hoy + timedelta(days=7)
+        fila = (
+            await self._s.execute(
+                select(
+                    func.count().filter(FacturaProveedor.fecha_vencimiento < hoy).label("venc"),
+                    func.coalesce(func.sum(FacturaProveedor.pendiente).filter(
+                        FacturaProveedor.fecha_vencimiento < hoy
+                    ), 0).label("monto_venc"),
+                    func.count().filter(
+                        FacturaProveedor.fecha_vencimiento >= hoy,
+                        FacturaProveedor.fecha_vencimiento <= limite,
+                    ).label("prox"),
+                    func.coalesce(func.sum(FacturaProveedor.pendiente).filter(
+                        FacturaProveedor.fecha_vencimiento >= hoy,
+                        FacturaProveedor.fecha_vencimiento <= limite,
+                    ), 0).label("monto_prox"),
+                ).where(
+                    FacturaProveedor.pendiente > 0,
+                    FacturaProveedor.fecha_vencimiento.is_not(None),
+                )
+            )
+        ).one()
+        return VencimientosCxP(
+            vencidas=int(fila.venc), monto_vencido=Decimal(fila.monto_venc),
+            por_vencer_7d=int(fila.prox), monto_por_vencer=Decimal(fila.monto_prox),
+        )
+
+    async def total_fiado(self) -> Decimal:
+        """Cartera de fiados viva (Σ saldo > 0): plata de la ferretería en la calle."""
+        total = (
+            await self._s.execute(
+                text("SELECT COALESCE(SUM(saldo), 0) FROM fiados WHERE saldo > 0")
+            )
+        ).scalar_one()
+        return Decimal(total)
+
+    async def inventario_confiable(self) -> InventarioConfiable:
+        """Avance del inventario progresivo (0052): cuántos productos activos ya se cuadraron y el
+        stock bajo SOLO entre confiables (los no cuadrados en negativo no son alerta, son backlog)."""
+        fila = (
+            await self._s.execute(
+                text(
+                    "SELECT COUNT(*) FILTER (WHERE p.activo) AS activos, "
+                    "  COUNT(*) FILTER (WHERE p.activo AND i.cuadrado_at IS NOT NULL) AS cuadrados, "
+                    "  COUNT(*) FILTER (WHERE p.activo AND i.cuadrado_at IS NOT NULL "
+                    "                   AND i.stock_actual < i.stock_minimo) AS bajo "
+                    "FROM productos p LEFT JOIN inventario i ON i.producto_id = p.id"
+                )
+            )
+        ).one()
+        return InventarioConfiable(
+            productos_activos=int(fila.activos), productos_cuadrados=int(fila.cuadrados),
+            stock_bajo_confiables=int(fila.bajo),
+        )
+
+    async def caja_abierta_empresa(self) -> bool:
+        """¿Hay ALGUNA caja abierta en la empresa? (alerta 'abre la caja' del cockpit)."""
+        return (
+            await self._s.execute(
+                text("SELECT 1 FROM caja WHERE estado = 'abierta' LIMIT 1")
+            )
+        ).scalar_one_or_none() is not None
 
     async def top_productos(
         self, *, inicio: datetime, fin: datetime, vendedor_id: int | None, limite: int

@@ -170,20 +170,45 @@ function CierreForm({ esperado, onDone }) {
   const [enviando, setEnviando] = useState(false)
   const dif = contado === '' ? null : Number(contado) - esperado   // contado − esperado
 
+  async function cerrarCaja(n) {
+    const res = await api('/caja/cierre', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ saldo_contado: n }),
+    })
+    if (!res.ok) { toast.error('No se pudo cerrar la caja'); return false }
+    const data = await res.json()
+    toast.success(`Caja cerrada · diferencia ${cop(Number(data.diferencia ?? 0))}`)
+    setContado(''); onDone()
+    return true
+  }
+
   async function cerrar() {
     const n = Number(contado)
     if (Number.isNaN(n) || n < 0) { toast.error('Indica el saldo contado'); return }
     setEnviando(true)
+    try { await cerrarCaja(n) }
+    catch { toast.error('Error de conexión') } finally { setEnviando(false) }
+  }
+
+  // Cuadre en un clic (F5): con SOBRANTE, la plata de más se registra como venta varia en efectivo
+  // ("Sobrante cierre de caja") y se cierra — el esperado sube hasta el contado y el cierre queda en
+  // $0 de diferencia, con el dinero contabilizado como ingreso real (no como descuadre). Con
+  // faltante no hay atajo: la diferencia negativa se persiste tal cual en el cierre normal.
+  async function registrarSobranteYCerrar() {
+    const n = Number(contado)
+    if (dif == null || dif <= 0) return
+    setEnviando(true)
     try {
-      const res = await api('/caja/cierre', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ saldo_contado: n }),
+      const res = await api('/ventas', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Idempotency-Key': nuevaKey() },
+        body: JSON.stringify({
+          metodo_pago: 'efectivo', origen: 'web',
+          lineas: [{ descripcion: 'Sobrante cierre de caja', cantidad: 1, precio_unitario: dif }],
+        }),
       })
-      if (res.ok) {
-        const data = await res.json()
-        toast.success(`Caja cerrada · diferencia ${cop(Number(data.diferencia ?? 0))}`)
-        setContado(''); onDone()
-      } else toast.error('No se pudo cerrar la caja')
+      if (!res.ok) { toast.error('No se pudo registrar el sobrante como venta'); return }
+      await cerrarCaja(n)
     } catch { toast.error('Error de conexión') } finally { setEnviando(false) }
   }
 
@@ -207,6 +232,12 @@ function CierreForm({ esperado, onDone }) {
           </span>
           {dif < 0 ? ' (faltante)' : dif > 0 ? ' (sobrante)' : ' (cuadra)'}
         </p>
+      )}
+      {dif !== null && dif > 0 && (
+        <Button onClick={registrarSobranteYCerrar} disabled={enviando} className="w-full gap-1.5">
+          <Coins className="size-4" />
+          {enviando ? 'Cerrando…' : `Registrar sobrante (${cop(dif)}) como venta y cerrar`}
+        </Button>
       )}
     </div>
   )

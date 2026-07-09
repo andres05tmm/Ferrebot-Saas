@@ -66,6 +66,9 @@ class SqlCajaRepository:
         suma las ventas de TODOS los vendedores en la ventana de la caja: el cajón físico es uno solo
         y recibe el efectivo de cualquiera que venda."""
         filtro_vendedor = "" if todos_vendedores else "vendedor_id = :uid AND "
+        params = {"apertura": caja.fecha_apertura, "hasta": hasta} | (
+            {} if todos_vendedores else {"uid": caja.usuario_id}
+        )
         ventas_efectivo = (
             await self._s.execute(
                 text(
@@ -73,14 +76,28 @@ class SqlCajaRepository:
                     f"WHERE {filtro_vendedor}metodo_pago = 'efectivo' AND estado = 'completada' "
                     "AND fecha >= :apertura AND fecha <= :hasta"
                 ),
-                {"apertura": caja.fecha_apertura, "hasta": hasta}
-                | ({} if todos_vendedores else {"uid": caja.usuario_id}),
+                params,
+            )
+        ).scalar_one()
+        # Ventas MIXTAS (F5/0053): el cajón físico solo recibe SU porción efectivo (ventas_pagos),
+        # nunca el total de la venta.
+        filtro_vendedor_v = "" if todos_vendedores else "v.vendedor_id = :uid AND "
+        efectivo_mixtas = (
+            await self._s.execute(
+                text(
+                    "SELECT COALESCE(SUM(vp.monto), 0) "
+                    "FROM ventas_pagos vp JOIN ventas v ON v.id = vp.venta_id "
+                    f"WHERE {filtro_vendedor_v}vp.metodo = 'efectivo' AND v.metodo_pago = 'mixto' "
+                    "AND v.estado = 'completada' AND v.fecha >= :apertura AND v.fecha <= :hasta"
+                ),
+                params,
             )
         ).scalar_one()
         ingresos = await self._suma_movimientos(caja.id, "ingreso")
         egresos = await self._suma_movimientos(caja.id, "egreso")
         return AgregadosCaja(
-            ventas_efectivo=Decimal(ventas_efectivo), ingresos=ingresos, egresos=egresos
+            ventas_efectivo=Decimal(ventas_efectivo) + Decimal(efectivo_mixtas),
+            ingresos=ingresos, egresos=egresos,
         )
 
     async def _suma_movimientos(self, caja_id: int, tipo: str) -> Decimal:

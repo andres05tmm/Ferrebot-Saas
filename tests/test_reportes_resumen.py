@@ -42,6 +42,65 @@ def _cliente(app: FastAPI) -> httpx.AsyncClient:
     return httpx.AsyncClient(transport=transport, base_url="http://t")
 
 
+async def test_hoy_dashboard_vendedor_sin_utilidad_admin_con_ella():
+    """RBAC del cockpit /hoy (F4): la utilidad estimada es un monto sensible del negocio completo —
+    el vendedor recibe la MISMA respuesta pero con `utilidad_estimada` en None; el admin la ve."""
+    from core.auth.features import get_capacidades
+    from modules.reportes.repository import (
+        AgregadoResultados,
+        EstadoPedidosProveedor,
+        InventarioConfiable,
+        VencimientosCxP,
+    )
+    from modules.reportes.router import hoy_cache
+
+    class _FakeHoyRepo:
+        async def estado_resultados(self, *, inicio, fin):
+            return AgregadoResultados(
+                ingresos=Decimal("30000"), costo_ventas=Decimal("12000"), gastos=Decimal("3000"),
+            )
+
+        async def estado_pedidos_proveedor(self, *, hoy, ahora):
+            return EstadoPedidosProveedor(en_camino=1, demorados=0, mas_viejo_horas=4.0)
+
+        async def vencimientos_cxp(self, *, hoy):
+            return VencimientosCxP(
+                vencidas=0, monto_vencido=Decimal("0"),
+                por_vencer_7d=0, monto_por_vencer=Decimal("0"),
+            )
+
+        async def total_fiado(self):
+            return Decimal("10000")
+
+        async def inventario_confiable(self):
+            return InventarioConfiable(
+                productos_activos=3, productos_cuadrados=1, stock_bajo_confiables=0,
+            )
+
+        async def caja_abierta_empresa(self):
+            return True
+
+    hoy_cache.clear()
+    repo = _FakeHoyRepo()
+
+    app_v = _app(repo, rol="vendedor", user_id=5)
+    app_v.dependency_overrides[get_capacidades] = lambda: frozenset({"ventas"})
+    async with _cliente(app_v) as c:
+        r = await c.get("/api/v1/reportes/hoy-dashboard")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["utilidad_estimada"] is None                 # monto sensible: fuera para el vendedor
+    assert body["fiados_total"] == "10000"
+    assert body["caja_abierta"] is True
+
+    app_a = _app(repo, rol="admin", user_id=1)
+    app_a.dependency_overrides[get_capacidades] = lambda: frozenset({"ventas"})
+    async with _cliente(app_a) as c:
+        r = await c.get("/api/v1/reportes/hoy-dashboard")
+    assert r.status_code == 200, r.text
+    assert r.json()["utilidad_estimada"] == "15000"          # 30.000 − 12.000 − 3.000
+
+
 async def test_resumen_agrega_y_calcula_ticket():
     agg = AgregadoDia(
         num_ventas=3, total_vendido=Decimal("30000.00"),

@@ -25,7 +25,7 @@
 | `mov_inventario_tipo` | ENTRADA, SALIDA, AJUSTE, DEVOLUCION |
 | `venta_estado` | completada, anulada |
 | `venta_origen` | web, bot, voz, offline |
-| `metodo_pago` | efectivo, transferencia, tarjeta, nequi, daviplata, fiado |
+| `metodo_pago` | efectivo, transferencia, tarjeta, nequi, daviplata, fiado, datafono (0007), mixto (0053) |
 | `caja_estado` | abierta, cerrada |
 | `caja_mov_tipo` | ingreso, egreso |
 | `gasto_categoria` | transporte, papeleria, servicios, nomina, mantenimiento, otros |
@@ -235,6 +235,17 @@
 | cantidad | NUMERIC(12,3) | NOT NULL |
 | precio_unitario | NUMERIC(12,2) | NOT NULL |
 | iva | SMALLINT | NOT NULL |
+
+**ventas_pagos** (0053 — partes del cobro de una venta MIXTA; solo `metodo_pago='mixto'` escribe filas)
+| Columna | Tipo | Restricciones / nota |
+|---|---|---|
+| id | BIGSERIAL | PK |
+| venta_id | BIGINT | FK ventas(id) ON DELETE CASCADE, NOT NULL |
+| metodo | metodo_pago | NOT NULL (efectivo/transferencia/datafono; `fiado` NO participa v1) |
+| monto | NUMERIC(12,2) | NOT NULL (la suma de las partes == total de la venta; lo valida el servicio) |
+
+Índice: `(venta_id)`. Consumidores: el arqueo suma la porción EFECTIVO de las mixtas y los reportes
+por método expanden la mixta en sus partes (nada aparece como "mixto" en desgloses de dinero).
 
 **historico_ventas** (rollup diario para reportes/balances; NO se deriva en la migración)
 | Columna | Tipo | Restricciones / nota |

@@ -1,13 +1,14 @@
 /*
  * TabProveedores — cuentas por pagar a proveedor (Fase 12, Slice 4b). SOLO admin.
- * Resumen del total adeudado + lista de facturas con saldo; registrar factura y abono (recalcula el
- * saldo); subir foto de soporte SOLO si Cloudinary está disponible (si el endpoint da 503, se oculta el
+ * Resumen del total adeudado + lista de facturas con saldo; registrar factura inline; el ABONO va
+ * por el modal COMPARTIDO `ModalAbonoProveedor` (F4: el mismo del cockpit /hoy — un solo lugar con
+ * el POST y sus mensajes). Foto de soporte SOLO si Cloudinary está disponible (503 → se oculta el
  * control con un aviso). Datos por api.js. Live: re-fetch ante 'reconnected'.
  */
 import { useState } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import { toast } from 'sonner'
-import { Building2, ImagePlus, Receipt } from 'lucide-react'
+import { Banknote, Building2, ImagePlus, Receipt } from 'lucide-react'
 import { api } from '@/lib/api'
 import { useFetch, cop } from '@/components/shared.jsx'
 import { useRealtimeEvent } from '@/components/RealtimeProvider.jsx'
@@ -15,6 +16,8 @@ import { useAuth } from '@/hooks/useAuth.js'
 import { Card } from '@/components/ui/card.jsx'
 import { Input } from '@/components/ui/input.jsx'
 import { Badge } from '@/components/ui/badge.jsx'
+import { Button } from '@/components/ui/button.jsx'
+import ModalAbonoProveedor from '@/components/ModalAbonoProveedor.jsx'
 
 const ESTADO_BADGE = {
   pendiente: 'bg-warning/10 text-warning border-warning/20',
@@ -41,6 +44,7 @@ function ProveedoresContenido() {
 
   // Disponibilidad de fotos: optimista; si una subida responde 503, se apaga con aviso.
   const [fotosDisponibles, setFotosDisponibles] = useState(true)
+  const [abonoAbierto, setAbonoAbierto] = useState(false)
 
   const facturas = Array.isArray(facturasQ.data) ? facturasQ.data : []
   const resumen = resumenQ.data || { total_adeudado: 0, facturas_pendientes: 0 }
@@ -75,7 +79,11 @@ function ProveedoresContenido() {
         </Card>
 
         <RegistrarFactura onCreada={recargar} />
-        <RegistrarAbono facturas={facturas} onAbonado={recargar} />
+        <Button variant="outline" onClick={() => setAbonoAbierto(true)} className="w-full h-10 gap-1.5">
+          <Banknote className="size-4" /> Nuevo abono
+        </Button>
+        <ModalAbonoProveedor abierto={abonoAbierto} onCerrar={() => setAbonoAbierto(false)}
+          onRegistrado={recargar} />
       </div>
 
       <Card className="p-0 overflow-hidden">
@@ -182,51 +190,3 @@ function RegistrarFactura({ onCreada }) {
   )
 }
 
-function RegistrarAbono({ facturas, onAbonado }) {
-  const pendientes = facturas.filter(f => f.estado !== 'pagada')
-  const [a, setA] = useState({ factura_id: '', monto: '', fecha: '' })
-  const [enviando, setEnviando] = useState(false)
-  const set = (k) => (e) => setA(prev => ({ ...prev, [k]: e.target.value }))
-
-  async function abonar() {
-    if (!a.factura_id || !(Number(a.monto) > 0)) { toast.error('Elige una factura y un monto válido'); return }
-    const payload = { factura_id: a.factura_id, monto: Number(a.monto) }
-    if (a.fecha) payload.fecha = a.fecha
-    setEnviando(true)
-    try {
-      const res = await api('/proveedores/abonos', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
-      })
-      if (res.status === 422) { toast.error('El abono excede el saldo pendiente'); return }
-      if (res.status === 404) { toast.error('La factura no existe'); return }
-      if (!res.ok) { toast.error('No se pudo registrar el abono'); return }
-      const factura = await res.json()
-      toast.success(`Abono registrado · pendiente ${cop(Number(factura.pendiente))} (${factura.estado})`)
-      setA({ factura_id: '', monto: '', fecha: '' })
-      onAbonado()
-    } catch { toast.error('Error de conexión') } finally { setEnviando(false) }
-  }
-
-  return (
-    <Card className="p-3.5">
-      <h2 className="text-sm font-semibold mb-3">Nuevo abono</h2>
-      <div className="space-y-2">
-        <select value={a.factura_id} onChange={set('factura_id')} aria-label="Factura a abonar"
-          className="h-9 w-full px-2 rounded-md border border-border bg-surface text-sm">
-          <option value="">Elige una factura…</option>
-          {pendientes.map(f => (
-            <option key={f.id} value={f.id}>{f.proveedor} · {f.id} (pendiente {cop(Number(f.pendiente))})</option>
-          ))}
-        </select>
-        <div className="flex gap-2">
-          <Input type="number" value={a.monto} onChange={set('monto')} placeholder="Monto *" aria-label="Monto del abono" className="h-9 flex-1" />
-          <Input type="date" value={a.fecha} onChange={set('fecha')} aria-label="Fecha abono" className="h-9 flex-1" />
-        </div>
-        <button onClick={abonar} disabled={enviando}
-          className="w-full h-10 rounded-md bg-primary text-primary-foreground font-medium hover:bg-primary-hover disabled:opacity-60">
-          {enviando ? 'Guardando…' : 'Registrar abono'}
-        </button>
-      </div>
-    </Card>
-  )
-}

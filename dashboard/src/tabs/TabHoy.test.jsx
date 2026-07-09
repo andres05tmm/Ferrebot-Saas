@@ -31,12 +31,21 @@ const VENTAS = [{
 const STOCK = [{ producto_id: 2, nombre: 'Clavo', stock_actual: '3', stock_minimo: '10', bajo: true }]
 const TOP = [{ producto_id: 7, nombre: 'Cemento', cantidad: '4', ingreso: '24000.00' }]
 const GASTOS = [{ id: 1, categoria: 'transporte', monto: '5000.00', creado_en: '2026-06-05T16:00:00+00:00' }]
+// Agregado del cockpit (F4): utilidad estimada (admin), alertas de pedidos/CxP, fiados, inventario.
+const HOY_DASH = {
+  fecha: '2026-06-05', caja_abierta: false, ingresos_hoy: '30000.00', gastos_hoy: '5000.00',
+  utilidad_estimada: '13000.00', pedidos_en_camino: 2, pedidos_demorados: 1,
+  pedido_mas_viejo_horas: 50.0, cxp_vencidas: 1, cxp_monto_vencido: '9000.00',
+  cxp_por_vencer_7d: 0, cxp_monto_por_vencer: '0', fiados_total: '40000.00',
+  productos_activos: 10, productos_cuadrados: 4, stock_bajo_confiables: 2,
+}
 
 function jsonResp(data, status = 200) { return { ok: status < 400, status, json: async () => data } }
 
 function instalarFetch() {
   const fetchMock = vi.fn((url) => {
     const u = String(url)
+    if (u.includes('/reportes/hoy-dashboard')) return Promise.resolve(jsonResp(HOY_DASH))
     if (u.includes('/reportes/resumen')) return Promise.resolve(jsonResp(RESUMEN))
     if (u.includes('/reportes/serie-ventas')) return Promise.resolve(jsonResp(SERIE))
     if (u.includes('/reportes/totales')) return Promise.resolve(jsonResp(TOTALES))
@@ -69,6 +78,51 @@ describe('TabHoy — paridad', () => {
     expect(screen.getByText('Cemento')).toBeInTheDocument()           // top productos (panel)
     expect(screen.getByText('Clavo')).toBeInTheDocument()             // stock bajo
     expect(screen.getByText('Pendiente de apertura')).toBeInTheDocument() // caja 404 → cerrada (no rompe)
+  })
+
+  it('F4: pinta alertas accionables, utilidad estimada y fiados desde el agregado', async () => {
+    instalarFetch()
+    render(<MemoryRouter><TabHoy /></MemoryRouter>)
+
+    await screen.findByText('$10.000')
+    // Alertas: caja sin abrir, pedido demorado, CxP vencida, stock bajo confiable.
+    expect(screen.getByText(/La caja no se ha abierto hoy/)).toBeInTheDocument()
+    expect(screen.getByText(/1 pedido a proveedor demorado/)).toBeInTheDocument()
+    expect(screen.getByText(/\$9\.000 vencidos a proveedores/)).toBeInTheDocument()
+    expect(screen.getByText(/2 productos con stock bajo/)).toBeInTheDocument()
+    // Utilidad estimada (admin) y fiados.
+    expect(screen.getByText('Utilidad estimada hoy')).toBeInTheDocument()
+    expect(screen.getByText('$13.000')).toBeInTheDocument()
+    expect(screen.getByText('$40.000')).toBeInTheDocument()   // fiados en la calle
+  })
+
+  it('F4: acción rápida "Gasto" abre el modal y postea /gastos', async () => {
+    const { fireEvent } = await import('@testing-library/react')
+    const fetchMock = instalarFetch()
+    fetchMock.mockImplementation((url, opts = {}) => {
+      const u = String(url)
+      if (u.includes('/gastos') && opts.method === 'POST') return Promise.resolve(jsonResp({ id: 9 }, 201))
+      if (u.includes('/reportes/hoy-dashboard')) return Promise.resolve(jsonResp(HOY_DASH))
+      if (u.includes('/reportes/resumen')) return Promise.resolve(jsonResp(RESUMEN))
+      if (u.includes('/reportes/serie-ventas')) return Promise.resolve(jsonResp(SERIE))
+      if (u.includes('/reportes/totales')) return Promise.resolve(jsonResp(TOTALES))
+      if (u.includes('/gastos')) return Promise.resolve(jsonResp(GASTOS))
+      return Promise.resolve(jsonResp([]))
+    })
+    render(<MemoryRouter><TabHoy /></MemoryRouter>)
+    await screen.findByText('$10.000')
+
+    fireEvent.click(screen.getByRole('button', { name: /^Gasto$/ }))
+    await screen.findByText('Registrar gasto', { selector: 'h2' })
+    fireEvent.change(screen.getByLabelText('Monto'), { target: { value: '7000' } })
+    fireEvent.click(screen.getByRole('button', { name: /^Registrar gasto$/ }))
+
+    const { waitFor } = await import('@testing-library/react')
+    await waitFor(() => {
+      const post = fetchMock.mock.calls.find(c => String(c[0]).includes('/gastos') && c[1]?.method === 'POST')
+      expect(post).toBeTruthy()
+      expect(JSON.parse(post[1].body).monto).toBe(7000)
+    })
   })
 
   it("un evento 'venta_registrada' dispara re-fetch", async () => {

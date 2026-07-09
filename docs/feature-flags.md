@@ -43,6 +43,7 @@
 | `pack_reservas` | Reservas por noches (hotel) sobre el motor de agenda | `pack_agenda` |
 | `pack_postventa` | Encuesta 1-5, reseñas y seguimiento tras cita/pedido | — |
 | `pack_pagar` | Aviso **interno** al dueño de cuentas por pagar vencidas/próximas a vencer + página Cuentas por pagar (ADR 0019) | `inventario` |
+| `pedidos_proveedor` | Pedidos a proveedor con cronómetro de lead time: la orden antes de la mercancía; al recibir crea la compra (inventario+costo), la deuda o el pago, y el cuadre de inventario progresivo (ADR 0031) | `inventario` |
 | `pagos_online` | Link/QR de cobro (Bre-B vía Bold) + conciliación (ADR 0013) | — |
 | `canal_whatsapp` | Agente de cara al cliente por WhatsApp (Kapso) | — |
 | `mayorista` | Precio mayorista por producto | `ventas` |

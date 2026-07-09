@@ -144,11 +144,19 @@ class RetencionesAplicador(Protocol):
 
 class ComprasService:
     def __init__(
-        self, repo: SqlComprasRepository, *, retenciones: RetencionesAplicador | None = None
+        self,
+        repo: SqlComprasRepository,
+        *,
+        retenciones: RetencionesAplicador | None = None,
+        proveedores=None,   # SqlProveedoresRepository (puente compra→CxP); None = puente apagado
     ) -> None:
         self._repo = repo
         # Motor de retenciones inline (opt-in, ADR 0027): solo se inyecta con la feature `retenciones`.
         self._retenciones = retenciones
+        # Puente a cuentas por pagar (reforma dashboard F2): una compra `a_credito` da de alta su
+        # deuda en `facturas_proveedores` en la misma transacción. Solo el router/las rutas que lo
+        # cablean lo tienen (el bot y los tests viejos siguen igual).
+        self._proveedores = proveedores
 
     async def registrar(self, datos: CompraCrear, *, usuario_id: int | None) -> ResultadoCompra:
         """Registra la compra: resuelve proveedor, calcula total y persiste (stock + costo + eventos).
@@ -201,6 +209,23 @@ class ComprasService:
             # Retenciones inline (ADR 0027): calcula/persiste los renglones en la MISMA transacción
             # (commit=False), atómico con la compra. Sin config activa no crea renglones (opt-in).
             await self._retenciones.aplicar_a_compra(compra.id, commit=False)
+        if datos.a_credito:
+            # Puente compra→CxP (F2): la deuda nace con la compra, misma tx. Solo camino NO-replay
+            # (el replay de arriba devuelve la compra original sin duplicar la factura).
+            if self._proveedores is None:
+                raise RuntimeError("una compra a crédito requiere el repo de proveedores cableado")
+            factura_id = datos.numero_factura or f"COMPRA-{compra.id}"
+            if await self._proveedores.existe(factura_id):
+                from modules.proveedores.errors import FacturaProveedorDuplicada
+
+                raise FacturaProveedorDuplicada(factura_id)
+            await self._proveedores.crear_factura(
+                factura_id=factura_id,
+                proveedor=compra.proveedor_nombre or "Proveedor",
+                descripcion=f"Compra #{compra.id}",
+                total=total, fecha=today_co(), fecha_vencimiento=datos.fecha_vencimiento,
+                usuario_id=usuario_id,
+            )
         # Derivados de salida (no persistidos): % y alertas para que el cliente/bot avise al dueño.
         compra = compra.model_copy(update={
             "resbalo_pct": resbalo.porcentaje if resbalo is not None else None,

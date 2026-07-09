@@ -50,6 +50,12 @@ class CompraCrear(BaseModel):
     # `Idempotency-Key` (el router la copia aquí). Misma key + mismo payload → la compra original;
     # misma key + payload distinto → idempotencia_conflicto.
     idempotency_key: str | None = None
+    # --- Puente compra → cuenta por pagar (reforma dashboard F2). OPCIONAL. ---
+    # `a_credito=True` da de alta la deuda en `facturas_proveedores` en la MISMA transacción
+    # (id = `numero_factura` del proveedor, o `COMPRA-{id}` si no lo dio). Solo camino no-replay.
+    a_credito: bool = False
+    numero_factura: str | None = Field(default=None, min_length=1, max_length=100)
+    fecha_vencimiento: date | None = None
     # --- Vertical construcción (spec 11). Todo OPCIONAL: el POS retail no lo usa. ---
     # `obra_id` imputa la compra a una obra (NO mueve stock, solo gasto). `es_viaje_material` marca los
     # viajes de asfalto/arena con resbalo (margen): entonces `precio_venta_cliente` es obligatorio.

@@ -34,6 +34,7 @@ from modules.clientes.router import router as clientes_router
 from modules.cobranza.router import router as cobranza_router
 from modules.compras.router import router as compras_router
 from modules.compras_fiscal.router import router as compras_fiscal_router
+from modules.pedidos_proveedor.router import router as pedidos_proveedor_router
 from modules.config.router import router as config_router
 from modules.contabilidad.router import router as contabilidad_router
 from modules.conversaciones.router import router as conversaciones_router
@@ -187,6 +188,7 @@ def create_app(spa_dist: Path | None = None) -> FastAPI:
     app.include_router(facturacion_router, prefix="/api/v1")
     app.include_router(clientes_router, prefix="/api/v1")
     app.include_router(compras_router, prefix="/api/v1")
+    app.include_router(pedidos_proveedor_router, prefix="/api/v1")  # lead time proveedor (F2 dashboard)
     app.include_router(compras_fiscal_router, prefix="/api/v1")
     app.include_router(proveedores_router, prefix="/api/v1")
     app.include_router(reportes_router, prefix="/api/v1")

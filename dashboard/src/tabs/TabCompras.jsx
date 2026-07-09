@@ -154,6 +154,10 @@ function RegistrarCompra({ construccion, obras, onRegistrada }) {
   const [categoria, setCategoria] = useState('')
   const [esViaje, setEsViaje] = useState(false)
   const [precioVenta, setPrecioVenta] = useState('')
+  // Puente compra→CxP (F2): la compra a crédito da de alta su deuda en cuentas por pagar.
+  const [aCredito, setACredito] = useState(false)
+  const [numeroFactura, setNumeroFactura] = useState('')
+  const [vencimiento, setVencimiento] = useState('')
   const [enviando, setEnviando] = useState(false)
   const setProv = (k) => (e) => setProveedor(prev => ({ ...prev, [k]: e.target.value }))
 
@@ -197,6 +201,11 @@ function RegistrarCompra({ construccion, obras, onRegistrada }) {
         proveedor: { nombre: proveedor.nombre.trim(), nit: proveedor.nit.trim() || null },
         items: items.map(it => ({ producto_id: it.producto_id, cantidad: Number(it.cantidad), costo: Number(it.costo) })),
       }
+    if (!esObra && aCredito) {
+      payload.a_credito = true
+      payload.numero_factura = numeroFactura.trim() || null
+      payload.fecha_vencimiento = vencimiento || null
+    }
 
     setEnviando(true)
     try {
@@ -206,10 +215,11 @@ function RegistrarCompra({ construccion, obras, onRegistrada }) {
         body: JSON.stringify(payload),
       })
       if (res.ok) {
-        toast.success('Compra registrada')
+        toast.success(aCredito ? 'Compra registrada y deuda creada en cuentas por pagar' : 'Compra registrada')
         setProveedor({ nombre: '', nit: '' })
         setItems([])
         setObraId(''); setCategoria(''); setEsViaje(false); setPrecioVenta('')
+        setACredito(false); setNumeroFactura(''); setVencimiento('')
         onRegistrada()
       } else {
         toast.error('No se pudo registrar la compra')
@@ -254,7 +264,21 @@ function RegistrarCompra({ construccion, obras, onRegistrada }) {
           onAgregarItem={agregarItem}
         />
       ) : (
-        <ItemEditor conProducto onAgregar={agregarItem} />
+        <>
+          <ItemEditor conProducto onAgregar={agregarItem} />
+          <label className="mt-2 flex items-center gap-2 text-[12px] text-muted-foreground">
+            <input type="checkbox" checked={aCredito} onChange={(e) => setACredito(e.target.checked)} />
+            A crédito (crea la cuenta por pagar al proveedor)
+          </label>
+          {aCredito && (
+            <div className="mt-2 grid grid-cols-2 gap-2">
+              <Input value={numeroFactura} onChange={(e) => setNumeroFactura(e.target.value)}
+                placeholder="Nº factura del proveedor" aria-label="Número de factura del proveedor" className="h-9" />
+              <Input type="date" value={vencimiento} onChange={(e) => setVencimiento(e.target.value)}
+                aria-label="Fecha de vencimiento" className="h-9" />
+            </div>
+          )}
+        </>
       )}
 
       {items.length > 0 && (

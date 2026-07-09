@@ -95,6 +95,9 @@ class Inventario(TenantBase):
     producto_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     stock_actual: Mapped[Decimal] = mapped_column(Numeric(12, 3), nullable=False)
     stock_minimo: Mapped[Decimal] = mapped_column(Numeric(12, 3), nullable=False)
+    # Inventario progresivo (0052): sello del último CONTEO físico. NULL = stock aún no confiable
+    # (el negocio arranca sin inventario y vende en negativo); lo estampa InventarioService.contar.
+    cuadrado_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class MovimientoInventario(TenantBase):

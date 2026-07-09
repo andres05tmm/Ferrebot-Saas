@@ -124,7 +124,7 @@ describe('TabInicioAgente — render por features', () => {
     expect(await screen.findByText('Ana')).toBeInTheDocument()
     expect(screen.getByText('Beto')).toBeInTheDocument()
     expect(screen.queryByText('Cancelada')).toBeNull()
-    expect(screen.getAllByText('Limpieza dental').length).toBeGreaterThan(0)
+    expect((await screen.findAllByText('Limpieza dental')).length).toBeGreaterThan(0)  // /agenda/servicios es otro fetch
     // Acciones rápidas de servicio (la CTA del banner también dice "Abrir inbox").
     expect(screen.getAllByText('Abrir inbox').length).toBeGreaterThan(0)
     expect(screen.getByText('Ver agenda')).toBeInTheDocument()
@@ -174,8 +174,9 @@ describe('TabInicioAgente — home de reservas (HOTEL, contenido por vertical)',
     renderHome(HOTEL)
 
     expect(await screen.findByText('Reservas de hoy')).toBeInTheDocument()
-    // Las tres subsecciones hoteleras (lenguaje correcto, no "cita").
-    expect(screen.getByText('Llegan')).toBeInTheDocument()
+    // Las tres subsecciones hoteleras (lenguaje correcto, no "cita"). findBy en la primera:
+    // el header renderiza durante el loading y las reservas llegan con el fetch (carrera en CI).
+    expect(await screen.findByText('Llegan')).toBeInTheDocument()
     expect(screen.getByText('Salen')).toBeInTheDocument()
     expect(screen.getByText('En casa')).toBeInTheDocument()
     // Huéspedes por movimiento; la reserva cancelada se excluye.
@@ -183,8 +184,8 @@ describe('TabInicioAgente — home de reservas (HOTEL, contenido por vertical)',
     expect(screen.getByText('Sale Hoy')).toBeInTheDocument()
     expect(screen.getByText('En Casa')).toBeInTheDocument()
     expect(screen.queryByText('Reserva Cancelada')).toBeNull()
-    // Nombre de habitación resuelto vía /agenda/recursos (filtrando tipo habitacion).
-    expect(screen.getAllByText('Suite 101').length).toBeGreaterThan(0)
+    // Nombre de habitación resuelto vía /agenda/recursos (fetch APARTE del de citas → findAll).
+    expect((await screen.findAllByText('Suite 101')).length).toBeGreaterThan(0)
     expect(screen.getByText('Habitación 102')).toBeInTheDocument()
     // NO el bloque de citas de servicio.
     expect(screen.queryByText('Próximas citas de hoy')).toBeNull()
@@ -210,7 +211,7 @@ describe('TabInicioAgente — home de reservas (HOTEL, contenido por vertical)',
     renderHome(HOTEL)
 
     expect(await screen.findByText('Próximas llegadas')).toBeInTheDocument()
-    expect(screen.getByText('Futuro Huésped')).toBeInTheDocument()
+    expect(await screen.findByText('Futuro Huésped')).toBeInTheDocument()
     expect(screen.queryByText('No hay reservas próximas.')).toBeNull()
   })
 

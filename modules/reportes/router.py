@@ -21,10 +21,15 @@ from modules.reportes.consolidacion import (
 from modules.reportes.libros import LibrosService, SqlLibrosRepository
 from modules.reportes.repository import SqlReportesRepository
 from modules.reportes.schemas import (
+    AgingProveedor,
     CuentaMayor,
+    DiaCalendarioLeer,
     EstadoResultados,
+    FlujoDinero,
     LibroIVA,
+    MargenProducto,
     MovimientoAuxiliar,
+    ProyeccionCaja,
     PuntoSerie,
     ResumenDia,
     SaldoBimestral,
@@ -170,6 +175,86 @@ async def listar_iva_saldos(
 ) -> list[SaldoBimestral]:
     """Saldos bimestrales de IVA ya consolidados (todos, o los del año dado). Admin-only, feature `libro_iva`."""
     return await ConsolidacionIVAService(repo).listar_saldos(anio=anio)
+
+
+@router.get(
+    "/reportes/flujo-dinero",
+    response_model=FlujoDinero,
+    # Cashflow del negocio completo: dinero real que entró y salió. Feature `caja` (la superficie
+    # de dinero físico); admin-only como resultados.
+    dependencies=[Depends(require_feature("caja"))],
+)
+async def flujo_dinero(
+    desde: date | None = Query(default=None),
+    hasta: date | None = Query(default=None),
+    repo: SqlReportesRepository = Depends(get_reportes_repo),
+    _user: Principal = Depends(require_role("admin")),
+) -> FlujoDinero:
+    """Flujo de dinero simple del rango (default mes): entradas (ventas cobradas + abonos de fiados
+    + ingresos de caja) vs salidas (gastos + abonos a proveedor + egresos de caja) y el neto. No
+    exige `contabilidad_ledger`."""
+    return await ReportesService(repo).flujo_dinero(desde=desde, hasta=hasta)
+
+
+@router.get(
+    "/reportes/margen-productos",
+    response_model=list[MargenProducto],
+    dependencies=[Depends(require_feature("ventas"))],
+)
+async def margen_productos(
+    desde: date | None = Query(default=None),
+    hasta: date | None = Query(default=None),
+    por: str = Query(default="producto", pattern="^(producto|categoria)$"),
+    limite: int = Query(default=50, ge=1, le=200),
+    repo: SqlReportesRepository = Depends(get_reportes_repo),
+    _user: Principal = Depends(require_role("admin")),
+) -> list[MargenProducto]:
+    """Margen bruto por producto o categoría (default mes): ingresos sin IVA vs COGS snapshot, con
+    `cobertura_pct` honesta (unidades con costo registrado). Excluye ventas varia. Admin-only."""
+    return await ReportesService(repo).margen_productos(
+        desde=desde, hasta=hasta, por=por, limite=limite
+    )
+
+
+@router.get(
+    "/reportes/aging-cxp",
+    response_model=list[AgingProveedor],
+    # La cartera por pagar vive sobre la superficie de compras/proveedores → `inventario`.
+    dependencies=[Depends(require_feature("inventario"))],
+)
+async def aging_cxp(
+    repo: SqlReportesRepository = Depends(get_reportes_repo),
+    _user: Principal = Depends(require_role("admin")),
+) -> list[AgingProveedor]:
+    """Cartera por pagar por proveedor en tramos de antigüedad (0-30/31-60/61-90/90+) con semáforo."""
+    return await ReportesService(repo).aging_cxp()
+
+
+@router.get("/reportes/proyeccion-caja", response_model=ProyeccionCaja)
+async def proyeccion_caja(
+    repo: SqlReportesRepository = Depends(get_reportes_repo),
+    _user: Principal = Depends(require_role("admin")),
+) -> ProyeccionCaja:
+    """Proyección del cierre del mes con el promedio de los últimos 14 días con movimiento (fórmula
+    del dashboard viejo). Núcleo (degrada a ceros sin datos); admin-only."""
+    return await ReportesService(repo).proyeccion_caja()
+
+
+@router.get(
+    "/reportes/calendario",
+    response_model=list[DiaCalendarioLeer],
+    dependencies=[Depends(require_feature("ventas"))],
+)
+async def calendario_mensual(
+    anio: int = Query(ge=2000, le=2100),
+    mes: int = Query(ge=1, le=12),
+    repo: SqlReportesRepository = Depends(get_reportes_repo),
+    _user: Principal = Depends(require_role("vendedor")),
+    filtro: int | None = Depends(get_filtro_efectivo),
+) -> list[DiaCalendarioLeer]:
+    """Agregado diario del mes (heatmap del historial): total vendido, transacciones y gastos por
+    día Colombia; el vendedor efectivo lo da el filtro RBAC (los gastos no se scopean)."""
+    return await ReportesService(repo).calendario(anio=anio, mes=mes, vendedor_id=filtro)
 
 
 @router.get(

@@ -88,6 +88,9 @@ export const RUTA_FEATURE = {
   '/panel': 'obras',
   '/cotizaciones-obra': 'cotizaciones_aiu',
   '/obras': 'obras',
+  // Calendario de obra (Commit 3 PIM): actividad diaria del vertical. Gate simple por `obras` (no
+  // RUTAS_RETAIL → sin supresión de familia), coherente con /obras y el resto del vertical.
+  '/calendario': 'obras',
   '/maquinas': 'maquinaria',
   '/herramientas': 'herramientas',
   '/trabajadores': 'nomina',

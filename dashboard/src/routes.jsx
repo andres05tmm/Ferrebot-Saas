@@ -40,6 +40,7 @@ export const ROUTES = [
   // Construcción (vertical PIM) — gated por sus flags finas (cotizaciones_aiu/obras/maquinaria/herramientas/nomina).
   { path: '/cotizaciones-obra',   label: 'Cotizaciones AIU',    icon: ClipboardList,   group: 'construccion' },
   { path: '/obras',               label: 'Obras',               icon: HardHat,         group: 'construccion' },
+  { path: '/calendario',          label: 'Calendario',          icon: CalendarDays,    group: 'construccion' },
   { path: '/maquinas',            label: 'Maquinaria',          icon: Truck,           group: 'construccion' },
   { path: '/herramientas',        label: 'Herramientas',        icon: Wrench,          group: 'construccion' },
   { path: '/trabajadores',        label: 'Trabajadores',        icon: Users,           group: 'construccion' },

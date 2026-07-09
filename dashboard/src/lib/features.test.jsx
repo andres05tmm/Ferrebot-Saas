@@ -273,6 +273,18 @@ describe('familia construcción (vertical PIM)', () => {
     // El nav no conoce el rol: /panel se ve para la familia; el guard del panel manda al vendedor a /obras.
     expect(isRouteEnabled('/panel', PIM)).toBe(true)
   })
+
+  // ── Calendario de obra (Commit 3 PIM) — cuelga de `obras`, gate simple ──────────────────────────
+  it('/calendario está gateado por `obras` (gate simple, no RUTAS_RETAIL)', () => {
+    expect(RUTA_FEATURE['/calendario']).toBe('obras')
+    expect(isRouteEnabled('/calendario', ['obras'])).toBe(true)          // feature núcleo
+    expect(isRouteEnabled('/calendario', ['construccion'])).toBe(true)   // meta-pack expande a obras
+    expect(isRouteEnabled('/calendario', PIM)).toBe(true)
+    // Sin la feature, oculto (para cualquier otra familia o sin features).
+    expect(isRouteEnabled('/calendario', [])).toBe(false)
+    expect(isRouteEnabled('/calendario', ['pos'])).toBe(false)
+    expect(isRouteEnabled('/calendario', ['pack_agenda'])).toBe(false)
+  })
 })
 
 // ── ADR 0021 — partición del pack `pos`: carril contable de servicios ────────────────────────────

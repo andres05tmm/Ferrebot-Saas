@@ -14,6 +14,8 @@ from core.auth.features import get_capacidades, require_feature
 from core.auth.rbac import satisface
 from core.db.session import control_session, get_tenant_db
 from core.events.sse import tenant_event_stream
+from modules.caja.config import get_caja_obligatoria
+from modules.caja.repository import SqlCajaRepository
 from modules.facturacion.repository import SqlFacturacionRepository
 from modules.ventas.config import cargar_control_stock_estricto
 from modules.fiados.errors import ClienteInexistente
@@ -100,9 +102,22 @@ async def crear_venta(
     session: AsyncSession = Depends(get_tenant_db),
     user: Principal = Depends(require_role("vendedor")),
     control_stock_estricto: bool = Depends(get_control_stock_estricto),
+    caja_obligatoria: bool = Depends(get_caja_obligatoria),
     capacidades: frozenset[str] = Depends(get_capacidades),
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
 ) -> VentaLeer:
+    # Guard de caja (modo un-cajón por empresa, opt-in `caja_obligatoria`): sin una caja abierta EN LA
+    # EMPRESA no se registra la venta. Corre ANTES del servicio: el 409 no consume la Idempotency-Key,
+    # así el POS puede abrir caja y reintentar el MISMO payload sin repetir nada. Aplica a todo origen
+    # (web/bot/voz) como defensa en profundidad.
+    if caja_obligatoria and await SqlCajaRepository(session).caja_abierta_empresa() is None:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            detail={
+                "code": "caja_no_abierta",
+                "mensaje": "Abre la caja antes de registrar la primera venta del día.",
+            },
+        )
     if payload.idempotency_key is None and idempotency_key:
         payload = payload.model_copy(update={"idempotency_key": idempotency_key})
 

@@ -168,13 +168,13 @@ function BootError({ msg }) {
 
 // ── ShellBoot — ya autenticado: trae /config, tematiza y monta el shell ──────
 function ShellBoot() {
-  const [estado, setEstado] = useState({ cargando: true, error: null, features: [], branding: {}, facturarEnVenta: true })
+  const [estado, setEstado] = useState({ cargando: true, error: null, features: [], branding: {}, facturarEnVenta: true, cajaObligatoria: false })
 
   useEffect(() => {
     let cancelado = false
     bootConfig()
-      .then((cfg) => { if (!cancelado) setEstado({ cargando: false, error: null, features: cfg.features, branding: cfg.branding, facturarEnVenta: cfg.facturarEnVenta }) })
-      .catch((e) => { if (!cancelado) setEstado({ cargando: false, error: e.message, features: [], branding: {}, facturarEnVenta: true }) })
+      .then((cfg) => { if (!cancelado) setEstado({ cargando: false, error: null, features: cfg.features, branding: cfg.branding, facturarEnVenta: cfg.facturarEnVenta, cajaObligatoria: cfg.cajaObligatoria }) })
+      .catch((e) => { if (!cancelado) setEstado({ cargando: false, error: e.message, features: [], branding: {}, facturarEnVenta: true, cajaObligatoria: false }) })
     return () => { cancelado = true }
   }, [])
 
@@ -190,7 +190,7 @@ function ShellBoot() {
   return (
     <FeaturesProvider features={estado.features}>
       <BrandingProvider branding={estado.branding}>
-        <PreferenciasProvider facturarEnVenta={estado.facturarEnVenta}>
+        <PreferenciasProvider facturarEnVenta={estado.facturarEnVenta} cajaObligatoria={estado.cajaObligatoria}>
           <AppShell />
         </PreferenciasProvider>
       </BrandingProvider>

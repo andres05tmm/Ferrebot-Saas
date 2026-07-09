@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.auth import Principal, require_role
 from core.auth.features import require_feature
 from core.db.session import get_tenant_db
+from modules.caja.config import get_caja_obligatoria
 from modules.caja.errors import CajaNoAbierta, GastoInexistente
 from modules.caja.repository import SqlCajaRepository
 from modules.caja.schemas import (
@@ -18,6 +19,7 @@ from modules.caja.schemas import (
     ArqueoLeer,
     CajaLeer,
     CierreCrear,
+    EstadoCajaLeer,
     GastoCrear,
     GastoLeer,
     MovimientoCrear,
@@ -36,12 +38,30 @@ def _service(session: AsyncSession) -> CajaService:
     return CajaService(SqlCajaRepository(session), SqlProveedoresRepository(session))
 
 
+@router.get("/caja/estado", response_model=EstadoCajaLeer)
+async def caja_estado(
+    session: AsyncSession = Depends(get_tenant_db),
+    user: Principal = Depends(require_role("vendedor")),
+    modo_empresa: bool = Depends(get_caja_obligatoria),
+) -> EstadoCajaLeer:
+    """Estado liviano para el guard del POS: ¿hay caja abierta? Siempre 200 (`abierta=false` es estado,
+    no error). En modo empresa mira LA caja de la empresa; si no, la del usuario."""
+    caja = await _service(session).actual(user.user_id, modo_empresa=modo_empresa)
+    if caja is None:
+        return EstadoCajaLeer(abierta=False)
+    return EstadoCajaLeer(
+        abierta=True, caja_id=caja.id, saldo_inicial=caja.saldo_inicial,
+        fecha_apertura=caja.fecha_apertura,
+    )
+
+
 @router.get("/caja/actual", response_model=CajaLeer)
 async def caja_actual(
     session: AsyncSession = Depends(get_tenant_db),
     user: Principal = Depends(require_role("vendedor")),
+    modo_empresa: bool = Depends(get_caja_obligatoria),
 ) -> CajaLeer:
-    caja = await _service(session).actual(user.user_id)
+    caja = await _service(session).actual(user.user_id, modo_empresa=modo_empresa)
     if caja is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "No hay caja abierta")
     return CajaLeer.model_validate(caja)
@@ -51,10 +71,12 @@ async def caja_actual(
 async def caja_arqueo(
     session: AsyncSession = Depends(get_tenant_db),
     user: Principal = Depends(require_role("vendedor")),
+    modo_empresa: bool = Depends(get_caja_obligatoria),
 ) -> ArqueoLeer:
     """Cuadre en vivo de la caja abierta del usuario (componentes + saldo esperado). Caja cerrada → estado
-    'cerrada' con los componentes en 0 (200, no 404: el panel siempre pinta el estado)."""
-    a = await _service(session).arqueo(user.user_id)
+    'cerrada' con los componentes en 0 (200, no 404: el panel siempre pinta el estado). En modo empresa
+    (`caja_obligatoria`) el arqueo es del cajón compartido: suma el efectivo de TODOS los vendedores."""
+    a = await _service(session).arqueo(user.user_id, modo_empresa=modo_empresa)
     if a is None:
         return ArqueoLeer(estado="cerrada")
     return ArqueoLeer(
@@ -70,8 +92,11 @@ async def abrir_caja(
     response: Response,
     session: AsyncSession = Depends(get_tenant_db),
     user: Principal = Depends(require_role("vendedor")),
+    modo_empresa: bool = Depends(get_caja_obligatoria),
 ) -> CajaLeer:
-    res = await _service(session).abrir(usuario_id=user.user_id, saldo_inicial=payload.saldo_inicial)
+    res = await _service(session).abrir(
+        usuario_id=user.user_id, saldo_inicial=payload.saldo_inicial, modo_empresa=modo_empresa
+    )
     if res.replay:
         response.status_code = status.HTTP_200_OK   # ya tenía caja abierta
     return CajaLeer.model_validate(res.caja)
@@ -82,9 +107,12 @@ async def cerrar_caja(
     payload: CierreCrear,
     session: AsyncSession = Depends(get_tenant_db),
     user: Principal = Depends(require_role("vendedor")),
+    modo_empresa: bool = Depends(get_caja_obligatoria),
 ) -> CajaLeer:
     try:
-        caja = await _service(session).cerrar(usuario_id=user.user_id, saldo_contado=payload.saldo_contado)
+        caja = await _service(session).cerrar(
+            usuario_id=user.user_id, saldo_contado=payload.saldo_contado, modo_empresa=modo_empresa
+        )
     except CajaNoAbierta as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
     return CajaLeer.model_validate(caja)
@@ -96,12 +124,14 @@ async def registrar_movimiento(
     response: Response,
     session: AsyncSession = Depends(get_tenant_db),
     user: Principal = Depends(require_role("vendedor")),
+    modo_empresa: bool = Depends(get_caja_obligatoria),
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
 ) -> MovimientoLeer:
     try:
         res = await _service(session).registrar_movimiento(
             usuario_id=user.user_id, tipo=payload.tipo, monto=payload.monto,
             concepto=payload.concepto, idempotency_key=idempotency_key,
+            modo_empresa=modo_empresa,
         )
     except CajaNoAbierta as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
@@ -116,10 +146,12 @@ async def registrar_gasto(
     response: Response,
     session: AsyncSession = Depends(get_tenant_db),
     user: Principal = Depends(require_role("vendedor")),
+    modo_empresa: bool = Depends(get_caja_obligatoria),
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
 ) -> GastoLeer:
     try:
         res = await _service(session).registrar_gasto(
+            modo_empresa=modo_empresa,
             usuario_id=user.user_id, categoria=payload.categoria, monto=payload.monto,
             concepto=payload.concepto, idempotency_key=idempotency_key,
             proveedor_id=payload.proveedor_id, factura_proveedor_id=payload.factura_proveedor_id,

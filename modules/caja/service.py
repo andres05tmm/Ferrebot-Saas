@@ -56,19 +56,28 @@ class CajaService:
         # El canal del bot registra gastos simples y no necesita este seam.
         self._prov = prov_repo
 
-    async def actual(self, usuario_id: int) -> Caja | None:
-        return await self._repo.caja_abierta(usuario_id)
+    async def _abierta(
+        self, usuario_id: int, *, modo_empresa: bool, lock: bool = False
+    ) -> Caja | None:
+        """La caja que aplica a la operación: en modo empresa (`caja_obligatoria`, un cajón físico
+        compartido) es LA caja abierta de la empresa sin importar quién la abrió; si no, la del usuario."""
+        if modo_empresa:
+            return await self._repo.caja_abierta_empresa(lock=lock)
+        return await self._repo.caja_abierta(usuario_id, lock=lock)
 
-    async def arqueo(self, usuario_id: int) -> ArqueoVivo | None:
+    async def actual(self, usuario_id: int, *, modo_empresa: bool = False) -> Caja | None:
+        return await self._abierta(usuario_id, modo_empresa=modo_empresa)
+
+    async def arqueo(self, usuario_id: int, *, modo_empresa: bool = False) -> ArqueoVivo | None:
         """Cuadre en vivo de la caja abierta del usuario, o None si no hay caja abierta.
 
         Reusa los MISMOS agregados y la MISMA fórmula del cierre (`calcular_arqueo`): el `saldo_esperado`
         que ve el cajero en el panel es idéntico al que se compara al cerrar. `saldo_contado=0` es un
         placeholder (solo se usa `saldo_esperado`; la diferencia se descarta)."""
-        caja = await self._repo.caja_abierta(usuario_id)
+        caja = await self._abierta(usuario_id, modo_empresa=modo_empresa)
         if caja is None:
             return None
-        agg = await self._repo.agregados(caja, hasta=now_co())
+        agg = await self._repo.agregados(caja, hasta=now_co(), todos_vendedores=modo_empresa)
         esperado = calcular_arqueo(
             saldo_inicial=caja.saldo_inicial, ventas_efectivo=agg.ventas_efectivo,
             ingresos=agg.ingresos, egresos=agg.egresos, saldo_contado=Decimal(0),
@@ -78,8 +87,12 @@ class CajaService:
             egresos=agg.egresos, saldo_esperado=esperado,
         )
 
-    async def abrir(self, *, usuario_id: int, saldo_inicial: Decimal) -> ResultadoApertura:
-        existente = await self._repo.caja_abierta(usuario_id, lock=True)
+    async def abrir(
+        self, *, usuario_id: int, saldo_inicial: Decimal, modo_empresa: bool = False
+    ) -> ResultadoApertura:
+        # En modo empresa el candado anti-carrera es global: si CUALQUIERA ya abrió el cajón, la
+        # segunda apertura (otro cajero, doble clic del modal) es replay de la misma caja.
+        existente = await self._abierta(usuario_id, modo_empresa=modo_empresa, lock=True)
         if existente is not None:
             return ResultadoApertura(existente, replay=True)   # ya hay una abierta: idempotente
         caja = await self._repo.crear_caja(
@@ -87,12 +100,14 @@ class CajaService:
         )
         return ResultadoApertura(caja, replay=False)
 
-    async def cerrar(self, *, usuario_id: int, saldo_contado: Decimal) -> Caja:
-        caja = await self._repo.caja_abierta(usuario_id, lock=True)
+    async def cerrar(
+        self, *, usuario_id: int, saldo_contado: Decimal, modo_empresa: bool = False
+    ) -> Caja:
+        caja = await self._abierta(usuario_id, modo_empresa=modo_empresa, lock=True)
         if caja is None:
             raise CajaNoAbierta(usuario_id)
         fecha_cierre = now_co()
-        agg = await self._repo.agregados(caja, hasta=fecha_cierre)
+        agg = await self._repo.agregados(caja, hasta=fecha_cierre, todos_vendedores=modo_empresa)
         arqueo = calcular_arqueo(
             saldo_inicial=caja.saldo_inicial,
             ventas_efectivo=agg.ventas_efectivo,
@@ -113,8 +128,9 @@ class CajaService:
         monto: Decimal,
         concepto: str | None,
         idempotency_key: str | None = None,
+        modo_empresa: bool = False,
     ) -> ResultadoMovimiento:
-        caja = await self._repo.caja_abierta(usuario_id, lock=True)
+        caja = await self._abierta(usuario_id, modo_empresa=modo_empresa, lock=True)
         if caja is None:
             raise CajaNoAbierta(usuario_id)
         if idempotency_key:
@@ -147,6 +163,7 @@ class CajaService:
         telegram_user_id: str | None = None,
         telegram_message_id: str | None = None,
         requiere_revision: bool | None = None,
+        modo_empresa: bool = False,
     ) -> ResultadoGasto:
         """Registra el gasto (+ su egreso de caja). Si `factura_proveedor_id` viene, salda esa cuenta
         por pagar generando SU único abono (ADR 0028): no se duplica el abono.
@@ -159,7 +176,7 @@ class CajaService:
         los metadatos del bot (`origen_registro`/`telegram_*`/`requiere_revision`) alimentan la bandeja
         de revisión.
         """
-        caja = await self._repo.caja_abierta(usuario_id, lock=True)
+        caja = await self._abierta(usuario_id, modo_empresa=modo_empresa, lock=True)
         if caja is None:
             raise CajaNoAbierta(usuario_id)
         if idempotency_key:

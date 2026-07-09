@@ -19,6 +19,7 @@ import { toast } from 'sonner'
 import { Plus, Search, Trash2, X, Zap } from 'lucide-react'
 import { api, apiJson } from '@/lib/api'
 import { cop, ProductThumb } from '@/components/shared.jsx'
+import ModalAbrirCaja from '@/components/ModalAbrirCaja.jsx'
 import { useFeatures } from '@/lib/features.jsx'
 import { usePreferencias } from '@/lib/preferencias.jsx'
 import { Card } from '@/components/ui/card.jsx'
@@ -38,7 +39,7 @@ function nuevaKey() {
 
 export default function TabVentasRapidas() {
   const features = useFeatures()
-  const { facturarEnVenta } = usePreferencias()
+  const { facturarEnVenta, cajaObligatoria } = usePreferencias()
   const puedePos = features.includes('pos_electronico')
   const puedeFe = features.includes('facturacion_electronica')
   const mostrarDocumento = puedePos || puedeFe
@@ -63,6 +64,10 @@ export default function TabVentasRapidas() {
   const [cliente, setCliente] = useState(null)
   const [documento, setDocumento] = useState(documentoDefault)
   const [enviando, setEnviando] = useState(false)
+  // Guard de caja (`caja_obligatoria`): la venta que quedó esperando a que se abra la caja.
+  // Guarda el payload Y su Idempotency-Key ya generada: al abrir caja se reintenta EXACTAMENTE
+  // el mismo cobro (sin repetir la venta ni arriesgar un duplicado).
+  const [ventaPendiente, setVentaPendiente] = useState(null)   // {payload, key} | null
 
   const searchRef = useRef(null)
   const resultadosRef = useRef(resultados)
@@ -229,6 +234,39 @@ export default function TabVentasRapidas() {
     setCarrito(prev => prev.map(it => it.key === key ? { ...it, usarEspecial } : it))
   const quitar = (key) => setCarrito(prev => prev.filter(it => it.key !== key))
 
+  // POST /ventas con una key concreta. Si el backend responde 409 `caja_no_abierta` (guard de caja),
+  // deja la venta pendiente y abre el modal de apertura: el MISMO payload + key se reintenta al abrir.
+  const enviarVenta = useCallback(async (payload, key) => {
+    setEnviando(true)
+    try {
+      const res = await api('/ventas', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Idempotency-Key': key },
+        body: JSON.stringify(payload),
+      })
+      if (res.ok) {
+        setVentaPendiente(null)
+        setCarrito([]); setPrecios({}); setCliente(null); setMetodoPago('efectivo')
+        setRecibido(''); setDocumento(documentoDefault)
+        toast.success('Venta registrada')
+        return true
+      }
+      const err = await res.json().catch(() => ({}))
+      if (res.status === 409 && err?.detail?.code === 'caja_no_abierta') {
+        setVentaPendiente({ payload, key })   // el modal toma el relevo; carrito intacto
+        return false
+      }
+      const detalle = err?.detail
+      toast.error(
+        (typeof detalle === 'string' && detalle) || detalle?.mensaje || 'No se pudo registrar la venta',
+      )
+      return false
+    } catch {
+      toast.error('Error de conexión')
+      return false
+    } finally { setEnviando(false) }
+  }, [documentoDefault])
+
   async function registrar() {
     if (carrito.length === 0) return
     const lineas = carrito.map(it => {
@@ -246,22 +284,17 @@ export default function TabVentasRapidas() {
     // emisión). POS/FE explícito sí viaja como intención (el backend lo respeta aunque el toggle esté off).
     if (mostrarDocumento && documento !== 'ninguno') payload.documento = documento
 
-    setEnviando(true)
-    try {
-      const res = await api('/ventas', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Idempotency-Key': nuevaKey() },
-        body: JSON.stringify(payload),
-      })
-      if (res.ok) {
-        setCarrito([]); setPrecios({}); setCliente(null); setMetodoPago('efectivo')
-        setRecibido(''); setDocumento(documentoDefault)
-        toast.success('Venta registrada')
-      } else {
-        const err = await res.json().catch(() => ({}))
-        toast.error(err?.detail || 'No se pudo registrar la venta')
-      }
-    } catch { toast.error('Error de conexión') } finally { setEnviando(false) }
+    const key = nuevaKey()
+    // Guard de caja proactivo (`caja_obligatoria`): antes del primer cobro del día, si no hay caja
+    // abierta se abre el modal SIN intentar el POST. Un fallo del check no bloquea (el 409 del
+    // backend es la fuente de verdad y también dispara el modal).
+    if (cajaObligatoria) {
+      try {
+        const estado = await apiJson('/caja/estado')
+        if (!estado?.abierta) { setVentaPendiente({ payload, key }); return }
+      } catch { /* el backend decide */ }
+    }
+    await enviarVenta(payload, key)
   }
   registrarRef.current = registrar
 
@@ -391,6 +424,15 @@ export default function TabVentasRapidas() {
           {enviando ? 'Registrando…' : 'Registrar venta'} <span className="ml-1.5 opacity-70 text-caption">F9</span>
         </Button>
       </Card>
+
+      {/* Guard de caja: abre la caja y registra la venta pendiente con su MISMA key (nada se repite). */}
+      <ModalAbrirCaja
+        abierto={ventaPendiente != null}
+        onCancelar={() => setVentaPendiente(null)}
+        onCajaAbierta={async () => {
+          if (ventaPendiente) await enviarVenta(ventaPendiente.payload, ventaPendiente.key)
+        }}
+      />
     </div>
   )
 }

@@ -16,6 +16,7 @@ from core.db.session import control_session
 from core.tenancy.catalogo import capacidades_completas
 from core.tenancy.config_empresa import cargar_auto_facturar_venta
 from core.tenancy.control_repo import leer_branding
+from modules.caja.config import get_caja_obligatoria
 
 router = APIRouter(tags=["config"])
 
@@ -54,12 +55,16 @@ class ConfigLeer(BaseModel):
     """Respuesta de GET /config: capacidades activas, branding, usuario y preferencias de UI.
 
     `facturar_en_venta` (config del tenant, default True) le dice al POS si debe auto-facturar cada
-    venta: cuando es False, Ventas Rápidas ofrece "Sin factura" (venta interna, factura a pedido)."""
+    venta: cuando es False, Ventas Rápidas ofrece "Sin factura" (venta interna, factura a pedido).
+
+    `caja_obligatoria` (default False) activa el guard de caja del POS: antes de cobrar la primera
+    venta del día, el dashboard exige abrir caja (modal "¿Cuánto dinero hay en caja?")."""
 
     features: list[str]
     branding: Branding
     usuario: Usuario
     facturar_en_venta: bool = True
+    caja_obligatoria: bool = False
 
 
 async def get_branding(request: Request) -> Branding:
@@ -180,6 +185,7 @@ async def obtener_config(
     capacidades: frozenset[str] = Depends(get_capacidades),
     branding: Branding = Depends(get_branding),
     facturar_en_venta: bool = Depends(get_facturar_en_venta),
+    caja_obligatoria: bool = Depends(get_caja_obligatoria),
 ) -> ConfigLeer:
     """Arranque del dashboard: núcleo ∪ efectivas (ordenado), branding, usuario y preferencias de UI."""
     return ConfigLeer(
@@ -187,4 +193,5 @@ async def obtener_config(
         branding=branding,
         usuario=Usuario(id=user.user_id, rol=user.rol, tenant=user.tenant),
         facturar_en_venta=facturar_en_venta,
+        caja_obligatoria=caja_obligatoria,
     )

@@ -14,6 +14,7 @@ from core.auth.features import get_capacidades, require_feature
 from core.auth.rbac import satisface
 from core.db.session import control_session, get_tenant_db
 from core.events.sse import tenant_event_stream
+from core.tenancy.catalogo import expandir_metapacks
 from modules.caja.config import get_caja_obligatoria
 from modules.caja.repository import SqlCajaRepository
 from modules.facturacion.repository import SqlFacturacionRepository
@@ -108,9 +109,13 @@ async def crear_venta(
 ) -> VentaLeer:
     # Guard de caja (modo un-cajón por empresa, opt-in `caja_obligatoria`): sin una caja abierta EN LA
     # EMPRESA no se registra la venta. Corre ANTES del servicio: el 409 no consume la Idempotency-Key,
-    # así el POS puede abrir caja y reintentar el MISMO payload sin repetir nada. Aplica a todo origen
-    # (web/bot/voz) como defensa en profundidad.
-    if caja_obligatoria and await SqlCajaRepository(session).caja_abierta_empresa() is None:
+    # así el POS puede abrir caja y reintentar el MISMO payload sin repetir nada. Solo si el tenant
+    # tiene la capacidad `caja` (default seguro: el toggle sin la feature no bloquea la venta).
+    if (
+        caja_obligatoria
+        and "caja" in expandir_metapacks(capacidades)
+        and await SqlCajaRepository(session).caja_abierta_empresa() is None
+    ):
         raise HTTPException(
             status.HTTP_409_CONFLICT,
             detail={

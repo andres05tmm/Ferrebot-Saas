@@ -29,7 +29,7 @@ from tests.conftest import create_database, drop_database
 
 
 # ---- HTTP: POST /ventas con el guard ---------------------------------------
-def _app(tenant, *, user_id: int, obligatoria: bool) -> FastAPI:
+def _app(tenant, *, user_id: int, obligatoria: bool, capacidades: frozenset = frozenset({"pos"})) -> FastAPI:
     app = FastAPI()
     app.include_router(ventas_router, prefix="/api/v1")
 
@@ -44,7 +44,7 @@ def _app(tenant, *, user_id: int, obligatoria: bool) -> FastAPI:
 
     app.dependency_overrides[get_current_user] = lambda: Principal(user_id=user_id, tenant="pr", rol="vendedor")
     app.dependency_overrides[get_tenant_db] = _db
-    app.dependency_overrides[get_capacidades] = lambda: frozenset({"pos"})
+    app.dependency_overrides[get_capacidades] = lambda: capacidades
     app.dependency_overrides[get_control_stock_estricto] = lambda: False
     app.dependency_overrides[get_caja_obligatoria] = lambda: obligatoria   # FAKE del toggle de empresa
     return app
@@ -96,6 +96,18 @@ async def test_obligatoria_con_caja_de_otro_usuario_201(tenant, seed_producto):
     assert r.status_code == 201, r.text
 
 
+async def test_obligatoria_sin_capacidad_caja_201(tenant, seed_producto):
+    """Toggle ON pero tenant SIN la feature `caja` (misconfiguración): la venta no se bloquea —
+    default seguro, el guard exige la capacidad además del toggle."""
+    async with AsyncSession(tenant.engine) as s:
+        uid, pid = await seed_producto(s)
+
+    app = _app(tenant, user_id=uid, obligatoria=True, capacidades=frozenset({"ventas"}))
+    async with _cliente(app) as c:
+        r = await c.post("/api/v1/ventas", json=_venta_json(pid))
+    assert r.status_code == 201, r.text
+
+
 async def test_default_off_sin_caja_201(tenant, seed_producto):
     async with AsyncSession(tenant.engine) as s:
         uid, pid = await seed_producto(s)
@@ -131,6 +143,72 @@ async def test_409_no_consume_idempotency_key(tenant, seed_producto):
         assert r2.status_code == 201, r2.text
         r3 = await c.post("/api/v1/ventas", json=_venta_json(pid), headers={"Idempotency-Key": key})
         assert r3.status_code == 200, r3.text   # replay idempotente
+
+    async with AsyncSession(tenant.engine) as s:
+        assert (await s.execute(text("SELECT count(*) FROM ventas"))).scalar_one() == 1
+
+
+# ---- Bot: el handler `registrar_venta` respeta el guard (paridad con el API) ----
+async def test_bot_registrar_venta_respeta_guard(tenant, seed_producto):
+    """La venta por Telegram/voz NO pasa por el router HTTP (llama el servicio vía ai.tools): el
+    guard vive también ahí. Sin caja → ErrorTool `caja_no_abierta` (recuperable, sin efectos);
+    con caja abierta (de cualquier usuario) → la venta se registra."""
+    from decimal import Decimal
+
+    from ai.envelope import Contexto
+    from ai.tools import Deps, ItemVentaArg, RegistrarVentaArgs, _registrar_venta
+    from modules.caja.repository import SqlCajaRepository
+    from modules.caja.service import CajaService
+    from modules.clientes.repository import SqlClientesRepository
+    from modules.clientes.service import ClientesService
+    from modules.fiados.repository import SqlFiadosRepository
+    from modules.fiados.service import FiadosService
+    from modules.ventas.repository import SqlVentasRepository
+    from modules.ventas.service import VentaService
+
+    async def _toggle_on(_empresa_id: int) -> bool:
+        return True
+
+    def _deps(s):
+        return Deps(
+            ventas=VentaService(SqlVentasRepository(s)),
+            caja=CajaService(SqlCajaRepository(s)),
+            fiados=FiadosService(SqlFiadosRepository(s)),
+            clientes=ClientesService(SqlClientesRepository(s)),
+            caja_obligatoria=_toggle_on,
+        )
+
+    args = None
+    async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
+        uid, pid = await seed_producto(s)
+        await s.commit()
+        args = RegistrarVentaArgs(
+            items=[ItemVentaArg(producto_id=pid, cantidad=Decimal("1"))], metodo_pago="efectivo"
+        )
+        ctx = Contexto(
+            tenant_id=1, usuario_id=uid, rol="vendedor", origen="bot",
+            capacidades=frozenset({"pos"}),
+        )
+        res = await _registrar_venta(args, ctx, _deps(s))
+        assert res.ok is False and res.error == "caja_no_abierta" and res.recuperable is True
+        await s.rollback()
+
+    async with AsyncSession(tenant.engine) as s:
+        assert (await s.execute(text("SELECT count(*) FROM ventas"))).scalar_one() == 0
+
+    async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
+        otro = (
+            await s.execute(text("INSERT INTO usuarios (nombre, rol) VALUES ('Empleada','vendedor') RETURNING id"))
+        ).scalar_one()
+        await CajaService(SqlCajaRepository(s)).abrir(usuario_id=otro, saldo_inicial=Decimal("10000"))
+        await s.commit()
+        ctx = Contexto(
+            tenant_id=1, usuario_id=uid, rol="vendedor", origen="bot",
+            capacidades=frozenset({"pos"}),
+        )
+        res = await _registrar_venta(args, ctx, _deps(s))
+        assert res.ok is True   # la caja de la EMPRESA habilita la venta del bot
+        await s.commit()
 
     async with AsyncSession(tenant.engine) as s:
         assert (await s.execute(text("SELECT count(*) FROM ventas"))).scalar_one() == 1

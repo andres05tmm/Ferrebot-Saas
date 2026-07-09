@@ -201,6 +201,71 @@ async def test_proyeccion_caja_reproduce_la_formula(tenant, seed_producto):
     assert p.proyeccion_neto_mes == p.proyeccion_ventas_mes - p.proyeccion_gastos_mes
 
 
+async def test_hoy_dashboard_agrega_las_senales_del_cockpit(tenant, seed_producto):
+    """El agregado /hoy junta: utilidad estimada del día, pedidos en camino, CxP vencida, fiados y
+    el avance del inventario progresivo (cuadrados vs activos)."""
+    from modules.compras.repository import SqlComprasRepository
+    from modules.compras.service import ComprasService
+    from modules.inventario.repository import SqlInventarioRepository
+    from modules.inventario.service import InventarioService
+    from modules.pedidos_proveedor.repository import SqlPedidosProveedorRepository
+    from modules.pedidos_proveedor.schemas import PedidoCrear, ProveedorRef
+    from modules.pedidos_proveedor.service import PedidosProveedorService
+    from modules.proveedores.repository import SqlProveedoresRepository
+
+    async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
+        uid, pid = await seed_producto(s, precio="10000", iva=0, stock="5")
+        await s.execute(text("UPDATE productos SET costo_promedio = 4000 WHERE id = :p"), {"p": pid})
+        cid = await _cliente(s)
+        # CxP vencida hace 10 días (pendiente 9.000) con vencimiento explícito.
+        await s.execute(
+            text(
+                "INSERT INTO facturas_proveedores (id, proveedor, total, pagado, pendiente, estado, "
+                "fecha, fecha_vencimiento) VALUES ('F-V', 'Tornillos SA', 9000, 0, 9000, 'pendiente', "
+                ":f, :v)"
+            ),
+            {"f": today_co() - timedelta(days=40), "v": today_co() - timedelta(days=10)},
+        )
+        await s.commit()
+
+        await CajaService(SqlCajaRepository(s)).abrir(usuario_id=uid, saldo_inicial=Decimal("0"))
+        await _vender(s, pid=pid, uid=uid, cantidad="2")                       # 20.000, COGS 8.000
+        await _vender(s, pid=pid, uid=uid, metodo="fiado", cliente_id=cid)     # fiado 10.000
+        await CajaService(SqlCajaRepository(s)).registrar_gasto(
+            usuario_id=uid, categoria="otros", monto=Decimal("3000"), concepto="x"
+        )
+        # Un pedido a proveedor en camino y un producto cuadrado (conteo físico).
+        pedidos = PedidosProveedorService(
+            SqlPedidosProveedorRepository(s),
+            compras=ComprasService(SqlComprasRepository(s)),
+            compras_repo=SqlComprasRepository(s),
+            proveedores=SqlProveedoresRepository(s),
+            caja=CajaService(SqlCajaRepository(s)),
+            inventario=InventarioService(SqlInventarioRepository(s)),
+        )
+        await pedidos.crear(
+            PedidoCrear(proveedor=ProveedorRef(nombre="Eternit"), descripcion="10 tejas"),
+            usuario_id=uid,
+        )
+        await InventarioService(SqlInventarioRepository(s)).contar(
+            producto_id=pid, cantidad_contada=Decimal("2"), usuario_id=uid
+        )
+        await s.commit()
+
+    async with AsyncSession(tenant.engine) as s:
+        d = await _reportes(s).hoy_dashboard()
+
+    assert d.caja_abierta is True
+    assert d.ingresos_hoy == Decimal("30000.00")           # 20.000 contado + 10.000 fiado (ingreso P&L)
+    assert d.gastos_hoy == Decimal("3000.00")
+    assert d.utilidad_estimada == Decimal("15000.00")      # 30.000 − 12.000 COGS − 3.000
+    assert d.pedidos_en_camino == 1
+    assert d.pedido_mas_viejo_horas is not None
+    assert d.cxp_vencidas == 1 and d.cxp_monto_vencido == Decimal("9000.00")
+    assert d.fiados_total == Decimal("10000.00")
+    assert d.productos_activos == 1 and d.productos_cuadrados == 1
+
+
 def test_promedio_dias_con_movimiento_ignora_ceros():
     from datetime import date
 

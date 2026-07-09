@@ -9,7 +9,7 @@ from datetime import date, timedelta
 from decimal import Decimal
 from typing import Protocol
 
-from core.config.timezone import rango_dia_co, today_co
+from core.config.timezone import now_co, rango_dia_co, today_co
 from core.money import cuantizar
 from modules.reportes.repository import (
     AgingProveedorFila,
@@ -26,6 +26,7 @@ from modules.reportes.schemas import (
     DiaCalendarioLeer,
     EstadoResultados,
     FlujoDinero,
+    HoyDashboard,
     LibroIVA,
     MargenProducto,
     ProyeccionCaja,
@@ -58,6 +59,11 @@ class ReportesRepo(Protocol):
     async def calendario(
         self, *, inicio, fin, vendedor_id: int | None
     ) -> list[DiaCalendario]: ...
+    async def estado_pedidos_proveedor(self, *, hoy: date, ahora): ...
+    async def vencimientos_cxp(self, *, hoy: date): ...
+    async def total_fiado(self) -> Decimal: ...
+    async def inventario_confiable(self): ...
+    async def caja_abierta_empresa(self) -> bool: ...
 
 
 def _rango_o_mes(desde: date | None, hasta: date | None) -> tuple[date, date]:
@@ -278,6 +284,33 @@ class ReportesService:
             )
             for d in dias
         ]
+
+    async def hoy_dashboard(self) -> HoyDashboard:
+        """Agregado del cockpit /hoy (F4): lo que los endpoints del día NO cubren — utilidad
+        estimada, pedidos a proveedor (en camino/demorados), vencimientos de CxP, fiados y avance
+        del inventario progresivo. El router lo cachea (60s) y le quita la utilidad al vendedor."""
+        hoy = today_co()
+        inicio, fin = rango_dia_co(hoy, hoy)
+        agg = await self._repo.estado_resultados(inicio=inicio, fin=fin)
+        pedidos = await self._repo.estado_pedidos_proveedor(hoy=hoy, ahora=now_co())
+        cxp = await self._repo.vencimientos_cxp(hoy=hoy)
+        inv = await self._repo.inventario_confiable()
+        return HoyDashboard(
+            fecha=hoy,
+            caja_abierta=await self._repo.caja_abierta_empresa(),
+            ingresos_hoy=agg.ingresos,
+            gastos_hoy=agg.gastos,
+            utilidad_estimada=agg.ingresos - agg.costo_ventas - agg.gastos,
+            pedidos_en_camino=pedidos.en_camino,
+            pedidos_demorados=pedidos.demorados,
+            pedido_mas_viejo_horas=pedidos.mas_viejo_horas,
+            cxp_vencidas=cxp.vencidas, cxp_monto_vencido=cxp.monto_vencido,
+            cxp_por_vencer_7d=cxp.por_vencer_7d, cxp_monto_por_vencer=cxp.monto_por_vencer,
+            fiados_total=await self._repo.total_fiado(),
+            productos_activos=inv.productos_activos,
+            productos_cuadrados=inv.productos_cuadrados,
+            stock_bajo_confiables=inv.stock_bajo_confiables,
+        )
 
     async def top_productos(
         self, *, desde: date | None, hasta: date | None, vendedor_id: int | None, limite: int

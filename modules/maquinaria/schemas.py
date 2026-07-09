@@ -9,7 +9,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 # Literales EXACTOS al enum `estado_maquina` (migración 0043). Validar aquí evita un INSERT que la BD
 # rechazaría por el tipo enum, devolviendo 422 en vez de 500.
@@ -102,6 +102,47 @@ class AsignacionMaquinaObraLeer(BaseModel):
     minimo_horas: int
     operador_id: int | None
     activa: bool
+
+
+class AsignacionMaquinaCrear(BaseModel):
+    """Alta de una asignación de máquina a obra (Calendario de obra). `maquina_id` viaja por la ruta.
+
+    `fecha_inicio` es opcional: si falta, el service la resuelve a HOY en hora Colombia (regla #4). Igual
+    `precio_hora`/`minimo_horas`: si no vienen, el service toma los defaults de la máquina
+    (`precio_hora_default`/`minimo_horas_factura`). El validador exige `fecha_fin >= fecha_inicio` cuando
+    ambas están presentes (else 422).
+    """
+
+    obra_id: int
+    fecha_inicio: date | None = None   # default hoy Colombia en el service
+    fecha_fin: date | None = None
+    precio_hora: Decimal | None = Field(default=None, ge=0)   # default = maquina.precio_hora_default
+    minimo_horas: int | None = Field(default=None, ge=0)      # default = maquina.minimo_horas_factura
+    operador_id: int | None = None
+
+    @model_validator(mode="after")
+    def _rango_valido(self) -> "AsignacionMaquinaCrear":
+        if (
+            self.fecha_inicio is not None
+            and self.fecha_fin is not None
+            and self.fecha_fin < self.fecha_inicio
+        ):
+            raise ValueError("fecha_fin no puede ser anterior a fecha_inicio")
+        return self
+
+
+class AsignacionMaquinaActualizar(BaseModel):
+    """Edición PARCIAL (PATCH) de una asignación: solo los campos presentes se aplican (`exclude_unset`).
+
+    `fecha_fin=null` explícito es válido (reabre el rango); se distingue del "no enviado" por
+    `exclude_unset` en el service. No incluye `obra_id` ni `fecha_inicio` (el contrato PATCH no los trae).
+    """
+
+    fecha_fin: date | None = None
+    activa: bool | None = None
+    operador_id: int | None = None
+    precio_hora: Decimal | None = Field(default=None, ge=0)
+    minimo_horas: int | None = Field(default=None, ge=0)
 
 
 class RegistroHorasMaquinaLeer(BaseModel):

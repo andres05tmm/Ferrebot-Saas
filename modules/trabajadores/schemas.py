@@ -10,7 +10,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 TipoVinculacion = Literal["DIRECTO", "PATACALIENTE"]
 
@@ -104,3 +104,46 @@ class TrabajadorLeer(BaseModel):
     tarifa_hora: Decimal | None
     creado_en: datetime
     actualizado_en: datetime
+
+
+class AsignacionTrabajadorCrear(BaseModel):
+    """Alta de una asignación de trabajador a obra (Calendario de obra). `trabajador_id` viaja por la ruta.
+
+    Sin dinero (a diferencia de la máquina): un trabajador solo se pone en una obra por un rango.
+    `fecha_inicio` opcional → hoy Colombia en el service. Validador `fecha_fin >= fecha_inicio` si ambas."""
+
+    obra_id: int
+    fecha_inicio: date | None = None   # default hoy Colombia en el service
+    fecha_fin: date | None = None
+
+    @model_validator(mode="after")
+    def _rango_valido(self) -> "AsignacionTrabajadorCrear":
+        if (
+            self.fecha_inicio is not None
+            and self.fecha_fin is not None
+            and self.fecha_fin < self.fecha_inicio
+        ):
+            raise ValueError("fecha_fin no puede ser anterior a fecha_inicio")
+        return self
+
+
+class AsignacionTrabajadorActualizar(BaseModel):
+    """Edición PARCIAL (PATCH): solo los campos presentes se aplican (`exclude_unset`).
+
+    `fecha_fin=null` explícito reabre el rango (se distingue del "no enviado" por `exclude_unset`)."""
+
+    fecha_fin: date | None = None
+    activa: bool | None = None
+
+
+class AsignacionTrabajadorLeer(BaseModel):
+    """Lectura de una asignación de trabajador a obra (sin dinero)."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    trabajador_id: int
+    obra_id: int
+    fecha_inicio: date
+    fecha_fin: date | None
+    activa: bool

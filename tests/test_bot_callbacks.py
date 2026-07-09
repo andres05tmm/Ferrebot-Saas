@@ -377,6 +377,11 @@ async def test_notificador_answer_callback():
     assert payload["callback_query_id"] == "cb-7"
 
 
-def test_metodo_pago_son_los_cuatro_vigentes():
-    # Cierra #9: efectivo/transferencia/datafono/fiado; se quitaron tarjeta/nequi/daviplata.
-    assert set(get_args(MetodoPago)) == {"efectivo", "transferencia", "datafono", "fiado"}
+def test_metodo_pago_son_los_vigentes():
+    # Cierra #9: efectivo/transferencia/datafono/fiado (se quitaron tarjeta/nequi/daviplata);
+    # 'mixto' entra en F5 (cobro dividido del POS). El AGENTE sigue acotado a los cuatro clásicos
+    # (MetodoPagoBot en ai/tools.py: el cobro dividido es flujo de UI, no de chat).
+    assert set(get_args(MetodoPago)) == {"efectivo", "transferencia", "datafono", "fiado", "mixto"}
+
+    from ai.tools import MetodoPagoBot
+    assert set(get_args(MetodoPagoBot)) == {"efectivo", "transferencia", "datafono", "fiado"}

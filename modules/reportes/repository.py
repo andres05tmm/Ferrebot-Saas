@@ -18,7 +18,7 @@ from modules.compras_fiscal.models import CompraFiscal
 from modules.fiados.models import FiadoMovimiento
 from modules.inventario.models import MovimientoInventario, Producto
 from modules.proveedores.models import AbonoProveedor, FacturaProveedor
-from modules.ventas.models import Venta, VentaDetalle
+from modules.ventas.models import Venta, VentaDetalle, VentaPago
 
 
 @dataclass(frozen=True, slots=True)
@@ -141,9 +141,39 @@ class SqlReportesRepository:
         por_metodo = {fila.metodo_pago: Decimal(fila.total) for fila in filas}
         num_ventas = sum(fila.num for fila in filas)
         total_vendido = sum((Decimal(fila.total) for fila in filas), Decimal("0"))
+        await self._expandir_mixtas(por_metodo, inicio=inicio, fin=fin, vendedor_id=vendedor_id)
         return AgregadoDia(
             num_ventas=num_ventas, total_vendido=total_vendido, por_metodo_pago=por_metodo
         )
+
+    async def _expandir_mixtas(
+        self, por_metodo: dict[str, Decimal], *,
+        inicio: datetime, fin: datetime, vendedor_id: int | None = None,
+    ) -> None:
+        """Reemplaza el agregado 'mixto' por sus partes reales (`ventas_pagos`, F5/0053), in place.
+
+        En un desglose de DINERO nada puede aparecer como "mixto": la plata entró por métodos
+        concretos (efectivo + transferencia, p. ej.) y cada porción suma a su método. `num_ventas`
+        y el total no cambian: la mixta sigue siendo UNA venta con UN total.
+        """
+        if por_metodo.pop("mixto", None) is None:
+            return
+        condiciones = [
+            Venta.estado == "completada",
+            Venta.fecha >= inicio,
+            Venta.fecha <= fin,
+            Venta.metodo_pago == "mixto",
+        ]
+        if vendedor_id is not None:
+            condiciones.append(Venta.vendedor_id == vendedor_id)
+        stmt = (
+            select(VentaPago.metodo, func.coalesce(func.sum(VentaPago.monto), 0).label("total"))
+            .join(Venta, Venta.id == VentaPago.venta_id)
+            .where(*condiciones)
+            .group_by(VentaPago.metodo)
+        )
+        for fila in (await self._s.execute(stmt)).all():
+            por_metodo[fila.metodo] = por_metodo.get(fila.metodo, Decimal("0")) + Decimal(fila.total)
 
     async def serie_ventas(
         self, *, inicio: datetime, fin: datetime, vendedor_id: int | None
@@ -291,6 +321,9 @@ class SqlReportesRepository:
         ).all()
         por_metodo = {f.metodo_pago: Decimal(f.total) for f in filas_ventas}
         ventas_fiado = por_metodo.pop("fiado", Decimal("0"))
+        # Las mixtas entran al flujo por sus partes reales (efectivo/transferencia/datafono), nunca
+        # como "mixto" (F5/0053).
+        await self._expandir_mixtas(por_metodo, inicio=inicio, fin=fin)
 
         abonos_fiados = Decimal(
             (

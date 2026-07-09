@@ -18,9 +18,10 @@ from modules.inventario.busqueda import BuscadorProductos
 from modules.inventario.models import Inventario, MovimientoInventario, Producto
 from modules.inventario.precios import FraccionPrecio
 from modules.inventario.repository import SqlInventarioRepository
-from modules.ventas.models import Venta, VentaDetalle
+from modules.ventas.models import Venta, VentaDetalle, VentaPago
 from modules.ventas.schemas import (
     ItemVentaResumen,
+    PagoParte,
     VentaConLineas,
     VentaDetalleLeer,
     VentaLeer,
@@ -394,6 +395,23 @@ class SqlVentasRepository:
         )).scalar_one()
         return bool(fila)
 
+    async def pagos_de_venta(self, venta_id: int) -> list[tuple[str, Decimal]]:
+        """Partes del cobro de una venta mixta [(metodo, monto)]; lista vacía en las normales."""
+        filas = (
+            await self._s.execute(
+                select(VentaPago.metodo, VentaPago.monto).where(VentaPago.venta_id == venta_id)
+            )
+        ).all()
+        return [(f.metodo, Decimal(f.monto)) for f in filas]
+
+    async def reemplazar_pagos(self, venta_id: int, pagos: list[PagoParte]) -> None:
+        """Reemplaza el desglose de cobro de una venta (edición): borra las partes viejas e inserta
+        las nuevas (ninguna si la venta dejó de ser mixta). Misma transacción que la edición."""
+        await self._s.execute(delete(VentaPago).where(VentaPago.venta_id == venta_id))
+        for pago in pagos:
+            self._s.add(VentaPago(venta_id=venta_id, metodo=pago.metodo, monto=pago.monto))
+        await self._s.flush()
+
     async def siguiente_consecutivo(self) -> int:
         return (await self._s.execute(text("SELECT nextval('ventas_consecutivo_seq')"))).scalar_one()
 
@@ -417,6 +435,10 @@ class SqlVentasRepository:
             ))
         self._s.add(venta)
         await self._s.flush()  # asigna venta.id
+
+        # Partes del cobro mixto (F5/0053): misma transacción que la venta. Las normales no escriben.
+        for pago in header.pagos:
+            self._s.add(VentaPago(venta_id=venta.id, metodo=pago.metodo, monto=pago.monto))
 
         for ln in header.lineas:
             if not ln.descontar_stock or ln.producto_id is None:

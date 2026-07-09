@@ -5,12 +5,32 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from core.money import cuantizar as _money
 from modules.facturacion.repository import EstadoFiscalVenta
 
 # Métodos vigentes para ventas NUEVAS (cierra #9). Las ventas históricas con tarjeta/nequi/daviplata
 # se siguen leyendo (VentaLeer.metodo_pago es str; el enum de Postgres conserva esos valores).
-MetodoPago = Literal["efectivo", "transferencia", "datafono", "fiado"]
+MetodoPago = Literal["efectivo", "transferencia", "datafono", "fiado", "mixto"]
+# Métodos que pueden ser PARTE de un cobro mixto (F5/0053): dinero que entra YA. `fiado` queda fuera
+# (v1): el crédito tiene su propio ledger y no es plata en el cajón ni en el banco.
+MetodoPagoParte = Literal["efectivo", "transferencia", "datafono"]
 Origen = Literal["web", "bot", "voz", "offline"]
+
+
+class PagoParte(BaseModel):
+    """Una parte del cobro de una venta mixta: método + monto. La suma de las partes debe igualar
+    el total de la venta (eso lo valida el servicio, que es quien conoce el total calculado)."""
+
+    metodo: MetodoPagoParte
+    monto: Decimal = Field(gt=0)
+
+    @model_validator(mode="after")
+    def _cuantizar_monto(self) -> "PagoParte":
+        # A centavos DESDE la entrada: lo que valida el servicio (suma == total) es EXACTAMENTE lo
+        # que persiste NUMERIC(12,2) — una parte con 3 decimales redondeada al insertar rompería
+        # el invariante en silencio.
+        self.monto = _money(self.monto)
+        return self
 
 
 class VentaDetalleCrear(BaseModel):
@@ -38,6 +58,17 @@ class VentaCrear(BaseModel):
     # y cae al default si la intención no calza la capacidad). "No registrar ante DIAN" NO es opción aquí.
     documento: Literal["pos", "fe"] | None = None
     lineas: list[VentaDetalleCrear] = Field(min_length=1)
+    # Partes del cobro de una venta MIXTA (F5/0053). Solo válidas con metodo_pago='mixto' (y ahí son
+    # obligatorias: mínimo 2 — con una sola parte la venta ES de ese método, no mixta).
+    pagos: list[PagoParte] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _validar_pagos(self) -> "VentaCrear":
+        if self.metodo_pago == "mixto" and len(self.pagos) < 2:
+            raise ValueError("Una venta mixta requiere al menos 2 partes en `pagos`")
+        if self.metodo_pago != "mixto" and self.pagos:
+            raise ValueError("`pagos` solo aplica a ventas con metodo_pago='mixto'")
+        return self
 
 
 class VentaLeer(BaseModel):

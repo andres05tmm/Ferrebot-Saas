@@ -95,6 +95,70 @@ describe('TabVentasRapidas', () => {
   })
 })
 
+// --- Pago mixto (F5): cobro dividido con validación suma=total ----------------
+
+describe('TabVentasRapidas — pago mixto', () => {
+  it('manda pagos [efectivo + resto] que suman EXACTO el total', async () => {
+    const fetchMock = instalarFetch()
+    render(<TabVentasRapidas />)
+    await agregarMartillo()
+    await waitFor(() =>
+      expect(fetchMock.mock.calls.some(c => /\/productos\/1\/precio/.test(String(c[0])))).toBe(true))
+    fireEvent.keyDown(document, { key: '5', altKey: true })   // Alt+5 → mixto
+    fireEvent.change(await screen.findByLabelText('Parte en efectivo'), { target: { value: '4000' } })
+    // El resto sale solo: total $10.000 − $4.000 = $6.000 por transferencia (default).
+    await screen.findByText('$6.000')
+    fireEvent.click(screen.getByText(/Registrar venta/))
+    await screen.findByText(/Busca o escanea/)
+
+    const { body } = ventaPost(fetchMock)
+    expect(body.metodo_pago).toBe('mixto')
+    expect(body.pagos).toEqual([
+      { metodo: 'efectivo', monto: 4000 },
+      { metodo: 'transferencia', monto: 6000 },
+    ])
+  })
+
+  it('sin efectivo válido el botón queda deshabilitado (no hay POST posible)', async () => {
+    instalarFetch()
+    render(<TabVentasRapidas />)
+    await agregarMartillo()
+    fireEvent.keyDown(document, { key: '5', altKey: true })
+    await screen.findByLabelText('Parte en efectivo')   // sin monto: inválido
+    expect(screen.getByText(/Registrar venta/).closest('button')).toBeDisabled()
+  })
+})
+
+// --- Carrito persistente + ventas en espera (F5) ------------------------------
+
+describe('TabVentasRapidas — carrito persistente y en espera', () => {
+  it('el carrito sobrevive un remount (localStorage)', async () => {
+    instalarFetch()
+    const { unmount } = render(<TabVentasRapidas />)
+    await agregarMartillo()
+    await screen.findAllByText('Martillo')
+    unmount()
+
+    instalarFetch()
+    render(<TabVentasRapidas />)
+    expect((await screen.findAllByText('Martillo')).length).toBeGreaterThan(0)
+  })
+
+  it('"En espera" aparca el carrito y "Retomar" lo trae de vuelta', async () => {
+    instalarFetch()
+    render(<TabVentasRapidas />)
+    await agregarMartillo()
+    fireEvent.click(screen.getByText('En espera'))
+    await screen.findByText(/Busca o escanea/)          // mostrador libre
+    const chip = screen.getByLabelText('Retomar venta en espera 1')
+    expect(chip.textContent).toContain('1 ítem')
+
+    fireEvent.click(chip)
+    expect((await screen.findAllByText('Martillo')).length).toBeGreaterThan(0)
+    expect(screen.queryByLabelText('Retomar venta en espera 1')).toBeNull()
+  })
+})
+
 // --- Guard de apertura de caja (`caja_obligatoria`) --------------------------
 
 function renderConGuard() {

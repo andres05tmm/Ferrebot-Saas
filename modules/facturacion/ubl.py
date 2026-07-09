@@ -38,9 +38,11 @@ _UNIDAD_DIAN: dict[str, int] = {
     "GRM": 692, "gramo": 692, "Mts": 865, "Mt": 865, "metro": 865, "Cms": 495, "Cm": 495,
     "Lt": 821, "Lts": 821, "litro": 821, "MLT": 852, "ml": 852,
 }
-# §4 — medios de pago → means_payment_id.
+# §4 — medios de pago → means_payment_id. 'mixto' (F5/0053) va como 1 (instrumento no definido,
+# UNCL4461): el documento fiscal es uno solo y DIAN no modela cobros divididos.
 _MEDIOS_PAGO: dict[str, int] = {
     "efectivo": 10, "transferencia": 42, "tarjeta": 48, "nequi": 42, "daviplata": 42, "datafono": 48,
+    "mixto": 1,
 }
 
 # --- IDs fijos §4 ------------------------------------------------------------

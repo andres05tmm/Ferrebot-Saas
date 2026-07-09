@@ -11,18 +11,27 @@
  *   Mantenimientos (todos|maquinas)     hechos + próximos (Semaforo ámbar)
  *   Planeado       (todos + porción)    asignaciones máquina→obra, trabajador→obra e hitos de obra
  */
+import { useState } from 'react'
 import {
-  Truck, HardHat, Users, Wrench, Package, ClipboardList, CalendarDays, TriangleAlert, Camera, Ruler, X,
+  Truck, HardHat, Users, Wrench, Package, ClipboardList, CalendarDays, TriangleAlert, Camera, Ruler, X, Plus,
 } from 'lucide-react'
+import { toast } from 'sonner'
+import { api } from '@/lib/api'
 import { useFetch } from '@/components/shared.jsx'
+import { useAuth } from '@/hooks/useAuth'
 import { Card } from '@/components/ui/card.jsx'
-import { Semaforo, EstadoVacio, Esqueleto } from '../comunes.jsx'
-import { qsEntidad, fechaLarga } from './util.js'
+import { Semaforo, EstadoVacio, Esqueleto, BTN_OUTLINE } from '../comunes.jsx'
+import { qsEntidad, fechaLarga, hoyStrCO } from './util.js'
+import FormAsignacionMaquina from './FormAsignacionMaquina.jsx'
+import FormAsignacionTrabajador from './FormAsignacionTrabajador.jsx'
 
 const arr = (x) => (Array.isArray(x) ? x : [])
 
-export default function DetalleDia({ fecha, filtros, onCerrar }) {
+export default function DetalleDia({ fecha, filtros, onCerrar, onCambio }) {
   const q = useFetch(fecha ? `/obras/calendario/dia?fecha=${fecha}${qsEntidad(filtros)}` : null, [])
+  const admin = useAuth().isAdmin()
+  // Refresca el detalle del día y avisa al contenedor para que repida el mes (los dots) sin esperar SSE.
+  const recargar = () => { q.refetch(); onCambio?.() }
   const d = q.data || {}
   const vista = filtros.vista
   const ver = (s) => vista === 'todos' || vista === s
@@ -71,7 +80,10 @@ export default function DetalleDia({ fecha, filtros, onCerrar }) {
           {ver('obras') && <SeccionObras reportes={reportes} consumos={consumos} />}
           {ver('trabajadores') && <SeccionTrabajadores asistencia={asistencia} />}
           {ver('maquinas') && <SeccionMantenimientos hechos={mantenimientos} proximos={proximos} />}
-          <SeccionPlaneado maquinas={plMaq} trabajadores={plTrab} hitos={plHitos} />
+          <SeccionPlaneado
+            maquinas={plMaq} trabajadores={plTrab} hitos={plHitos}
+            admin={admin} fecha={fecha} onCambio={recargar}
+          />
         </div>
       )}
     </Card>
@@ -206,41 +218,108 @@ function SeccionMantenimientos({ hechos, proximos }) {
   )
 }
 
-function SeccionPlaneado({ maquinas, trabajadores, hitos }) {
+// Planeado: además de listar asignaciones/hitos, el ADMIN puede asignar máquina/trabajador (forms inline)
+// y CERRAR una asignación activa (PATCH activa=false + fecha_fin hoy). Se renderiza también con conteo 0
+// para el admin (necesita el toolbar en un día sin planeado); para el vendedor se oculta si está vacío.
+function SeccionPlaneado({ maquinas, trabajadores, hitos, admin, fecha, onCambio }) {
+  const [form, setForm] = useState(null) // 'maquina' | 'trabajador' | null
   const conteo = maquinas.length + trabajadores.length + hitos.length
+  if (!admin && !conteo) return null
+
+  async function cerrar(path, nombre) {
+    if (!window.confirm(`¿Cerrar la asignación de ${nombre}? Se marcará como finalizada hoy.`)) return
+    try {
+      const res = await api(path, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ activa: false, fecha_fin: hoyStrCO() }),
+      })
+      if (res.ok) { toast.success('Asignación cerrada'); onCambio?.() }
+      else toast.error('No se pudo cerrar la asignación')
+    } catch { toast.error('Error de conexión') }
+  }
+
   return (
-    <Seccion icono={ClipboardList} titulo="Planeado" conteo={conteo}>
-      {maquinas.map((p) => (
-        <Linea key={`pm-${p.asignacion_id}`}>
-          <span className="inline-flex items-center gap-1.5">
-            <Truck className="size-3.5 text-muted-foreground" aria-hidden="true" />
-            <span className="font-medium text-foreground">{p.maquina || `Máquina #${p.maquina_id}`}</span>
-            <span className="text-muted-foreground">→ {p.obra || `Obra #${p.obra_id}`}</span>
-          </span>
-          <div className="mt-0.5 text-[11px] text-muted-foreground">
-            {p.operador && <span>{p.operador} · </span>}{p.fecha_inicio} → {p.fecha_fin || '—'}
+    <details open className="rounded-md border border-border-subtle bg-surface">
+      <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2 text-[12px] font-semibold text-foreground">
+        <ClipboardList className="size-4 text-muted-foreground" aria-hidden="true" />
+        <span>Planeado</span>
+        <span className="ml-auto tabular text-[11px] text-muted-foreground">{conteo}</span>
+      </summary>
+      <div className="space-y-2 px-3 pb-3 pt-1">
+        {admin && (
+          <div className="flex flex-wrap gap-2">
+            <button type="button" onClick={() => setForm((v) => (v === 'maquina' ? null : 'maquina'))}
+              aria-expanded={form === 'maquina'} className={`${BTN_OUTLINE} h-7 px-2 text-[12px]`}>
+              <Plus className="size-3.5" /> Asignar máquina
+            </button>
+            <button type="button" onClick={() => setForm((v) => (v === 'trabajador' ? null : 'trabajador'))}
+              aria-expanded={form === 'trabajador'} className={`${BTN_OUTLINE} h-7 px-2 text-[12px]`}>
+              <Plus className="size-3.5" /> Asignar trabajador
+            </button>
           </div>
-        </Linea>
-      ))}
-      {trabajadores.map((p) => (
-        <Linea key={`pt-${p.asignacion_id}`}>
-          <span className="inline-flex items-center gap-1.5">
-            <Users className="size-3.5 text-muted-foreground" aria-hidden="true" />
-            <span className="font-medium text-foreground">{p.trabajador || `Trabajador #${p.trabajador_id}`}</span>
-            <span className="text-muted-foreground">→ {p.obra || `Obra #${p.obra_id}`}</span>
-          </span>
-          <div className="mt-0.5 text-[11px] text-muted-foreground">{p.fecha_inicio} → {p.fecha_fin || '—'}</div>
-        </Linea>
-      ))}
-      {hitos.map((h, i) => (
-        <Linea key={`h-${h.obra_id}-${i}`}>
-          <div className="flex items-center gap-2">
-            <span className="font-medium text-foreground">{h.obra || `Obra #${h.obra_id}`}</span>
-            <Semaforo tono="azul" className="ml-auto">{h.hito}</Semaforo>
-          </div>
-          {h.estado && <p className="mt-0.5 text-[11px] text-muted-foreground">{h.estado}</p>}
-        </Linea>
-      ))}
-    </Seccion>
+        )}
+        {admin && form === 'maquina' && (
+          <FormAsignacionMaquina fechaInicioDefault={fecha}
+            onExito={() => { setForm(null); onCambio?.() }} onCancelar={() => setForm(null)} />
+        )}
+        {admin && form === 'trabajador' && (
+          <FormAsignacionTrabajador fechaInicioDefault={fecha}
+            onExito={() => { setForm(null); onCambio?.() }} onCancelar={() => setForm(null)} />
+        )}
+        {maquinas.map((p) => (
+          <Linea key={`pm-${p.asignacion_id}`}>
+            <div className="flex items-start gap-2">
+              <div className="min-w-0 flex-1">
+                <span className="inline-flex items-center gap-1.5">
+                  <Truck className="size-3.5 text-muted-foreground" aria-hidden="true" />
+                  <span className="font-medium text-foreground">{p.maquina || `Máquina #${p.maquina_id}`}</span>
+                  <span className="text-muted-foreground">→ {p.obra || `Obra #${p.obra_id}`}</span>
+                </span>
+                <div className="mt-0.5 text-[11px] text-muted-foreground">
+                  {p.operador && <span>{p.operador} · </span>}{p.fecha_inicio} → {p.fecha_fin || '—'}
+                </div>
+              </div>
+              {admin && (
+                <button type="button"
+                  onClick={() => cerrar(`/maquinas/${p.maquina_id}/asignaciones/${p.asignacion_id}`, p.maquina || `Máquina #${p.maquina_id}`)}
+                  className="shrink-0 rounded-md px-2 py-0.5 text-[11px] font-medium text-muted-foreground hover:bg-surface-2 hover:text-destructive">
+                  Cerrar
+                </button>
+              )}
+            </div>
+          </Linea>
+        ))}
+        {trabajadores.map((p) => (
+          <Linea key={`pt-${p.asignacion_id}`}>
+            <div className="flex items-start gap-2">
+              <div className="min-w-0 flex-1">
+                <span className="inline-flex items-center gap-1.5">
+                  <Users className="size-3.5 text-muted-foreground" aria-hidden="true" />
+                  <span className="font-medium text-foreground">{p.trabajador || `Trabajador #${p.trabajador_id}`}</span>
+                  <span className="text-muted-foreground">→ {p.obra || `Obra #${p.obra_id}`}</span>
+                </span>
+                <div className="mt-0.5 text-[11px] text-muted-foreground">{p.fecha_inicio} → {p.fecha_fin || '—'}</div>
+              </div>
+              {admin && (
+                <button type="button"
+                  onClick={() => cerrar(`/trabajadores/${p.trabajador_id}/asignaciones/${p.asignacion_id}`, p.trabajador || `Trabajador #${p.trabajador_id}`)}
+                  className="shrink-0 rounded-md px-2 py-0.5 text-[11px] font-medium text-muted-foreground hover:bg-surface-2 hover:text-destructive">
+                  Cerrar
+                </button>
+              )}
+            </div>
+          </Linea>
+        ))}
+        {hitos.map((h, i) => (
+          <Linea key={`h-${h.obra_id}-${i}`}>
+            <div className="flex items-center gap-2">
+              <span className="font-medium text-foreground">{h.obra || `Obra #${h.obra_id}`}</span>
+              <Semaforo tono="azul" className="ml-auto">{h.hito}</Semaforo>
+            </div>
+            {h.estado && <p className="mt-0.5 text-[11px] text-muted-foreground">{h.estado}</p>}
+          </Linea>
+        ))}
+      </div>
+    </details>
   )
 }

@@ -96,7 +96,10 @@ export default function CalendarioObra() {
       />
 
       {diaSeleccionado && (
-        <DetalleDia fecha={diaSeleccionado} filtros={filtros} onCerrar={() => setDiaSeleccionado(null)} />
+        <DetalleDia
+          fecha={diaSeleccionado} filtros={filtros}
+          onCerrar={() => setDiaSeleccionado(null)} onCambio={q.refetch}
+        />
       )}
     </div>
   )

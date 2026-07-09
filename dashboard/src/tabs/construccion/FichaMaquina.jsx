@@ -31,6 +31,7 @@ import {
 import { api } from '@/lib/api'
 import { useFetch, cop, num } from '@/components/shared.jsx'
 import { Semaforo, Campo, BTN_PRIMARY, BTN_OUTLINE, SELECT_CLS } from './comunes.jsx'
+import FormAsignacionMaquina from './calendario/FormAsignacionMaquina.jsx'
 
 // Etiquetas humanas del tipo de mantenimiento (enum del ORM) y del estado de máquina. Se mantienen
 // locales para que la ficha sea autocontenida (y testeable) sin acoplarse al mapa de TabMaquinas.
@@ -92,6 +93,7 @@ export default function FichaMaquina({ id, maquina, isAdmin = false, obrasNombre
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <SeccionAsignaciones
           q={asignacionesQ} asignaciones={asignaciones} obraLabel={obraLabel} hoy={hoyCO()}
+          maquina={maquina} isAdmin={isAdmin} onCreado={asignacionesQ.refetch}
         />
         <SeccionMantenimientos
           q={mantsQ} mants={mants} horas={horas} maquinaId={maquina.id} isAdmin={isAdmin}
@@ -216,9 +218,25 @@ function Cargando() {
 }
 
 // ── Asignaciones a obra ─────────────────────────────────────────────────────────────────────────────
-function SeccionAsignaciones({ q, asignaciones, obraLabel, hoy }) {
+function SeccionAsignaciones({ q, asignaciones, obraLabel, hoy, maquina, isAdmin = false, onCreado }) {
+  const [abrirForm, setAbrirForm] = useState(false)
+  const accion = isAdmin
+    ? (
+      <button onClick={() => setAbrirForm((v) => !v)} className={`${BTN_OUTLINE} h-7 px-2 text-[12px]`} aria-expanded={abrirForm}>
+        <Plus className="size-3.5" /> Asignar
+      </button>
+    )
+    : null
+
   return (
-    <Panel icono={Building2} titulo="Asignaciones a obra" conteo={asignaciones.length}>
+    <Panel icono={Building2} titulo="Asignaciones a obra" conteo={asignaciones.length} accion={accion}>
+      {isAdmin && abrirForm && (
+        <FormAsignacionMaquina
+          maquinaFija={maquina}
+          onExito={() => { setAbrirForm(false); onCreado?.() }}
+          onCancelar={() => setAbrirForm(false)}
+        />
+      )}
       {q.loading ? <Cargando />
         : asignaciones.length === 0 ? <Vacio>Esta máquina no está asignada a ninguna obra todavía.</Vacio>
           : (

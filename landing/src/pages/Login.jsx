@@ -1,10 +1,10 @@
 import { lazy, Suspense, useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { Loader2 } from 'lucide-react'
 import Sello from '@/components/Sello.jsx'
 import { Input } from '@/components/ui/input.jsx'
 import { Label } from '@/components/ui/label.jsx'
-import { APP_URL, iniciarSesion, urlDashboardConToken, urlDashboardParaTenant } from '@/lib/auth.js'
+import { APP_URL, MENSAJES, esSlugValido, iniciarSesion, urlDashboardConToken, urlDashboardParaTenant } from '@/lib/auth.js'
 
 const AuroraOro = lazy(() => import('@/components/AuroraOro.jsx'))
 
@@ -15,6 +15,10 @@ const AuroraOro = lazy(() => import('@/components/AuroraOro.jsx'))
  * no viaja al servidor). 401 → mensaje genérico; 429 → bloqueo temporal.
  */
 export default function Login() {
+  // `next` = subdominio DEL LINK por el que llegó el cliente (lo pone el rebote del dashboard,
+  // handoff.landingLoginUrlForHost). La entrada neutra melquiadez.com/login llega SIN `next`.
+  const [searchParams] = useSearchParams()
+  const next = searchParams.get('next')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [cargando, setCargando] = useState(false)
@@ -32,11 +36,19 @@ export default function Login() {
     setError('')
     const res = await iniciarSesion(email.trim(), password)
     if (res.ok) {
-      // El JWT es AUTORITATIVO: cada identidad pertenece a UNA empresa (claim `tenant`). Enrutamos SIEMPRE
-      // a su subdominio; si no hay tenant (super_admin) → app. (plataforma → el dashboard lo lleva a /admin).
-      // `next` NO se usa para el routing: es un hint que puede no coincidir con las credenciales (otra
-      // empresa) y el subdominio elegido haría que el guard del backend rechace el token con 403.
-      const destino = urlDashboardParaTenant(res.usuario?.tenant, res.token) || urlDashboardConToken(res.token)
+      const tenant = res.usuario?.tenant   // slug de la empresa; null para super_admin (plataforma)
+      // Guard de aislamiento: un link de tenant (`?next` válido) es una PUERTA CERRADA — solo abre ESA
+      // empresa. Si el cliente llegó por el link de una empresa pero sus credenciales son de OTRA, se
+      // rechaza en seco: jamás se le enruta a ningún dashboard. Desde la entrada neutra (sin `next`) entra
+      // al de su empresa con normalidad. super_admin (tenant null) no compara: opera cross-tenant → app.
+      if (tenant && esSlugValido(next) && next !== tenant) {
+        setError(MENSAJES.otraEmpresa)
+        setCargando(false)
+        return
+      }
+      // El JWT es AUTORITATIVO: cada identidad pertenece a UNA empresa (claim `tenant`). Enrutamos a su
+      // subdominio; si no hay tenant (super_admin) → app. (plataforma → el dashboard lo lleva a /admin).
+      const destino = urlDashboardParaTenant(tenant, res.token) || urlDashboardConToken(res.token)
       window.location.assign(destino) // token en el FRAGMENTO: no viaja al servidor
       return // seguimos "cargando" mientras el navegador navega
     }

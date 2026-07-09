@@ -542,3 +542,113 @@ class SqlMaquinasRepository:
             )
         ).all()
         return [dict(f._mapping) for f in filas]
+
+    # ---- Calendario de obra (commit 2): lecturas de OPERACIÓN por rango [desde, hasta], sin dinero ---
+    # Cada método corre UNA consulta para todo el rango (el mes agrega en Python; el detalle usa
+    # desde=hasta=fecha) — N+1-free. Los nombres (máquina/obra/operador) se resuelven por JOIN. Los
+    # filtros opcionales se aplican como WHERE condicional (identificadores fijos; valores por bind param).
+    async def horas_calendario(
+        self,
+        desde: date,
+        hasta: date,
+        *,
+        maquina_id: int | None = None,
+        obra_id: int | None = None,
+        operador_id: int | None = None,
+    ) -> list[dict]:
+        """Partes de horas en el rango + nombres. Operador = COALESCE(parte, asignación vigente) resuelto a
+        nombre; LEFT JOIN LATERAL a la asignación vigente (variante LEFT del `_LATERAL_PRECIO`, sin precio)."""
+        params: dict = {"desde": desde, "hasta": hasta}
+        extra = ""
+        if maquina_id is not None:
+            extra += " AND rh.maquina_id = :maquina_id"
+            params["maquina_id"] = maquina_id
+        if obra_id is not None:
+            extra += " AND rh.obra_id = :obra_id"
+            params["obra_id"] = obra_id
+        if operador_id is not None:
+            extra += " AND COALESCE(rh.operador_id, a.operador_id) = :operador_id"
+            params["operador_id"] = operador_id
+        sql = (
+            "SELECT rh.id, rh.maquina_id, m.nombre AS maquina, rh.obra_id, o.nombre AS obra, "
+            "  COALESCE(rh.operador_id, a.operador_id) AS operador_id, "
+            "  NULLIF(TRIM(COALESCE(t.nombres,'') || ' ' || COALESCE(t.apellidos,'')), '') AS operador, "
+            "  rh.horas_trabajadas, rh.horas_facturables, rh.observaciones, rh.origen_registro, rh.fecha "
+            "FROM registros_horas_maquina rh "
+            "JOIN maquinas m ON m.id = rh.maquina_id "
+            "JOIN obras o ON o.id = rh.obra_id "
+            "LEFT JOIN LATERAL ("
+            "  SELECT amo.operador_id FROM asignaciones_maquina_obra amo "
+            "  WHERE amo.maquina_id = rh.maquina_id AND amo.obra_id = rh.obra_id AND amo.activa "
+            "    AND amo.fecha_inicio <= rh.fecha AND (amo.fecha_fin IS NULL OR amo.fecha_fin >= rh.fecha) "
+            "  ORDER BY amo.fecha_inicio DESC, amo.id DESC LIMIT 1"
+            ") a ON true "
+            "LEFT JOIN trabajadores t ON t.id = COALESCE(rh.operador_id, a.operador_id) "
+            "WHERE rh.fecha BETWEEN :desde AND :hasta" + extra + " ORDER BY rh.fecha, rh.id"
+        )
+        return [dict(f._mapping) for f in (await self._s.execute(text(sql), params)).all()]
+
+    async def mantenimientos_calendario(
+        self, desde: date, hasta: date, *, maquina_id: int | None = None
+    ) -> list[dict]:
+        """Mantenimientos HECHOS (por `fecha`) en el rango + nombre de máquina. Sin costo."""
+        params: dict = {"desde": desde, "hasta": hasta}
+        extra = ""
+        if maquina_id is not None:
+            extra += " AND m.maquina_id = :maquina_id"
+            params["maquina_id"] = maquina_id
+        sql = (
+            "SELECT m.id, m.maquina_id, mq.nombre AS maquina, m.tipo, m.descripcion, "
+            "  m.proximo_en_fecha, m.fecha "
+            "FROM mantenimientos m JOIN maquinas mq ON mq.id = m.maquina_id "
+            "WHERE m.fecha BETWEEN :desde AND :hasta" + extra + " ORDER BY m.fecha, m.id"
+        )
+        return [dict(f._mapping) for f in (await self._s.execute(text(sql), params)).all()]
+
+    async def proximos_mantenimientos_calendario(
+        self, desde: date, hasta: date, *, maquina_id: int | None = None
+    ) -> list[dict]:
+        """Mantenimientos PRÓXIMOS programados en el rango: la fecha del evento ES `proximo_en_fecha`."""
+        params: dict = {"desde": desde, "hasta": hasta}
+        extra = ""
+        if maquina_id is not None:
+            extra += " AND m.maquina_id = :maquina_id"
+            params["maquina_id"] = maquina_id
+        sql = (
+            "SELECT m.maquina_id, mq.nombre AS maquina, m.tipo, m.descripcion, "
+            "  m.proximo_en_fecha AS fecha "
+            "FROM mantenimientos m JOIN maquinas mq ON mq.id = m.maquina_id "
+            "WHERE m.proximo_en_fecha BETWEEN :desde AND :hasta" + extra
+            + " ORDER BY m.proximo_en_fecha, m.id"
+        )
+        return [dict(f._mapping) for f in (await self._s.execute(text(sql), params)).all()]
+
+    async def asignaciones_maquina_calendario(
+        self, desde: date, hasta: date, *, maquina_id: int | None = None, obra_id: int | None = None
+    ) -> list[dict]:
+        """Asignaciones máquina→obra ACTIVAS cuyo rango SOLAPA [desde, hasta] + nombres. Sin precio_hora.
+
+        Solape = `fecha_inicio <= hasta AND (fecha_fin IS NULL OR fecha_fin >= desde)` (NULL = abierto).
+        Devuelve rangos (fecha_inicio/fecha_fin); el service los proyecta a cada día que cubren."""
+        params: dict = {"desde": desde, "hasta": hasta}
+        extra = ""
+        if maquina_id is not None:
+            extra += " AND amo.maquina_id = :maquina_id"
+            params["maquina_id"] = maquina_id
+        if obra_id is not None:
+            extra += " AND amo.obra_id = :obra_id"
+            params["obra_id"] = obra_id
+        sql = (
+            "SELECT amo.id AS asignacion_id, amo.maquina_id, mq.nombre AS maquina, "
+            "  amo.obra_id, o.nombre AS obra, amo.operador_id, "
+            "  NULLIF(TRIM(COALESCE(t.nombres,'') || ' ' || COALESCE(t.apellidos,'')), '') AS operador, "
+            "  amo.fecha_inicio, amo.fecha_fin "
+            "FROM asignaciones_maquina_obra amo "
+            "JOIN maquinas mq ON mq.id = amo.maquina_id "
+            "JOIN obras o ON o.id = amo.obra_id "
+            "LEFT JOIN trabajadores t ON t.id = amo.operador_id "
+            "WHERE amo.activa AND amo.fecha_inicio <= :hasta "
+            "  AND (amo.fecha_fin IS NULL OR amo.fecha_fin >= :desde)" + extra
+            + " ORDER BY amo.fecha_inicio, amo.id"
+        )
+        return [dict(f._mapping) for f in (await self._s.execute(text(sql), params)).all()]

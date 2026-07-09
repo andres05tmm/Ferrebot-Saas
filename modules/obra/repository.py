@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -527,6 +527,68 @@ class SqlObrasRepository:
                 raise
             return existente
         return consumo
+
+    # ---- Calendario de obra (commit 2): lecturas de OPERACIÓN por rango [desde, hasta], sin dinero ---
+    # Una consulta por origen para todo el rango (N+1-free); el service agrega en Python. Nombres por
+    # JOIN. Filtros opcionales como WHERE condicional (identificadores fijos; valores por bind param).
+    async def reportes_calendario(
+        self, desde: date, hasta: date, *, obra_id: int | None = None
+    ) -> list[dict]:
+        """Reportes diarios de avance en el rango + nombre de obra."""
+        params: dict = {"desde": desde, "hasta": hasta}
+        extra = ""
+        if obra_id is not None:
+            extra += " AND r.obra_id = :obra_id"
+            params["obra_id"] = obra_id
+        sql = (
+            "SELECT r.id, r.obra_id, o.nombre AS obra, r.reportado_por, r.avance_descripcion, "
+            "  r.m2_ejecutados, r.m3_ejecutados, r.incidentes, r.foto_urls, r.fecha "
+            "FROM reportes_diarios_obra r JOIN obras o ON o.id = r.obra_id "
+            "WHERE r.fecha BETWEEN :desde AND :hasta" + extra + " ORDER BY r.fecha, r.id"
+        )
+        return [dict(f._mapping) for f in (await self._s.execute(text(sql), params)).all()]
+
+    async def consumos_calendario(
+        self, desde: date, hasta: date, *, obra_id: int | None = None
+    ) -> list[dict]:
+        """Consumos de material en el rango + nombre de producto y obra. Sin costo unitario."""
+        params: dict = {"desde": desde, "hasta": hasta}
+        extra = ""
+        if obra_id is not None:
+            extra += " AND c.obra_id = :obra_id"
+            params["obra_id"] = obra_id
+        sql = (
+            "SELECT c.id, c.obra_id, o.nombre AS obra, c.producto_id, p.nombre AS producto, "
+            "  c.cantidad, c.fecha "
+            "FROM consumos_inventario c "
+            "JOIN obras o ON o.id = c.obra_id "
+            "JOIN productos p ON p.id = c.producto_id "
+            "WHERE c.fecha BETWEEN :desde AND :hasta" + extra + " ORDER BY c.fecha, c.id"
+        )
+        return [dict(f._mapping) for f in (await self._s.execute(text(sql), params)).all()]
+
+    async def hitos_calendario(self, desde: date, hasta: date) -> list[dict]:
+        """Hitos de obra que caen en el rango: UNION ALL de inicio / fin_estimada / fin_real (obras vivas).
+
+        La fecha del evento es la fecha del hito; `estado` es el estado actual de la obra. El filtro por
+        `obra_id` lo aplica el service en Python (el mismo UNION sirve a todas las obras)."""
+        sql = (
+            "SELECT h.obra_id, h.obra, h.hito, h.estado, h.fecha FROM ("
+            "  SELECT o.id AS obra_id, o.nombre AS obra, 'inicio' AS hito, o.estado, "
+            "    o.fecha_inicio AS fecha FROM obras o "
+            "  WHERE o.eliminado_en IS NULL AND o.fecha_inicio IS NOT NULL "
+            "  UNION ALL "
+            "  SELECT o.id, o.nombre, 'fin_estimada', o.estado, o.fecha_fin_estimada FROM obras o "
+            "  WHERE o.eliminado_en IS NULL AND o.fecha_fin_estimada IS NOT NULL "
+            "  UNION ALL "
+            "  SELECT o.id, o.nombre, 'fin_real', o.estado, o.fecha_fin_real FROM obras o "
+            "  WHERE o.eliminado_en IS NULL AND o.fecha_fin_real IS NOT NULL"
+            ") h WHERE h.fecha BETWEEN :desde AND :hasta ORDER BY h.fecha, h.obra_id"
+        )
+        return [
+            dict(f._mapping)
+            for f in (await self._s.execute(text(sql), {"desde": desde, "hasta": hasta})).all()
+        ]
 
     # ---- Liquidación (Fase 3): snapshot inmutable, idempotente por UNIQUE(obra_id) -----------------
     async def obtener_liquidacion(self, obra_id: int) -> LiquidacionObra | None:

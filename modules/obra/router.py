@@ -10,6 +10,8 @@ inyecta por dependencia (los tests lo overridean con un fake, sin red ni Postgre
 """
 from __future__ import annotations
 
+from datetime import date
+
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -25,6 +27,7 @@ from modules.facturacion.service import FacturacionService
 from modules.inventario.errors import AjusteDejaStockNegativo, ProductoInexistente
 from modules.inventario.repository import SqlInventarioRepository
 from modules.inventario.service import InventarioService
+from modules.obra.calendario import CalendarioObraService
 from modules.obra.dashboard import DashboardConstruccionService, panel_obra_a_schema
 from modules.obra.errors import (
     ConsumoEnObraLiquidada,
@@ -38,10 +41,12 @@ from modules.obra.errors import (
 from modules.obra.panel_cache import dashboard_cache, panel_cache
 from modules.obra.repository import SqlObrasRepository
 from modules.obra.schemas import (
+    CalendarioMes,
     ConsumoInventarioCrear,
     ConsumoInventarioLeer,
     ConsumoInventarioRegistrado,
     DashboardConstruccion,
+    DetalleDiaCalendario,
     EstadoObra,
     FacturaObraLeer,
     GastoRealObra,
@@ -82,6 +87,15 @@ def get_dashboard_service(
     """Arma el compositor del cockpit sobre la sesión del tenant + sus capacidades (los tests de wiring lo
     overridean con un fake). Las secciones opcionales del cockpit degradan según `capacidades`."""
     return DashboardConstruccionService(session, capacidades)
+
+
+def get_calendario_service(
+    session: AsyncSession = Depends(get_tenant_db),
+    capacidades: frozenset[str] = Depends(get_capacidades),
+) -> CalendarioObraService:
+    """Arma el compositor del calendario de obra sobre la sesión del tenant + sus capacidades (los tests
+    de wiring lo overridean con un fake). Las secciones degradan según `capacidades` (maquinaria/nomina)."""
+    return CalendarioObraService(session, capacidades)
 
 
 async def get_obras_facturador(
@@ -196,6 +210,44 @@ async def dashboard_construccion(
     if empresa_id is not None:
         dashboard_cache.set(empresa_id, resp)
     return resp
+
+
+@router.get("/obras/calendario", response_model=CalendarioMes)
+async def calendario_obra_mes(
+    anio: int = Query(..., ge=2000, le=2100, description="Año del calendario"),
+    mes: int = Query(..., ge=1, le=12, description="Mes del calendario (1–12)"),
+    obra_id: int | None = Query(default=None, description="Filtra por obra"),
+    maquina_id: int | None = Query(default=None, description="Filtra por máquina"),
+    trabajador_id: int | None = Query(default=None, description="Filtra por trabajador"),
+    service: CalendarioObraService = Depends(get_calendario_service),
+    _user: Principal = Depends(require_role("vendedor")),
+) -> CalendarioMes:
+    """Resumen mensual de la actividad de obra: conteos por día (solo días con actividad) + horas de
+    máquina del día. Vista de OPERACIÓN (sin dinero), rol `vendedor` (todo el personal la consulta).
+
+    Declarada ANTES de `/obras/{obra_id}` (junto a `/obras/panel` y `/obras/dashboard`) para que
+    'calendario' no caiga en la ruta de id. Secciones degradan por capacidad (maquinaria/nomina)."""
+    return await service.mes(
+        anio, mes, obra_id=obra_id, maquina_id=maquina_id, trabajador_id=trabajador_id
+    )
+
+
+@router.get("/obras/calendario/dia", response_model=DetalleDiaCalendario)
+async def calendario_obra_dia(
+    fecha: date = Query(..., description="Día a detallar (YYYY-MM-DD, hora Colombia)"),
+    obra_id: int | None = Query(default=None, description="Filtra por obra"),
+    maquina_id: int | None = Query(default=None, description="Filtra por máquina"),
+    trabajador_id: int | None = Query(default=None, description="Filtra por trabajador"),
+    service: CalendarioObraService = Depends(get_calendario_service),
+    _user: Principal = Depends(require_role("vendedor")),
+) -> DetalleDiaCalendario:
+    """Detalle de un día del calendario: todas las secciones (horas, reportes, asistencia, mantenimientos,
+    consumos, hitos, próximos y planeado). Vista de OPERACIÓN (sin dinero), rol `vendedor`.
+
+    Declarada ANTES de `/obras/{obra_id}` para que no caiga en la ruta de id. Degrada por capacidad."""
+    return await service.dia(
+        fecha, obra_id=obra_id, maquina_id=maquina_id, trabajador_id=trabajador_id
+    )
 
 
 @router.get("/obras/{obra_id}", response_model=ObraResumen)

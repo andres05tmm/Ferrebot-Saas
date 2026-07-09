@@ -8,7 +8,7 @@ La sesión del tenant ES la transacción; aquí no se hace commit.
 """
 from datetime import date
 
-from sqlalchemy import or_, select
+from sqlalchemy import or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.config.timezone import now_co
@@ -174,3 +174,69 @@ class SqlTrabajadoresRepository:
                 "activa": asig.activa,
             },
         )
+
+    # ---- Calendario de obra (commit 2): lecturas de OPERACIÓN por rango [desde, hasta] ---------------
+    # Una consulta por origen para todo el rango (N+1-free); el service agrega en Python. Nombre del
+    # trabajador con el patrón NULLIF(TRIM(...)) del repo. Filtros opcionales como WHERE condicional.
+    async def asistencia_calendario(
+        self,
+        desde: date,
+        hasta: date,
+        *,
+        trabajador_id: int | None = None,
+        obra_id: int | None = None,
+    ) -> list[dict]:
+        """Asistencia en el rango + nombre de trabajador. LEFT JOIN obras: `obra_id` NULL (día
+        administrativo) se conserva con `obra=null`."""
+        params: dict = {"desde": desde, "hasta": hasta}
+        extra = ""
+        if trabajador_id is not None:
+            extra += " AND a.trabajador_id = :trabajador_id"
+            params["trabajador_id"] = trabajador_id
+        if obra_id is not None:
+            extra += " AND a.obra_id = :obra_id"
+            params["obra_id"] = obra_id
+        sql = (
+            "SELECT a.id, a.trabajador_id, "
+            "  NULLIF(TRIM(COALESCE(t.nombres,'') || ' ' || COALESCE(t.apellidos,'')), '') AS trabajador, "
+            "  a.obra_id, o.nombre AS obra, a.horas_trabajadas, a.horas_extra_diurnas, "
+            "  a.horas_extra_nocturnas, a.horas_dominical_festivo, a.ausencia, a.fecha "
+            "FROM registros_asistencia a "
+            "JOIN trabajadores t ON t.id = a.trabajador_id "
+            "LEFT JOIN obras o ON o.id = a.obra_id "
+            "WHERE a.fecha BETWEEN :desde AND :hasta" + extra + " ORDER BY a.fecha, a.id"
+        )
+        return [dict(f._mapping) for f in (await self._s.execute(text(sql), params)).all()]
+
+    async def asignaciones_trabajador_calendario(
+        self,
+        desde: date,
+        hasta: date,
+        *,
+        trabajador_id: int | None = None,
+        obra_id: int | None = None,
+    ) -> list[dict]:
+        """Asignaciones trabajador→obra ACTIVAS cuyo rango SOLAPA [desde, hasta] + nombres.
+
+        Solape = `fecha_inicio <= hasta AND (fecha_fin IS NULL OR fecha_fin >= desde)`. Devuelve rangos;
+        el service los proyecta a cada día que cubren."""
+        params: dict = {"desde": desde, "hasta": hasta}
+        extra = ""
+        if trabajador_id is not None:
+            extra += " AND ato.trabajador_id = :trabajador_id"
+            params["trabajador_id"] = trabajador_id
+        if obra_id is not None:
+            extra += " AND ato.obra_id = :obra_id"
+            params["obra_id"] = obra_id
+        sql = (
+            "SELECT ato.id AS asignacion_id, ato.trabajador_id, "
+            "  NULLIF(TRIM(COALESCE(t.nombres,'') || ' ' || COALESCE(t.apellidos,'')), '') AS trabajador, "
+            "  ato.obra_id, o.nombre AS obra, ato.fecha_inicio, ato.fecha_fin "
+            "FROM asignaciones_trabajador_obra ato "
+            "JOIN trabajadores t ON t.id = ato.trabajador_id "
+            "JOIN obras o ON o.id = ato.obra_id "
+            "WHERE ato.activa AND ato.fecha_inicio <= :hasta "
+            "  AND (ato.fecha_fin IS NULL OR ato.fecha_fin >= :desde)" + extra
+            + " ORDER BY ato.fecha_inicio, ato.id"
+        )
+        return [dict(f._mapping) for f in (await self._s.execute(text(sql), params)).all()]

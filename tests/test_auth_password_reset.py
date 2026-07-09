@@ -16,8 +16,11 @@ from httpx import ASGITransport
 from structlog.testing import capture_logs
 
 from core.auth.passwords import verify_password
+from core.email import BrevoSender, LogSender, construir_sender
 from core.tenancy.identidades_repo import Identidad
 from modules.auth.password_reset import (
+    _enlace_reset,
+    get_email_sender,
     get_rate_limiters,
     get_repo_identidades,
     get_token_store,
@@ -80,6 +83,7 @@ def _app(
     rl_email: _FakeRateLimiter | None = None,
     rl_ip: _FakeRateLimiter | None = None,
     rl_global: _FakeRateLimiter | None = None,
+    sender: "_FakeSender | None" = None,
 ) -> FastAPI:
     app = FastAPI()
     app.include_router(router, prefix="/api/v1")
@@ -90,6 +94,8 @@ def _app(
     il = rl_ip or _FakeRateLimiter()
     gl = rl_global or _FakeRateLimiter()
     app.dependency_overrides[get_rate_limiters] = lambda: (el, il, gl)
+    if sender is not None:
+        app.dependency_overrides[get_email_sender] = lambda: sender
     return app
 
 
@@ -228,3 +234,95 @@ async def test_reset_solicitar_no_loguea_el_token_en_claro():
     # El secreto no aparece en NINGÚN campo de NINGÚN log, ni en un campo llamado "token".
     assert all(e.get("token") is None for e in logs)
     assert not any(secreto in str(v) for e in logs for v in e.values())
+
+
+# --- envío de email (Brevo) --------------------------------------------------
+
+class _FakeSender:
+    """Sender inyectable que registra los envíos (email, enlace). No toca red."""
+
+    def __init__(self) -> None:
+        self.enviados: list[tuple[str, str]] = []
+
+    async def enviar_reset(self, email: str, enlace: str) -> None:
+        self.enviados.append((email, enlace))
+
+
+async def test_reset_solicitar_email_existente_envia_enlace_con_el_token():
+    # El envío va en BackgroundTask; ASGITransport lo espera antes de cerrar el request.
+    store, repo, sender = _FakeTokenStore(), _FakeRepo([_ident()]), _FakeSender()
+    app = _app(store, repo, sender=sender)
+    async with _cliente(app) as c:
+        r = await c.post("/api/v1/auth/reset/solicitar", json={"email": "ana@clinica.co"})
+    assert r.status_code == 200
+    assert len(sender.enviados) == 1
+    email, enlace = sender.enviados[0]
+    token = next(iter(store.tokens))
+    assert email == "ana@clinica.co"
+    assert enlace.endswith(f"/set-password?token={token}")    # apunta a la página con el token real
+
+
+async def test_reset_solicitar_email_inexistente_no_envia():
+    store, repo, sender = _FakeTokenStore(), _FakeRepo([]), _FakeSender()
+    app = _app(store, repo, sender=sender)
+    async with _cliente(app) as c:
+        r = await c.post("/api/v1/auth/reset/solicitar", json={"email": "nadie@otra.co"})
+    assert r.status_code == 200                               # 200 idéntico (no enumera)
+    assert sender.enviados == []                              # pero no hay a quién enviarle
+
+
+def test_enlace_reset_apunta_a_set_password_con_el_token():
+    enlace = _enlace_reset("abc-DEF_123")
+    assert enlace.endswith("/set-password?token=abc-DEF_123")
+
+
+def test_construir_sender_selecciona_impl_por_api_key():
+    assert isinstance(construir_sender("", "from@x.co", "X"), LogSender)          # sin key → solo-log
+    assert isinstance(construir_sender("xkeysib-k", "from@x.co", "X"), BrevoSender)  # con key → Brevo
+
+
+# --- Brevo: payload + best-effort (httpx fake) -------------------------------
+
+class _FakeResp:
+    def __init__(self, status: int = 201) -> None:
+        self.status_code = status
+
+    def raise_for_status(self) -> None:
+        if self.status_code >= 400:
+            raise httpx.HTTPStatusError("boom", request=httpx.Request("POST", "http://x"), response=None)  # type: ignore[arg-type]
+
+
+class _FakeHttp:
+    def __init__(self, resp: _FakeResp | None = None, revienta: bool = False) -> None:
+        self.resp = resp or _FakeResp()
+        self.revienta = revienta
+        self.llamadas: list[dict] = []
+
+    async def post(self, url: str, *, json: dict, headers: dict) -> _FakeResp:
+        self.llamadas.append({"url": url, "json": json, "headers": headers})
+        if self.revienta:
+            raise httpx.ConnectError("sin red")
+        return self.resp
+
+
+async def test_brevo_arma_payload_correcto():
+    http = _FakeHttp()
+    sender = BrevoSender("xkeysib-secreta", "no-responder@melquiadez.com", "Melquiadez", http=http)  # type: ignore[arg-type]
+    await sender.enviar_reset("ana@clinica.co", "https://app.melquiadez.com/set-password?token=t")
+
+    assert len(http.llamadas) == 1
+    llamada = http.llamadas[0]
+    assert llamada["url"].endswith("/v3/smtp/email")
+    assert llamada["headers"]["api-key"] == "xkeysib-secreta"   # Brevo usa api-key, NO Bearer
+    assert "Authorization" not in llamada["headers"]
+    cuerpo = llamada["json"]
+    assert cuerpo["to"][0]["email"] == "ana@clinica.co"
+    assert cuerpo["sender"]["email"] == "no-responder@melquiadez.com"
+    assert "set-password?token=t" in cuerpo["htmlContent"]
+    assert "set-password?token=t" in cuerpo["textContent"]
+
+
+async def test_brevo_es_best_effort_no_lanza_ante_fallos():
+    # Ni un fallo de red ni un status de error deben propagarse (no filtra al usuario ni tumba el request).
+    await BrevoSender("xkeysib-k", "f@x.co", "X", http=_FakeHttp(revienta=True)).enviar_reset("a@b.co", "http://x/set-password?token=t")  # type: ignore[arg-type]
+    await BrevoSender("xkeysib-k", "f@x.co", "X", http=_FakeHttp(resp=_FakeResp(status=401))).enviar_reset("a@b.co", "http://x/set-password?token=t")  # type: ignore[arg-type]

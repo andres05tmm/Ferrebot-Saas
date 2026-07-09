@@ -20,12 +20,13 @@ import hashlib
 import secrets
 from typing import Any, Protocol
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field
 
 from core.auth.passwords import hash_password
 from core.config import get_settings
 from core.db.session import control_session
+from core.email import EmailSender, construir_sender
 from core.logging import get_logger
 from core.tenancy.identidades_repo import Identidad
 from core.tenancy.identidades_repo import buscar_por_email as _repo_buscar
@@ -138,6 +139,17 @@ def get_repo_identidades() -> RepoIdentidades:
     return _RepoControl()
 
 
+def get_email_sender() -> EmailSender:
+    """Sender de plataforma: Brevo si hay API key; si no, el fallback que solo loguea."""
+    s = get_settings()
+    return construir_sender(s.brevo_api_key, s.email_from, s.email_from_nombre)
+
+
+def _enlace_reset(token: str) -> str:
+    """URL de set-password con el token. El token de `secrets.token_urlsafe` ya es URL-safe."""
+    return f"{get_settings().reset_password_url}?token={token}"
+
+
 _RESET_GLOBAL_MAX_INTENTOS = 200   # tope TOTAL de solicitudes de reset por ventana (todas las fuentes)
 _RESET_GLOBAL_VENTANA_S = 900
 _RESET_CLAVE_GLOBAL = "todas"      # clave única del cubo global (un solo contador para todo el servicio)
@@ -224,9 +236,11 @@ async def reset_confirmar(
 async def reset_solicitar(
     datos: SolicitarReset,
     request: Request,
+    background: BackgroundTasks,
     store: TokenStore = Depends(get_token_store),
     repo: RepoIdentidades = Depends(get_repo_identidades),
     limiters: tuple[RateLimiter, RateLimiter, RateLimiter] = Depends(get_rate_limiters),
+    sender: EmailSender = Depends(get_email_sender),
 ) -> dict:
     """Solicita un reset. Anti-abuso/anti-enumeración:
     - Rate-limit en TRES cubos INDEPENDIENTES (Redis): por email solo (sha(email), inmune a la rotación
@@ -249,6 +263,9 @@ async def reset_solicitar(
     identidad = await repo.buscar_por_email(datos.email)
     if identidad is not None:
         token = await store.crear(identidad.id, get_settings().auth_token_ttl_segundos)
+        # El envío va en BACKGROUND (tras responder): así el 429/200 no espera a Brevo y no se abre una
+        # señal de timing que revele si el email existe. Best-effort: el sender traga y loguea sus fallos.
+        background.add_task(sender.enviar_reset, identidad.email, _enlace_reset(token))
         # Solo una referencia NO reversible (prefijo del hash) para trazar la emisión; jamás el token.
         log.info("reset_token_generado", identidad_id=identidad.id, token_ref=_sha(token)[:12])
     return {"detail": "Si el email existe, te enviaremos un enlace para restablecer la contraseña."}

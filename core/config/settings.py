@@ -65,6 +65,17 @@ class Settings(BaseSettings):
     gmail_client_id: str = ""
     gmail_client_secret: str = ""
 
+    # Email transaccional (reset de contraseña, ADR 0009 §D3) vía Brevo (API v3). Credencial de
+    # PLATAFORMA: una cuenta atiende a todos los tenants. `brevo_api_key` vacío = NO se envía (fallback
+    # a solo-log; el flujo no se rompe). `email_from` debe estar en un dominio AUTENTICADO en Brevo
+    # (SPF/DKIM) o el correo cae en spam. NUNCA hardcodear la key: va en el entorno.
+    brevo_api_key: str = ""
+    email_from: str = "no-responder@melquiadez.com"
+    email_from_nombre: str = "Melquiadez"
+    # Base del enlace de reset (página /set-password del dashboard, servida en app.{base_domain}). Override
+    # explícito por env; vacío → se deriva de base_domain (property `reset_password_url`).
+    email_reset_url: str = ""
+
     # Auth
     jwt_algorithm: str = "HS256"
     jwt_expire_minutes: int = 720
@@ -161,6 +172,11 @@ class Settings(BaseSettings):
                 "Define las env vars SECRET_KEY / SECRETS_MASTER_KEY."
             )
         return self
+
+    @property
+    def reset_password_url(self) -> str:
+        """URL de la página de set-password (dashboard servido en app.{base_domain}). Override por env."""
+        return self.email_reset_url or f"https://app.{self.base_domain}/set-password"
 
     @property
     def demo_slugs(self) -> tuple[str, ...]:

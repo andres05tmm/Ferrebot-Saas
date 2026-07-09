@@ -569,7 +569,9 @@ class SqlReportesRepository:
     async def estado_pedidos_proveedor(
         self, *, hoy: date, ahora: datetime
     ) -> EstadoPedidosProveedor:
-        """Pedidos en camino + demorados (pasaron su fecha estimada o el promedio del proveedor)."""
+        """Pedidos en camino + demorados. MISMO criterio que el cron F6 (`procesar_avisos_demorados`):
+        con `fecha_estimada` la promesa del proveedor GANA (demorado solo si ya pasó); sin fecha, la
+        vara es el promedio histórico; sin promesa ni historial no cuenta como demorado."""
         fila = (
             await self._s.execute(
                 text(
@@ -580,7 +582,7 @@ class SqlReportesRepository:
                     "SELECT COUNT(*) AS en_camino, "
                     "  COUNT(*) FILTER (WHERE "
                     "    (pp.fecha_estimada IS NOT NULL AND pp.fecha_estimada < :hoy) "
-                    "    OR (prom.h IS NOT NULL AND "
+                    "    OR (pp.fecha_estimada IS NULL AND prom.h IS NOT NULL AND "
                     "        EXTRACT(EPOCH FROM (CAST(:ahora AS timestamptz) - pp.fecha_pedido)) / 3600.0 > prom.h)"
                     "  ) AS demorados, "
                     "  MIN(pp.fecha_pedido) AS mas_viejo "

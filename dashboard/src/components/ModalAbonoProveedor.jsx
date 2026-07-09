@@ -18,6 +18,7 @@ export default function ModalAbonoProveedor({ abierto, onCerrar, onRegistrado })
   const [facturas, setFacturas] = useState([])
   const [facturaId, setFacturaId] = useState('')
   const [monto, setMonto] = useState('')
+  const [fecha, setFecha] = useState('')   // opcional: abono con fecha distinta a hoy
   const [enviando, setEnviando] = useState(false)
 
   useEffect(() => {
@@ -33,18 +34,27 @@ export default function ModalAbonoProveedor({ abierto, onCerrar, onRegistrado })
   async function abonar(e) {
     e?.preventDefault?.()
     if (!valido || enviando) return
+    const payload = { factura_id: facturaId, monto: Number(monto) }
+    if (fecha) payload.fecha = fecha
     setEnviando(true)
     try {
       const res = await api('/proveedores/abonos', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ factura_id: facturaId, monto: Number(monto) }),
+        body: JSON.stringify(payload),
       })
       if (res.ok) {
-        toast.success('Abono registrado')
-        setMonto(''); setFacturaId('')
+        const factura = await res.json().catch(() => null)
+        toast.success(factura
+          ? `Abono registrado · pendiente ${cop(Number(factura.pendiente))} (${factura.estado})`
+          : 'Abono registrado')
+        setMonto(''); setFacturaId(''); setFecha('')
         onRegistrado?.()
         onCerrar()
+      } else if (res.status === 422) {
+        toast.error('El abono excede el saldo pendiente')
+      } else if (res.status === 404) {
+        toast.error('La factura no existe')
       } else {
         const err = await res.json().catch(() => ({}))
         toast.error(typeof err?.detail === 'string' ? err.detail : 'No se pudo registrar el abono')
@@ -87,6 +97,11 @@ export default function ModalAbonoProveedor({ abierto, onCerrar, onRegistrado })
                 El abono no puede superar el pendiente ({cop(Number(factura.pendiente))}).
               </p>
             )}
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="ap-fecha">Fecha (opcional)</Label>
+            <Input id="ap-fecha" type="date" value={fecha} onChange={(e) => setFecha(e.target.value)}
+              aria-label="Fecha abono" />
           </div>
           <Button type="submit" disabled={!valido || enviando} className="w-full">
             {enviando ? 'Registrando…' : 'Registrar abono'}

@@ -33,7 +33,9 @@ const EVENTOS = [
   // Estado fiscal en vivo: al emitir/aceptar/rechazar/anular un documento, refrescar las ventas (badge).
   'factura_pendiente', 'factura_aceptada', 'factura_rechazada', 'factura_error', 'factura_anulada',
   // Pedidos a proveedor (F4): el cronómetro y las alertas del cockpit se refrescan en vivo.
+  // 'pedido_demorado' lo emite el cron de F6 al avisar al dueño.
   'pedido_proveedor_creado', 'pedido_proveedor_recibido', 'pedido_proveedor_cancelado',
+  'pedido_demorado',
 ]
 
 export default function TabHoy() {

@@ -266,6 +266,50 @@ async def test_hoy_dashboard_agrega_las_senales_del_cockpit(tenant, seed_product
     assert d.productos_activos == 1 and d.productos_cuadrados == 1
 
 
+async def test_hoy_dashboard_demorado_respeta_la_promesa_del_proveedor(tenant, seed_producto):
+    """Paridad con el cron F6: con `fecha_estimada` vigente el pedido NO es demorado aunque su edad
+    supere el promedio del proveedor; sin fecha, el promedio sí es la vara."""
+    from core.config.timezone import now_co
+    from modules.reportes.repository import SqlReportesRepository as _Repo
+
+    async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
+        uid, _pid = await seed_producto(s)
+        prov = (
+            await s.execute(
+                text("INSERT INTO proveedores (nombre) VALUES ('Eternit') RETURNING id")
+            )
+        ).scalar_one()
+        # Historial: un pedido recibido con lead time de 5h → promedio del proveedor = 5h.
+        await s.execute(
+            text(
+                "INSERT INTO pedidos_proveedor (proveedor_id, fecha_pedido, fecha_recepcion, estado, descripcion) "
+                "VALUES (:p, now() - interval '10 hours', now() - interval '5 hours', 'recibido', 'histórico')"
+            ), {"p": prov},
+        )
+        # Vivo A: 48h de edad (> promedio) pero con promesa a FUTURO → la promesa gana, no es demora.
+        await s.execute(
+            text(
+                "INSERT INTO pedidos_proveedor (proveedor_id, fecha_pedido, fecha_estimada, estado, descripcion) "
+                "VALUES (:p, now() - interval '48 hours', (now() + interval '2 days')::date, 'pedido', 'A')"
+            ), {"p": prov},
+        )
+        # Vivo B: sin fecha, 48h de edad > promedio 5h → demorado por promedio.
+        await s.execute(
+            text(
+                "INSERT INTO pedidos_proveedor (proveedor_id, fecha_pedido, estado, descripcion) "
+                "VALUES (:p, now() - interval '48 hours', 'pedido', 'B')"
+            ), {"p": prov},
+        )
+        await s.commit()
+
+    async with AsyncSession(tenant.engine) as s:
+        estado = await _Repo(s).estado_pedidos_proveedor(hoy=today_co(), ahora=now_co())
+
+    assert estado.en_camino == 2
+    assert estado.demorados == 1        # solo B: la promesa vigente de A gana sobre el promedio
+    assert isinstance(estado.mas_viejo_horas, float) and estado.mas_viejo_horas >= 47
+
+
 def test_promedio_dias_con_movimiento_ignora_ceros():
     from datetime import date
 

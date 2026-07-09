@@ -51,6 +51,18 @@ describe('FeedActividad', () => {
     expect(screen.getByText('$20.000')).toBeInTheDocument()
   })
 
+  it("pinta el aviso de pedidos demorados (cron F6) con proveedores y sin monto", async () => {
+    render(<RealtimeProvider><FeedActividad /></RealtimeProvider>)
+    const opts = fetchEventSource.mock.calls[0][1]
+    await act(async () => { await opts.onopen({ ok: true, status: 200 }) })
+
+    emitir(opts, 'pedido_demorado', { pedidos: 2, proveedores: ['Ferrisariato', 'La 80'] })
+    expect(await screen.findByText('2 pedidos demorados (Ferrisariato, La 80)')).toBeInTheDocument()
+
+    emitir(opts, 'pedido_demorado', { pedidos: 1, proveedores: ['Ferrisariato'] })
+    expect(await screen.findByText('Pedido demorado (Ferrisariato)')).toBeInTheDocument()
+  })
+
   it('el evento interno __estado NO aparece como actividad', async () => {
     render(<RealtimeProvider><FeedActividad /></RealtimeProvider>)
     const opts = fetchEventSource.mock.calls[0][1]

@@ -8,7 +8,7 @@
  */
 import { useState } from 'react'
 import {
-  ShoppingCart, Receipt, HandCoins, FileText, Banknote, Landmark, Activity,
+  ShoppingCart, Receipt, HandCoins, FileText, Banknote, Landmark, Activity, Truck,
 } from 'lucide-react'
 import { useRealtimeEvent } from '@/components/RealtimeProvider.jsx'
 import { cop } from '@/components/shared.jsx'
@@ -25,6 +25,15 @@ const TIPOS = {
   abono_registrado: { icon: HandCoins, tono: 'text-success', texto: () => 'Abono a fiado', monto: (d) => d?.monto },
   factura_emitida: { icon: FileText, tono: 'text-info', texto: () => 'Factura emitida', monto: (d) => d?.total },
   pagar_aviso: { icon: Banknote, tono: 'text-warning', texto: () => 'Cuenta por pagar', monto: (d) => d?.monto },
+  pedido_demorado: {
+    icon: Truck, tono: 'text-warning',
+    texto: (d) => {
+      const n = Number(d?.pedidos) || 0
+      const quien = Array.isArray(d?.proveedores) && d.proveedores.length ? ` (${d.proveedores.join(', ')})` : ''
+      return `${n === 1 ? 'Pedido demorado' : `${n} pedidos demorados`}${quien}`
+    },
+    monto: () => null,
+  },
   transferencia_recibida: { icon: Landmark, tono: 'text-success', texto: (d) => `Transferencia${d?.remitente ? ' de ' + d.remitente : ''}`, monto: (d) => d?.monto },
 }
 const EVENTOS = Object.keys(TIPOS)

@@ -55,6 +55,8 @@ from modules.cobranza.repository import SqlCobranzaRepository
 from modules.cobranza.service import CobranzaService, DeudorRecordatorio
 from modules.pagar.repository import SqlPagarRepository
 from modules.pagar.service import AvisoPagar, PagarService
+from modules.pedidos_proveedor.repository import SqlPedidosProveedorRepository
+from modules.pedidos_proveedor.service import AvisoPedidosDemorados, procesar_avisos_demorados
 from modules.pagos.repository import SqlPagosRepository
 from modules.pagos.service import PagosService
 from modules.postventa.repository import SqlPostventaRepository
@@ -430,6 +432,67 @@ async def avisos_pagar(ctx: dict) -> str:
     return f"notificadas={notificadas}"
 
 
+def _hacer_enviar_pedidos_demorados(session):
+    """Closure `enviar(aviso) -> bool`: publica el resumen como evento INTERNO para el DUEÑO.
+
+    Molde exacto de `_hacer_enviar_pagar` (ADR 0019): `pg_notify` en la MISMA transacción del tenant
+    (el NOTIFY viaja al COMMIT junto con el sellado del dedup), sin costo de plantilla. El dashboard
+    (feed + tab de pedidos) reacciona al evento. Un fallo de publicación devuelve False → el motor
+    no sella y reintenta en la próxima corrida.
+    """
+
+    async def enviar(aviso: AvisoPedidosDemorados) -> bool:
+        try:
+            await publish(session, "pedido_demorado", {
+                "pedidos": len(aviso.pedidos),
+                "proveedores": sorted({
+                    p.proveedor_nombre or f"proveedor #{p.proveedor_id}" for p in aviso.pedidos
+                }),
+                "generado_en": aviso.generado_en.isoformat(),
+            })
+            return True
+        except Exception:  # noqa: BLE001 — un fallo de publicación no debe tumbar el job
+            log.exception("pedido_demorado_envio_error")
+            return False
+
+    return enviar
+
+
+async def avisos_pedidos_proveedor(ctx: dict) -> str:
+    """Cron de pedidos demorados (reforma dashboard F6): por cada tenant con `pedidos_proveedor`,
+    avisa al DUEÑO de los pedidos en camino que ya pasaron su expectativa de llegada (fecha
+    prometida, o el promedio histórico del proveedor).
+
+    Smoke manual (como los demás crons): la lógica determinista (criterio de demora, dedup por
+    `ultimo_aviso_at` + cadencia) vive en `procesar_avisos_demorados` (testeada contra base
+    efímera). Aquí solo el barrido multi-tenant — molde exacto de `avisos_pagar`: filtra por
+    capacidad, abre la base de cada empresa y corre el motor con el `enviar` interno (SSE).
+    """
+    async with control_session() as cs:
+        tenants = await listar_tenants(cs)
+
+    avisados = 0
+    for t in tenants:
+        if "pedidos_proveedor" not in t.features:
+            continue
+        async with control_session() as cs:
+            tenant = await resolve_tenant_by_id(cs, t.id)
+        if tenant is None:
+            continue
+        try:
+            async for s in tenant_session(tenant):   # commit al cerrar el generador
+                repo = SqlPedidosProveedorRepository(s)
+                n = await procesar_avisos_demorados(
+                    repo, ahora=now_co(), enviar=_hacer_enviar_pedidos_demorados(s),
+                )
+                avisados += n
+                if n:
+                    log.info("pedidos_demorados_tenant", tenant_id=t.id, pedidos=n)
+        except Exception:  # noqa: BLE001 — un fallo en un tenant no debe tumbar el barrido
+            log.exception("avisos_pedidos_proveedor_error", tenant_id=t.id)
+    return f"avisados={avisados}"
+
+
 async def detectar_colitas_alquiler(ctx: dict) -> str:
     """Cron de cartera de alquiler (Fase 5, plan §6b): por cada tenant con `cartera_alquiler`, detecta las
     COLITAS estancadas (obra FINALIZADA/LIQUIDADA con saldo sin abono > `dias_colita`) y avisa al DUEÑO.
@@ -689,6 +752,10 @@ class WorkerSettings:
         # Cartera de alquiler (Fase 5, plan §6b): diario, detecta colitas estancadas (obra cerrada, saldo
         # sin abono > N días) y avisa al dueño (SSE interno). 13:20 UTC ≈ 08:20 a.m. Colombia (decalado).
         cron(detectar_colitas_alquiler, hour={13}, minute={20}, run_at_startup=False),
+        # Pedidos demorados (reforma dashboard F6): diario, avisa al dueño (SSE interno) de los pedidos
+        # a proveedor que pasaron su fecha prometida o el promedio del proveedor; dedup 24h en el motor.
+        # 13:15 UTC ≈ 08:15 a.m. Colombia (decalado de colitas).
+        cron(avisos_pedidos_proveedor, hour={13}, minute={15}, run_at_startup=False),
         # Postventa (plan §2.6): cada hora; la espera tras el evento y el dedup los aplica el motor.
         cron(seguimientos_postventa, minute={50}, run_at_startup=False),
         # Higiene de demos (plan §4): cada noche resetea los tenants demo a su estado canónico con

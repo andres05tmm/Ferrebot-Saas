@@ -14,8 +14,9 @@ Orquesta dominio puro sobre los servicios existentes (máxima reutilización, ce
 Todo ocurre en la MISMA sesión del tenant: un fallo (p. ej. caja cerrada) revierte compra, factura
 y cuadres — sin efectos parciales. Hora Colombia (now_co) siempre.
 """
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 
 from core.config.timezone import now_co, today_co
@@ -53,6 +54,96 @@ class ResultadoPedido:
 
 def _horas(desde: datetime, hasta: datetime) -> float:
     return round((hasta - desde).total_seconds() / 3600.0, 2)
+
+
+# --- Cron de pedidos demorados (F6, molde `pagar.procesar_avisos`) -----------------------------
+
+# Cadencia del dedup: un pedido demorado no se re-avisa dentro de esta ventana (el cron corre
+# diario; la cadencia protege además contra corridas dobles).
+CADENCIA_AVISO_HORAS = 24
+
+
+@dataclass(frozen=True, slots=True)
+class PedidoDemorado:
+    """Un pedido en camino que ya se pasó de su expectativa de llegada."""
+
+    pedido_id: int
+    proveedor_id: int
+    proveedor_nombre: str | None
+    horas_transcurridas: float
+    promedio_proveedor_horas: float | None
+    fecha_estimada: date | None
+    motivo: str                        # 'estimada' (pasó la fecha prometida) | 'promedio'
+
+
+@dataclass(frozen=True, slots=True)
+class AvisoPedidosDemorados:
+    """El resumen que recibe el callback de envío: qué pedidos van tarde HOY."""
+
+    pedidos: tuple[PedidoDemorado, ...]
+    generado_en: datetime
+
+
+# Callback que entrega el aviso al dueño (el worker lo cablea a SSE). True = envío exitoso: solo
+# entonces se sella el dedup — un fallo de red se reintenta en la próxima corrida (patrón pagar).
+EnviarAvisoDemorados = Callable[[AvisoPedidosDemorados], Awaitable[bool]]
+
+
+async def procesar_avisos_demorados(
+    repo: SqlPedidosProveedorRepository,
+    *,
+    ahora: datetime,
+    enviar: EnviarAvisoDemorados,
+    cadencia_horas: int = CADENCIA_AVISO_HORAS,
+) -> int:
+    """Una corrida determinista del cron sobre la base del tenant. Devuelve cuántos pedidos avisó.
+
+    Un pedido en estado `pedido` está DEMORADO cuando ya pasó su expectativa de llegada:
+      - con `fecha_estimada` (promesa explícita del proveedor): hoy > esa fecha — la promesa gana
+        sobre cualquier promedio;
+      - sin fecha: edad > promedio histórico del proveedor (`promedio_lead_time_horas`);
+      - sin fecha NI historial no hay vara contra qué medir → no se avisa (cero falsas alarmas).
+
+    Dedup por `ultimo_aviso_at` + cadencia. Se arma UN resumen; solo un `enviar` exitoso sella el
+    dedup de TODOS los incluidos. No toma deps de compras/caja: el motor solo lee y sella.
+    """
+    pendientes = await repo.listar(estado="pedido")
+    if not pendientes:
+        return 0
+
+    nombres = await repo.nombres_proveedores(list({p.proveedor_id for p in pendientes}))
+    promedios: dict[int, float | None] = {}
+    cadencia = timedelta(hours=cadencia_horas)
+    demorados: list[PedidoDemorado] = []
+    for p in pendientes:
+        if p.ultimo_aviso_at is not None and ahora - p.ultimo_aviso_at < cadencia:
+            continue                          # cadencia: ya se avisó de este pedido hace poco
+        if p.proveedor_id not in promedios:
+            promedios[p.proveedor_id] = await repo.promedio_lead_time_horas(p.proveedor_id)
+        promedio = promedios[p.proveedor_id]
+        edad = _horas(p.fecha_pedido, ahora)
+        if p.fecha_estimada is not None:
+            if ahora.date() <= p.fecha_estimada:
+                continue
+            motivo = "estimada"
+        elif promedio is not None and edad > promedio:
+            motivo = "promedio"
+        else:
+            continue                          # sin promesa ni historial: no hay vara → sin aviso
+        demorados.append(PedidoDemorado(
+            pedido_id=p.id, proveedor_id=p.proveedor_id,
+            proveedor_nombre=nombres.get(p.proveedor_id),
+            horas_transcurridas=edad, promedio_proveedor_horas=promedio,
+            fecha_estimada=p.fecha_estimada, motivo=motivo,
+        ))
+
+    if not demorados:
+        return 0
+    aviso = AvisoPedidosDemorados(pedidos=tuple(demorados), generado_en=ahora)
+    if not await enviar(aviso):
+        return 0                              # envío fallido: no se sella (se reintenta luego)
+    await repo.sellar_avisos([d.pedido_id for d in demorados], cuando=ahora)
+    return len(demorados)
 
 
 class PedidosProveedorService:

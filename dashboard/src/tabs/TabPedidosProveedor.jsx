@@ -30,7 +30,10 @@ import {
   Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog.jsx'
 
-const EVENTOS = ['pedido_proveedor_creado', 'pedido_proveedor_recibido', 'pedido_proveedor_cancelado']
+const EVENTOS = [
+  'pedido_proveedor_creado', 'pedido_proveedor_recibido', 'pedido_proveedor_cancelado',
+  'pedido_demorado',   // el cron F6 acaba de avisar: refresca la lista (horas/semáforo al día)
+]
 const KEY = ['pedidos-proveedor']
 
 const FILTROS = [

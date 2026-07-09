@@ -32,11 +32,14 @@ El body del PR se arma analizando **todo** el historial de la rama (`git diff ma
 ## 4. CI y merge
 
 ```bash
-gh pr checks <numero> --watch    # check requerido: "test" (workflow CI, ~784 tests pytest)
-gh pr merge <numero> --squash --delete-branch
+# El && DEBE colgar del exit code de gh, no de un pipe: `gh pr checks | tail && gh pr merge`
+# enmascara el fallo con el exit 0 de tail y mergea en rojo (pasó con el PR #86). Sin pipes,
+# o con `set -o pipefail` explícito:
+gh pr checks <numero> --watch --fail-fast && gh pr merge <numero> --squash --delete-branch
 ```
 
-- Merge SOLO con CI en verde. Si falla, lee el log (`gh run view <id> --log-failed`), corrige, push y vuelve a esperar.
+- Checks requeridos: `test` (~784 pytest), `frontend` (vitest+build dashboard y landing), `dockerfile-copy`.
+- Merge SOLO con TODO en verde (el repo NO tiene branch protection — plan Free — así que `gh pr merge` NO se niega solo; el guardia eres tú). Si falla, lee el log (`gh run view <id> --log-failed`), corrige, push y vuelve a esperar.
 - No usar `--admin` ni saltarse checks.
 
 ## 5. Verificar redeploy (Railway)

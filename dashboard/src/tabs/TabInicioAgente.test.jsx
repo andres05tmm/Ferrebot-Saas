@@ -119,8 +119,9 @@ describe('TabInicioAgente — render por features', () => {
     // KPI del reporte.
     expect(await screen.findByText('Resueltas sin humano')).toBeInTheDocument()
     expect(screen.getByText('80%')).toBeInTheDocument()
-    // Próximas citas (ordenadas por hora; excluye la cancelada).
-    expect(screen.getByText('Ana')).toBeInTheDocument()
+    // Próximas citas (ordenadas por hora; excluye la cancelada). findBy: el fetch de citas puede
+    // resolver después que el del reporte (carrera en CI).
+    expect(await screen.findByText('Ana')).toBeInTheDocument()
     expect(screen.getByText('Beto')).toBeInTheDocument()
     expect(screen.queryByText('Cancelada')).toBeNull()
     expect(screen.getAllByText('Limpieza dental').length).toBeGreaterThan(0)
@@ -145,7 +146,8 @@ describe('TabInicioAgente — render por features', () => {
     renderHome(['pack_agenda'])
 
     expect(await screen.findByText('Próximas citas de hoy')).toBeInTheDocument()
-    expect(screen.getByText('Ana')).toBeInTheDocument()
+    // findBy: el header renderiza durante el loading; las citas llegan con el fetch (carrera en CI).
+    expect(await screen.findByText('Ana')).toBeInTheDocument()
     // Sin canal_whatsapp no hay banner de pendientes ni se pide el reporte (daría 403).
     expect(screen.queryByText(/esperando asesor/)).toBeNull()
     expect(calls.some(([u]) => u.includes('/conversaciones/escaladas'))).toBe(false)
@@ -226,7 +228,7 @@ describe('TabInicioAgente — home de reservas (HOTEL, contenido por vertical)',
     renderHome(BARBERIA)
 
     expect(await screen.findByText('Próximas citas de hoy')).toBeInTheDocument()
-    expect(screen.getByText('Ana')).toBeInTheDocument()
+    expect(await screen.findByText('Ana')).toBeInTheDocument()
     expect(screen.queryByText('Reservas de hoy')).toBeNull()
     // No pide recursos (no es hotel) ni usa la ventana amplia.
     expect(calls.some(([u]) => u.includes('/agenda/recursos'))).toBe(false)

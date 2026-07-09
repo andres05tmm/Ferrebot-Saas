@@ -19,6 +19,9 @@ export const MENSAJES = {
   credenciales: 'Email o contraseña incorrectos.',
   bloqueado: 'Demasiados intentos. Espera unos minutos y vuelve a intentar.',
   conexion: 'No pudimos conectar. Revisa tu internet e intenta de nuevo.',
+  // Guard de aislamiento: el cliente llegó por el link de UNA empresa (`?next`) pero sus credenciales
+  // son de otra. Se rechaza en la puerta; jamás se le enruta a otro dashboard. Sin revelar de cuál.
+  otraEmpresa: 'Estas credenciales son de otro negocio. Entra desde melquiadez.com o usa el enlace de tu empresa.',
 }
 
 /** ¿`s` es un slug de tenant válido? (mismo contrato que el resolver y el dashboard). */

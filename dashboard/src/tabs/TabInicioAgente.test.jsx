@@ -119,11 +119,12 @@ describe('TabInicioAgente — render por features', () => {
     // KPI del reporte.
     expect(await screen.findByText('Resueltas sin humano')).toBeInTheDocument()
     expect(screen.getByText('80%')).toBeInTheDocument()
-    // Próximas citas (ordenadas por hora; excluye la cancelada).
-    expect(screen.getByText('Ana')).toBeInTheDocument()
+    // Próximas citas (ordenadas por hora; excluye la cancelada). findBy: el fetch de citas puede
+    // resolver después que el del reporte (carrera en CI).
+    expect(await screen.findByText('Ana')).toBeInTheDocument()
     expect(screen.getByText('Beto')).toBeInTheDocument()
     expect(screen.queryByText('Cancelada')).toBeNull()
-    expect(screen.getAllByText('Limpieza dental').length).toBeGreaterThan(0)
+    expect((await screen.findAllByText('Limpieza dental')).length).toBeGreaterThan(0)  // /agenda/servicios es otro fetch
     // Acciones rápidas de servicio (la CTA del banner también dice "Abrir inbox").
     expect(screen.getAllByText('Abrir inbox').length).toBeGreaterThan(0)
     expect(screen.getByText('Ver agenda')).toBeInTheDocument()
@@ -145,7 +146,8 @@ describe('TabInicioAgente — render por features', () => {
     renderHome(['pack_agenda'])
 
     expect(await screen.findByText('Próximas citas de hoy')).toBeInTheDocument()
-    expect(screen.getByText('Ana')).toBeInTheDocument()
+    // findBy: el header renderiza durante el loading; las citas llegan con el fetch (carrera en CI).
+    expect(await screen.findByText('Ana')).toBeInTheDocument()
     // Sin canal_whatsapp no hay banner de pendientes ni se pide el reporte (daría 403).
     expect(screen.queryByText(/esperando asesor/)).toBeNull()
     expect(calls.some(([u]) => u.includes('/conversaciones/escaladas'))).toBe(false)
@@ -172,8 +174,9 @@ describe('TabInicioAgente — home de reservas (HOTEL, contenido por vertical)',
     renderHome(HOTEL)
 
     expect(await screen.findByText('Reservas de hoy')).toBeInTheDocument()
-    // Las tres subsecciones hoteleras (lenguaje correcto, no "cita").
-    expect(screen.getByText('Llegan')).toBeInTheDocument()
+    // Las tres subsecciones hoteleras (lenguaje correcto, no "cita"). findBy en la primera:
+    // el header renderiza durante el loading y las reservas llegan con el fetch (carrera en CI).
+    expect(await screen.findByText('Llegan')).toBeInTheDocument()
     expect(screen.getByText('Salen')).toBeInTheDocument()
     expect(screen.getByText('En casa')).toBeInTheDocument()
     // Huéspedes por movimiento; la reserva cancelada se excluye.
@@ -181,8 +184,8 @@ describe('TabInicioAgente — home de reservas (HOTEL, contenido por vertical)',
     expect(screen.getByText('Sale Hoy')).toBeInTheDocument()
     expect(screen.getByText('En Casa')).toBeInTheDocument()
     expect(screen.queryByText('Reserva Cancelada')).toBeNull()
-    // Nombre de habitación resuelto vía /agenda/recursos (filtrando tipo habitacion).
-    expect(screen.getAllByText('Suite 101').length).toBeGreaterThan(0)
+    // Nombre de habitación resuelto vía /agenda/recursos (fetch APARTE del de citas → findAll).
+    expect((await screen.findAllByText('Suite 101')).length).toBeGreaterThan(0)
     expect(screen.getByText('Habitación 102')).toBeInTheDocument()
     // NO el bloque de citas de servicio.
     expect(screen.queryByText('Próximas citas de hoy')).toBeNull()
@@ -208,7 +211,7 @@ describe('TabInicioAgente — home de reservas (HOTEL, contenido por vertical)',
     renderHome(HOTEL)
 
     expect(await screen.findByText('Próximas llegadas')).toBeInTheDocument()
-    expect(screen.getByText('Futuro Huésped')).toBeInTheDocument()
+    expect(await screen.findByText('Futuro Huésped')).toBeInTheDocument()
     expect(screen.queryByText('No hay reservas próximas.')).toBeNull()
   })
 
@@ -226,7 +229,7 @@ describe('TabInicioAgente — home de reservas (HOTEL, contenido por vertical)',
     renderHome(BARBERIA)
 
     expect(await screen.findByText('Próximas citas de hoy')).toBeInTheDocument()
-    expect(screen.getByText('Ana')).toBeInTheDocument()
+    expect(await screen.findByText('Ana')).toBeInTheDocument()
     expect(screen.queryByText('Reservas de hoy')).toBeNull()
     // No pide recursos (no es hotel) ni usa la ventana amplia.
     expect(calls.some(([u]) => u.includes('/agenda/recursos'))).toBe(false)

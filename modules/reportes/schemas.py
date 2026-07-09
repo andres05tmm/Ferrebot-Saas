@@ -100,3 +100,73 @@ class TopProducto(BaseModel):
     nombre: str
     cantidad: Decimal
     ingreso: Decimal
+
+
+class FlujoDinero(BaseModel):
+    """Flujo de dinero simple del rango (sin exigir el ledger contable): qué entró y qué salió.
+
+    El fiado NO es entrada (es cartera): viaja aparte como `ventas_fiado` informativo; los abonos
+    de fiados sí entran. Los abonos a proveedor generados por un gasto ya cuentan en gastos
+    (dedup ADR 0028)."""
+
+    desde: date
+    hasta: date
+    ventas_por_metodo: dict[str, Decimal]
+    ventas_fiado: Decimal
+    abonos_fiados: Decimal
+    ingresos_caja: Decimal
+    total_entradas: Decimal
+    gastos_por_categoria: dict[str, Decimal]
+    abonos_proveedores: Decimal
+    egresos_caja: Decimal
+    total_salidas: Decimal
+    neto: Decimal
+
+
+class MargenProducto(BaseModel):
+    """Margen bruto por producto (o categoría) del rango, con cobertura de costo honesta."""
+
+    clave: str
+    producto_id: int | None
+    cantidad: Decimal
+    ingresos: Decimal
+    cogs: Decimal
+    margen: Decimal
+    margen_pct: Decimal | None      # None si no hay ingresos
+    cobertura_pct: Decimal          # % de unidades CON costo snapshot (100 = margen confiable)
+
+
+class AgingProveedor(BaseModel):
+    """Deuda a un proveedor por tramos de antigüedad (días desde la factura)."""
+
+    proveedor: str
+    total_pendiente: Decimal
+    d0_30: Decimal
+    d31_60: Decimal
+    d61_90: Decimal
+    d90_mas: Decimal
+    facturas: int
+    mas_vieja_dias: int
+    semaforo: str                   # verde (≤30) | ambar (≤60) | rojo (>60)
+
+
+class ProyeccionCaja(BaseModel):
+    """Proyección del cierre del mes con el promedio de los últimos 14 días CON movimiento."""
+
+    dias_restantes: int
+    promedio_venta_diaria: Decimal
+    promedio_gasto_diario: Decimal
+    ventas_mes_actual: Decimal
+    gastos_mes_actual: Decimal
+    proyeccion_ventas_mes: Decimal
+    proyeccion_gastos_mes: Decimal
+    proyeccion_neto_mes: Decimal
+
+
+class DiaCalendarioLeer(BaseModel):
+    """Un día del calendario mensual (heatmap): ventas, transacciones y gastos."""
+
+    fecha: date
+    total: Decimal
+    num_ventas: int
+    gastos: Decimal

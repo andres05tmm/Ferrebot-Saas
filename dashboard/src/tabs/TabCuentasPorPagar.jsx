@@ -158,11 +158,60 @@ export default function TabCuentasPorPagar() {
   return <CuentasPorPagarAdmin />
 }
 
+// Aging de la deuda por proveedor (reforma F3): tramos por antigüedad con semáforo del backend.
+const SEMAFORO_CLS = {
+  verde: 'bg-success/10 text-success border-success/20',
+  ambar: 'bg-warning/10 text-warning border-warning/20',
+  rojo: 'bg-destructive/10 text-destructive border-destructive/20',
+}
+
+function SeccionAging({ filas, loading }) {
+  if (loading) return null
+  if (!filas.length) return null
+  return (
+    <Card className="p-3">
+      <h2 className="text-[13px] font-semibold mb-2">Deuda por proveedor (antigüedad)</h2>
+      <div className="overflow-x-auto">
+        <table className="w-full text-[12px]">
+          <thead>
+            <tr className="text-left text-[11px] text-muted-foreground">
+              <th className="py-1 pr-2 font-normal">Proveedor</th>
+              <th className="py-1 pr-2 font-normal text-right">Total</th>
+              <th className="py-1 pr-2 font-normal text-right">0-30d</th>
+              <th className="py-1 pr-2 font-normal text-right">31-60d</th>
+              <th className="py-1 pr-2 font-normal text-right">61-90d</th>
+              <th className="py-1 font-normal text-right">+90d</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filas.map(f => (
+              <tr key={f.proveedor} className="border-t border-border-subtle">
+                <td className="py-1.5 pr-2">
+                  <span className={`inline-block size-2 rounded-full mr-1.5 align-middle border ${SEMAFORO_CLS[f.semaforo] || ''}`}
+                    style={{ backgroundColor: 'currentColor' }} aria-hidden="true" />
+                  {f.proveedor}
+                  <span className="text-muted-foreground"> · más vieja {f.mas_vieja_dias}d</span>
+                </td>
+                <td className="py-1.5 pr-2 text-right tabular font-medium">{cop(Number(f.total_pendiente))}</td>
+                <td className="py-1.5 pr-2 text-right tabular">{Number(f.d0_30) > 0 ? cop(Number(f.d0_30)) : '—'}</td>
+                <td className="py-1.5 pr-2 text-right tabular">{Number(f.d31_60) > 0 ? cop(Number(f.d31_60)) : '—'}</td>
+                <td className="py-1.5 pr-2 text-right tabular">{Number(f.d61_90) > 0 ? cop(Number(f.d61_90)) : '—'}</td>
+                <td className="py-1.5 text-right tabular">{Number(f.d90_mas) > 0 ? cop(Number(f.d90_mas)) : '—'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </Card>
+  )
+}
+
 function CuentasPorPagarAdmin() {
   const cuentasQ = useFetch('/pagar/cuentas')
   const configQ = useFetch('/pagar/config')
+  const agingQ = useFetch('/reportes/aging-cxp')
 
-  useRealtimeEvent(EVENTOS, () => { cuentasQ.refetch() })
+  useRealtimeEvent(EVENTOS, () => { cuentasQ.refetch(); agingQ.refetch() })
 
   const cuentas = arr(cuentasQ.data)
   const vencidas = cuentas.filter(c => c.vencida)
@@ -194,6 +243,8 @@ function CuentasPorPagarAdmin() {
         </div>
         <SeccionConfig config={configQ.data} refetch={configQ.refetch} />
       </div>
+
+      <SeccionAging filas={arr(agingQ.data)} loading={agingQ.loading} />
     </div>
   )
 }

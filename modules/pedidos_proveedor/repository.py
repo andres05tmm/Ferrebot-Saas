@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import select, text
+from sqlalchemy import select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.events import publish
@@ -156,6 +156,20 @@ class SqlPedidosProveedorRepository:
             "pedido_id": pedido.id, "proveedor_id": pedido.proveedor_id,
         })
         return pedido
+
+    async def sellar_avisos(self, pedido_ids: list[int], *, cuando: datetime) -> None:
+        """Sella el dedup del cron de demorados (`ultimo_aviso_at`) para los pedidos avisados.
+
+        Solo se llama tras un envío EXITOSO (patrón pagar): un fallo deja el sello intacto y la
+        próxima corrida reintenta.
+        """
+        if not pedido_ids:
+            return
+        await self._s.execute(
+            update(PedidoProveedor)
+            .where(PedidoProveedor.id.in_(pedido_ids))
+            .values(ultimo_aviso_at=cuando)
+        )
 
     async def promedio_lead_time_horas(self, proveedor_id: int) -> float | None:
         """Promedio histórico (horas) entre pedido y recepción del proveedor, o None sin historial."""

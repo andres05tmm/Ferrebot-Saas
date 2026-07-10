@@ -21,10 +21,14 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
-import { Search, X } from 'lucide-react'
+import { Flame, Lock, LockOpen, Receipt, Search, ShoppingCart, Sparkles, Star, X } from 'lucide-react'
 import { api, apiJson } from '@/lib/api'
 import { useIsMobile } from '@/components/shared.jsx'
 import ModalAbrirCaja from '@/components/ModalAbrirCaja.jsx'
+import ModalGastoRapido from '@/components/ModalGastoRapido.jsx'
+import {
+  Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
+} from '@/components/ui/dialog.jsx'
 import { useFeatures } from '@/lib/features.jsx'
 import { usePreferencias } from '@/lib/preferencias.jsx'
 import { Card } from '@/components/ui/card.jsx'
@@ -68,7 +72,10 @@ export default function TabVentasRapidas() {
   const [sel, setSel] = useState(0)          // índice resaltado en la lista filtrada (teclado)
   const [frecuentes, setFrecuentes] = useState([])
   const [favoritos, setFavoritos] = useState(() => leerFavs())
-  const [chip, setChip] = useState(() => (leerFavs().size > 0 ? 'favs' : 'frecuentes'))
+  const [chip, setChip] = useState('todo')   // vista default del viejo: todo el catálogo por secciones
+  const [gastoAbierto, setGastoAbierto] = useState(false)
+  const [miscAbierta, setMiscAbierta] = useState(false)
+  const [cajaAbierta, setCajaAbierta] = useState(null)   // null = aún no se sabe (sin pill)
   const [carrito, setCarrito] = useState(() => leerLS(CART_KEY, []))
   const [enEspera, setEnEspera] = useState(() => leerLS(ESPERA_KEY, []))
   const [precios, setPrecios] = useState({})  // key → {total, precio_unitario, regla, loading}
@@ -120,18 +127,22 @@ export default function TabVentasRapidas() {
   useEffect(() => { guardarLS(CART_KEY, carrito) }, [carrito])
   useEffect(() => { guardarLS(ESPERA_KEY, enEspera) }, [enEspera])
 
-  // Frecuentes (una vez): alimenta el chip ⚡ de la grilla. Si el tenant aún no vende (lista vacía)
-  // y no hay favoritos, el chip default cae a "Todo" para no abrir en una vista vacía.
+  // Frecuentes (una vez): "Top productos del mes" en la grilla + la fila MÁS VENDIDOS (chips).
   useEffect(() => {
     apiJson('/productos/frecuentes?dias=30&limite=12')
-      .then(d => {
-        const lista = Array.isArray(d) ? d : []
-        setFrecuentes(lista)
-        if (lista.length === 0) setChip(c => (c === 'frecuentes' ? 'todo' : c))
-      })
+      .then(d => setFrecuentes(Array.isArray(d) ? d : []))
       .catch(() => setFrecuentes([]))
   }, [])
   const frecuentesIds = useMemo(() => new Set(frecuentes.map(p => p.id)), [frecuentes])
+
+  // Pill de caja (réplica del header del viejo): estado al montar y tras abrir/registrar.
+  const refrescarCaja = useCallback(() => {
+    if (!features.includes('caja')) return
+    apiJson('/caja/estado')
+      .then(d => setCajaAbierta(!!d?.abierta))
+      .catch(() => setCajaAbierta(null))
+  }, [features])
+  useEffect(() => { refrescarCaja() }, [refrescarCaja])
 
   // Resaltado al inicio de la lista cada vez que cambia el término.
   useEffect(() => { setSel(0) }, [term])
@@ -340,6 +351,7 @@ export default function TabVentasRapidas() {
         setRecibido(''); setEfectivoMixto(''); setMetodoResto('transferencia')
         setDocumento(documentoDefault)
         setDrawerAbierto(false)   // móvil: la venta cerró, el drawer también
+        refrescarCaja()           // la primera venta del día pudo abrir la caja (guard)
         toast.success('Venta registrada')
         return true
       }
@@ -357,7 +369,7 @@ export default function TabVentasRapidas() {
       toast.error('Error de conexión')
       return false
     } finally { setEnviando(false) }
-  }, [documentoDefault])
+  }, [documentoDefault, refrescarCaja])
 
   async function registrar() {
     if (carrito.length === 0) return
@@ -401,14 +413,16 @@ export default function TabVentasRapidas() {
   registrarRef.current = registrar
 
   // Panel único del carrito (líneas + cliente + checkout): se monta en la Card de desktop O en el
-  // drawer móvil — nunca en ambos (labels/inputs sin duplicar).
+  // drawer móvil — nunca en ambos (labels/inputs sin duplicar). El título vive en el header rojo
+  // (desktop) o en el del drawer (móvil).
   const panelCarrito = (
     <>
-      <div className="flex items-center justify-between mb-2.5">
-        <h2 className="text-caption font-semibold uppercase tracking-wider text-muted-foreground">Carrito</h2>
-        <Button variant="outline" size="sm" onClick={ponerEnEspera} disabled={carrito.length === 0}
-          className="h-7 text-caption">En espera</Button>
-      </div>
+      {(carrito.length > 0 || enEspera.length > 0) && (
+        <div className="flex items-center justify-end mb-2">
+          <Button variant="outline" size="sm" onClick={ponerEnEspera} disabled={carrito.length === 0}
+            className="h-7 text-caption">En espera</Button>
+        </div>
+      )}
       {enEspera.length > 0 && (
         <div className="flex flex-wrap gap-1.5 mb-2.5" role="group" aria-label="Ventas en espera">
           {enEspera.map((e, i) => (
@@ -428,7 +442,9 @@ export default function TabVentasRapidas() {
       )}
       {carrito.length === 0 ? (
         <div className="py-10 text-center">
-          <Search className="size-6 mx-auto text-muted-foreground/40 mb-2" />
+          <span className="mx-auto mb-3 size-16 grid place-items-center rounded-full bg-surface-2">
+            <ShoppingCart className="size-7 text-muted-foreground/50" aria-hidden="true" />
+          </span>
           <p className="text-body-sm text-muted-foreground">Busca o escanea un producto para empezar.</p>
         </div>
       ) : (
@@ -465,17 +481,19 @@ export default function TabVentasRapidas() {
   return (
     <div className={isMobile ? 'space-y-3 pb-20' : 'grid grid-cols-1 lg:grid-cols-3 gap-3'}>
       <div className={isMobile ? 'space-y-3' : 'lg:col-span-2 space-y-3'}>
-        <Card className="p-3">
-          <div className="relative">
-            <Search className="size-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
-            <Input ref={searchRef} value={q} onChange={(e) => setQ(e.target.value)}
-              placeholder="Buscar producto…  ↵ agrega el primero" aria-label="Buscar producto" className="pl-9" />
+        {cajaAbierta != null && (
+          <div className="flex justify-end">
+            <span role="status"
+              className={`inline-flex items-center gap-1.5 h-8 px-3 rounded-md border text-caption font-medium ${
+                cajaAbierta ? 'border-success/30 bg-success/10 text-success'
+                  : 'border-warning/40 bg-warning/10 text-warning'}`}>
+              {cajaAbierta ? <LockOpen className="size-3.5" aria-hidden="true" /> : <Lock className="size-3.5" aria-hidden="true" />}
+              {cajaAbierta ? 'Caja abierta' : 'Caja cerrada'}
+            </span>
           </div>
-          {parcial && (
-            <p className="mt-1 text-caption text-muted-foreground">
-              Catálogo grande: la búsqueda va directa al servidor.
-            </p>
-          )}
+        )}
+
+        <Card className="p-3">
           <GrillaCatalogo
             productos={buscando ? resultados : productos}
             buscando={buscando} fuente={fuente}
@@ -486,15 +504,79 @@ export default function TabVentasRapidas() {
             chip={chip} setChip={setChip}
             sel={sel}
             onTap={agregarProducto}
+            slotBusqueda={(
+              <>
+                <div className="relative">
+                  <Search className="size-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+                  <Input ref={searchRef} value={q} onChange={(e) => setQ(e.target.value)}
+                    placeholder="Buscar producto…  Enter agrega el primero" aria-label="Buscar producto"
+                    className="pl-9 h-11 rounded-lg" />
+                  <kbd className="absolute right-3 top-1/2 -translate-y-1/2 rounded border border-border bg-surface-2 px-1.5 text-[10px] text-muted-foreground" aria-hidden="true">↵</kbd>
+                </div>
+                {parcial && (
+                  <p className="mt-1 text-caption text-muted-foreground">
+                    Catálogo grande: la búsqueda va directa al servidor.
+                  </p>
+                )}
+
+                {/* MÁS VENDIDOS — chips de un toque (réplica del viejo): lo que más rota, sin buscar. */}
+                {!buscando && frecuentes.length > 0 && (
+                  <div className="mt-3">
+                    <div className="flex items-center gap-1.5 text-caption font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">
+                      <Flame className="size-3.5 text-warning" aria-hidden="true" /> Más vendidos
+                    </div>
+                    <div className="flex flex-wrap gap-1.5" role="group" aria-label="Más vendidos">
+                      {frecuentes.map(p => (
+                        <button key={p.id} onClick={() => agregarProducto(p)}
+                          aria-label={`Agregar ${p.nombre} (más vendido)`}
+                          className="inline-flex items-center h-8 px-3 rounded-full border border-border bg-surface text-caption hover:border-primary/40 hover:bg-primary/5 transition-colors">
+                          {p.nombre}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {!buscando && (
+                  <div className="mt-3 flex items-center justify-end gap-2">
+                    {features.includes('caja') && (
+                      <Button variant="outline" size="sm" onClick={() => setGastoAbierto(true)} className="h-8 gap-1.5">
+                        <Receipt className="size-3.5" /> Registrar gasto
+                      </Button>
+                    )}
+                    <Button variant="outline" size="sm" onClick={() => setMiscAbierta(true)} className="h-8 gap-1.5">
+                      <Sparkles className="size-3.5" /> Venta miscelánea
+                    </Button>
+                  </div>
+                )}
+
+                {!buscando && favoritos.size === 0 && (
+                  <p className="mt-3 flex items-center gap-2 rounded-md border border-border bg-surface-2/50 px-3 py-2 text-caption text-muted-foreground">
+                    <Star className="size-3.5 text-warning shrink-0" aria-hidden="true" />
+                    Marca la estrella en cualquier producto para agregarlo a favoritos.
+                  </p>
+                )}
+              </>
+            )}
           />
         </Card>
 
         <AtajosHint />
-        <VariaForm onAdd={agregarVaria} />
       </div>
 
       {!isMobile && (
-        <Card className="p-3.5 flex flex-col">{panelCarrito}</Card>
+        <Card className="p-0 overflow-hidden flex flex-col self-start">
+          {/* Header rojo del carrito (réplica del viejo): título + conteo vivo. */}
+          <div className="flex items-center gap-2 bg-primary text-primary-foreground px-3.5 py-2.5">
+            <ShoppingCart className="size-4" aria-hidden="true" />
+            <h2 className="text-caption font-semibold uppercase tracking-wider flex-1">Carrito</h2>
+            <span className="min-w-6 h-6 px-1.5 grid place-items-center rounded-full bg-white/20 text-sm font-bold tabular"
+              aria-label={`${carrito.length} en el carrito`}>
+              {carrito.length}
+            </span>
+          </div>
+          <div className="p-3.5 flex flex-col">{panelCarrito}</div>
+        </Card>
       )}
       {isMobile && (
         <>
@@ -511,9 +593,24 @@ export default function TabVentasRapidas() {
         abierto={ventaPendiente != null}
         onCancelar={() => setVentaPendiente(null)}
         onCajaAbierta={async () => {
+          refrescarCaja()
           if (ventaPendiente) await enviarVenta(ventaPendiente.payload, ventaPendiente.key)
         }}
       />
+      {features.includes('caja') && (
+        <ModalGastoRapido abierto={gastoAbierto} onCerrar={() => setGastoAbierto(false)} />
+      )}
+      <Dialog open={miscAbierta} onOpenChange={(o) => { if (!o) setMiscAbierta(false) }}>
+        <DialogContent aria-describedby="misc-desc">
+          <DialogHeader>
+            <DialogTitle>Venta miscelánea</DialogTitle>
+            <DialogDescription id="misc-desc">
+              Algo fuera del catálogo: descripción y precio a mano. No mueve inventario.
+            </DialogDescription>
+          </DialogHeader>
+          <VariaForm onAdd={(v) => { agregarVaria(v); setMiscAbierta(false) }} />
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

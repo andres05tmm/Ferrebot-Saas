@@ -4,7 +4,8 @@
  * TODO el estado vive en el tab (este componente es presentación pura por props) — así el guard de
  * caja, la Idempotency-Key y el flujo mixto no se duplican. Alt+1..5 setea el mismo estado.
  */
-import { Banknote, CreditCard, HandCoins, Landmark, SplitSquareHorizontal } from 'lucide-react'
+import { useState } from 'react'
+import { Banknote, CreditCard, HandCoins, Landmark, ShoppingCart, SplitSquareHorizontal } from 'lucide-react'
 import { cop } from '@/components/shared.jsx'
 import { Input } from '@/components/ui/input.jsx'
 import { Button } from '@/components/ui/button.jsx'
@@ -22,6 +23,7 @@ export default function Checkout({
   mostrarDocumento, opcionesDocumento, documento, setDocumento,
   total, enviando, carritoVacio, onRegistrar,
 }) {
+  const [conCambio, setConCambio] = useState(false)
   return (
     <>
       <label className="text-caption uppercase tracking-wider text-muted-foreground mt-3 mb-1">Método de pago</label>
@@ -43,13 +45,26 @@ export default function Checkout({
 
       {metodoPago === 'efectivo' && (
         <div className="mt-2">
-          <Input type="number" min="0" step="any" value={recibido} onChange={(e) => setRecibido(e.target.value)}
-            placeholder="Recibido" aria-label="Efectivo recibido" className="h-9" />
-          {cambio != null && (
-            <p className="mt-1.5 text-right tabular">
-              <span className="text-caption uppercase tracking-wider text-muted-foreground mr-2">Cambio</span>
-              <span className="text-2xl font-semibold text-success">{cop(cambio)}</span>
-            </p>
+          {/* Toggle "Calcular cambio" (réplica del viejo): el input solo aparece si el cajero lo pide. */}
+          <button type="button" role="switch" aria-checked={conCambio}
+            onClick={() => { if (conCambio) setRecibido(''); setConCambio(v => !v) }}
+            className="w-full h-9 px-3 rounded-md border border-border flex items-center gap-2 text-body-sm text-muted-foreground hover:bg-surface-2">
+            <span className={`relative inline-flex h-4 w-7 shrink-0 rounded-full transition-colors ${conCambio ? 'bg-primary' : 'bg-border'}`}>
+              <span className={`absolute top-0.5 size-3 rounded-full bg-white transition-transform ${conCambio ? 'translate-x-3.5' : 'translate-x-0.5'}`} />
+            </span>
+            Calcular cambio
+          </button>
+          {conCambio && (
+            <div className="mt-2">
+              <Input type="number" min="0" step="any" value={recibido} onChange={(e) => setRecibido(e.target.value)}
+                autoFocus placeholder="Recibido" aria-label="Efectivo recibido" className="h-9" />
+              {cambio != null && (
+                <p className="mt-1.5 text-right tabular">
+                  <span className="text-caption uppercase tracking-wider text-muted-foreground mr-2">Cambio</span>
+                  <span className="text-2xl font-semibold text-success">{cop(cambio)}</span>
+                </p>
+              )}
+            </div>
           )}
         </div>
       )}
@@ -91,14 +106,15 @@ export default function Checkout({
         </>
       )}
 
-      <div className="flex items-center justify-between mt-3 mb-2">
+      <div className="flex items-baseline justify-between mt-3 mb-2">
         <span className="text-caption uppercase tracking-wider text-muted-foreground">Total</span>
-        <span className="text-xl font-semibold tabular">{cop(total)}</span>
+        <span className="text-2xl font-semibold tabular">{cop(total)}</span>
       </div>
       <Button onClick={onRegistrar}
         disabled={enviando || carritoVacio || (metodoPago === 'mixto' && !mixtoValido)}
-        className="w-full h-10">
-        {enviando ? 'Registrando…' : 'Registrar venta'} <span className="ml-1.5 opacity-70 text-caption">F9</span>
+        className="w-full h-11 text-base gap-2">
+        <ShoppingCart className="size-4" aria-hidden="true" />
+        {enviando ? 'Registrando…' : 'Registrar venta'} <span className="opacity-70 text-caption">F9</span>
       </Button>
     </>
   )

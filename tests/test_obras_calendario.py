@@ -26,6 +26,9 @@ from modules.obra.schemas import (
     ConteosDiaCalendario,
     DetalleDiaCalendario,
     DiaCalendario,
+    EstadoCalendario,
+    EstadoMaquina,
+    EstadoTrabajador,
 )
 
 # Los repos del compositor cruzan FKs entre módulos: registrarlos en la metadata del ORM al correr
@@ -119,12 +122,30 @@ def _dia() -> DetalleDiaCalendario:
     )
 
 
+def _estado() -> EstadoCalendario:
+    return EstadoCalendario(
+        fecha=date(2026, 7, 9),
+        maquinas=[EstadoMaquina(
+            maquina_id=5, maquina="Minicargador", estado="OCUPADA", obra_id=7,
+            obra="Vía Llanogrande K2+300", operador_id=1, operador="Juan Pérez",
+            desde=date(2026, 7, 9), horas_mes="6.0000",
+        )],
+        trabajadores=[EstadoTrabajador(
+            trabajador_id=1, trabajador="Juan Pérez", obra_id=7, obra="Vía Llanogrande K2+300",
+            desde=date(2026, 7, 1), maquina_id=5, maquina="Minicargador",
+        )],
+    )
+
+
 class _FakeCalendario:
     async def mes(self, anio, mes, **kw) -> CalendarioMes:
         return _mes()
 
     async def dia(self, fecha, **kw) -> DetalleDiaCalendario:
         return _dia()
+
+    async def estado(self, **kw) -> EstadoCalendario:
+        return _estado()
 
 
 def _app(*, rol="admin", caps=frozenset({"obras"})) -> FastAPI:
@@ -176,6 +197,25 @@ async def test_calendario_vendedor_accede():
     async with _cliente(_app(rol="vendedor")) as c:
         r = await c.get("/api/v1/obras/calendario?anio=2026&mes=7")
     assert r.status_code == 200, r.text
+
+
+async def test_calendario_estado_200_no_cae_en_obra_id():
+    """GET /obras/calendario/estado responde la foto (no lo captura /obras/{obra_id}); vendedor entra."""
+    async with _cliente(_app(rol="vendedor")) as c:
+        r = await c.get("/api/v1/obras/calendario/estado")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["fecha"] == "2026-07-09"
+    assert body["maquinas"][0]["maquina"] == "Minicargador"
+    assert body["maquinas"][0]["estado"] == "OCUPADA"
+    assert body["maquinas"][0]["horas_mes"] == "6.0000"        # string decimal
+    assert body["trabajadores"][0]["maquina"] == "Minicargador"
+
+
+async def test_calendario_estado_gateado_por_obras():
+    async with _cliente(_app(caps=frozenset())) as c:
+        r = await c.get("/api/v1/obras/calendario/estado")
+    assert r.status_code == 404, r.text
 
 
 # =====================================================================================================
@@ -395,3 +435,138 @@ async def test_calendario_degrada_sin_nomina(tenant):
     assert por_fecha["2026-03-12"].conteos.asistencias == 0
     assert por_fecha["2026-03-12"].conteos.trabajadores_asignados == 0
     assert por_fecha["2026-03-12"].conteos.horas_maquina == 1   # maquinaria sigue activa
+
+
+# =====================================================================================================
+# (3) Estado ACTUAL (GET /obras/calendario/estado) — integración real
+# =====================================================================================================
+_HOY = date(2026, 3, 15)
+
+
+async def _seed_estado(s: AsyncSession) -> dict:
+    """Estado a 2026-03-15: M1 OCUPADA (Juan, asignación vigente + horas marzo y febrero), M2 DISPONIBLE
+    (asignación VENCIDA ayer), M3 OCUPADA (Pedro, solo operador). Juan tiene asignación trabajador→obra
+    desde 03-01; Pedro no (solo opera M3)."""
+    cid = (await s.execute(text("INSERT INTO clientes (nombre) VALUES ('Alcaldía') RETURNING id"))).scalar_one()
+    oid = (await s.execute(
+        text("INSERT INTO obras (cliente_id, nombre, estado) VALUES (:c,'Vía Llanogrande K2+300','EN_EJECUCION') RETURNING id"),
+        {"c": cid},
+    )).scalar_one()
+    juan = (await s.execute(text(
+        "INSERT INTO trabajadores (tipo_vinculacion, documento, nombres, apellidos, cargo) "
+        "VALUES ('DIRECTO','111','Juan','Pérez','Operador') RETURNING id"))).scalar_one()
+    pedro = (await s.execute(text(
+        "INSERT INTO trabajadores (tipo_vinculacion, documento, nombres, apellidos, cargo) "
+        "VALUES ('DIRECTO','222','Pedro','Gómez','Operador') RETURNING id"))).scalar_one()
+    m1 = (await s.execute(text(
+        "INSERT INTO maquinas (codigo,nombre,tipo,precio_hora_default,estado) "
+        "VALUES ('M-1','Minicargador','mini',150000,'OCUPADA') RETURNING id"))).scalar_one()
+    m2 = (await s.execute(text(
+        "INSERT INTO maquinas (codigo,nombre,tipo,precio_hora_default,estado) "
+        "VALUES ('M-2','Retroexcavadora','retro',150000,'DISPONIBLE') RETURNING id"))).scalar_one()
+    m3 = (await s.execute(text(
+        "INSERT INTO maquinas (codigo,nombre,tipo,precio_hora_default,estado) "
+        "VALUES ('M-3','Volqueta','volqueta',150000,'OCUPADA') RETURNING id"))).scalar_one()
+    # M1 vigente hoy (03-10→abierta) operador Juan; M2 VENCIDA (fin 03-14, ayer); M3 vigente operador Pedro.
+    await s.execute(text(
+        "INSERT INTO asignaciones_maquina_obra (maquina_id,obra_id,fecha_inicio,fecha_fin,precio_hora,minimo_horas,operador_id,activa) "
+        "VALUES (:m,:o,'2026-03-10',NULL,100000,1,:t,true)"), {"m": m1, "o": oid, "t": juan})
+    await s.execute(text(
+        "INSERT INTO asignaciones_maquina_obra (maquina_id,obra_id,fecha_inicio,fecha_fin,precio_hora,minimo_horas,activa) "
+        "VALUES (:m,:o,'2026-02-01','2026-03-14',100000,1,true)"), {"m": m2, "o": oid})
+    await s.execute(text(
+        "INSERT INTO asignaciones_maquina_obra (maquina_id,obra_id,fecha_inicio,fecha_fin,precio_hora,minimo_horas,operador_id,activa) "
+        "VALUES (:m,:o,'2026-03-05',NULL,100000,1,:t,true)"), {"m": m3, "o": oid, "t": pedro})
+    # Horas de M1: 6h en marzo (cuentan) + 10h en febrero (NO cuentan al mes actual).
+    await s.execute(text(
+        "INSERT INTO registros_horas_maquina (maquina_id,obra_id,fecha,horas_trabajadas,horas_facturables) VALUES (:m,:o,'2026-03-12',6,6)"),
+        {"m": m1, "o": oid})
+    await s.execute(text(
+        "INSERT INTO registros_horas_maquina (maquina_id,obra_id,fecha,horas_trabajadas,horas_facturables) VALUES (:m,:o,'2026-02-20',10,10)"),
+        {"m": m1, "o": oid})
+    # Juan tiene asignación trabajador→obra vigente desde 03-01 (manda su obra/desde); Pedro NO.
+    await s.execute(text(
+        "INSERT INTO asignaciones_trabajador_obra (trabajador_id, obra_id, fecha_inicio, fecha_fin, activa) "
+        "VALUES (:t,:o,'2026-03-01',NULL,true)"), {"t": juan, "o": oid})
+    await s.commit()
+    return {"obra": oid, "juan": juan, "pedro": pedro, "m1": m1, "m2": m2, "m3": m3}
+
+
+async def test_estado_maquinas_y_trabajadores(tenant):
+    async with AsyncSession(tenant.engine) as s:
+        ids = await _seed_estado(s)
+    async with AsyncSession(tenant.engine) as s:
+        estado = await CalendarioObraService(s, _CAPS_TODO).estado(hoy=_HOY)
+
+    assert estado.fecha == _HOY
+    por_maq = {m.maquina_id: m for m in estado.maquinas}
+    assert len(estado.maquinas) == 3
+    # Orden: con obra primero (Minicargador, Volqueta), luego sin obra (Retroexcavadora).
+    assert [m.maquina for m in estado.maquinas] == ["Minicargador", "Volqueta", "Retroexcavadora"]
+    m1 = por_maq[ids["m1"]]
+    assert m1.estado == "OCUPADA" and m1.obra == "Vía Llanogrande K2+300"
+    assert m1.operador == "Juan Pérez" and m1.operador_id == ids["juan"]
+    assert m1.desde == date(2026, 3, 10)          # fecha_inicio de la asignación de máquina
+    assert m1.horas_mes == "6.0000"               # solo marzo (los 10h de febrero no cuentan)
+    m2 = por_maq[ids["m2"]]                        # asignación VENCIDA ayer → no vigente
+    assert m2.estado == "DISPONIBLE" and m2.obra_id is None and m2.operador is None
+    assert m2.desde is None and m2.horas_mes == "0"
+
+    por_trab = {t.trabajador_id: t for t in estado.trabajadores}
+    assert len(estado.trabajadores) == 2
+    juan = por_trab[ids["juan"]]                   # asignado a obra Y operador
+    assert juan.obra == "Vía Llanogrande K2+300" and juan.desde == date(2026, 3, 1)
+    assert juan.maquina == "Minicargador" and juan.maquina_id == ids["m1"]
+    pedro = por_trab[ids["pedro"]]                 # SOLO operador (sin asignación propia)
+    assert pedro.obra == "Vía Llanogrande K2+300" and pedro.desde is None
+    assert pedro.maquina == "Volqueta" and pedro.maquina_id == ids["m3"]
+
+
+async def test_estado_sin_dinero(tenant):
+    """La foto serializada NO contiene ninguna clave de dinero (precio/costo)."""
+    async with AsyncSession(tenant.engine) as s:
+        await _seed_estado(s)
+    async with AsyncSession(tenant.engine) as s:
+        estado = await CalendarioObraService(s, _CAPS_TODO).estado(hoy=_HOY)
+
+    def _claves(obj) -> set:
+        out: set = set()
+        if isinstance(obj, dict):
+            for k, v in obj.items():
+                out.add(k)
+                out |= _claves(v)
+        elif isinstance(obj, list):
+            for it in obj:
+                out |= _claves(it)
+        return out
+
+    claves = _claves(estado.model_dump())
+    assert not any("precio" in k or "costo" in k for k in claves), claves
+
+
+async def test_estado_degrada_sin_maquinaria(tenant):
+    """Sin `maquinaria`: maquinas=[] y trabajadores solo los asignados a obra (Juan, sin máquina). Pedro,
+    que SOLO es operador, no aparece (su origen es maquinaria)."""
+    async with AsyncSession(tenant.engine) as s:
+        ids = await _seed_estado(s)
+    async with AsyncSession(tenant.engine) as s:
+        estado = await CalendarioObraService(s, frozenset({"obras", "nomina"})).estado(hoy=_HOY)
+
+    assert estado.maquinas == []
+    assert [t.trabajador_id for t in estado.trabajadores] == [ids["juan"]]
+    assert estado.trabajadores[0].maquina is None
+
+
+async def test_estado_degrada_sin_nomina(tenant):
+    """Sin `nomina`: no hay asignaciones trabajador→obra, pero los operadores de máquinas vigentes sí
+    salen (Juan y Pedro), con su obra tomada de la máquina y desde NULL (sin asignación propia)."""
+    async with AsyncSession(tenant.engine) as s:
+        ids = await _seed_estado(s)
+    async with AsyncSession(tenant.engine) as s:
+        estado = await CalendarioObraService(s, frozenset({"obras", "maquinaria"})).estado(hoy=_HOY)
+
+    assert len(estado.maquinas) == 3
+    por_trab = {t.trabajador_id: t for t in estado.trabajadores}
+    assert set(por_trab) == {ids["juan"], ids["pedro"]}
+    assert por_trab[ids["juan"]].desde is None and por_trab[ids["juan"]].maquina == "Minicargador"
+    assert por_trab[ids["pedro"]].maquina == "Volqueta"

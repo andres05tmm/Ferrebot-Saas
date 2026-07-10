@@ -21,7 +21,7 @@ import { useFetch } from '@/components/shared.jsx'
 import { useAuth } from '@/hooks/useAuth'
 import { Card } from '@/components/ui/card.jsx'
 import { Semaforo, EstadoVacio, Esqueleto, BTN_OUTLINE } from '../comunes.jsx'
-import { qsEntidad, fechaLarga, hoyStrCO } from './util.js'
+import { qsEntidad, fechaLarga, hoyStrCO, h, fechaCorta } from './util.js'
 import FormAsignacionMaquina from './FormAsignacionMaquina.jsx'
 import FormAsignacionTrabajador from './FormAsignacionTrabajador.jsx'
 
@@ -35,6 +35,9 @@ export default function DetalleDia({ fecha, filtros, onCerrar, onCambio }) {
   const d = q.data || {}
   const vista = filtros.vista
   const ver = (s) => vista === 'todos' || vista === s
+  // Relación temporal del día vs. HOY (Colombia): decide el encabezado de Planeado y si se puede planear.
+  const hoy = hoyStrCO()
+  const cuando = fecha < hoy ? 'pasado' : fecha > hoy ? 'futuro' : 'hoy'
 
   const horas = arr(d.horas_maquina)
   const reportes = arr(d.reportes)
@@ -64,7 +67,7 @@ export default function DetalleDia({ fecha, filtros, onCerrar, onCambio }) {
         <CalendarDays className="size-4 text-primary" aria-hidden="true" />
         <h2 className="flex-1 text-[13px] font-semibold text-foreground">{fechaLarga(fecha)}</h2>
         <button type="button" onClick={onCerrar} aria-label="Cerrar detalle del día"
-          className="grid size-7 place-items-center rounded-md text-muted-foreground hover:bg-surface-2">
+          className="grid size-9 cursor-pointer place-items-center rounded-md text-muted-foreground hover:bg-surface-2 sm:size-7">
           <X className="size-4" />
         </button>
       </div>
@@ -78,7 +81,9 @@ export default function DetalleDia({ fecha, filtros, onCerrar, onCambio }) {
         <div className="space-y-2 p-3">
           {total === 0 && (
             <p className="px-1 text-[12px] text-muted-foreground">
-              Sin actividad este día. Puedes planear asignaciones abajo.
+              {cuando === 'pasado'
+                ? 'Sin actividad registrada ese día.'
+                : 'Sin actividad este día. Puedes planear asignaciones abajo.'}
             </p>
           )}
           {ver('maquinas') && <SeccionMaquinas horas={horas} />}
@@ -87,7 +92,7 @@ export default function DetalleDia({ fecha, filtros, onCerrar, onCambio }) {
           {ver('maquinas') && <SeccionMantenimientos hechos={mantenimientos} proximos={proximos} />}
           <SeccionPlaneado
             maquinas={plMaq} trabajadores={plTrab} hitos={plHitos}
-            admin={admin} fecha={fecha} onCambio={recargar}
+            admin={admin} fecha={fecha} cuando={cuando} onCambio={recargar}
           />
         </div>
       )}
@@ -117,20 +122,28 @@ function Linea({ children }) {
 function SeccionMaquinas({ horas }) {
   return (
     <Seccion icono={Truck} titulo="Máquinas" conteo={horas.length}>
-      {horas.map((h) => (
-        <Linea key={h.id}>
-          <div className="flex items-center gap-2">
-            <span className="font-medium text-foreground">{h.maquina || `Máquina #${h.maquina_id}`}</span>
-            <span className="ml-auto tabular text-[11px] text-muted-foreground">{h.horas_trabajadas}/{h.horas_facturables} h</span>
-          </div>
-          <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-muted-foreground">
-            {h.operador && <span>{h.operador}</span>}
-            {h.obra && <span>· {h.obra}</span>}
-            {h.origen_registro && <span>· {h.origen_registro.toLowerCase()}</span>}
-          </div>
-          {h.observaciones && <p className="mt-0.5 text-[11px] text-muted-foreground">{h.observaciones}</p>}
-        </Linea>
-      ))}
+      {horas.map((r) => {
+        const facturablesDifieren = Number(r.horas_facturables || 0) !== Number(r.horas_trabajadas || 0)
+        const viaTelegram = r.origen_registro === 'TELEGRAM_BOT'
+        const hayDetalle = r.operador || facturablesDifieren || viaTelegram
+        return (
+          <Linea key={r.id}>
+            <div className="flex flex-wrap items-baseline gap-x-1.5">
+              <span className="font-medium text-foreground">{r.maquina || `Máquina #${r.maquina_id}`}</span>
+              <span className="tabular text-muted-foreground">· {h(r.horas_trabajadas)}</span>
+              {r.obra && <span className="text-muted-foreground">en {r.obra}</span>}
+            </div>
+            {hayDetalle && (
+              <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-muted-foreground">
+                {r.operador && <span>operador {r.operador}</span>}
+                {facturablesDifieren && <span className="tabular">· {h(r.horas_facturables)} facturables</span>}
+                {viaTelegram && <span>· vía Telegram</span>}
+              </div>
+            )}
+            {r.observaciones && <p className="mt-0.5 text-[11px] text-muted-foreground">{r.observaciones}</p>}
+          </Linea>
+        )
+      })}
     </Seccion>
   )
 }
@@ -183,9 +196,9 @@ function SeccionTrabajadores({ asistencia }) {
                 : <Semaforo tono="verde" className="ml-auto">Presente</Semaforo>}
             </div>
             <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-muted-foreground">
-              <span>{a.obra || 'Administrativo'}</span>
-              <span>· {a.horas_trabajadas} h</span>
-              {extras > 0 && <span>· {extras} h extra</span>}
+              <span className="tabular">{h(a.horas_trabajadas)}</span>
+              <span>· {a.obra ? `en ${a.obra}` : 'administrativo'}</span>
+              {extras > 0 && <span className="tabular">· +{h(extras)} extra</span>}
             </div>
           </Linea>
         )
@@ -223,13 +236,26 @@ function SeccionMantenimientos({ hechos, proximos }) {
   )
 }
 
+// Título del bloque según cuándo es el día: se planea a futuro, pero un día ya vivido no muestra
+// "Planeado" (confundía al cliente) sino qué máquinas/gente estuvieron en obra ese día.
+const TITULO_PLANEADO = { futuro: 'Planeado', hoy: 'En obra hoy', pasado: 'En obra ese día' }
+
+// Periodo de una asignación como frase humana: "desde el 9 may 2026" (+ " · hasta el 20 jul 2026" si
+// tiene cierre). Nunca "→ —": una asignación abierta simplemente no muestra la parte "hasta".
+function periodo(p) {
+  const desde = p.fecha_inicio ? `desde el ${fechaCorta(p.fecha_inicio)}` : ''
+  return p.fecha_fin ? `${desde} · hasta el ${fechaCorta(p.fecha_fin)}` : desde
+}
+
 // Planeado: además de listar asignaciones/hitos, el ADMIN puede asignar máquina/trabajador (forms inline)
 // y CERRAR una asignación activa (PATCH activa=false + fecha_fin hoy). Se renderiza también con conteo 0
 // para el admin (necesita el toolbar en un día sin planeado); para el vendedor se oculta si está vacío.
-function SeccionPlaneado({ maquinas, trabajadores, hitos, admin, fecha, onCambio }) {
+// En días PASADOS se ocultan los botones "+ Asignar" (no se planea el ayer) pero se conserva "Cerrar".
+function SeccionPlaneado({ maquinas, trabajadores, hitos, admin, fecha, cuando, onCambio }) {
   const [form, setForm] = useState(null) // 'maquina' | 'trabajador' | null
   const conteo = maquinas.length + trabajadores.length + hitos.length
   if (!admin && !conteo) return null
+  const puedeAsignar = admin && cuando !== 'pasado'
 
   async function cerrar(path, nombre) {
     if (!window.confirm(`¿Cerrar la asignación de ${nombre}? Se marcará como finalizada hoy.`)) return
@@ -247,27 +273,27 @@ function SeccionPlaneado({ maquinas, trabajadores, hitos, admin, fecha, onCambio
     <details open className="rounded-md border border-border-subtle bg-surface">
       <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2 text-[12px] font-semibold text-foreground">
         <ClipboardList className="size-4 text-muted-foreground" aria-hidden="true" />
-        <span>Planeado</span>
+        <span>{TITULO_PLANEADO[cuando] || 'Planeado'}</span>
         <span className="ml-auto tabular text-[11px] text-muted-foreground">{conteo}</span>
       </summary>
       <div className="space-y-2 px-3 pb-3 pt-1">
-        {admin && (
+        {puedeAsignar && (
           <div className="flex flex-wrap gap-2">
             <button type="button" onClick={() => setForm((v) => (v === 'maquina' ? null : 'maquina'))}
-              aria-expanded={form === 'maquina'} className={`${BTN_OUTLINE} h-7 px-2 text-[12px]`}>
+              aria-expanded={form === 'maquina'} className={`${BTN_OUTLINE} min-h-11 cursor-pointer px-2.5 text-[12px] sm:min-h-0 sm:h-7`}>
               <Plus className="size-3.5" /> Asignar máquina
             </button>
             <button type="button" onClick={() => setForm((v) => (v === 'trabajador' ? null : 'trabajador'))}
-              aria-expanded={form === 'trabajador'} className={`${BTN_OUTLINE} h-7 px-2 text-[12px]`}>
+              aria-expanded={form === 'trabajador'} className={`${BTN_OUTLINE} min-h-11 cursor-pointer px-2.5 text-[12px] sm:min-h-0 sm:h-7`}>
               <Plus className="size-3.5" /> Asignar trabajador
             </button>
           </div>
         )}
-        {admin && form === 'maquina' && (
+        {puedeAsignar && form === 'maquina' && (
           <FormAsignacionMaquina fechaInicioDefault={fecha}
             onExito={() => { setForm(null); onCambio?.() }} onCancelar={() => setForm(null)} />
         )}
-        {admin && form === 'trabajador' && (
+        {puedeAsignar && form === 'trabajador' && (
           <FormAsignacionTrabajador fechaInicioDefault={fecha}
             onExito={() => { setForm(null); onCambio?.() }} onCancelar={() => setForm(null)} />
         )}
@@ -275,19 +301,19 @@ function SeccionPlaneado({ maquinas, trabajadores, hitos, admin, fecha, onCambio
           <Linea key={`pm-${p.asignacion_id}`}>
             <div className="flex items-start gap-2">
               <div className="min-w-0 flex-1">
-                <span className="inline-flex items-center gap-1.5">
-                  <Truck className="size-3.5 text-muted-foreground" aria-hidden="true" />
+                <span className="flex flex-wrap items-center gap-x-1.5">
+                  <Truck className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
                   <span className="font-medium text-foreground">{p.maquina || `Máquina #${p.maquina_id}`}</span>
-                  <span className="text-muted-foreground">→ {p.obra || `Obra #${p.obra_id}`}</span>
+                  <span className="min-w-0 break-words text-muted-foreground">→ {p.obra || `Obra #${p.obra_id}`}</span>
                 </span>
                 <div className="mt-0.5 text-[11px] text-muted-foreground">
-                  {p.operador && <span>{p.operador} · </span>}{p.fecha_inicio} → {p.fecha_fin || '—'}
+                  {periodo(p)}{p.operador && ` · operador ${p.operador}`}
                 </div>
               </div>
               {admin && (
                 <button type="button"
                   onClick={() => cerrar(`/maquinas/${p.maquina_id}/asignaciones/${p.asignacion_id}`, p.maquina || `Máquina #${p.maquina_id}`)}
-                  className="shrink-0 rounded-md px-2 py-0.5 text-[11px] font-medium text-muted-foreground hover:bg-surface-2 hover:text-destructive">
+                  className="inline-flex min-h-11 shrink-0 cursor-pointer items-center rounded-md px-2.5 py-2 text-[11px] font-medium text-muted-foreground hover:bg-surface-2 hover:text-destructive sm:min-h-0 sm:py-1">
                   Cerrar
                 </button>
               )}
@@ -298,17 +324,17 @@ function SeccionPlaneado({ maquinas, trabajadores, hitos, admin, fecha, onCambio
           <Linea key={`pt-${p.asignacion_id}`}>
             <div className="flex items-start gap-2">
               <div className="min-w-0 flex-1">
-                <span className="inline-flex items-center gap-1.5">
-                  <Users className="size-3.5 text-muted-foreground" aria-hidden="true" />
+                <span className="flex flex-wrap items-center gap-x-1.5">
+                  <Users className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
                   <span className="font-medium text-foreground">{p.trabajador || `Trabajador #${p.trabajador_id}`}</span>
-                  <span className="text-muted-foreground">→ {p.obra || `Obra #${p.obra_id}`}</span>
+                  <span className="min-w-0 break-words text-muted-foreground">→ {p.obra || `Obra #${p.obra_id}`}</span>
                 </span>
-                <div className="mt-0.5 text-[11px] text-muted-foreground">{p.fecha_inicio} → {p.fecha_fin || '—'}</div>
+                <div className="mt-0.5 text-[11px] text-muted-foreground">{periodo(p)}</div>
               </div>
               {admin && (
                 <button type="button"
                   onClick={() => cerrar(`/trabajadores/${p.trabajador_id}/asignaciones/${p.asignacion_id}`, p.trabajador || `Trabajador #${p.trabajador_id}`)}
-                  className="shrink-0 rounded-md px-2 py-0.5 text-[11px] font-medium text-muted-foreground hover:bg-surface-2 hover:text-destructive">
+                  className="inline-flex min-h-11 shrink-0 cursor-pointer items-center rounded-md px-2.5 py-2 text-[11px] font-medium text-muted-foreground hover:bg-surface-2 hover:text-destructive sm:min-h-0 sm:py-1">
                   Cerrar
                 </button>
               )}

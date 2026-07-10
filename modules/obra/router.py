@@ -47,6 +47,7 @@ from modules.obra.schemas import (
     ConsumoInventarioRegistrado,
     DashboardConstruccion,
     DetalleDiaCalendario,
+    EstadoCalendario,
     EstadoObra,
     FacturaObraLeer,
     GastoRealObra,
@@ -248,6 +249,20 @@ async def calendario_obra_dia(
     return await service.dia(
         fecha, obra_id=obra_id, maquina_id=maquina_id, trabajador_id=trabajador_id
     )
+
+
+@router.get("/obras/calendario/estado", response_model=EstadoCalendario)
+async def calendario_obra_estado(
+    service: CalendarioObraService = Depends(get_calendario_service),
+    _user: Principal = Depends(require_role("vendedor")),
+) -> EstadoCalendario:
+    """Estado ACTUAL de la operación a hoy Colombia: dónde está cada máquina (obra/operador/desde + horas
+    del mes) y cada trabajador en campo (obra/desde + máquina). La foto de 'ahora' que la agenda por día no
+    responde. Vista de OPERACIÓN (sin dinero), rol `vendedor` (todo el personal la consulta).
+
+    Declarada ANTES de `/obras/{obra_id}` (junto a `/obras/calendario` y `/obras/calendario/dia`) para que
+    'calendario' no caiga en la ruta de id. Degrada por capacidad (maquinaria/nomina)."""
+    return await service.estado()
 
 
 @router.get("/obras/{obra_id}", response_model=ObraResumen)

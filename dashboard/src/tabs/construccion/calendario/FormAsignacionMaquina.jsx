@@ -102,8 +102,8 @@ export default function FormAsignacionMaquina({ maquinaFija, fechaInicioDefault,
         </Campo>
       </div>
       <div className="mt-3 flex items-center justify-end gap-2">
-        <button type="button" onClick={onCancelar} className={`${BTN_OUTLINE} h-8`}>Cancelar</button>
-        <button type="button" onClick={guardar} disabled={enviando} className={`${BTN_PRIMARY} h-8`}>
+        <button type="button" onClick={onCancelar} className={`${BTN_OUTLINE} h-8 cursor-pointer`}>Cancelar</button>
+        <button type="button" onClick={guardar} disabled={enviando} className={`${BTN_PRIMARY} h-8 cursor-pointer`}>
           {enviando ? 'Guardando…' : 'Asignar máquina'}
         </button>
       </div>

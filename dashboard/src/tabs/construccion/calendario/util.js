@@ -4,6 +4,13 @@
  * contenedor). Zona horaria Colombia (regla #4): nunca `new Date()` crudo para fechas de calendario.
  */
 
+// Eventos SSE que mueven la actividad de la obra: repintan los dots del mes y refrescan el estado actual
+// (máquinas/trabajadores en obra). Compartido por CalendarioObra y EstadoActual para suscribir lo mismo.
+export const EVENTOS_CALENDARIO = [
+  'reconnected', 'registro_horas_creado', 'mantenimiento_registrado', 'asistencia_registrada',
+  'asignacion_maquina_actualizada', 'asignacion_trabajador_actualizada', 'obra_actualizada',
+]
+
 export const DIAS_SEMANA = ['L', 'M', 'X', 'J', 'V', 'S', 'D']
 export const MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio',
   'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
@@ -42,4 +49,34 @@ export function abreviarHoras(total) {
   const n = Number(total)
   if (!n) return ''
   return `${n % 1 === 0 ? n : Number(n.toFixed(1))}h`
+}
+
+// Horas en formato humano para el detalle/estado: "6 h", "6.5 h", "0 h". Number() ya colapsa los ceros
+// colgantes del decimal string del backend ("6.0000" → 6, "6.5000" → 6.5). Sin valor válido → "0 h".
+export function h(x) {
+  const n = Number(x)
+  return `${Number.isFinite(n) ? n : 0} h`
+}
+
+// YYYY-MM-DD → fecha corta legible es-CO ("9 may 2026"). Mediodía Colombia para no cruzar el borde de
+// zona. Se arma por partes (formatToParts) para no arrastrar los "de" ni el punto que mete el locale.
+export function fechaCorta(ymd) {
+  if (!ymd) return ''
+  const d = new Date(`${ymd}T12:00:00-05:00`)
+  const p = Object.fromEntries(
+    new Intl.DateTimeFormat('es-CO', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'America/Bogota' })
+      .formatToParts(d).filter((x) => x.type !== 'literal').map((x) => [x.type, x.value]),
+  )
+  return `${p.day} ${p.month.replace('.', '')} ${p.year}`
+}
+
+// YYYY-MM-DD → día y mes SIN año ("9 may"). Para la franja de estado actual, donde el año se sobreentiende.
+export function fechaDiaMes(ymd) {
+  if (!ymd) return ''
+  const d = new Date(`${ymd}T12:00:00-05:00`)
+  const p = Object.fromEntries(
+    new Intl.DateTimeFormat('es-CO', { day: 'numeric', month: 'short', timeZone: 'America/Bogota' })
+      .formatToParts(d).filter((x) => x.type !== 'literal').map((x) => [x.type, x.value]),
+  )
+  return `${p.day} ${p.month.replace('.', '')}`
 }

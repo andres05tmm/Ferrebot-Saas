@@ -208,6 +208,26 @@ class SqlTrabajadoresRepository:
         )
         return [dict(f._mapping) for f in (await self._s.execute(text(sql), params)).all()]
 
+    async def estado_trabajadores_hoy(self, hoy: date) -> list[dict]:
+        """Estado ACTUAL: asignaciones trabajador→obra ACTIVAS vigentes hoy + nombres (obra y desde).
+
+        Vigente = `activa` AND `fecha_inicio <= hoy <= fecha_fin`/NULL. `DISTINCT ON (trabajador_id)` con
+        `ORDER BY trabajador_id, fecha_inicio DESC` colapsa varias vigentes (dato viejo) a la de arranque
+        más reciente. La relación con la máquina la compone el service (operador de `estado_maquinas_hoy`);
+        aquí solo la asignación trabajador→obra. Una sola consulta (sin N+1)."""
+        sql = (
+            "SELECT DISTINCT ON (ato.trabajador_id) ato.trabajador_id, "
+            "  NULLIF(TRIM(COALESCE(t.nombres,'') || ' ' || COALESCE(t.apellidos,'')), '') AS trabajador, "
+            "  ato.obra_id, o.nombre AS obra, ato.fecha_inicio AS desde "
+            "FROM asignaciones_trabajador_obra ato "
+            "JOIN trabajadores t ON t.id = ato.trabajador_id "
+            "JOIN obras o ON o.id = ato.obra_id "
+            "WHERE ato.activa AND ato.fecha_inicio <= :hoy "
+            "  AND (ato.fecha_fin IS NULL OR ato.fecha_fin >= :hoy) "
+            "ORDER BY ato.trabajador_id, ato.fecha_inicio DESC, ato.id DESC"
+        )
+        return [dict(f._mapping) for f in (await self._s.execute(text(sql), {"hoy": hoy})).all()]
+
     async def asignaciones_trabajador_calendario(
         self,
         desde: date,

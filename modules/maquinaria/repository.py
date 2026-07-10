@@ -5,6 +5,7 @@ la base (sin `empresa_id`). Soft delete por `eliminado_en` (NULL = viva): las le
 eliminadas y `codigo_existe` mira TODAS las filas (incluidas las borradas) porque el UNIQUE de la BD no
 distingue soft delete —así el 409 se anticipa en vez de reventar como IntegrityError al hacer flush.
 """
+from calendar import monthrange
 from datetime import date
 from decimal import Decimal
 
@@ -539,6 +540,47 @@ class SqlMaquinasRepository:
                     "ORDER BY ingreso_hoy DESC, m.codigo"
                 ),
                 {"hoy": hoy},
+            )
+        ).all()
+        return [dict(f._mapping) for f in filas]
+
+    async def estado_maquinas_hoy(self, hoy: date) -> list[dict]:
+        """Estado ACTUAL de TODAS las máquinas vivas: su asignación vigente hoy (obra/operador/desde) y
+        las horas trabajadas del mes calendario de `hoy`. Sin dinero.
+
+        LEFT JOIN LATERAL a la asignación vigente hoy (activa, fecha_inicio ≤ hoy ≤ fecha_fin/NULL; si hay
+        varias, la de arranque más reciente): una máquina DISPONIBLE sin asignación conserva obra/operador/
+        desde en NULL. `horas_mes` = Σ horas_trabajadas de sus partes del mes de `hoy` (subquery escalar,
+        COALESCE a 0 cuando no hay partes). Orden: con obra primero, luego nombre. Una sola consulta (sin
+        N+1). Molde: `ocupadas_hoy` (mismo LATERAL de asignación vigente + nombres de obra/operador)."""
+        mes_desde = hoy.replace(day=1)
+        mes_hasta = hoy.replace(day=monthrange(hoy.year, hoy.month)[1])
+        filas = (
+            await self._s.execute(
+                text(
+                    "SELECT m.id AS maquina_id, m.nombre AS maquina, m.estado AS estado, "
+                    "  a.obra_id, o.nombre AS obra, a.operador_id, "
+                    "  NULLIF(TRIM(COALESCE(t.nombres,'') || ' ' || COALESCE(t.apellidos,'')), '') "
+                    "    AS operador, "
+                    "  a.fecha_inicio AS desde, "
+                    "  COALESCE(("
+                    "    SELECT SUM(rh.horas_trabajadas) FROM registros_horas_maquina rh "
+                    "    WHERE rh.maquina_id = m.id AND rh.fecha BETWEEN :mes_desde AND :mes_hasta"
+                    "  ), 0) AS horas_mes "
+                    "FROM maquinas m "
+                    "LEFT JOIN LATERAL ("
+                    "  SELECT amo.obra_id, amo.operador_id, amo.fecha_inicio "
+                    "  FROM asignaciones_maquina_obra amo "
+                    "  WHERE amo.maquina_id = m.id AND amo.activa AND amo.fecha_inicio <= :hoy "
+                    "    AND (amo.fecha_fin IS NULL OR amo.fecha_fin >= :hoy) "
+                    "  ORDER BY amo.fecha_inicio DESC, amo.id DESC LIMIT 1"
+                    ") a ON true "
+                    "LEFT JOIN obras o ON o.id = a.obra_id "
+                    "LEFT JOIN trabajadores t ON t.id = a.operador_id "
+                    "WHERE m.eliminado_en IS NULL "
+                    "ORDER BY (a.obra_id IS NULL), m.nombre, m.codigo"
+                ),
+                {"hoy": hoy, "mes_desde": mes_desde, "mes_hasta": mes_hasta},
             )
         ).all()
         return [dict(f._mapping) for f in filas]

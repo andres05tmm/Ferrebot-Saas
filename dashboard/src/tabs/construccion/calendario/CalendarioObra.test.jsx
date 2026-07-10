@@ -23,8 +23,11 @@ const YMD = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' 
 const YM = YMD.slice(0, 7)
 const MES_NUM = Number(YM.slice(5, 7))
 const MES_SIG = MES_NUM === 12 ? 1 : MES_NUM + 1
-const F_ACT = `${YM}-09`   // día con actividad real
-const F_PLAN = `${YM}-15`  // día SOLO planeado (asignación sin actividad)
+// El borde punteado "solo planeado" ahora solo aplica a HOY/futuro: usamos HOY como día SOLO-planeado
+// (siempre >= hoy) y otro día distinto para la actividad real (su fecha no influye en esos tests).
+const HOY_DIA = Number(YMD.slice(8, 10))
+const F_PLAN = YMD // día SOLO planeado = hoy (garantiza borde punteado sin depender del calendario)
+const F_ACT = `${YM}-${String(HOY_DIA === 9 ? 8 : 9).padStart(2, '0')}` // día con actividad real, ≠ hoy
 
 const MES = {
   anio: Number(YM.slice(0, 4)),
@@ -80,10 +83,34 @@ const DIA = {
   }],
 }
 
-// Orden de ramas: `/obras/calendario/dia` antes de `/obras/calendario` antes de `/obras`.
+// Estado actual (franja sobre la grilla): una máquina OCUPADA con obra/operador/horas del mes y otra
+// DISPONIBLE sin obra; un trabajador en obra con máquina. horas_mes viene como decimal string crudo.
+const ESTADO = {
+  fecha: YMD,
+  maquinas: [
+    {
+      maquina_id: 5, maquina: 'Minicargador', estado: 'OCUPADA', obra_id: 7, obra: 'Via Llanogrande K2+300',
+      operador_id: 1, operador: 'Juan Perez', desde: `${YM}-01`, horas_mes: '6.0000',
+    },
+    {
+      maquina_id: 6, maquina: 'Retroexcavadora', estado: 'DISPONIBLE', obra_id: null, obra: null,
+      operador_id: null, operador: null, desde: null, horas_mes: '0',
+    },
+  ],
+  trabajadores: [
+    {
+      trabajador_id: 1, trabajador: 'Juan Perez', obra_id: 7, obra: 'Via Llanogrande K2+300',
+      desde: `${YM}-01`, maquina_id: 5, maquina: 'Minicargador',
+    },
+  ],
+}
+
+// Orden de ramas: `/obras/calendario/estado` y `/obras/calendario/dia` antes de `/obras/calendario` (que
+// los contiene como prefijo) antes de `/obras`.
 function instalarFetch() {
   const fetchMock = vi.fn((url) => {
     const u = String(url)
+    if (u.includes('/obras/calendario/estado')) return Promise.resolve(jsonResp(ESTADO))
     if (u.includes('/obras/calendario/dia')) return Promise.resolve(jsonResp(DIA))
     if (u.includes('/obras/calendario')) return Promise.resolve(jsonResp(MES))
     if (u.includes('/maquinas')) return Promise.resolve(jsonResp([]))
@@ -150,6 +177,31 @@ describe('CalendarioObra — calendario de obra (/calendario)', () => {
     expect(screen.queryByText('Retroexcavadora CAT 416')).toBeNull()
     expect(screen.getAllByText('Pedro Gomez').length).toBeGreaterThan(0)
     expect(screen.getByLabelText('Trabajador')).toBeInTheDocument()
+  })
+
+  it('la franja Estado actual muestra dónde está cada máquina y sus horas del mes (sin ceros crudos)', async () => {
+    instalarFetch()
+    renderCal()
+    // La máquina OCUPADA con su obra (aparece también en el bloque de trabajadores → getAllByText).
+    expect((await screen.findAllByText('Minicargador')).length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Via Llanogrande K2+300').length).toBeGreaterThan(0)
+    // Horas del mes en formato humano: "6 h este mes", nunca el decimal crudo "6.0000".
+    expect(screen.getByText(/6 h este mes/)).toBeInTheDocument()
+    expect(screen.queryByText(/6\.0000/)).toBeNull()
+    // La máquina DISPONIBLE aparece con sus horas del mes en 0 (también sin ceros colgantes).
+    expect(screen.getByText('Retroexcavadora')).toBeInTheDocument()
+    expect(screen.getByText(/0 h este mes/)).toBeInTheDocument()
+  })
+
+  it('en vista Máquinas la franja Estado actual oculta el bloque de trabajadores', async () => {
+    instalarFetch()
+    renderCal()
+    await screen.findAllByText('Minicargador')
+    const grupo = screen.getByRole('group', { name: 'Ver calendario por' })
+    fireEvent.click(within(grupo).getByRole('button', { name: 'Máquinas' }))
+    // Solo el bloque de máquinas: Minicargador queda (una vez), el trabajador Juan Perez ya no.
+    expect(screen.getAllByText('Minicargador').length).toBeGreaterThan(0)
+    expect(screen.queryByText('Juan Perez')).toBeNull()
   })
 
   it('distingue el día SOLO planeado con borde punteado', async () => {

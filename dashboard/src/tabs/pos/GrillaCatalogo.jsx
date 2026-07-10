@@ -30,7 +30,7 @@ const CardProducto = memo(function CardProducto({ p, enCarrito, esFav, resaltado
           resaltado ? 'border-primary bg-primary/10' : 'border-border bg-surface hover:border-primary/40 hover:bg-surface-2'}`}>
         <Icono className={`size-4 ${color}`} aria-hidden="true" />
         <span className="text-caption font-medium leading-tight line-clamp-2 min-h-[2em]">{p.nombre}</span>
-        <span className="text-body-sm font-semibold tabular text-primary">{cop(Number(p.precio_venta))}</span>
+        <span className="text-body-sm font-semibold tabular text-foreground">{cop(Number(p.precio_venta))}</span>
       </button>
       {enCarrito > 0 && (
         <span className="absolute -top-1.5 -left-1.5 min-w-5 h-5 px-1 grid place-items-center rounded-full bg-primary text-primary-foreground text-[10px] font-bold tabular"

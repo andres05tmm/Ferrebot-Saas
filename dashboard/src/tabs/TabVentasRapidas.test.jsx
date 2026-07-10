@@ -109,6 +109,32 @@ describe('TabVentasRapidas', () => {
   })
 })
 
+// --- Grilla híbrida: multiplicadores y barcode local ---------------------------
+
+describe('TabVentasRapidas — cantidad rápida y barcode', () => {
+  it('el multiplicador ×5 setea la cantidad y re-consulta el precio del servidor', async () => {
+    const fetchMock = instalarFetch()
+    render(<TabVentasRapidas />)
+    await agregarMartillo()
+    fireEvent.click(screen.getByLabelText('×5 de Martillo'))
+    await waitFor(() =>
+      expect(fetchMock.mock.calls.some(c => /\/productos\/1\/precio\?cantidad=5/.test(String(c[0])))).toBe(true))
+    expect(screen.getByLabelText('Cantidad de Martillo')).toHaveValue(5)
+  })
+
+  it('el código de barras resuelve contra el catálogo LOCAL sin ir al servidor', async () => {
+    const fetchMock = instalarFetch([{ ...MARTILLO, codigo: '7701' }])
+    render(<TabVentasRapidas />)
+    await screen.findByLabelText('Agregar Martillo')   // catálogo cargado
+    // Ráfaga del lector: caracteres seguidos + Enter (sin foco en el buscador).
+    for (const ch of '7701') fireEvent.keyDown(document, { key: ch })
+    fireEvent.keyDown(document, { key: 'Enter' })
+
+    expect(await screen.findByLabelText('Cantidad de Martillo')).toBeInTheDocument()
+    expect(fetchMock.mock.calls.some(c => String(c[0]).includes('/productos?q='))).toBe(false)
+  })
+})
+
 // --- Pago mixto (F5): cobro dividido con validación suma=total ----------------
 
 describe('TabVentasRapidas — pago mixto', () => {

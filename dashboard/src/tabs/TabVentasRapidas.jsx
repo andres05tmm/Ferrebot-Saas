@@ -2,8 +2,13 @@
  * TabVentasRapidas — POS server-authoritative (E6, F5 pago mixto, reforma grilla híbrida).
  *
  * Orquestador del POS: es dueño del carrito, los precios del servidor, los atajos de teclado, el guard
- * de caja y el POST /ventas. La presentación vive en tabs/pos/ (LineaCarrito, Checkout, ClientePicker,
- * VariaForm, piezas).
+ * de caja y el POST /ventas. La presentación vive en tabs/pos/ (GrillaCatalogo, LineaCarrito, Checkout,
+ * ClientePicker, VariaForm, piezas).
+ *
+ * BÚSQUEDA HÍBRIDA (reforma): el catálogo completo vive en el navegador (usePosCatalogo) y escribir
+ * filtra la grilla AL INSTANTE (filtroLocal, sin red); la búsqueda inteligente del servidor (4 capas:
+ * exacta→alias→trigram→fuzzy) entra SOLO como respaldo cuando el filtro local no encuentra nada, o
+ * siempre si el catálogo quedó `parcial` (tenant con catálogo enorme → modo server-first).
  *
  * Precio server-authoritative: cada línea de catálogo consulta GET /productos/{id}/precio?cantidad=
  * (debounce 250ms + AbortController) y el total es la SUMA de los totales del servidor — el motor de
@@ -11,13 +16,13 @@
  * registrar NO se manda precio_unitario (el backend recalcula), salvo el "especial" (override explícito).
  *
  * Atajos POS (ADR 0029): F2 o «/» enfocan el buscador; ↑/↓ mueven la selección y Enter la agrega;
- * F9 o Ctrl+Enter cobran; Alt+1..5 método de pago; lector de código de barras (ráfaga + Enter).
+ * F9 o Ctrl+Enter cobran; Alt+1..5 método de pago; lector de código de barras (ráfaga + Enter,
+ * resuelto contra el catálogo local primero).
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
-import { Plus, Search, X, Zap } from 'lucide-react'
+import { Search, X } from 'lucide-react'
 import { api, apiJson } from '@/lib/api'
-import { cop, ProductThumb } from '@/components/shared.jsx'
 import ModalAbrirCaja from '@/components/ModalAbrirCaja.jsx'
 import { useFeatures } from '@/lib/features.jsx'
 import { usePreferencias } from '@/lib/preferencias.jsx'
@@ -25,6 +30,10 @@ import { Card } from '@/components/ui/card.jsx'
 import { Input } from '@/components/ui/input.jsx'
 import { Button } from '@/components/ui/button.jsx'
 import { AtajosHint, guardarLS, leerLS, METODOS, nuevaKey } from './pos/piezas.jsx'
+import usePosCatalogo from './pos/usePosCatalogo.js'
+import { filtrarYRankear, normalizarLocal } from './pos/filtroLocal.js'
+import { leerFavs, toggleFav } from './pos/favoritos.js'
+import GrillaCatalogo from './pos/GrillaCatalogo.jsx'
 import LineaCarrito from './pos/LineaCarrito.jsx'
 import Checkout from './pos/Checkout.jsx'
 import ClientePicker from './pos/ClientePicker.jsx'
@@ -52,9 +61,11 @@ export default function TabVentasRapidas() {
   const documentoDefault = facturarEnVenta ? (puedePos ? 'pos' : 'fe') : 'ninguno'
 
   const [q, setQ] = useState('')
-  const [resultados, setResultados] = useState([])
-  const [sel, setSel] = useState(0)          // índice seleccionado en los resultados (teclado)
+  const [resultadosServidor, setResultadosServidor] = useState([])   // respaldo de la búsqueda inteligente
+  const [sel, setSel] = useState(0)          // índice resaltado en la lista filtrada (teclado)
   const [frecuentes, setFrecuentes] = useState([])
+  const [favoritos, setFavoritos] = useState(() => leerFavs())
+  const [chip, setChip] = useState(() => (leerFavs().size > 0 ? 'favs' : 'frecuentes'))
   const [carrito, setCarrito] = useState(() => leerLS(CART_KEY, []))
   const [enEspera, setEnEspera] = useState(() => leerLS(ESPERA_KEY, []))
   const [precios, setPrecios] = useState({})  // key → {total, precio_unitario, regla, loading}
@@ -71,38 +82,65 @@ export default function TabVentasRapidas() {
   // el mismo cobro (sin repetir la venta ni arriesgar un duplicado).
   const [ventaPendiente, setVentaPendiente] = useState(null)   // {payload, key} | null
 
+  // Catálogo completo en el navegador (reforma grilla híbrida) + filtro local instantáneo.
+  const { productos, categorias, parcial } = usePosCatalogo()
+  const term = q.trim()
+  const buscando = term !== ''
+  const listaLocal = useMemo(
+    () => (buscando && !parcial ? filtrarYRankear(productos, term) : []),
+    [buscando, parcial, productos, term],
+  )
+  // Server-first si el catálogo es parcial; respaldo inteligente si lo local no encontró nada.
+  const usaServidor = buscando && (parcial || (listaLocal.length === 0 && term.length >= 2))
+  const resultados = buscando ? (usaServidor ? resultadosServidor : listaLocal) : []
+  const fuente = usaServidor ? 'servidor' : 'local'
+
   const searchRef = useRef(null)
   const resultadosRef = useRef(resultados)
   const selRef = useRef(sel)
+  const productosRef = useRef(productos)
   const registrarRef = useRef(null)
   const bufferRef = useRef('')
   const bufferTimerRef = useRef(null)
   resultadosRef.current = resultados
   selRef.current = sel
+  productosRef.current = productos
+
+  // Autofocus del buscador al montar (del FerreBot viejo): el cajero llega tecleando.
+  useEffect(() => { searchRef.current?.focus() }, [])
 
   // Persistencia del carrito vivo y de los aparcados (sobreviven refresh/corte de luz).
   useEffect(() => { guardarLS(CART_KEY, carrito) }, [carrito])
   useEffect(() => { guardarLS(ESPERA_KEY, enEspera) }, [enEspera])
 
-  // Grilla de frecuentes (una vez): acceso rápido para el mostrador.
+  // Frecuentes (una vez): alimenta el chip ⚡ de la grilla. Si el tenant aún no vende (lista vacía)
+  // y no hay favoritos, el chip default cae a "Todo" para no abrir en una vista vacía.
   useEffect(() => {
     apiJson('/productos/frecuentes?dias=30&limite=12')
-      .then(d => setFrecuentes(Array.isArray(d) ? d : []))
+      .then(d => {
+        const lista = Array.isArray(d) ? d : []
+        setFrecuentes(lista)
+        if (lista.length === 0) setChip(c => (c === 'frecuentes' ? 'todo' : c))
+      })
       .catch(() => setFrecuentes([]))
   }, [])
+  const frecuentesIds = useMemo(() => new Set(frecuentes.map(p => p.id)), [frecuentes])
 
-  // Búsqueda con debounce (200ms) + AbortController (descarta respuestas viejas de verdad).
+  // Resaltado al inicio de la lista cada vez que cambia el término.
+  useEffect(() => { setSel(0) }, [term])
+
+  // Respaldo del servidor (búsqueda inteligente de 4 capas): SOLO cuando el filtro local no encontró
+  // nada (alias/typos) o el catálogo es parcial. Debounce 350ms + AbortController.
   useEffect(() => {
-    const term = q.trim()
-    if (!term) { setResultados([]); setSel(0); return undefined }
+    if (!usaServidor) { setResultadosServidor([]); return undefined }
     const ctrl = new AbortController()
     const t = setTimeout(() => {
       apiJson(`/productos?q=${encodeURIComponent(term)}&limite=20`, { signal: ctrl.signal })
-        .then(d => { setResultados(Array.isArray(d) ? d : []); setSel(0) })
-        .catch(err => { if (err?.name !== 'AbortError') { setResultados([]); setSel(0) } })
-    }, 200)
+        .then(d => setResultadosServidor(Array.isArray(d) ? d : []))
+        .catch(err => { if (err?.name !== 'AbortError') setResultadosServidor([]) })
+    }, 350)
     return () => { clearTimeout(t); ctrl.abort() }
-  }, [q])
+  }, [usaServidor, term])
 
   // Precio server-authoritative por línea de catálogo (debounce 250ms + abort). Se dispara cuando
   // cambian las cantidades. Las líneas "especial" y "varia" NO consultan (su precio es explícito).
@@ -153,8 +191,18 @@ export default function TabVentasRapidas() {
     ? Math.max(0, Math.round((total - (Number(efectivoMixto) || 0)) * 100) / 100) : null
   const mixtoValido = metodoPago === 'mixto' &&
     Number(efectivoMixto) > 0 && Number(efectivoMixto) < total
+  // Badge "ya llevas N" en las cards de la grilla.
+  const cantidades = useMemo(
+    () => new Map(carrito.filter(it => !it.varia).map(it => [it.producto_id, Number(it.cantidad) || 0])),
+    [carrito],
+  )
 
   async function agregarPorCodigo(codigo) {
+    // Código de barras contra el catálogo LOCAL primero (instantáneo); el servidor es el respaldo
+    // (catálogo parcial o producto recién creado que aún no llegó por SSE).
+    const norm = normalizarLocal(codigo)
+    const local = productosRef.current.find(p => p.codigo != null && normalizarLocal(p.codigo) === norm)
+    if (local) { agregarProducto(local); return }
     try {
       const d = await apiJson(`/productos?q=${encodeURIComponent(codigo)}&limite=5`)
       const lista = Array.isArray(d) ? d : []
@@ -232,7 +280,7 @@ export default function TabVentasRapidas() {
         precio_sobre_umbral: p.precio_sobre_umbral != null ? Number(p.precio_sobre_umbral) : null,
       }]
     })
-    setQ(''); setResultados([]); setSel(0)
+    setQ(''); setSel(0)   // el término se limpia; la lista filtrada se deriva de él
   }
 
   function agregarVaria({ descripcion, cantidad, precio_unitario }) {
@@ -351,51 +399,24 @@ export default function TabVentasRapidas() {
           <div className="relative">
             <Search className="size-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
             <Input ref={searchRef} value={q} onChange={(e) => setQ(e.target.value)}
-              placeholder="Buscar producto…" aria-label="Buscar producto" className="pl-9" />
+              placeholder="Buscar producto…  ↵ agrega el primero" aria-label="Buscar producto" className="pl-9" />
           </div>
-          {resultados.length > 0 && (
-            <ul className="mt-2 divide-y divide-border-subtle max-h-80 overflow-y-auto scrollbar-aurora"
-              role="listbox" aria-label="Resultados">
-              {resultados.map((p, i) => (
-                <li key={p.id} role="option" aria-selected={i === sel}>
-                  <button onClick={() => agregarProducto(p)} onMouseEnter={() => setSel(i)}
-                    className={`w-full flex items-center gap-2.5 py-2 px-1.5 text-left rounded-md ${
-                      i === sel ? 'bg-primary/10' : 'hover:bg-surface-2'}`}>
-                    <ProductThumb nombre={p.nombre} className="size-9 shrink-0 rounded-md" />
-                    <span className="min-w-0 flex-1">
-                      <span className="block text-body-sm truncate">{p.nombre}</span>
-                      <span className="block text-caption text-muted-foreground truncate">
-                        {[p.codigo, p.categoria].filter(Boolean).join(' · ') || 'Sin código'}
-                      </span>
-                    </span>
-                    {p.precio_umbral != null && p.precio_sobre_umbral != null && (
-                      <span className="text-caption text-info shrink-0 hidden sm:block">
-                        ≥{cop(p.precio_umbral)} u: {cop(p.precio_sobre_umbral)}
-                      </span>
-                    )}
-                    <span className="text-body-sm tabular text-muted-foreground shrink-0">{cop(Number(p.precio_venta))}</span>
-                    <Plus className="size-4 text-primary shrink-0" />
-                  </button>
-                </li>
-              ))}
-            </ul>
+          {parcial && (
+            <p className="mt-1 text-caption text-muted-foreground">
+              Catálogo grande: la búsqueda va directa al servidor.
+            </p>
           )}
-          {!q.trim() && frecuentes.length > 0 && (
-            <div className="mt-3">
-              <div className="flex items-center gap-1.5 text-caption font-semibold uppercase tracking-wider text-muted-foreground mb-2">
-                <Zap className="size-3.5" /> Frecuentes
-              </div>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
-                {frecuentes.map(p => (
-                  <button key={p.id} onClick={() => agregarProducto(p)}
-                    className="flex flex-col items-start gap-0.5 p-2 rounded-md border border-border bg-surface hover:bg-surface-2 text-left">
-                    <span className="text-caption font-medium leading-tight line-clamp-2">{p.nombre}</span>
-                    <span className="text-caption tabular text-muted-foreground">{cop(Number(p.precio_venta))}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
+          <GrillaCatalogo
+            productos={buscando ? resultados : productos}
+            buscando={buscando} fuente={fuente}
+            frecuentesIds={frecuentesIds}
+            favoritos={favoritos} onToggleFav={(id) => setFavoritos(f => toggleFav(f, id))}
+            cantidades={cantidades}
+            categorias={categorias}
+            chip={chip} setChip={setChip}
+            sel={sel}
+            onTap={agregarProducto}
+          />
         </Card>
 
         <AtajosHint />

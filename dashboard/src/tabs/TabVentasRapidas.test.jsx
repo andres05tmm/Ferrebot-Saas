@@ -41,21 +41,35 @@ function ventaPost(fetchMock) {
   return { headers: call[1].headers, body: JSON.parse(call[1].body) }
 }
 
+// Con la grilla híbrida "Martillo" aparece en la card Y en el carrito: los helpers van por aria-label.
 async function agregarMartillo() {
   fireEvent.change(screen.getByLabelText('Buscar producto'), { target: { value: 'mar' } })
-  fireEvent.click(await screen.findByText('Martillo'))
+  fireEvent.click(await screen.findByLabelText('Agregar Martillo'))
 }
+
+// La línea del carrito es la única con este label: presencia = el producto está EN el carrito.
+const enCarrito = (nombre) => screen.getByLabelText(`Cantidad de ${nombre}`)
 
 beforeEach(() => { localStorage.clear() })
 afterEach(() => { cleanup(); vi.restoreAllMocks() })
 
 describe('TabVentasRapidas', () => {
-  it('la búsqueda (con debounce) llama GET /productos?q', async () => {
+  it('escribir filtra la grilla LOCALMENTE: sin round-trip ?q= cuando el catálogo resuelve', async () => {
     const fetchMock = instalarFetch()
     render(<TabVentasRapidas />)
     fireEvent.change(screen.getByLabelText('Buscar producto'), { target: { value: 'mar' } })
-    await screen.findByText('Martillo')
-    expect(fetchMock.mock.calls.some(c => String(c[0]).includes('/productos?q=mar'))).toBe(true)
+    await screen.findByLabelText('Agregar Martillo')
+    expect(fetchMock.mock.calls.some(c => String(c[0]).includes('/productos?q='))).toBe(false)
+  })
+
+  it('el respaldo inteligente llama GET /productos?q= solo cuando lo local no encuentra nada', async () => {
+    const fetchMock = instalarFetch()
+    render(<TabVentasRapidas />)
+    await screen.findByLabelText('Agregar Martillo')   // catálogo cargado
+    // "tiner" no está en el catálogo local → tras el debounce entra el servidor (alias/typos).
+    fireEvent.change(screen.getByLabelText('Buscar producto'), { target: { value: 'tiner' } })
+    await waitFor(() =>
+      expect(fetchMock.mock.calls.some(c => String(c[0]).includes('/productos?q=tiner'))).toBe(true))
   })
 
   it('el total y el c/u vienen del servidor (GET /precio), no del precio_venta', async () => {
@@ -85,7 +99,7 @@ describe('TabVentasRapidas', () => {
     const fetchMock = instalarFetch([TALADRO_ESP])
     render(<TabVentasRapidas />)
     fireEvent.change(screen.getByLabelText('Buscar producto'), { target: { value: 'tal' } })
-    fireEvent.click(await screen.findByText('Taladro'))
+    fireEvent.click(await screen.findByLabelText('Agregar Taladro'))
     fireEvent.click(await screen.findByText(/Especial/))
     fireEvent.click(screen.getByText(/Registrar venta/))
     await screen.findByText(/Busca o escanea/)
@@ -136,12 +150,12 @@ describe('TabVentasRapidas — carrito persistente y en espera', () => {
     instalarFetch()
     const { unmount } = render(<TabVentasRapidas />)
     await agregarMartillo()
-    await screen.findAllByText('Martillo')
+    enCarrito('Martillo')
     unmount()
 
     instalarFetch()
     render(<TabVentasRapidas />)
-    expect((await screen.findAllByText('Martillo')).length).toBeGreaterThan(0)
+    expect(await screen.findByLabelText('Cantidad de Martillo')).toBeInTheDocument()
   })
 
   it('"En espera" aparca el carrito y "Retomar" lo trae de vuelta', async () => {
@@ -154,7 +168,7 @@ describe('TabVentasRapidas — carrito persistente y en espera', () => {
     expect(chip.textContent).toContain('1 ítem')
 
     fireEvent.click(chip)
-    expect((await screen.findAllByText('Martillo')).length).toBeGreaterThan(0)
+    expect(await screen.findByLabelText('Cantidad de Martillo')).toBeInTheDocument()
     expect(screen.queryByLabelText('Retomar venta en espera 1')).toBeNull()
   })
 })
@@ -192,7 +206,7 @@ describe('TabVentasRapidas — guard de caja', () => {
 
     await screen.findByText('¿Cuánto dinero hay en caja?')
     expect(ventaPosts(fetchMock)).toHaveLength(0)          // el cobro quedó en espera
-    expect(screen.getByText('Martillo')).toBeInTheDocument()   // carrito intacto
+    expect(enCarrito('Martillo')).toBeInTheDocument()      // carrito intacto
   })
 
   it('abrir caja desde el modal registra la venta pendiente sin repetir nada', async () => {
@@ -243,7 +257,7 @@ describe('TabVentasRapidas — guard de caja', () => {
     await agregarMartillo()
     fireEvent.click(screen.getByText(/Registrar venta/))
     await screen.findByText('¿Cuánto dinero hay en caja?')
-    expect(screen.getByText('Martillo')).toBeInTheDocument()   // el 409 no vació el carrito
+    expect(enCarrito('Martillo')).toBeInTheDocument()          // el 409 no vació el carrito
 
     fireEvent.change(screen.getByLabelText('Dinero en caja'), { target: { value: '20000' } })
     fireEvent.click(screen.getByText('Abrir caja y registrar la venta'))
@@ -278,6 +292,6 @@ describe('TabVentasRapidas — guard de caja', () => {
     await waitFor(() => expect(ventaPosts(fetchMock)).toHaveLength(0))
 
     expect(screen.getByText('¿Cuánto dinero hay en caja?')).toBeInTheDocument()
-    expect(screen.getByText('Martillo')).toBeInTheDocument()
+    expect(enCarrito('Martillo')).toBeInTheDocument()
   })
 })

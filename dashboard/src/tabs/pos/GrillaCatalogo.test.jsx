@@ -9,6 +9,8 @@ const PRODUCTOS = [
   { id: 1, nombre: 'Vinilo azul', categoria: 'Pinturas', precio_venta: '28000' },
   { id: 2, nombre: 'Martillo', categoria: 'Herramientas', precio_venta: '11900' },
   { id: 3, nombre: 'Estuco', categoria: 'Pinturas', precio_venta: '41000' },
+  { id: 4, nombre: 'Brocha de 2"', categoria: '1 Articulos de Ferreteria', precio_venta: '4000' },
+  { id: 5, nombre: 'Cerradura de Alcoba', categoria: '1 Articulos de Ferreteria', precio_venta: '14000' },
 ]
 
 function Harness({ chipInicial = 'todo', frecuentesIds = new Set(), onTap = () => {} }) {
@@ -20,7 +22,7 @@ function Harness({ chipInicial = 'todo', frecuentesIds = new Set(), onTap = () =
       frecuentesIds={frecuentesIds}
       favoritos={favoritos} onToggleFav={(id) => setFavoritos(f => toggleFav(f, id))}
       cantidades={new Map([[2, 3]])}
-      categorias={['Herramientas', 'Pinturas']}
+      categorias={['1 Articulos de Ferreteria', 'Herramientas', 'Pinturas']}
       chip={chip} setChip={setChip}
       sel={0} onTap={onTap}
     />
@@ -66,6 +68,29 @@ describe('GrillaCatalogo', () => {
     fireEvent.click(screen.getByRole('button', { name: /Top productos/ }))
     expect(screen.getByLabelText('Agregar Estuco')).toBeInTheDocument()
     expect(screen.queryByLabelText('Agregar Martillo')).toBeNull()
+  })
+
+  it('elegir una categoría con reglas muestra la fila de SUBCATEGORÍAS y filtran (réplica del viejo)', () => {
+    render(<Harness />)
+    fireEvent.click(screen.getByRole('button', { name: /Articulos de Ferreteria/ }))
+    // Segunda fila de chips: Todas + las subcategorías del viejo.
+    const fila = screen.getByRole('group', { name: /Subcategorías de Articulos de Ferreteria/ })
+    expect(fila).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Brochas \/ Rodillos/ })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /Cerraduras/ }))
+    expect(screen.getByLabelText('Agregar Cerradura de Alcoba')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Agregar Brocha de 2"')).toBeNull()
+
+    // "Todas" vuelve a la categoría completa.
+    fireEvent.click(screen.getByRole('button', { name: 'Todas' }))
+    expect(screen.getByLabelText('Agregar Brocha de 2"')).toBeInTheDocument()
+  })
+
+  it('una categoría sin reglas de subcategoría no muestra la segunda fila', () => {
+    render(<Harness chipInicial="Herramientas" />)
+    expect(screen.getByLabelText('Agregar Martillo')).toBeInTheDocument()
+    expect(screen.queryByRole('group', { name: /Subcategorías/ })).toBeNull()
   })
 
   it('en "Todos" los productos van agrupados por categoría con header y conteo', () => {

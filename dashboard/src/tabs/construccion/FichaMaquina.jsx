@@ -7,7 +7,8 @@
  *   GET  /maquinas/{id}/asignaciones  → [{ id, maquina_id, obra_id, fecha_inicio, fecha_fin, precio_hora,
  *                                          minimo_horas, operador_id, activa }]           (fecha_inicio DESC)
  *   GET  /maquinas/{id}/horas?limite=30 → [{ id, obra_id, fecha, horas_trabajadas, horas_facturables,
- *                                            origen_registro, ... }]                       (fecha DESC)
+ *                                            origen_registro, turnos: [...], ... }]         (fecha DESC)
+ *   POST /maquinas/{id}/horas (cualquier rol, captura de campo) → registra parte/turno; el kárdex tiene el form.
  *   GET  /maquinas/{id}/mantenimientos → [{ id, tipo, fecha, descripcion, costo, horas_maquina,
  *                                           proximo_en_horas, proximo_en_fecha, ... }]     (fecha DESC)
  *   POST /maquinas/{id}/mantenimientos (admin, 201) · PATCH /maquinas/{id} (admin, cambio de estado).
@@ -22,7 +23,7 @@
  * silenciosos (cada bloque degrada a su vacío) para no tumbar la ficha entera. Dinero llega como STRING
  * decimal → `cop()`; horas → `num()`. Todo por tokens semánticos (dark-mode-safe, white-label).
  */
-import { useMemo, useState } from 'react'
+import { Fragment, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import {
   Building2, Clock, Wrench, Plus, Bot, TriangleAlert, CalendarClock,
@@ -32,6 +33,8 @@ import { api } from '@/lib/api'
 import { useFetch, cop, num } from '@/components/shared.jsx'
 import { Semaforo, Campo, BTN_PRIMARY, BTN_OUTLINE, SELECT_CLS } from './comunes.jsx'
 import FormAsignacionMaquina from './calendario/FormAsignacionMaquina.jsx'
+import FormRegistroHoras from './calendario/FormRegistroHoras.jsx'
+import TurnosSublineas from './calendario/Turnos.jsx'
 
 // Etiquetas humanas del tipo de mantenimiento (enum del ORM) y del estado de máquina. Se mantienen
 // locales para que la ficha sea autocontenida (y testeable) sin acoplarse al mapa de TabMaquinas.
@@ -103,6 +106,7 @@ export default function FichaMaquina({ id, maquina, isAdmin = false, obrasNombre
 
       <SeccionKardex
         q={horasQ} horas={horas} asignaciones={asignaciones} obraLabel={obraLabel} isAdmin={isAdmin}
+        maquina={maquina} onRegistrado={horasQ.refetch}
       />
     </div>
   )
@@ -278,7 +282,10 @@ function SeccionAsignaciones({ q, asignaciones, obraLabel, hoy, maquina, isAdmin
 }
 
 // ── Kárdex de horas (con ingreso por parte; total solo admin) ────────────────────────────────────────
-function SeccionKardex({ q, horas, asignaciones, obraLabel, isAdmin }) {
+// Cada parte con ROTACIÓN de operadores lleva una sub-fila con el desglose de turnos (quién · franja · h);
+// el total del día vive en la fila principal. Registrar horas está abierto a todos los roles (captura de campo).
+function SeccionKardex({ q, horas, asignaciones, obraLabel, isAdmin, maquina, onRegistrado }) {
+  const [abrir, setAbrir] = useState(false)
   const totalIngreso = useMemo(() => horas.reduce((acc, r) => {
     const a = asignacionDe(r, asignaciones)
     return acc + (a ? n(r.horas_facturables) * n(a.precio_hora) : 0)
@@ -291,9 +298,24 @@ function SeccionKardex({ q, horas, asignaciones, obraLabel, isAdmin }) {
       </span>
     )
     : null
+  const accion = (
+    <div className="flex items-center gap-2">
+      {totalPill}
+      <button onClick={() => setAbrir((v) => !v)} className={`${BTN_OUTLINE} h-7 px-2 text-[12px]`} aria-expanded={abrir}>
+        <Plus className="size-3.5" /> Registrar horas
+      </button>
+    </div>
+  )
 
   return (
-    <Panel icono={Clock} titulo="Kárdex de horas" conteo={horas.length} accion={totalPill}>
+    <Panel icono={Clock} titulo="Kárdex de horas" conteo={horas.length} accion={accion}>
+      {abrir && (
+        <FormRegistroHoras
+          maquinaFija={maquina}
+          onExito={() => { setAbrir(false); onRegistrado?.() }}
+          onCancelar={() => setAbrir(false)}
+        />
+      )}
       {q.loading ? <Cargando />
         : horas.length === 0 ? <Vacio>Sin partes de horas. Llegan del bot de campo o se registran contra la obra.</Vacio>
           : (
@@ -312,23 +334,31 @@ function SeccionKardex({ q, horas, asignaciones, obraLabel, isAdmin }) {
                   {horas.map((r) => {
                     const a = asignacionDe(r, asignaciones)
                     const ingreso = a ? n(r.horas_facturables) * n(a.precio_hora) : null
+                    const turnos = Array.isArray(r.turnos) ? r.turnos : []
                     return (
-                      <tr key={r.id} className="text-secondary-foreground">
-                        <td className="tabular px-1 py-1.5 whitespace-nowrap">
-                          <span className="inline-flex items-center gap-1.5">
-                            {r.fecha}
-                            {r.origen_registro === 'TELEGRAM_BOT' && (
-                              <span className="inline-flex items-center gap-0.5 text-[10px] text-muted-foreground" title="Registrado por el bot de campo">
-                                <Bot className="size-3" aria-hidden="true" /> bot
-                              </span>
-                            )}
-                          </span>
-                        </td>
-                        <td className="px-1 py-1.5"><span className="block max-w-[160px] truncate">{obraLabel(r.obra_id)}</span></td>
-                        <td className="tabular px-1 py-1.5 text-right text-muted-foreground">{num(r.horas_trabajadas)}</td>
-                        <td className="tabular px-1 py-1.5 text-right font-medium text-foreground">{num(r.horas_facturables)}</td>
-                        <td className="tabular px-1 py-1.5 text-right text-foreground">{ingreso == null ? '—' : cop(ingreso)}</td>
-                      </tr>
+                      <Fragment key={r.id}>
+                        <tr className="text-secondary-foreground">
+                          <td className="tabular px-1 py-1.5 whitespace-nowrap">
+                            <span className="inline-flex items-center gap-1.5">
+                              {r.fecha}
+                              {r.origen_registro === 'TELEGRAM_BOT' && (
+                                <span className="inline-flex items-center gap-0.5 text-[10px] text-muted-foreground" title="Registrado por el bot de campo">
+                                  <Bot className="size-3" aria-hidden="true" /> bot
+                                </span>
+                              )}
+                            </span>
+                          </td>
+                          <td className="px-1 py-1.5"><span className="block max-w-[160px] truncate">{obraLabel(r.obra_id)}</span></td>
+                          <td className="tabular px-1 py-1.5 text-right text-muted-foreground">{num(r.horas_trabajadas)}</td>
+                          <td className="tabular px-1 py-1.5 text-right font-medium text-foreground">{num(r.horas_facturables)}</td>
+                          <td className="tabular px-1 py-1.5 text-right text-foreground">{ingreso == null ? '—' : cop(ingreso)}</td>
+                        </tr>
+                        {turnos.length > 0 && (
+                          <tr className="text-secondary-foreground">
+                            <td colSpan={5} className="px-1 pb-1.5 pt-0"><TurnosSublineas turnos={turnos} /></td>
+                          </tr>
+                        )}
+                      </Fragment>
                     )
                   })}
                 </tbody>

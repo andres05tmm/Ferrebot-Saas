@@ -70,6 +70,23 @@ export function fechaCorta(ymd) {
   return `${p.day} ${p.month.replace('.', '')} ${p.year}`
 }
 
+// "08:00" → "8:00" (quita el cero inicial de la hora, conserva los minutos). '' si no viene. La rotación
+// de operadores manda las franjas como "HH:MM"; aquí se humanizan para la sublínea del turno.
+export function horaCorta(hhmm) {
+  if (!hhmm) return ''
+  const [hh, mm = '00'] = String(hhmm).split(':')
+  return `${Number(hh)}:${mm}`
+}
+
+// Franja de un turno como "8:00–13:00" (en-dash sin espacios). Si falta un extremo, muestra el que haya;
+// si no hay ninguno, ''. Sirve para "Juan · 8:00–13:00 · 5 h" del desglose de rotación.
+export function franjaTurno(inicio, fin) {
+  const a = horaCorta(inicio)
+  const b = horaCorta(fin)
+  if (a && b) return `${a}–${b}`
+  return a || b || ''
+}
+
 // YYYY-MM-DD → día y mes SIN año ("9 may"). Para la franja de estado actual, donde el año se sobreentiende.
 export function fechaDiaMes(ymd) {
   if (!ymd) return ''

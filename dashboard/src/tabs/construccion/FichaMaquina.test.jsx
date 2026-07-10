@@ -96,8 +96,9 @@ describe('FichaMaquina — ficha rica de la máquina (F4)', () => {
     render(<FichaMaquina id="ficha" maquina={MAQUINA} isAdmin obrasNombre={{}} />)
     await screen.findByText('Cambio de aceite y filtros')
 
-    // Abrir el form (progressive disclosure: colapsado por defecto).
-    fireEvent.click(screen.getByRole('button', { name: /Registrar/i }))
+    // Abrir el form (progressive disclosure: colapsado por defecto). Exacto "Registrar" para no chocar con
+    // el botón "Registrar horas" del kárdex (rotación de operadores).
+    fireEvent.click(screen.getByRole('button', { name: /^Registrar$/ }))
     const desc = await screen.findByLabelText('Descripción')
     fireEvent.change(desc, { target: { value: 'Reparación de bomba hidráulica' } })
     fireEvent.click(screen.getByRole('button', { name: /Registrar mantenimiento/i }))

@@ -67,7 +67,7 @@ export default function DetalleDia({ fecha, filtros, onCerrar, onCambio }) {
         <CalendarDays className="size-4 text-primary" aria-hidden="true" />
         <h2 className="flex-1 text-[13px] font-semibold text-foreground">{fechaLarga(fecha)}</h2>
         <button type="button" onClick={onCerrar} aria-label="Cerrar detalle del día"
-          className="grid size-7 place-items-center rounded-md text-muted-foreground hover:bg-surface-2">
+          className="grid size-9 cursor-pointer place-items-center rounded-md text-muted-foreground hover:bg-surface-2 sm:size-7">
           <X className="size-4" />
         </button>
       </div>
@@ -130,13 +130,13 @@ function SeccionMaquinas({ horas }) {
           <Linea key={r.id}>
             <div className="flex flex-wrap items-baseline gap-x-1.5">
               <span className="font-medium text-foreground">{r.maquina || `Máquina #${r.maquina_id}`}</span>
-              <span className="text-muted-foreground">· {h(r.horas_trabajadas)}</span>
+              <span className="tabular text-muted-foreground">· {h(r.horas_trabajadas)}</span>
               {r.obra && <span className="text-muted-foreground">en {r.obra}</span>}
             </div>
             {hayDetalle && (
               <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-muted-foreground">
                 {r.operador && <span>operador {r.operador}</span>}
-                {facturablesDifieren && <span>· {h(r.horas_facturables)} facturables</span>}
+                {facturablesDifieren && <span className="tabular">· {h(r.horas_facturables)} facturables</span>}
                 {viaTelegram && <span>· vía Telegram</span>}
               </div>
             )}
@@ -196,9 +196,9 @@ function SeccionTrabajadores({ asistencia }) {
                 : <Semaforo tono="verde" className="ml-auto">Presente</Semaforo>}
             </div>
             <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-muted-foreground">
-              <span>{h(a.horas_trabajadas)}</span>
+              <span className="tabular">{h(a.horas_trabajadas)}</span>
               <span>· {a.obra ? `en ${a.obra}` : 'administrativo'}</span>
-              {extras > 0 && <span>· +{h(extras)} extra</span>}
+              {extras > 0 && <span className="tabular">· +{h(extras)} extra</span>}
             </div>
           </Linea>
         )
@@ -280,11 +280,11 @@ function SeccionPlaneado({ maquinas, trabajadores, hitos, admin, fecha, cuando, 
         {puedeAsignar && (
           <div className="flex flex-wrap gap-2">
             <button type="button" onClick={() => setForm((v) => (v === 'maquina' ? null : 'maquina'))}
-              aria-expanded={form === 'maquina'} className={`${BTN_OUTLINE} h-7 px-2 text-[12px]`}>
+              aria-expanded={form === 'maquina'} className={`${BTN_OUTLINE} min-h-11 cursor-pointer px-2.5 text-[12px] sm:min-h-0 sm:h-7`}>
               <Plus className="size-3.5" /> Asignar máquina
             </button>
             <button type="button" onClick={() => setForm((v) => (v === 'trabajador' ? null : 'trabajador'))}
-              aria-expanded={form === 'trabajador'} className={`${BTN_OUTLINE} h-7 px-2 text-[12px]`}>
+              aria-expanded={form === 'trabajador'} className={`${BTN_OUTLINE} min-h-11 cursor-pointer px-2.5 text-[12px] sm:min-h-0 sm:h-7`}>
               <Plus className="size-3.5" /> Asignar trabajador
             </button>
           </div>
@@ -301,10 +301,10 @@ function SeccionPlaneado({ maquinas, trabajadores, hitos, admin, fecha, cuando, 
           <Linea key={`pm-${p.asignacion_id}`}>
             <div className="flex items-start gap-2">
               <div className="min-w-0 flex-1">
-                <span className="inline-flex flex-wrap items-center gap-x-1.5">
-                  <Truck className="size-3.5 text-muted-foreground" aria-hidden="true" />
+                <span className="flex flex-wrap items-center gap-x-1.5">
+                  <Truck className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
                   <span className="font-medium text-foreground">{p.maquina || `Máquina #${p.maquina_id}`}</span>
-                  <span className="text-muted-foreground">→ {p.obra || `Obra #${p.obra_id}`}</span>
+                  <span className="min-w-0 break-words text-muted-foreground">→ {p.obra || `Obra #${p.obra_id}`}</span>
                 </span>
                 <div className="mt-0.5 text-[11px] text-muted-foreground">
                   {periodo(p)}{p.operador && ` · operador ${p.operador}`}
@@ -313,7 +313,7 @@ function SeccionPlaneado({ maquinas, trabajadores, hitos, admin, fecha, cuando, 
               {admin && (
                 <button type="button"
                   onClick={() => cerrar(`/maquinas/${p.maquina_id}/asignaciones/${p.asignacion_id}`, p.maquina || `Máquina #${p.maquina_id}`)}
-                  className="shrink-0 rounded-md px-2 py-0.5 text-[11px] font-medium text-muted-foreground hover:bg-surface-2 hover:text-destructive">
+                  className="inline-flex min-h-11 shrink-0 cursor-pointer items-center rounded-md px-2.5 py-2 text-[11px] font-medium text-muted-foreground hover:bg-surface-2 hover:text-destructive sm:min-h-0 sm:py-1">
                   Cerrar
                 </button>
               )}
@@ -324,17 +324,17 @@ function SeccionPlaneado({ maquinas, trabajadores, hitos, admin, fecha, cuando, 
           <Linea key={`pt-${p.asignacion_id}`}>
             <div className="flex items-start gap-2">
               <div className="min-w-0 flex-1">
-                <span className="inline-flex flex-wrap items-center gap-x-1.5">
-                  <Users className="size-3.5 text-muted-foreground" aria-hidden="true" />
+                <span className="flex flex-wrap items-center gap-x-1.5">
+                  <Users className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
                   <span className="font-medium text-foreground">{p.trabajador || `Trabajador #${p.trabajador_id}`}</span>
-                  <span className="text-muted-foreground">→ {p.obra || `Obra #${p.obra_id}`}</span>
+                  <span className="min-w-0 break-words text-muted-foreground">→ {p.obra || `Obra #${p.obra_id}`}</span>
                 </span>
                 <div className="mt-0.5 text-[11px] text-muted-foreground">{periodo(p)}</div>
               </div>
               {admin && (
                 <button type="button"
                   onClick={() => cerrar(`/trabajadores/${p.trabajador_id}/asignaciones/${p.asignacion_id}`, p.trabajador || `Trabajador #${p.trabajador_id}`)}
-                  className="shrink-0 rounded-md px-2 py-0.5 text-[11px] font-medium text-muted-foreground hover:bg-surface-2 hover:text-destructive">
+                  className="inline-flex min-h-11 shrink-0 cursor-pointer items-center rounded-md px-2.5 py-2 text-[11px] font-medium text-muted-foreground hover:bg-surface-2 hover:text-destructive sm:min-h-0 sm:py-1">
                   Cerrar
                 </button>
               )}

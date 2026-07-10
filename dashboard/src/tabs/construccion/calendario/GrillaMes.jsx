@@ -71,7 +71,7 @@ export default function GrillaMes({ anio, mes, porFecha, hoy, seleccionada, onSe
     <Card className="p-3.5">
       <div className="mb-3 flex items-center justify-between">
         <button onClick={() => onMover(-1)} aria-label="Mes anterior"
-          className="grid size-8 place-items-center rounded-md border border-border hover:bg-surface-2">
+          className="grid size-8 cursor-pointer place-items-center rounded-md border border-border hover:bg-surface-2">
           <ChevronLeft className="size-4" />
         </button>
         <div className="text-center">
@@ -81,7 +81,7 @@ export default function GrillaMes({ anio, mes, porFecha, hoy, seleccionada, onSe
           )}
         </div>
         <button onClick={() => onMover(1)} aria-label="Mes siguiente"
-          className="grid size-8 place-items-center rounded-md border border-border hover:bg-surface-2">
+          className="grid size-8 cursor-pointer place-items-center rounded-md border border-border hover:bg-surface-2">
           <ChevronRight className="size-4" />
         </button>
       </div>
@@ -107,7 +107,7 @@ function Celda({ celda, esHoy, hoy, seleccionada, onSeleccionar }) {
   const planeado = soloPlaneado(conteos) && celda.fecha >= hoy
   const horas = abreviarHoras(celda.datos?.horas_maquina_total)
   const cls = [
-    'relative flex min-h-11 flex-col items-center gap-1 rounded-md px-1 py-1 transition-colors duration-fast',
+    'relative flex min-h-11 cursor-pointer flex-col items-center gap-1 rounded-md px-1 py-1 transition-colors duration-fast',
     seleccionada ? 'bg-primary/10' : 'hover:bg-surface-2',
     esHoy ? 'ring-2 ring-primary' : '',
     planeado ? 'border border-dashed border-border' : '',
@@ -122,7 +122,7 @@ function Celda({ celda, esHoy, hoy, seleccionada, onSeleccionar }) {
         {activos.slice(0, 4).map((t) => <span key={t.clave} className={`size-1.5 rounded-full ${t.punto}`} aria-hidden="true" />)}
         {activos.length > 4 && <span className="text-[9px] leading-none text-muted-foreground">+{activos.length - 4}</span>}
       </span>
-      {horas && <span className="hidden text-[10px] leading-none text-muted-foreground sm:block">{horas}</span>}
+      {horas && <span className="hidden text-[10px] leading-none tabular text-muted-foreground sm:block">{horas}</span>}
     </button>
   )
 }

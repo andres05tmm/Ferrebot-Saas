@@ -54,13 +54,15 @@ export default function EstadoActual({ vista = 'todos', refreshKey }) {
 }
 
 // ── Bloque genérico: título con icono + conteo, o un vacío discreto si la lista viene sin nada ──────
+// El título calca el estilo de las secciones de DetalleDia (mismo tamaño/peso/color) para que ambas
+// tarjetas se lean como una sola familia: dato en text-foreground, conteo tabular en muted.
 function Bloque({ icono: Icono, titulo, conteo, children }) {
   return (
     <section className="space-y-1.5">
-      <h3 className="flex items-center gap-1.5 px-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-        <Icono className="size-3.5" aria-hidden="true" />
+      <h3 className="flex items-center gap-2 px-0.5 text-[12px] font-semibold text-foreground">
+        <Icono className="size-4 text-muted-foreground" aria-hidden="true" />
         <span>{titulo}</span>
-        <span className="ml-auto tabular font-normal normal-case">{conteo}</span>
+        <span className="ml-auto tabular text-[11px] font-normal text-muted-foreground">{conteo}</span>
       </h3>
       {children}
     </section>
@@ -89,8 +91,8 @@ function BloqueMaquinas({ maquinas }) {
               <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-muted-foreground">
                 {ocupada ? (
                   <>
-                    <span className="inline-flex items-center gap-1 text-foreground">
-                      <MapPin className="size-3 text-muted-foreground" aria-hidden="true" />{m.obra || 'obra sin nombre'}
+                    <span className="inline-flex min-w-0 items-center gap-1 break-words text-foreground">
+                      <MapPin className="size-3 shrink-0 text-muted-foreground" aria-hidden="true" />{m.obra || 'obra sin nombre'}
                     </span>
                     {m.operador && <span>· operador {m.operador}</span>}
                     {m.desde && <span>· desde el {fechaDiaMes(m.desde)}</span>}
@@ -98,7 +100,7 @@ function BloqueMaquinas({ maquinas }) {
                 ) : (
                   <span>disponible (sin obra)</span>
                 )}
-                <span>· {h(m.horas_mes)} este mes</span>
+                <span className="tabular">· {h(m.horas_mes)} este mes</span>
               </div>
             </Fila>
           )
@@ -116,8 +118,8 @@ function BloqueTrabajadores({ trabajadores }) {
           <Fila key={t.trabajador_id}>
             <div className="flex flex-wrap items-baseline gap-x-1.5">
               <span className="font-medium text-foreground">{t.trabajador || `Trabajador #${t.trabajador_id}`}</span>
-              <span className="inline-flex items-center gap-1 text-muted-foreground">
-                <MapPin className="size-3" aria-hidden="true" />{t.obra || 'sin obra asignada'}
+              <span className="inline-flex min-w-0 items-center gap-1 break-words text-muted-foreground">
+                <MapPin className="size-3 shrink-0" aria-hidden="true" />{t.obra || 'sin obra asignada'}
               </span>
             </div>
             <div className="mt-0.5 text-[11px] text-muted-foreground">

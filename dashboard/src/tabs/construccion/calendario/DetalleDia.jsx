@@ -24,6 +24,8 @@ import { Semaforo, EstadoVacio, Esqueleto, BTN_OUTLINE } from '../comunes.jsx'
 import { qsEntidad, fechaLarga, hoyStrCO, h, fechaCorta } from './util.js'
 import FormAsignacionMaquina from './FormAsignacionMaquina.jsx'
 import FormAsignacionTrabajador from './FormAsignacionTrabajador.jsx'
+import FormRegistroHoras from './FormRegistroHoras.jsx'
+import TurnosSublineas from './Turnos.jsx'
 
 const arr = (x) => (Array.isArray(x) ? x : [])
 
@@ -86,7 +88,7 @@ export default function DetalleDia({ fecha, filtros, onCerrar, onCambio }) {
                 : 'Sin actividad este día. Puedes planear asignaciones abajo.'}
             </p>
           )}
-          {ver('maquinas') && <SeccionMaquinas horas={horas} />}
+          {ver('maquinas') && <SeccionMaquinas horas={horas} fecha={fecha} onCambio={recargar} />}
           {ver('obras') && <SeccionObras reportes={reportes} consumos={consumos} />}
           {ver('trabajadores') && <SeccionTrabajadores asistencia={asistencia} />}
           {ver('maquinas') && <SeccionMantenimientos hechos={mantenimientos} proximos={proximos} />}
@@ -119,32 +121,61 @@ function Linea({ children }) {
   return <div className="rounded-md bg-surface-2/50 px-2.5 py-1.5 text-[12px] text-secondary-foreground">{children}</div>
 }
 
-function SeccionMaquinas({ horas }) {
+// Máquinas del día: lista de partes (con desglose de turnos si la máquina rotó operadores) + acceso a
+// registrar horas. El bloque se renderiza SIEMPRE que la vista incluya máquinas (aunque no haya partes
+// aún) para que quede a mano el botón "Registrar horas"; sin partes muestra una línea guía discreta.
+function SeccionMaquinas({ horas, fecha, onCambio }) {
+  const [abrir, setAbrir] = useState(false)
   return (
-    <Seccion icono={Truck} titulo="Máquinas" conteo={horas.length}>
-      {horas.map((r) => {
-        const facturablesDifieren = Number(r.horas_facturables || 0) !== Number(r.horas_trabajadas || 0)
-        const viaTelegram = r.origen_registro === 'TELEGRAM_BOT'
-        const hayDetalle = r.operador || facturablesDifieren || viaTelegram
-        return (
-          <Linea key={r.id}>
-            <div className="flex flex-wrap items-baseline gap-x-1.5">
-              <span className="font-medium text-foreground">{r.maquina || `Máquina #${r.maquina_id}`}</span>
-              <span className="tabular text-muted-foreground">· {h(r.horas_trabajadas)}</span>
-              {r.obra && <span className="text-muted-foreground">en {r.obra}</span>}
-            </div>
-            {hayDetalle && (
-              <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-muted-foreground">
-                {r.operador && <span>operador {r.operador}</span>}
-                {facturablesDifieren && <span className="tabular">· {h(r.horas_facturables)} facturables</span>}
-                {viaTelegram && <span>· vía Telegram</span>}
-              </div>
-            )}
-            {r.observaciones && <p className="mt-0.5 text-[11px] text-muted-foreground">{r.observaciones}</p>}
-          </Linea>
-        )
-      })}
-    </Seccion>
+    <details open className="rounded-md border border-border-subtle bg-surface">
+      <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2 text-[12px] font-semibold text-foreground">
+        <Truck className="size-4 text-muted-foreground" aria-hidden="true" />
+        <span>Máquinas</span>
+        <span className="ml-auto tabular text-[11px] text-muted-foreground">{horas.length}</span>
+      </summary>
+      <div className="space-y-2 px-3 pb-3 pt-1">
+        <button type="button" onClick={() => setAbrir((v) => !v)} aria-expanded={abrir}
+          className={`${BTN_OUTLINE} min-h-11 cursor-pointer px-2.5 text-[12px] sm:min-h-0 sm:h-7`}>
+          <Plus className="size-3.5" /> Registrar horas
+        </button>
+        {abrir && (
+          <FormRegistroHoras fechaDefault={fecha}
+            onExito={() => { setAbrir(false); onCambio?.() }} onCancelar={() => setAbrir(false)} />
+        )}
+        {horas.length === 0 && (
+          <p className="px-1 text-[11px] text-muted-foreground">Sin partes de horas este día.</p>
+        )}
+        {horas.map((r) => <LineaMaquina key={r.id} r={r} />)}
+      </div>
+    </details>
+  )
+}
+
+// Una fila de parte. Con turnos (rotación) muestra el total del día y debajo una sublínea por turno; sin
+// turnos cae al display legacy (operador de cabecera). Facturables/Telegram se conservan como meta discreta.
+function LineaMaquina({ r }) {
+  const turnos = arr(r.turnos)
+  const facturablesDifieren = Number(r.horas_facturables || 0) !== Number(r.horas_trabajadas || 0)
+  const viaTelegram = r.origen_registro === 'TELEGRAM_BOT'
+  const operadorCabecera = turnos.length === 0 && r.operador
+  const hayMeta = operadorCabecera || facturablesDifieren || viaTelegram
+  return (
+    <Linea>
+      <div className="flex flex-wrap items-baseline gap-x-1.5">
+        <span className="font-medium text-foreground">{r.maquina || `Máquina #${r.maquina_id}`}</span>
+        <span className="tabular text-muted-foreground">· {h(r.horas_trabajadas)}</span>
+        {r.obra && <span className="text-muted-foreground">en {r.obra}</span>}
+      </div>
+      <TurnosSublineas turnos={turnos} />
+      {hayMeta && (
+        <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-muted-foreground">
+          {operadorCabecera && <span>operador {r.operador}</span>}
+          {facturablesDifieren && <span className="tabular">· {h(r.horas_facturables)} facturables</span>}
+          {viaTelegram && <span>· vía Telegram</span>}
+        </div>
+      )}
+      {r.observaciones && <p className="mt-0.5 text-[11px] text-muted-foreground">{r.observaciones}</p>}
+    </Linea>
   )
 }
 

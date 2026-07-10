@@ -166,6 +166,57 @@ class CarteraAlquilerService:
             cupo_excedido=excedido, replay=resultado_fiado.replay,
         )
 
+    async def asentar_delta_turno(
+        self,
+        *,
+        registro_horas_id: int,
+        turno_id: int,
+        obra_id: int,
+        maquina_id: int,
+        asignacion_id: int,
+        cliente_id: int,
+        delta_horas: Decimal,
+        precio_hora: Decimal,
+    ) -> ResultadoConsumo:
+        """Asienta el DELTA de facturables de un turno de rotación como cargo ADICIONAL en el ledger.
+        IDEMPOTENTE por `turno_id` (doble guarda: pre-check `cargo_por_turno` + `idempotency_key` de fiados
+        `alquiler:horas:{registro}:turno:{turno}` + único parcial `uq_cargos_alquiler_turno` en la BD). El
+        primer asiento del parte lo hace `asentar_consumo_horas` (a nivel de registro); aquí solo el delta
+        que un turno SUMA por encima del mínimo del día —la rotación NUNCA multiplica el cobro.
+
+        Corre en la sesión/transacción de Fase 3 (commitean juntos: invariante «nada mueve cartera sin
+        registro de horas»). Cupo excedido (diseño §4.a): avisa al dueño (SSE), NO bloquea."""
+        existente = await self._repo.cargo_por_turno(turno_id)
+        if existente is not None:
+            return ResultadoConsumo(
+                fiado_id=existente.fiado_id, monto=existente.monto,
+                saldo_obra=await self._repo.saldo_obra(obra_id),
+                cupo_excedido=await self._cupo_excedido(cliente_id), replay=True,
+            )
+
+        monto = cuantizar(delta_horas * precio_hora)
+        resultado_fiado = await self._fiados.crear(
+            cliente_id=cliente_id, venta_id=None, monto=monto,
+            idempotency_key=f"alquiler:horas:{registro_horas_id}:turno:{turno_id}",
+        )
+        fiado = resultado_fiado.fiado
+        await self._repo.crear_cargo(
+            registro_horas_id=registro_horas_id, fiado_id=fiado.id, obra_id=obra_id,
+            maquina_id=maquina_id, asignacion_id=asignacion_id, monto=monto, turno_id=turno_id,
+        )
+
+        cupo = await self._repo.cupo_activo(cliente_id)
+        saldo = await self._repo.saldo_cliente(cliente_id)
+        excedido = cupo is not None and saldo > cupo.cupo
+        if excedido:
+            await self._repo.avisar_cupo_excedido(
+                cliente_id=cliente_id, obra_id=obra_id, cupo=cupo.cupo, saldo=saldo, generado_en=now_co(),
+            )
+        return ResultadoConsumo(
+            fiado_id=fiado.id, monto=monto, saldo_obra=await self._repo.saldo_obra(obra_id),
+            cupo_excedido=excedido, replay=resultado_fiado.replay,
+        )
+
     async def _cupo_excedido(self, cliente_id: int) -> bool:
         cupo = await self._repo.cupo_activo(cliente_id)
         if cupo is None:

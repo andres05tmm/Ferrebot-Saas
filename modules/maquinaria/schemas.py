@@ -5,7 +5,7 @@ la fase fija "campos JSON = nombres de columna en español tal cual el ORM". Din
 (MONEY4 en la BD). El alta exige los NOT NULL de la spec; la edición (PATCH) es parcial y todos sus
 campos son opcionales (solo se tocan los enviados, ver `service.actualizar`).
 """
-from datetime import date, datetime
+from datetime import date, datetime, time
 from decimal import Decimal
 from typing import Literal
 
@@ -146,8 +146,25 @@ class AsignacionMaquinaActualizar(BaseModel):
     minimo_horas: int | None = Field(default=None, ge=0)
 
 
+class TurnoLeer(BaseModel):
+    """Franja de un operador dentro del parte del día (rotación de operadores). `operador` es el nombre
+    resuelto del trabajador (None si el turno no tiene operador o el trabajador fue borrado)."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    operador_id: int | None
+    operador: str | None
+    hora_inicio: time | None
+    hora_fin: time | None
+    horas: Decimal
+
+
 class RegistroHorasMaquinaLeer(BaseModel):
-    """Lectura de un parte de horas de una máquina (kárdex de operación)."""
+    """Lectura de un parte de horas de una máquina (kárdex de operación).
+
+    `turnos` lista las franjas de operador del día (rotación); es `[]` en los partes legacy sin turnos —el
+    front cae al `operador_id` de cabecera."""
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -161,6 +178,7 @@ class RegistroHorasMaquinaLeer(BaseModel):
     observaciones: str | None
     origen_registro: str
     creado_en: datetime
+    turnos: list[TurnoLeer] = Field(default_factory=list)
 
 
 class RegistroHorasCrear(BaseModel):
@@ -179,6 +197,11 @@ class RegistroHorasCrear(BaseModel):
     observaciones: str | None = None
     origen_registro: OrigenRegistro = "MANUAL"   # el bot de Fase 6 mandará TELEGRAM_BOT
     idempotency_key: str | None = Field(default=None, max_length=200)
+    # Franja del turno (rotación de operadores). Opcional e informativa (las `horas` son la verdad); su
+    # presencia —junto con `operador_id`— es lo que hace que el parte registre un TURNO en vez de quedar
+    # como el parte legacy sin turnos. `time` acepta "HH:MM" del cliente.
+    hora_inicio: time | None = None
+    hora_fin: time | None = None
 
 
 class RegistroHorasResultado(BaseModel):
@@ -195,9 +218,10 @@ class RegistroHorasResultado(BaseModel):
     horas_facturables: Decimal
     minimo_cubierto: bool                # ¿las horas trabajadas alcanzaron el mínimo pactado?
     precio_hora: Decimal                 # precio PACTADO en la asignación (no el default de la máquina)
-    ingreso: Decimal                     # = horas_facturables × precio_hora
+    ingreso: Decimal                     # = horas_facturables × precio_hora (del DÍA, suma de turnos)
     origen_registro: str
     replay: bool
+    turnos: list[TurnoLeer] = Field(default_factory=list)   # franjas de operador del día (rotación)
 
 
 # --- Mantenimientos (Fase 1 del cockpit): CRUD sobre la tabla de la migración 0045 ------------------

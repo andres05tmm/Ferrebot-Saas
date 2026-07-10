@@ -154,6 +154,15 @@ class SqlCarteraAlquilerRepository:
             )
         ).scalar_one_or_none()
 
+    async def cargo_por_turno(self, turno_id: int) -> CargoAlquiler | None:
+        """Cargo DELTA ya asentado para ese turno (ancla de idempotencia de la rotación; único parcial
+        `uq_cargos_alquiler_turno` WHERE turno_id IS NOT NULL en la BD)."""
+        return (
+            await self._s.execute(
+                select(CargoAlquiler).where(CargoAlquiler.turno_id == turno_id)
+            )
+        ).scalar_one_or_none()
+
     async def crear_cargo(
         self,
         *,
@@ -163,13 +172,16 @@ class SqlCarteraAlquilerRepository:
         maquina_id: int,
         asignacion_id: int,
         monto: Decimal,
+        turno_id: int | None = None,
     ) -> CargoAlquiler:
-        """Inserta la fila puente `cargos_alquiler`. El UNIQUE(registro_horas_id) es el ancla dura del
-        invariante «un registro de horas no genera dos cargos» (defensa en profundidad sobre el lock de
-        cliente de `FiadosService.crear`)."""
+        """Inserta la fila puente `cargos_alquiler`. Con `turno_id` NULL es el cargo del REGISTRO (primer
+        asiento del parte, ancla `uq_cargos_alquiler_registro_sin_turno`); con `turno_id` es el cargo DELTA
+        de un turno de rotación (ancla `uq_cargos_alquiler_turno`). Ambos únicos parciales son la defensa en
+        profundidad del invariante «un registro/turno no genera dos cargos» sobre el lock de cliente de
+        `FiadosService.crear`."""
         cargo = CargoAlquiler(
             registro_horas_id=registro_horas_id, fiado_id=fiado_id, obra_id=obra_id,
-            maquina_id=maquina_id, asignacion_id=asignacion_id, monto=monto,
+            maquina_id=maquina_id, asignacion_id=asignacion_id, monto=monto, turno_id=turno_id,
         )
         self._s.add(cargo)
         await self._s.flush()

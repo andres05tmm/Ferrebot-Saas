@@ -6,7 +6,7 @@ Calca `modules/inventario/service.py`: el código de máquina es único (409); l
 El WRITE de horas (`registrar_horas`, Fase 3) aplica el MÍNIMO facturable con la función pura
 `services.calculations.maquinas.horas_facturables` y deja el SEAM de la cartera de alquiler (Fase 5).
 """
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal
 from typing import TYPE_CHECKING
@@ -61,6 +61,7 @@ class ResultadoRegistroHoras:
     ingreso: Decimal
     origen_registro: str
     replay: bool
+    turnos: list[dict] = field(default_factory=list)   # franjas de operador del día (rotación)
 
 
 class MaquinariaService:
@@ -293,12 +294,31 @@ class MaquinariaService:
         if asignacion is None:
             raise SinAsignacionActiva(maquina_id, datos.obra_id, datos.fecha)
 
-        # Idempotencia por clave natural: ¿ya hay parte de esta (máquina, obra, fecha)? → replay.
+        # Rotación de operadores: un parte por día que agrega turnos. `trae_turno` = el payload aporta una
+        # franja de operador (operador o hora); sin ella el parte queda sin turnos (comportamiento legacy).
+        minimo = Decimal(asignacion.minimo_horas)
+        trae_turno = (
+            datos.operador_id is not None
+            or datos.hora_inicio is not None
+            or datos.hora_fin is not None
+        )
         existente = await self._repo.registro_del_dia(maquina_id, datos.obra_id, datos.fecha)
-        if existente is not None:
-            return self._resumen(existente, asignacion, replay=True)
+        if existente is None:
+            return await self._crear_parte(maquina_id, datos, asignacion, minimo, trae_turno)
+        return await self._registrar_en_parte(existente, datos, asignacion, minimo, trae_turno)
 
-        facturables = horas_facturables(datos.horas_trabajadas, Decimal(asignacion.minimo_horas))
+    async def _crear_parte(
+        self,
+        maquina_id: int,
+        datos: RegistroHorasCrear,
+        asignacion: AsignacionMaquinaObra,
+        minimo: Decimal,
+        trae_turno: bool,
+    ) -> ResultadoRegistroHoras:
+        """Primer parte del día: crea el registro (facturables = max(horas, mínimo)) y —si el payload trae
+        franja— su primer turno. El primer asiento de cartera queda a nivel de registro (turno_id NULL),
+        EN LA MISMA TRANSACCIÓN (invariante «nada mueve cartera sin registro»)."""
+        facturables = horas_facturables(datos.horas_trabajadas, minimo)
         registro = await self._repo.crear_registro_horas(
             maquina_id=maquina_id,
             obra_id=datos.obra_id,
@@ -309,22 +329,70 @@ class MaquinariaService:
             observaciones=datos.observaciones,
             origen_registro=datos.origen_registro,
         )
-
-        # ── SEAM Fase 5 (cartera de alquiler) — EN LA MISMA TRANSACCIÓN que el registro ────────────────
+        if trae_turno:
+            await self._repo.crear_turno(
+                registro_horas_id=registro.id,
+                operador_id=datos.operador_id,
+                hora_inicio=datos.hora_inicio,
+                hora_fin=datos.hora_fin,
+                horas=datos.horas_trabajadas,
+            )
         await self._asentar_consumo_cartera(registro, asignacion)
-        # ──────────────────────────────────────────────────────────────────────────────────────────────
+        return await self._resumen(registro, asignacion, replay=False)
 
-        return self._resumen(registro, asignacion, replay=False)
+    async def _registrar_en_parte(
+        self,
+        registro: RegistroHorasMaquina,
+        datos: RegistroHorasCrear,
+        asignacion: AsignacionMaquinaObra,
+        minimo: Decimal,
+        trae_turno: bool,
+    ) -> ResultadoRegistroHoras:
+        """Ya hay parte del día. Replay si el payload no trae franja (idempotencia legacy por clave natural)
+        o coincide con un turno registrado. Si trae una franja NUEVA, agrega el turno, recalcula el agregado
+        del día (Σ turnos, mínimo aplicado UNA vez) y asienta SOLO el delta de facturables a cartera."""
+        turnos = (await self._repo.turnos_por_registros([registro.id])).get(registro.id, [])
+        if not trae_turno or _turno_coincidente(turnos, datos):
+            return await self._resumen(registro, asignacion, replay=True)
 
-    def _resumen(
+        if not turnos:
+            # Parte legacy sin turnos: materializa sus horas como turno implícito para que Σ no las pierda
+            # al recalcular (backfill perezoso, solo cuando entra la rotación).
+            await self._repo.crear_turno(
+                registro_horas_id=registro.id,
+                operador_id=registro.operador_id,
+                hora_inicio=None,
+                hora_fin=None,
+                horas=registro.horas_trabajadas,
+            )
+        f_old = registro.horas_facturables
+        turno = await self._repo.crear_turno(
+            registro_horas_id=registro.id,
+            operador_id=datos.operador_id,
+            hora_inicio=datos.hora_inicio,
+            hora_fin=datos.hora_fin,
+            horas=datos.horas_trabajadas,
+        )
+        turnos = (await self._repo.turnos_por_registros([registro.id])).get(registro.id, [])
+        suma = sum((t["horas"] for t in turnos), Decimal("0"))
+        f_new = horas_facturables(suma, minimo)
+        await self._repo.actualizar_registro_horas(
+            registro, horas_trabajadas=suma, horas_facturables=f_new, operador_id=_operador_unico(turnos)
+        )
+        await self._asentar_delta_turno_cartera(registro, asignacion, turno.id, f_new - f_old)
+        return await self._resumen(registro, asignacion, replay=False)
+
+    async def _resumen(
         self,
         registro: RegistroHorasMaquina,
         asignacion: AsignacionMaquinaObra,
         *,
         replay: bool,
     ) -> ResultadoRegistroHoras:
-        """Arma el resumen de salida: si se cubrió el mínimo e ingreso = horas_facturables × precio pactado."""
+        """Arma el resumen de salida: mínimo cubierto e ingreso = horas_facturables (del DÍA) × precio
+        pactado, más los turnos del día (con nombre de operador resuelto) para el front."""
         minimo = Decimal(asignacion.minimo_horas)
+        turnos = (await self._repo.turnos_por_registros([registro.id])).get(registro.id, [])
         return ResultadoRegistroHoras(
             registro_id=registro.id,
             maquina_id=registro.maquina_id,
@@ -337,6 +405,7 @@ class MaquinariaService:
             ingreso=registro.horas_facturables * asignacion.precio_hora,
             origen_registro=registro.origen_registro,
             replay=replay,
+            turnos=turnos,
         )
 
     async def _asentar_consumo_cartera(
@@ -374,3 +443,57 @@ class MaquinariaService:
             horas_facturables=registro.horas_facturables,
             precio_hora=asignacion.precio_hora,
         )
+
+    async def _asentar_delta_turno_cartera(
+        self,
+        registro: RegistroHorasMaquina,
+        asignacion: AsignacionMaquinaObra,
+        turno_id: int,
+        delta_horas: Decimal,
+    ) -> None:
+        """SEAM del delta de rotación: cuando un turno nuevo SUBE las horas facturables del día
+        (F_old→F_new), asienta SOLO el delta (F_new−F_old)×precio como cargo ADICIONAL idempotente por
+        turno (la rotación NO multiplica el cobro: el mínimo del día ya fue cargado por el primer asiento).
+
+        Mismas compuertas que `_asentar_consumo_cartera` (cartera inyectada + obra con cliente + cupo
+        activo). Si el día sigue bajo el mínimo (`delta_horas <= 0`) → no-op (no se asienta nada)."""
+        if self._cartera is None or delta_horas <= 0:
+            return
+        cliente_id = await self._cartera.cliente_de_obra(registro.obra_id)
+        if cliente_id is None:
+            return
+        if await self._cartera.cupo_activo(cliente_id) is None:
+            return
+        await self._cartera.asentar_delta_turno(
+            registro_horas_id=registro.id,
+            turno_id=turno_id,                      # ancla de idempotencia (UNIQUE parcial WHERE turno_id)
+            obra_id=registro.obra_id,
+            maquina_id=registro.maquina_id,
+            asignacion_id=asignacion.id,
+            cliente_id=cliente_id,
+            delta_horas=delta_horas,
+            precio_hora=asignacion.precio_hora,
+        )
+
+    async def turnos_por_registros(self, registro_ids: list[int]) -> dict[int, list[dict]]:
+        """Turnos (con nombre de operador) de varios partes, batcheado (N+1-free). Lo consume el router de
+        `GET /maquinas/{id}/horas` para adjuntar `turnos` a cada parte del kárdex."""
+        return await self._repo.turnos_por_registros(registro_ids)
+
+
+def _turno_coincidente(turnos: list[dict], datos: RegistroHorasCrear) -> bool:
+    """¿El payload coincide con un turno ya registrado (mismo operador, misma franja de inicio y mismas
+    horas)? → REPLAY (no duplica el turno ni su cargo). Base de la idempotencia del reintento del bot."""
+    return any(
+        t["operador_id"] == datos.operador_id
+        and t["hora_inicio"] == datos.hora_inicio
+        and t["horas"] == datos.horas_trabajadas
+        for t in turnos
+    )
+
+
+def _operador_unico(turnos: list[dict]) -> int | None:
+    """Operador de cabecera del parte: el único operador de los turnos, o NULL si hay >1 distinto (o
+    ninguno con operador). El front cae a los turnos cuando la cabecera es NULL."""
+    distintos = {t["operador_id"] for t in turnos if t["operador_id"] is not None}
+    return next(iter(distintos)) if len(distintos) == 1 else None

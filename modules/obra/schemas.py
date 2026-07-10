@@ -11,7 +11,7 @@ El `estado` tampoco se fija al crear (arranca en PLANIFICADA por defecto de la b
 PATCH de metadatos: las transiciones van por el endpoint dedicado `PATCH /obras/{id}/estado`, que valida
 el ciclo de vida (nada de estados imposibles).
 """
-from datetime import date, datetime
+from datetime import date, datetime, time
 from decimal import Decimal
 from typing import Literal
 
@@ -316,8 +316,20 @@ class _EventoCalendario(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
 
+class TurnoDia(_EventoCalendario):
+    """Franja de un operador dentro del parte del día (rotación de operadores). Sin ingreso (vista de
+    operación): solo operador (nombre), franja y horas."""
+
+    operador: str | None
+    hora_inicio: time | None
+    hora_fin: time | None
+    horas: Decimal
+
+
 class EventoHorasMaquina(_EventoCalendario):
-    """Parte de horas de una máquina en el día (operador y obra resueltos por nombre). Sin ingreso."""
+    """Parte de horas de una máquina en el día (operador y obra resueltos por nombre). Sin ingreso.
+
+    `turnos` desglosa la rotación de operadores del día (`[]` en los partes legacy sin turnos)."""
 
     id: int
     maquina_id: int
@@ -330,6 +342,7 @@ class EventoHorasMaquina(_EventoCalendario):
     horas_facturables: Decimal
     observaciones: str | None
     origen_registro: str
+    turnos: list[TurnoDia] = []
 
 
 class EventoReporteDiario(_EventoCalendario):

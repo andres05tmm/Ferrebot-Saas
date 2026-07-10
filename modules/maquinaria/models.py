@@ -13,10 +13,10 @@ donde `horas_facturables` aplica el mínimo) y se le hace MANTENIMIENTO (`Manten
 BigInteger sin `relationship` — no se acopla un módulo a otro para una simple columna. Tablas de negocio
 del tenant (sin `empresa_id`: la base ES la frontera). Dinero en MONEY4 (18,4); soft delete `eliminado_en`.
 """
-from datetime import date, datetime
+from datetime import date, datetime, time
 from decimal import Decimal
 
-from sqlalchemy import BigInteger, Boolean, Date, DateTime, Integer, Numeric, Text, func
+from sqlalchemy import BigInteger, Boolean, Date, DateTime, Integer, Numeric, Text, Time, func
 from sqlalchemy.dialects.postgresql import ENUM as PgEnum
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -112,6 +112,29 @@ class RegistroHorasMaquina(TenantBase):
     origen_registro: Mapped[str] = mapped_column(
         origen_registro, nullable=False, server_default="MANUAL"
     )
+    creado_en: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class TurnoHorasMaquina(TenantBase):
+    """Franja de un operador dentro del parte de horas de un día (rotación de operadores, migración 0054).
+
+    Un `RegistroHorasMaquina` (parte por máquina·obra·día) puede tener VARIOS turnos: la misma máquina rota
+    operadores el mismo día (Juan 8:00-13:00, Pedro 14:00-17:00). `horas` es la unidad de negocio (NO se
+    deriva de la franja); `hora_inicio`/`hora_fin` son informativos y opcionales. `operador_id` referencia
+    `trabajadores.id` (FK en la migración; el ORM la mapea como BigInteger sin `relationship`, patrón del
+    repo). El mínimo facturable se aplica UNA vez al total del día en el service (la rotación no multiplica
+    el cobro). Borrar el parte arrastra sus turnos (ON DELETE CASCADE en la migración)."""
+
+    __tablename__ = "turnos_horas_maquina"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    registro_horas_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    operador_id: Mapped[int | None] = mapped_column(BigInteger)
+    hora_inicio: Mapped[time | None] = mapped_column(Time)
+    hora_fin: Mapped[time | None] = mapped_column(Time)
+    horas: Mapped[Decimal] = mapped_column(CANTIDAD, nullable=False)
     creado_en: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

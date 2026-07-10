@@ -82,4 +82,53 @@ describe('DetalleDia — detalle del día (rediseño PIM)', () => {
     expect(screen.getByText(/·\s*6 h/)).toBeInTheDocument()
     expect(container.textContent).not.toContain('6.0000')
   })
+
+  it('un parte SIN turnos cae al display legacy: "operador X" de cabecera, sin sublíneas de franja', async () => {
+    renderDetalle(PAST)
+    await screen.findAllByText('Minicargador')
+    // Exacto: la meta de la máquina dice justo "operador Juan Perez" (el planeado lo lleva dentro de una
+    // frase más larga "…· operador Juan Perez", que NO iguala este texto).
+    expect(screen.getByText('operador Juan Perez')).toBeInTheDocument()
+    expect(screen.queryByText(/8:00.*13:00/)).toBeNull()
+  })
+
+  it('ofrece "Registrar horas" en la sección Máquinas (captura de campo, todos los roles)', async () => {
+    renderDetalle(PAST)
+    await screen.findAllByText('Minicargador')
+    expect(screen.getByRole('button', { name: /Registrar horas/i })).toBeInTheDocument()
+  })
+})
+
+// ── Desglose de rotación de operadores (turnos) ─────────────────────────────────────────────────────
+// Un parte con >1 turno muestra el TOTAL del día en la línea y, debajo, una sublínea por turno
+// (operador · franja · horas). Fecha lejana para no depender del día de la suite.
+const DIA_TURNOS = {
+  ...DIA,
+  horas_maquina: [{
+    id: 2, maquina_id: 5, maquina: 'Minicargador', obra_id: 7, obra: 'Via Llanogrande',
+    operador_id: null, operador: null, horas_trabajadas: '8.0000', horas_facturables: '8.0000',
+    observaciones: null, origen_registro: 'MANUAL',
+    turnos: [
+      { id: 10, operador_id: 1, operador: 'Juan Perez', hora_inicio: '08:00', hora_fin: '13:00', horas: '5.0000' },
+      { id: 11, operador_id: 2, operador: 'Pedro Gomez', hora_inicio: '14:00', hora_fin: '17:00', horas: '3.0000' },
+    ],
+  }],
+  planeado_maquinas: [], planeado_trabajadores: [],
+}
+
+describe('DetalleDia — rotación de operadores (turnos)', () => {
+  it('renderiza una sublínea por turno con operador y franja; el total del día en la cabecera', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(jsonResp(DIA_TURNOS))))
+    renderDetalle(PAST)
+    await screen.findAllByText('Minicargador')
+    // Total del día en la línea del parte.
+    expect(screen.getByText(/·\s*8 h/)).toBeInTheDocument()
+    // Una sublínea por turno: operador + franja humana (cero inicial recortado) + horas.
+    expect(screen.getByText('Juan Perez')).toBeInTheDocument()
+    expect(screen.getByText('Pedro Gomez')).toBeInTheDocument()
+    expect(screen.getByText(/8:00.*13:00/)).toBeInTheDocument()
+    expect(screen.getByText(/14:00.*17:00/)).toBeInTheDocument()
+    // Sin "operador X" de cabecera cuando ya hay turnos (no se duplica el operador).
+    expect(screen.queryByText(/operador Juan Perez/)).toBeNull()
+  })
 })

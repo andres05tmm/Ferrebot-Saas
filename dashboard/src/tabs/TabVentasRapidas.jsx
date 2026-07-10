@@ -23,6 +23,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { Search, X } from 'lucide-react'
 import { api, apiJson } from '@/lib/api'
+import { useIsMobile } from '@/components/shared.jsx'
 import ModalAbrirCaja from '@/components/ModalAbrirCaja.jsx'
 import { useFeatures } from '@/lib/features.jsx'
 import { usePreferencias } from '@/lib/preferencias.jsx'
@@ -38,6 +39,8 @@ import LineaCarrito from './pos/LineaCarrito.jsx'
 import Checkout from './pos/Checkout.jsx'
 import ClientePicker from './pos/ClientePicker.jsx'
 import VariaForm from './pos/VariaForm.jsx'
+import BarraMovilPos from './pos/BarraMovilPos.jsx'
+import DrawerCarrito from './pos/DrawerCarrito.jsx'
 
 // Carrito persistente + ventas en espera (F5, patrón CART_KEY del FerreBot viejo): el carrito vivo
 // sobrevive un refresh y los carritos aparcados esperan su turno, todo client-side (localStorage).
@@ -77,6 +80,10 @@ export default function TabVentasRapidas() {
   const [cliente, setCliente] = useState(null)
   const [documento, setDocumento] = useState(documentoDefault)
   const [enviando, setEnviando] = useState(false)
+  // Móvil (≤767px, mismo umbral del bottom nav): el carrito vive en un drawer inferior y la barra
+  // fija muestra el total; el panel se monta UNA sola vez (aquí o en desktop, nunca ambos).
+  const isMobile = useIsMobile()
+  const [drawerAbierto, setDrawerAbierto] = useState(false)
   // Guard de caja (`caja_obligatoria`): la venta que quedó esperando a que se abra la caja.
   // Guarda el payload Y su Idempotency-Key ya generada: al abrir caja se reintenta EXACTAMENTE
   // el mismo cobro (sin repetir la venta ni arriesgar un duplicado).
@@ -332,6 +339,7 @@ export default function TabVentasRapidas() {
         setCarrito([]); setPrecios({}); setCliente(null); setMetodoPago('efectivo')
         setRecibido(''); setEfectivoMixto(''); setMetodoResto('transferencia')
         setDocumento(documentoDefault)
+        setDrawerAbierto(false)   // móvil: la venta cerró, el drawer también
         toast.success('Venta registrada')
         return true
       }
@@ -392,9 +400,71 @@ export default function TabVentasRapidas() {
   }
   registrarRef.current = registrar
 
+  // Panel único del carrito (líneas + cliente + checkout): se monta en la Card de desktop O en el
+  // drawer móvil — nunca en ambos (labels/inputs sin duplicar).
+  const panelCarrito = (
+    <>
+      <div className="flex items-center justify-between mb-2.5">
+        <h2 className="text-caption font-semibold uppercase tracking-wider text-muted-foreground">Carrito</h2>
+        <Button variant="outline" size="sm" onClick={ponerEnEspera} disabled={carrito.length === 0}
+          className="h-7 text-caption">En espera</Button>
+      </div>
+      {enEspera.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 mb-2.5" role="group" aria-label="Ventas en espera">
+          {enEspera.map((e, i) => (
+            <span key={e.id} className="inline-flex items-center gap-1 rounded-md border border-border bg-surface-2 pl-2 pr-1 h-7 text-caption">
+              <button onClick={() => retomarEspera(e.id)} className="hover:text-primary"
+                aria-label={`Retomar venta en espera ${i + 1}`}>
+                #{i + 1} · {e.carrito.length} ítem{e.carrito.length === 1 ? '' : 's'}
+                {e.cliente?.nombre ? ` · ${e.cliente.nombre}` : ''}
+              </button>
+              <button onClick={() => quitarEspera(e.id)} aria-label={`Descartar venta en espera ${i + 1}`}
+                className="size-5 grid place-items-center rounded text-muted-foreground hover:text-destructive">
+                <X className="size-3" />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+      {carrito.length === 0 ? (
+        <div className="py-10 text-center">
+          <Search className="size-6 mx-auto text-muted-foreground/40 mb-2" />
+          <p className="text-body-sm text-muted-foreground">Busca o escanea un producto para empezar.</p>
+        </div>
+      ) : (
+        <ul className="divide-y divide-border-subtle mb-3">
+          {carrito.map(it => (
+            <LineaCarrito key={it.key} it={it} precio={precios[it.key]}
+              onCantidad={(v) => setCantidad(it.key, v)} onQuitar={() => quitar(it.key)}
+              onEspecial={(v) => setUsarEspecial(it.key, v)} />
+          ))}
+        </ul>
+      )}
+
+      <ClientePicker cliente={cliente} onSelect={setCliente} />
+      {mostrarDocumento && documento === 'fe' && (
+        <p className="mt-1.5 text-caption text-muted-foreground">
+          Con cliente → factura a su nombre; sin cliente → consumidor final.
+        </p>
+      )}
+
+      <Checkout
+        metodoPago={metodoPago} setMetodoPago={setMetodoPago}
+        recibido={recibido} setRecibido={setRecibido} cambio={cambio}
+        efectivoMixto={efectivoMixto} setEfectivoMixto={setEfectivoMixto}
+        metodoResto={metodoResto} setMetodoResto={setMetodoResto}
+        restanteMixto={restanteMixto} mixtoValido={mixtoValido}
+        mostrarDocumento={mostrarDocumento} opcionesDocumento={opcionesDocumento}
+        documento={documento} setDocumento={setDocumento}
+        total={total} enviando={enviando} carritoVacio={carrito.length === 0}
+        onRegistrar={registrar}
+      />
+    </>
+  )
+
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
-      <div className="lg:col-span-2 space-y-3">
+    <div className={isMobile ? 'space-y-3 pb-20' : 'grid grid-cols-1 lg:grid-cols-3 gap-3'}>
+      <div className={isMobile ? 'space-y-3' : 'lg:col-span-2 space-y-3'}>
         <Card className="p-3">
           <div className="relative">
             <Search className="size-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
@@ -423,63 +493,18 @@ export default function TabVentasRapidas() {
         <VariaForm onAdd={agregarVaria} />
       </div>
 
-      <Card className="p-3.5 flex flex-col">
-        <div className="flex items-center justify-between mb-2.5">
-          <h2 className="text-caption font-semibold uppercase tracking-wider text-muted-foreground">Carrito</h2>
-          <Button variant="outline" size="sm" onClick={ponerEnEspera} disabled={carrito.length === 0}
-            className="h-7 text-caption">En espera</Button>
-        </div>
-        {enEspera.length > 0 && (
-          <div className="flex flex-wrap gap-1.5 mb-2.5" role="group" aria-label="Ventas en espera">
-            {enEspera.map((e, i) => (
-              <span key={e.id} className="inline-flex items-center gap-1 rounded-md border border-border bg-surface-2 pl-2 pr-1 h-7 text-caption">
-                <button onClick={() => retomarEspera(e.id)} className="hover:text-primary"
-                  aria-label={`Retomar venta en espera ${i + 1}`}>
-                  #{i + 1} · {e.carrito.length} ítem{e.carrito.length === 1 ? '' : 's'}
-                  {e.cliente?.nombre ? ` · ${e.cliente.nombre}` : ''}
-                </button>
-                <button onClick={() => quitarEspera(e.id)} aria-label={`Descartar venta en espera ${i + 1}`}
-                  className="size-5 grid place-items-center rounded text-muted-foreground hover:text-destructive">
-                  <X className="size-3" />
-                </button>
-              </span>
-            ))}
-          </div>
-        )}
-        {carrito.length === 0 ? (
-          <div className="py-10 text-center">
-            <Search className="size-6 mx-auto text-muted-foreground/40 mb-2" />
-            <p className="text-body-sm text-muted-foreground">Busca o escanea un producto para empezar.</p>
-          </div>
-        ) : (
-          <ul className="divide-y divide-border-subtle mb-3">
-            {carrito.map(it => (
-              <LineaCarrito key={it.key} it={it} precio={precios[it.key]}
-                onCantidad={(v) => setCantidad(it.key, v)} onQuitar={() => quitar(it.key)}
-                onEspecial={(v) => setUsarEspecial(it.key, v)} />
-            ))}
-          </ul>
-        )}
-
-        <ClientePicker cliente={cliente} onSelect={setCliente} />
-        {mostrarDocumento && documento === 'fe' && (
-          <p className="mt-1.5 text-caption text-muted-foreground">
-            Con cliente → factura a su nombre; sin cliente → consumidor final.
-          </p>
-        )}
-
-        <Checkout
-          metodoPago={metodoPago} setMetodoPago={setMetodoPago}
-          recibido={recibido} setRecibido={setRecibido} cambio={cambio}
-          efectivoMixto={efectivoMixto} setEfectivoMixto={setEfectivoMixto}
-          metodoResto={metodoResto} setMetodoResto={setMetodoResto}
-          restanteMixto={restanteMixto} mixtoValido={mixtoValido}
-          mostrarDocumento={mostrarDocumento} opcionesDocumento={opcionesDocumento}
-          documento={documento} setDocumento={setDocumento}
-          total={total} enviando={enviando} carritoVacio={carrito.length === 0}
-          onRegistrar={registrar}
-        />
-      </Card>
+      {!isMobile && (
+        <Card className="p-3.5 flex flex-col">{panelCarrito}</Card>
+      )}
+      {isMobile && (
+        <>
+          <BarraMovilPos total={total} numItems={carrito.length}
+            onAbrir={() => setDrawerAbierto(true)} />
+          <DrawerCarrito abierto={drawerAbierto} onCerrar={() => setDrawerAbierto(false)}>
+            {panelCarrito}
+          </DrawerCarrito>
+        </>
+      )}
 
       {/* Guard de caja: abre la caja y registra la venta pendiente con su MISMA key (nada se repite). */}
       <ModalAbrirCaja

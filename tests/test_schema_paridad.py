@@ -52,6 +52,8 @@ _TABLAS_ESPERADAS: frozenset[str] = frozenset({
     "pedidos_proveedor", "pedidos_proveedor_detalle",
     # partes del cobro de una venta mixta (0053, reforma dashboard POS F5)
     "ventas_pagos",
+    # turnos de rotación de operadores dentro de un parte de horas (0054)
+    "turnos_horas_maquina",
 })
 
 

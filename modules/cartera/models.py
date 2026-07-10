@@ -52,15 +52,19 @@ class CargoAlquiler(TenantBase):
     """Traza de un cargo de alquiler: enlaza un `RegistroHorasMaquina` con el `Fiado` que asentó (tabla
     `cargos_alquiler`).
 
-    `registro_horas_id` es UNIQUE (migración 0049): un registro de horas NO genera dos cargos en cartera
-    —el ancla DURA (a nivel de base) del invariante de idempotencia, defensa en profundidad sobre el lock
-    de cliente de `FiadosService.crear`. Mapea obra→fiados para la vista de cartera por obra y el abono
-    FIFO (diseño §1.3/§3). `monto` ya viene cuantizado al ledger (MONEY 12,2)."""
+    Idempotencia dura (a nivel de base, defensa en profundidad sobre el lock de cliente de
+    `FiadosService.crear`): dos índices únicos PARCIALES (migración 0054) — `(registro_horas_id) WHERE
+    turno_id IS NULL` (un cargo de registro por parte) y `(turno_id) WHERE turno_id IS NOT NULL` (un cargo
+    delta por turno de rotación). Reemplazan el `UNIQUE(registro_horas_id)` de 0049. Mapea obra→fiados para
+    la vista de cartera por obra y el abono FIFO (diseño §1.3/§3). `monto` cuantizado al ledger (MONEY 12,2)."""
 
     __tablename__ = "cargos_alquiler"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
-    registro_horas_id: Mapped[int] = mapped_column(BigInteger, nullable=False, unique=True)
+    registro_horas_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    # `turno_id` NULL = cargo del REGISTRO (primer asiento del parte); NOT NULL = cargo DELTA de un turno de
+    # rotación. La unicidad la dan dos índices parciales (migración 0054), no un UNIQUE de columna.
+    turno_id: Mapped[int | None] = mapped_column(BigInteger)
     fiado_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     obra_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     maquina_id: Mapped[int] = mapped_column(BigInteger, nullable=False)

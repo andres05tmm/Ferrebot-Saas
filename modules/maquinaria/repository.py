@@ -6,7 +6,7 @@ eliminadas y `codigo_existe` mira TODAS las filas (incluidas las borradas) porqu
 distingue soft delete —así el 409 se anticipa en vez de reventar como IntegrityError al hacer flush.
 """
 from calendar import monthrange
-from datetime import date
+from datetime import date, time
 from decimal import Decimal
 
 from sqlalchemy import BigInteger, Date, and_, column, func, or_, select, text, values
@@ -19,6 +19,7 @@ from modules.maquinaria.models import (
     Mantenimiento,
     Maquina,
     RegistroHorasMaquina,
+    TurnoHorasMaquina,
 )
 from modules.maquinaria.schemas import MaquinaCrear
 # Lecturas SOLO de existencia/estado (patrón Ola A: se importa el modelo congelado de otro paquete sin
@@ -327,6 +328,11 @@ class SqlMaquinasRepository:
         )
         self._s.add(registro)
         await self._s.flush()  # asigna registro.id
+        await self._publicar_registro_horas(registro)
+        return registro
+
+    async def _publicar_registro_horas(self, registro: RegistroHorasMaquina) -> None:
+        """Evento SSE del parte de horas (alta y recálculo por turno comparten payload)."""
         await publish(
             self._s,
             "registro_horas_creado",
@@ -337,7 +343,76 @@ class SqlMaquinasRepository:
                 "fecha": registro.fecha,
             },
         )
+
+    async def actualizar_registro_horas(
+        self,
+        registro: RegistroHorasMaquina,
+        *,
+        horas_trabajadas: Decimal,
+        horas_facturables: Decimal,
+        operador_id: int | None,
+    ) -> RegistroHorasMaquina:
+        """Recalcula el agregado del parte cuando entra un turno nuevo: `horas_trabajadas` = Σ turnos,
+        `horas_facturables` = max(Σ, mínimo) del DÍA (el mínimo se aplica UNA vez), `operador_id` = el único
+        operador o NULL si hay >1 distinto. Reemite `registro_horas_creado`. Sin commit (la sesión ES la
+        transacción; el registro y el cargo delta de cartera commitean juntos)."""
+        registro.horas_trabajadas = horas_trabajadas
+        registro.horas_facturables = horas_facturables
+        registro.operador_id = operador_id
+        await self._s.flush()
+        await self._publicar_registro_horas(registro)
         return registro
+
+    # ---- Turnos del parte (rotación de operadores, migración 0054) --------------------------------
+    async def crear_turno(
+        self,
+        *,
+        registro_horas_id: int,
+        operador_id: int | None,
+        hora_inicio: time | None,
+        hora_fin: time | None,
+        horas: Decimal,
+    ) -> TurnoHorasMaquina:
+        """Inserta una franja de operador del parte y hace flush (asigna `id`)."""
+        turno = TurnoHorasMaquina(
+            registro_horas_id=registro_horas_id,
+            operador_id=operador_id,
+            hora_inicio=hora_inicio,
+            hora_fin=hora_fin,
+            horas=horas,
+        )
+        self._s.add(turno)
+        await self._s.flush()  # asigna turno.id
+        return turno
+
+    async def turnos_por_registros(self, registro_ids: list[int]) -> dict[int, list[dict]]:
+        """Turnos de varios partes en UNA consulta (N+1-free): `registro_horas_id → [turno, ...]` con el
+        nombre del operador resuelto (LEFT JOIN `trabajadores`). Ordenados por franja (hora_inicio, id).
+
+        Cada turno: `{id, operador_id, operador, hora_inicio, hora_fin, horas}`. `[]` para un parte sin
+        turnos (los legacy). Sirve al POST/GET de horas y al calendario."""
+        if not registro_ids:
+            return {}
+        filas = (
+            await self._s.execute(
+                text(
+                    "SELECT th.registro_horas_id, th.id, th.operador_id, "
+                    "  NULLIF(TRIM(COALESCE(t.nombres,'') || ' ' || COALESCE(t.apellidos,'')), '') "
+                    "    AS operador, "
+                    "  th.hora_inicio, th.hora_fin, th.horas "
+                    "FROM turnos_horas_maquina th "
+                    "LEFT JOIN trabajadores t ON t.id = th.operador_id "
+                    "WHERE th.registro_horas_id = ANY(:ids) "
+                    "ORDER BY th.registro_horas_id, th.hora_inicio NULLS FIRST, th.id"
+                ),
+                {"ids": registro_ids},
+            )
+        ).all()
+        agrupado: dict[int, list[dict]] = {}
+        for fila in filas:
+            datos = dict(fila._mapping)
+            agrupado.setdefault(datos.pop("registro_horas_id"), []).append(datos)
+        return agrupado
 
     # ---- Mantenimientos (Fase 1 del cockpit): CRUD sobre la tabla de la migración 0045 -------------
     async def listar_mantenimientos(
@@ -628,7 +703,13 @@ class SqlMaquinasRepository:
             "LEFT JOIN trabajadores t ON t.id = COALESCE(rh.operador_id, a.operador_id) "
             "WHERE rh.fecha BETWEEN :desde AND :hasta" + extra + " ORDER BY rh.fecha, rh.id"
         )
-        return [dict(f._mapping) for f in (await self._s.execute(text(sql), params)).all()]
+        filas = [dict(f._mapping) for f in (await self._s.execute(text(sql), params)).all()]
+        # Adjunta los turnos de rotación (una 2ª consulta batcheada por los ids del rango — N+1-free);
+        # `[]` para los partes legacy. El calendario tipa cada turno como `TurnoDia`.
+        turnos = await self.turnos_por_registros([f["id"] for f in filas])
+        for f in filas:
+            f["turnos"] = turnos.get(f["id"], [])
+        return filas
 
     async def mantenimientos_calendario(
         self, desde: date, hasta: date, *, maquina_id: int | None = None

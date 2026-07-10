@@ -38,6 +38,7 @@ from modules.maquinaria.schemas import (
     RegistroHorasCrear,
     RegistroHorasMaquinaLeer,
     RegistroHorasResultado,
+    TurnoLeer,
 )
 from modules.maquinaria.service import MaquinariaService
 
@@ -199,9 +200,17 @@ async def listar_horas(
     session: AsyncSession = Depends(get_tenant_db),
     _user: Principal = Depends(require_role("vendedor")),
 ) -> list[RegistroHorasMaquinaLeer]:
-    """Partes de horas de la máquina (kárdex de operación)."""
-    horas = await _service(session).listar_horas(maquina_id, limite=limite, offset=offset)
-    return [RegistroHorasMaquinaLeer.model_validate(h) for h in horas]
+    """Partes de horas de la máquina (kárdex de operación). Cada parte trae sus `turnos` de rotación
+    (`[]` en los partes legacy); se resuelven en UNA consulta batcheada (N+1-free)."""
+    servicio = _service(session)
+    horas = await servicio.listar_horas(maquina_id, limite=limite, offset=offset)
+    turnos = await servicio.turnos_por_registros([h.id for h in horas])
+    salida: list[RegistroHorasMaquinaLeer] = []
+    for h in horas:
+        leer = RegistroHorasMaquinaLeer.model_validate(h)
+        leer.turnos = [TurnoLeer(**t) for t in turnos.get(h.id, [])]
+        salida.append(leer)
+    return salida
 
 
 @router.post(

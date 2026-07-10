@@ -8,11 +8,12 @@
  * mayorista. Buscando, la lista llega YA filtrada/rankeada del tab (local o respaldo del servidor).
  * El precio de la card es REFERENCIA del catálogo — el real lo pone el servidor al agregar.
  */
-import { memo, useMemo, useState } from 'react'
+import { memo, useEffect, useMemo, useState } from 'react'
 import { LayoutGrid, Percent, Star, Trophy } from 'lucide-react'
 import { cop } from '@/components/shared.jsx'
 import { guardarLS, leerLS } from './piezas.jsx'
 import { etiquetaCategoria, iconoCategoria } from './categorias.js'
+import { filtrarSubcat, ordenarProductos, subcatsDe } from './subcategorias.js'
 
 const CAP_SECCION = 12
 const COLS_KEY = 'pos_cols_v1'
@@ -114,6 +115,12 @@ export default function GrillaCatalogo({
   })
   const gridCls = `grid grid-cols-2 sm:grid-cols-3 ${COLS_CLS[cols]} gap-1.5`
 
+  // Subcategorías (réplica del viejo): al elegir una categoría aparece la segunda fila de chips
+  // (Brochas/Rodillos, Lijas, Drywall ×6…). Cambiar de categoría resetea la subcategoría.
+  const subs = useMemo(() => subcatsDe(chip), [chip])
+  const [subcat, setSubcat] = useState(null)
+  useEffect(() => { setSubcat(null) }, [chip])
+
   const render = (p, i) => (
     <CardProducto key={p.id} p={p}
       enCarrito={cantidades.get(p.id) || 0}
@@ -130,7 +137,7 @@ export default function GrillaCatalogo({
     const top = productos.filter(p => frecuentesIds.has(p.id))
     if (top.length) s.push({ id: 'top', Icono: Trophy, color: 'text-warning', titulo: 'Top productos del mes', items: top })
     for (const c of categorias) {
-      const items = productos.filter(p => p.categoria === c)
+      const items = ordenarProductos(c, productos.filter(p => p.categoria === c))
       if (items.length) {
         const { Icono, color } = iconoCategoria(c)
         s.push({ id: c, Icono, color, titulo: etiquetaCategoria(c), items })
@@ -153,8 +160,12 @@ export default function GrillaCatalogo({
       lista = productos.filter(p => frecuentesIds.has(p.id))
       cabecera = { Icono: Trophy, color: 'text-warning', titulo: 'Top productos del mes' }
     } else {
-      lista = productos.filter(p => p.categoria === chip)
-      cabecera = { ...iconoCategoria(chip), titulo: etiquetaCategoria(chip) }
+      lista = ordenarProductos(chip, productos.filter(p => p.categoria === chip))
+      if (subcat) lista = filtrarSubcat(lista, subs, subcat)
+      const sub = subs.find(s => s.key === subcat)
+      cabecera = sub
+        ? { Icono: sub.Icono, color: iconoCategoria(chip).color, titulo: `${etiquetaCategoria(chip)} · ${sub.label}` }
+        : { ...iconoCategoria(chip), titulo: etiquetaCategoria(chip) }
     }
   }
 
@@ -193,6 +204,19 @@ export default function GrillaCatalogo({
               </button>
             ))}
           </div>
+        </div>
+      )}
+
+      {/* Segunda fila: subcategorías de la categoría elegida (réplica del viejo). */}
+      {!buscando && subs.length > 0 && (
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 -mx-1 px-1 mb-3" role="group"
+          aria-label={`Subcategorías de ${etiquetaCategoria(chip)}`}>
+          <Chip activo={subcat == null} onClick={() => setSubcat(null)}>Todas</Chip>
+          {subs.map(s => (
+            <Chip key={s.key} activo={subcat === s.key} onClick={() => setSubcat(s.key)}>
+              <s.Icono className="size-3.5" /> {s.label}
+            </Chip>
+          ))}
         </div>
       )}
 

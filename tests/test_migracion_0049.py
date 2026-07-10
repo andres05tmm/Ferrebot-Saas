@@ -69,16 +69,18 @@ async def test_0049_up_down_up(tenant):
         ).scalar_one_or_none()
         assert cons_idx is not None and "WHERE" in cons_idx.upper()
 
-        # UNIQUE(registro_horas_id) en cargos_alquiler (ancla dura del invariante).
+        # Ancla dura del invariante «un parte no genera dos cargos». 0049 la creó como
+        # UNIQUE(registro_horas_id); 0054 (turnos) la reemplaza por DOS índices únicos parciales
+        # (cargo del parte sin turno / cargo por turno). El test corre en head → forma post-0054.
         uq_cargos = (
             await s.execute(
                 text(
-                    "SELECT count(*) FROM information_schema.table_constraints "
-                    "WHERE table_name='cargos_alquiler' AND constraint_type='UNIQUE'"
+                    "SELECT count(*) FROM pg_indexes WHERE tablename='cargos_alquiler' "
+                    "AND indexname IN ('uq_cargos_alquiler_registro_sin_turno', 'uq_cargos_alquiler_turno')"
                 )
             )
         ).scalar_one()
-        assert uq_cargos == 1
+        assert uq_cargos == 2
 
         # FK cargos_alquiler.registro_horas_id → registros_horas_maquina.
         fk = (

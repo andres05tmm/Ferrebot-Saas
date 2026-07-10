@@ -1,22 +1,21 @@
 /*
- * TabVentasRapidas — POS server-authoritative (E6, recableado + rediseño F5).
+ * TabVentasRapidas — POS server-authoritative (E6, F5 pago mixto, reforma grilla híbrida).
  *
- * BUG que resuelve: el total ya NO se calcula en el cliente con precio_normal. Cada línea de catálogo
- * consulta GET /productos/{id}/precio?cantidad= (debounce 250ms + AbortController) y el total es la
- * SUMA de los totales del servidor — así el motor de precios (escalonado por umbral, fracción, granel)
- * manda, y lo que ve el cajero == lo que cobra el backend. Al registrar NO se manda precio_unitario
- * (el backend recalcula), salvo que el cajero elija el precio "especial" (override explícito).
+ * Orquestador del POS: es dueño del carrito, los precios del servidor, los atajos de teclado, el guard
+ * de caja y el POST /ventas. La presentación vive en tabs/pos/ (LineaCarrito, Checkout, ClientePicker,
+ * VariaForm, piezas).
  *
- * Extras: grilla de productos frecuentes (GET /productos/frecuentes) cuando el buscador está vacío;
- * búsqueda con debounce + navegación ↑/↓ + Enter; código/categoría en los resultados; hint de umbral
- * mayorista; botones de fracción (¼ ½ ¾) para productos fraccionables; recibido/cambio en efectivo.
+ * Precio server-authoritative: cada línea de catálogo consulta GET /productos/{id}/precio?cantidad=
+ * (debounce 250ms + AbortController) y el total es la SUMA de los totales del servidor — el motor de
+ * precios (escalonado, fracción, granel) manda y lo que ve el cajero == lo que cobra el backend. Al
+ * registrar NO se manda precio_unitario (el backend recalcula), salvo el "especial" (override explícito).
  *
  * Atajos POS (ADR 0029): F2 o «/» enfocan el buscador; ↑/↓ mueven la selección y Enter la agrega;
- * F9 o Ctrl+Enter cobran; Alt+1..4 método de pago; lector de código de barras (ráfaga + Enter).
+ * F9 o Ctrl+Enter cobran; Alt+1..5 método de pago; lector de código de barras (ráfaga + Enter).
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
-import { Plus, Search, Trash2, X, Zap } from 'lucide-react'
+import { Plus, Search, X, Zap } from 'lucide-react'
 import { api, apiJson } from '@/lib/api'
 import { cop, ProductThumb } from '@/components/shared.jsx'
 import ModalAbrirCaja from '@/components/ModalAbrirCaja.jsx'
@@ -25,35 +24,16 @@ import { usePreferencias } from '@/lib/preferencias.jsx'
 import { Card } from '@/components/ui/card.jsx'
 import { Input } from '@/components/ui/input.jsx'
 import { Button } from '@/components/ui/button.jsx'
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from '@/components/ui/select.jsx'
-
-const METODOS = ['efectivo', 'transferencia', 'datafono', 'fiado', 'mixto']
-// Segundo método de un cobro MIXTO (F5): dinero que entra YA — fiado queda fuera (v1).
-const METODOS_MIXTO_RESTO = ['transferencia', 'datafono']
-const FRACCIONES = [['¼', 0.25], ['½', 0.5], ['¾', 0.75], ['1', 1]]
-const GRANEL = { grm: 'g', gramos: 'g', cms: 'cm' }   // sub-unidades de venta a granel
+import { AtajosHint, guardarLS, leerLS, METODOS, nuevaKey } from './pos/piezas.jsx'
+import LineaCarrito from './pos/LineaCarrito.jsx'
+import Checkout from './pos/Checkout.jsx'
+import ClientePicker from './pos/ClientePicker.jsx'
+import VariaForm from './pos/VariaForm.jsx'
 
 // Carrito persistente + ventas en espera (F5, patrón CART_KEY del FerreBot viejo): el carrito vivo
 // sobrevive un refresh y los carritos aparcados esperan su turno, todo client-side (localStorage).
 const CART_KEY = 'pos_carrito_v1'
 const ESPERA_KEY = 'pos_espera_v1'
-
-function leerLS(key, fallback) {
-  try {
-    const d = JSON.parse(localStorage.getItem(key))
-    return Array.isArray(d) ? d : fallback
-  } catch { return fallback }
-}
-
-function guardarLS(key, valor) {
-  try { localStorage.setItem(key, JSON.stringify(valor)) } catch { /* almacenamiento lleno/privado */ }
-}
-
-function nuevaKey() {
-  return (crypto?.randomUUID?.() || `k-${Date.now()}-${Math.random()}`)
-}
 
 export default function TabVentasRapidas() {
   const features = useFeatures()
@@ -467,72 +447,17 @@ export default function TabVentasRapidas() {
           </p>
         )}
 
-        <label className="text-caption uppercase tracking-wider text-muted-foreground mt-3 mb-1">Método de pago</label>
-        <Select value={metodoPago} onValueChange={setMetodoPago}>
-          <SelectTrigger aria-label="Método de pago" className="capitalize"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            {METODOS.map(m => <SelectItem key={m} value={m} className="capitalize">{m}</SelectItem>)}
-          </SelectContent>
-        </Select>
-
-        {metodoPago === 'efectivo' && (
-          <div className="mt-2 flex items-center gap-2">
-            <Input type="number" min="0" step="any" value={recibido} onChange={(e) => setRecibido(e.target.value)}
-              placeholder="Recibido" aria-label="Efectivo recibido" className="h-9 flex-1" />
-            {cambio != null && (
-              <span className="text-body-sm tabular shrink-0">
-                Cambio <span className="font-semibold text-success">{cop(cambio)}</span>
-              </span>
-            )}
-          </div>
-        )}
-
-        {metodoPago === 'mixto' && (
-          <div className="mt-2 space-y-1.5">
-            <div className="flex items-center gap-2">
-              <Input type="number" min="0" step="any" value={efectivoMixto}
-                onChange={(e) => setEfectivoMixto(e.target.value)}
-                placeholder="Efectivo" aria-label="Parte en efectivo" className="h-9 flex-1" />
-              <div className="flex items-center gap-1" role="group" aria-label="Método del resto">
-                {METODOS_MIXTO_RESTO.map(m => (
-                  <Seg key={m} activo={metodoResto === m} onClick={() => setMetodoResto(m)}
-                    aria-label={`Resto por ${m}`}>{m}</Seg>
-                ))}
-              </div>
-            </div>
-            <p className={`text-caption tabular ${mixtoValido ? 'text-muted-foreground' : 'text-destructive'}`}>
-              {mixtoValido
-                ? <>Resto por {metodoResto}: <span className="font-semibold">{cop(restanteMixto)}</span></>
-                : 'El efectivo debe ser mayor que 0 y menor que el total'}
-            </p>
-          </div>
-        )}
-
-        {mostrarDocumento && (
-          <>
-            <label className="text-caption uppercase tracking-wider text-muted-foreground mt-3 mb-1">Documento</label>
-            {opcionesDocumento.length > 1 ? (
-              <div className="flex items-center gap-1 flex-wrap" role="group" aria-label="Documento fiscal">
-                {opcionesDocumento.map(({ v, label }) => (
-                  <Seg key={v} activo={documento === v} onClick={() => setDocumento(v)}
-                    aria-label={`Documento ${label}`}>{label}</Seg>
-                ))}
-              </div>
-            ) : (
-              <div className="text-body-sm text-muted-foreground">{opcionesDocumento[0]?.label}</div>
-            )}
-          </>
-        )}
-
-        <div className="flex items-center justify-between mt-3 mb-2">
-          <span className="text-caption uppercase tracking-wider text-muted-foreground">Total</span>
-          <span className="text-xl font-semibold tabular">{cop(total)}</span>
-        </div>
-        <Button onClick={registrar}
-          disabled={enviando || carrito.length === 0 || (metodoPago === 'mixto' && !mixtoValido)}
-          className="w-full h-10">
-          {enviando ? 'Registrando…' : 'Registrar venta'} <span className="ml-1.5 opacity-70 text-caption">F9</span>
-        </Button>
+        <Checkout
+          metodoPago={metodoPago} setMetodoPago={setMetodoPago}
+          recibido={recibido} setRecibido={setRecibido} cambio={cambio}
+          efectivoMixto={efectivoMixto} setEfectivoMixto={setEfectivoMixto}
+          metodoResto={metodoResto} setMetodoResto={setMetodoResto}
+          restanteMixto={restanteMixto} mixtoValido={mixtoValido}
+          mostrarDocumento={mostrarDocumento} opcionesDocumento={opcionesDocumento}
+          documento={documento} setDocumento={setDocumento}
+          total={total} enviando={enviando} carritoVacio={carrito.length === 0}
+          onRegistrar={registrar}
+        />
       </Card>
 
       {/* Guard de caja: abre la caja y registra la venta pendiente con su MISMA key (nada se repite). */}
@@ -543,172 +468,6 @@ export default function TabVentasRapidas() {
           if (ventaPendiente) await enviarVenta(ventaPendiente.payload, ventaPendiente.key)
         }}
       />
-    </div>
-  )
-}
-
-// --- Línea del carrito ------------------------------------------------------
-function LineaCarrito({ it, precio, onCantidad, onQuitar, onEspecial }) {
-  const granel = !it.varia && GRANEL[(it.unidad_medida || '').toLowerCase()]
-  const usaServidor = !it.varia && !it.usarEspecial
-  const cargando = usaServidor && precio?.loading
-  const unit = it.varia ? Number(it.precio_unitario)
-    : it.usarEspecial ? Number(it.precio_especial)
-    : precio?.precio_unitario
-  const faltanMayorista = it.precio_umbral != null && !it.usarEspecial &&
-    Number(it.cantidad) > 0 && Number(it.cantidad) < it.precio_umbral
-
-  return (
-    <li className="py-2">
-      <div className="flex items-center gap-2">
-        <div className="min-w-0 flex-1">
-          <div className="text-body-sm truncate">{it.nombre}</div>
-          <div className="text-caption text-muted-foreground tabular flex items-center gap-1.5">
-            {cargando ? 'calculando…' : unit != null ? `${cop(unit)} c/u` : '—'}
-            {precio?.regla && precio.regla !== 'simple' && !it.usarEspecial && (
-              <span className="rounded bg-info/15 text-info px-1 text-[10px] uppercase">{precio.regla}</span>
-            )}
-            {granel && <span className="text-[10px] uppercase">/{granel}</span>}
-          </div>
-        </div>
-        <Input type="number" min="0" step="any" value={it.cantidad}
-          onChange={(e) => onCantidad(e.target.value)}
-          aria-label={`Cantidad de ${it.nombre}`} className="w-16 h-8 text-center" />
-        <span className="w-20 text-right text-body-sm tabular shrink-0">
-          {cop(it.varia ? Number(it.precio_unitario) * Number(it.cantidad || 0)
-            : it.usarEspecial ? Number(it.precio_especial) * Number(it.cantidad || 0)
-            : (precio?.total ?? Number(it.precio_normal || 0) * Number(it.cantidad || 0)))}
-        </span>
-        <button onClick={onQuitar} aria-label={`Quitar ${it.nombre}`}
-          className="size-8 grid place-items-center rounded-md text-muted-foreground hover:text-destructive">
-          <Trash2 className="size-4" />
-        </button>
-      </div>
-
-      {it.permite_fraccion && !it.usarEspecial && (
-        <div className="mt-1.5 flex items-center gap-1" role="group" aria-label={`Fracción de ${it.nombre}`}>
-          {FRACCIONES.map(([et, val]) => (
-            <Seg key={et} activo={Number(it.cantidad) === val} onClick={() => onCantidad(String(val))}
-              aria-label={`${et} de ${it.nombre}`}>{et}</Seg>
-          ))}
-        </div>
-      )}
-      {faltanMayorista && (
-        <p className="mt-1 text-caption text-info">
-          ≥ {it.precio_umbral} u: {cop(it.precio_sobre_umbral)} c/u — te faltan {it.precio_umbral - Number(it.cantidad)} para mayorista
-        </p>
-      )}
-      {!it.varia && it.precio_especial != null && (
-        <div className="mt-1.5 flex items-center gap-1" role="group" aria-label={`Precio de ${it.nombre}`}>
-          <Seg activo={!it.usarEspecial} onClick={() => onEspecial(false)}>Normal</Seg>
-          <Seg activo={it.usarEspecial} onClick={() => onEspecial(true)}>Especial {cop(it.precio_especial)}</Seg>
-        </div>
-      )}
-    </li>
-  )
-}
-
-function Seg({ activo, onClick, children, ...props }) {
-  return (
-    <button type="button" onClick={onClick} aria-pressed={activo} {...props}
-      className={`flex-1 h-7 px-2 rounded-md border text-caption tabular transition-colors ${
-        activo ? 'border-primary bg-primary/10 text-primary font-medium'
-          : 'border-border bg-surface text-muted-foreground hover:bg-surface-2'}`}>
-      {children}
-    </button>
-  )
-}
-
-function Kbd({ children }) {
-  return (
-    <kbd className="inline-flex items-center rounded border border-border bg-surface-2 px-1 text-[10px] font-medium text-muted-foreground">
-      {children}
-    </kbd>
-  )
-}
-
-function AtajosHint() {
-  return (
-    <p className="flex flex-wrap items-center gap-x-3 gap-y-1 px-1 text-caption text-muted-foreground">
-      <span><Kbd>F2</Kbd> o <Kbd>/</Kbd> buscar</span>
-      <span><Kbd>↑</Kbd><Kbd>↓</Kbd> elegir</span>
-      <span><Kbd>Enter</Kbd> agrega</span>
-      <span><Kbd>F9</Kbd> cobrar</span>
-      <span><Kbd>Alt</Kbd>+<Kbd>1</Kbd>–<Kbd>5</Kbd> pago</span>
-      <span>o escanea un código</span>
-    </p>
-  )
-}
-
-function VariaForm({ onAdd }) {
-  const [descripcion, setDescripcion] = useState('')
-  const [cantidad, setCantidad] = useState('1')
-  const [precio, setPrecio] = useState('')
-  function agregar() {
-    const c = Number(cantidad), p = Number(precio)
-    if (!descripcion.trim() || !c || !p) return
-    onAdd({ descripcion: descripcion.trim(), cantidad: c, precio_unitario: p })
-    setDescripcion(''); setCantidad('1'); setPrecio('')
-  }
-  return (
-    <Card className="p-3">
-      <h2 className="text-caption font-semibold uppercase tracking-wider text-muted-foreground mb-2">Venta varia (sin catálogo)</h2>
-      <div className="flex flex-wrap items-center gap-2">
-        <Input value={descripcion} onChange={(e) => setDescripcion(e.target.value)}
-          placeholder="Descripción" aria-label="Descripción varia" className="flex-1 min-w-[140px] h-9" />
-        <Input type="number" min="0" step="any" value={cantidad} onChange={(e) => setCantidad(e.target.value)}
-          aria-label="Cantidad varia" className="w-20 h-9 text-center" />
-        <Input type="number" min="0" step="any" value={precio} onChange={(e) => setPrecio(e.target.value)}
-          placeholder="Precio" aria-label="Precio varia" className="w-28 h-9" />
-        <Button variant="outline" onClick={agregar} className="h-9">Agregar</Button>
-      </div>
-    </Card>
-  )
-}
-
-function ClientePicker({ cliente, onSelect }) {
-  const [q, setQ] = useState('')
-  const [resultados, setResultados] = useState([])
-  useEffect(() => {
-    const term = q.trim()
-    if (!term) { setResultados([]); return undefined }
-    const ctrl = new AbortController()
-    const t = setTimeout(() => {
-      apiJson(`/clientes?q=${encodeURIComponent(term)}`, { signal: ctrl.signal })
-        .then(d => setResultados(Array.isArray(d) ? d : []))
-        .catch(err => { if (err?.name !== 'AbortError') setResultados([]) })
-    }, 200)
-    return () => { clearTimeout(t); ctrl.abort() }
-  }, [q])
-
-  if (cliente) {
-    return (
-      <div className="flex items-center gap-2 mt-1 text-body-sm">
-        <span className="text-muted-foreground">Cliente:</span>
-        <span className="font-medium truncate flex-1">{cliente.nombre}</span>
-        <button onClick={() => onSelect(null)} aria-label="Quitar cliente"
-          className="size-6 grid place-items-center rounded-md text-muted-foreground hover:text-foreground">
-          <X className="size-3.5" />
-        </button>
-      </div>
-    )
-  }
-  return (
-    <div className="mt-1">
-      <Input value={q} onChange={(e) => setQ(e.target.value)}
-        placeholder="Cliente (opcional)…" aria-label="Buscar cliente" className="h-8 text-body-sm" />
-      {resultados.length > 0 && (
-        <ul className="mt-1 divide-y divide-border-subtle max-h-40 overflow-y-auto scrollbar-aurora">
-          {resultados.map(c => (
-            <li key={c.id}>
-              <button onClick={() => { onSelect(c); setQ(''); setResultados([]) }}
-                className="w-full text-left py-1.5 px-1 text-body-sm hover:bg-surface-2 rounded-md truncate">
-                {c.nombre}{c.documento ? ` · ${c.documento}` : ''}
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
     </div>
   )
 }

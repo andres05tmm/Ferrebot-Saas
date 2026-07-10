@@ -101,7 +101,9 @@ describe('FormAsignacionMaquina — POST de asignación', () => {
 })
 
 // ── Visibilidad por rol en DetalleDia ──────────────────────────────────────────────────────────────
-const F = '2026-07-09'
+// Fecha FUTURA fija (patrón DetalleDia.test.jsx): en días pasados los botones "+ Asignar" se ocultan
+// a propósito, así que una fecha "de hoy" hace el test dependiente del reloj.
+const F = '2999-12-15'
 const DIA = {
   fecha: F,
   horas_maquina: [], reportes: [], asistencia: [], mantenimientos: [], consumos: [],

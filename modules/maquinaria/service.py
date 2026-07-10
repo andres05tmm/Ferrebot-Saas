@@ -15,9 +15,13 @@ from core.config.timezone import today_co
 from services.calculations.maquinas import horas_facturables
 
 from modules.maquinaria.errors import (
+    AsignacionInexistente,
+    AsignacionSolapada,
     CodigoMaquinaDuplicado,
     MantenimientoInexistente,
     MaquinaInexistente,
+    ObraNoAsignable,
+    OperadorInexistente,
     SinAsignacionActiva,
 )
 from modules.maquinaria.models import (
@@ -28,6 +32,8 @@ from modules.maquinaria.models import (
 )
 from modules.maquinaria.repository import SqlMaquinasRepository
 from modules.maquinaria.schemas import (
+    AsignacionMaquinaActualizar,
+    AsignacionMaquinaCrear,
     MantenimientoActualizar,
     MantenimientoCrear,
     MaquinaActualizar,
@@ -103,6 +109,112 @@ class MaquinariaService:
     # ---- Lecturas de operación (solo lectura) -------------------------------
     async def listar_asignaciones(self, maquina_id: int) -> list[AsignacionMaquinaObra]:
         return await self._repo.listar_asignaciones(maquina_id)
+
+    # ---- CRUD de asignaciones máquina→obra (Calendario de obra) ---------------------------------
+    async def crear_asignacion(
+        self, maquina_id: int, datos: AsignacionMaquinaCrear
+    ) -> AsignacionMaquinaObra:
+        """Asigna la máquina a una obra (Calendario de obra), con precio/mínimo pactados.
+
+        Validaciones: máquina viva (404 MaquinaInexistente); obra existente y no LIQUIDADA (ObraNoAsignable
+        `inexistente`/`liquidada`); operador —si viene— trabajador activo (OperadorInexistente); sin solape
+        con otra asignación activa de la máquina (AsignacionSolapada). Defaults: `fecha_inicio`=hoy Colombia
+        (regla #4); `precio_hora`/`minimo_horas` = los de la máquina si no se envían.
+
+        Transición de estado (SOLO en el alta): si la asignación cubre HOY (fecha_inicio<=hoy<=fecha_fin/
+        NULL) y la máquina está `DISPONIBLE`, pasa a `OCUPADA`. NUNCA se toca una máquina en
+        MANTENIMIENTO/DAÑADA/BAJA (un mantenimiento o baja manda sobre la asignación)."""
+        maquina = await self._repo.obtener(maquina_id)
+        if maquina is None:
+            raise MaquinaInexistente(maquina_id)
+
+        estado_obra = await self._repo.obra_asignable(datos.obra_id)
+        if estado_obra is None:
+            raise ObraNoAsignable(datos.obra_id, "inexistente")
+        if estado_obra == "LIQUIDADA":
+            raise ObraNoAsignable(datos.obra_id, "liquidada")
+
+        if datos.operador_id is not None and not await self._repo.operador_valido(datos.operador_id):
+            raise OperadorInexistente(datos.operador_id)
+
+        inicio = datos.fecha_inicio or today_co()
+        precio = (
+            datos.precio_hora if datos.precio_hora is not None else maquina.precio_hora_default
+        )
+        minimo = (
+            datos.minimo_horas if datos.minimo_horas is not None else maquina.minimo_horas_factura
+        )
+
+        if await self._repo.asignacion_solapada(maquina_id, inicio, datos.fecha_fin):
+            raise AsignacionSolapada(maquina_id, inicio, datos.fecha_fin)
+
+        asig = await self._repo.crear_asignacion(
+            maquina_id=maquina_id,
+            obra_id=datos.obra_id,
+            fecha_inicio=inicio,
+            fecha_fin=datos.fecha_fin,
+            precio_hora=precio,
+            minimo_horas=minimo,
+            operador_id=datos.operador_id,
+        )
+
+        hoy = today_co()
+        cubre_hoy = inicio <= hoy and (datos.fecha_fin is None or datos.fecha_fin >= hoy)
+        if cubre_hoy and maquina.estado == "DISPONIBLE":
+            await self._repo.set_estado_maquina(maquina, "OCUPADA")
+        return asig
+
+    async def actualizar_asignacion(
+        self, maquina_id: int, asignacion_id: int, datos: AsignacionMaquinaActualizar
+    ) -> AsignacionMaquinaObra:
+        """Edición parcial de una asignación. 404 si no existe para esa máquina; revalida el solape si
+        cambia `fecha_fin` (y sigue activa); si viene `operador_id`, valida el trabajador (OperadorInexistente).
+
+        Transición de CIERRE: si tras el parche la asignación queda cerrada (`activa=false` o
+        `fecha_fin < hoy`) y la máquina está `OCUPADA` sin OTRA asignación vigente hoy, vuelve a `DISPONIBLE`.
+        La reapertura NO re-flipa a OCUPADA (decisión del plan): el alta es la única que activa OCUPADA."""
+        asig = await self._repo.obtener_asignacion(maquina_id, asignacion_id)
+        if asig is None:
+            raise AsignacionInexistente(asignacion_id)
+
+        cambios = datos.model_dump(exclude_unset=True)
+        if (
+            "operador_id" in cambios
+            and cambios["operador_id"] is not None
+            and not await self._repo.operador_valido(cambios["operador_id"])
+        ):
+            raise OperadorInexistente(cambios["operador_id"])
+
+        nueva_fin = cambios.get("fecha_fin", asig.fecha_fin)
+        nueva_activa = cambios.get("activa", asig.activa)
+        # Revalida el solape si cambia el rango O si se REACTIVA una asignación cerrada: mientras estuvo
+        # inactiva pudo crearse otra activa sobre el mismo rango, y reactivar sin chequear rompería el
+        # invariante de no-solape.
+        reactivada = nueva_activa and not asig.activa
+        if (
+            nueva_activa
+            and ("fecha_fin" in cambios or reactivada)
+            and await self._repo.asignacion_solapada(
+                maquina_id, asig.fecha_inicio, nueva_fin, excluir_id=asignacion_id
+            )
+        ):
+            raise AsignacionSolapada(maquina_id, asig.fecha_inicio, nueva_fin)
+
+        asig = await self._repo.actualizar_asignacion(asig, cambios)
+
+        hoy = today_co()
+        cerrada = (not nueva_activa) or (nueva_fin is not None and nueva_fin < hoy)
+        if cerrada:
+            maquina = await self._repo.obtener(maquina_id)
+            if (
+                maquina is not None
+                and maquina.estado == "OCUPADA"
+                and not await self._repo.otra_asignacion_vigente(
+                    maquina_id, hoy, excluir_id=asignacion_id
+                )
+            ):
+                await self._repo.set_estado_maquina(maquina, "DISPONIBLE")
+        return asig
 
     async def listar_horas(
         self, maquina_id: int, *, limite: int = 100, offset: int = 0

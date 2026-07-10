@@ -12,6 +12,7 @@ from sqlalchemy import BigInteger, Date, and_, column, func, or_, select, text, 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.config.timezone import now_co
+from core.events import publish
 from modules.maquinaria.models import (
     AsignacionMaquinaObra,
     Mantenimiento,
@@ -19,6 +20,10 @@ from modules.maquinaria.models import (
     RegistroHorasMaquina,
 )
 from modules.maquinaria.schemas import MaquinaCrear
+# Lecturas SOLO de existencia/estado (patrón Ola A: se importa el modelo congelado de otro paquete sin
+# acoplarse por relationship). No se escriben desde este repo.
+from modules.obra.models import Obra
+from modules.trabajadores.models import Trabajador
 
 
 class SqlMaquinasRepository:
@@ -93,6 +98,153 @@ class SqlMaquinasRepository:
             .order_by(AsignacionMaquinaObra.fecha_inicio.desc(), AsignacionMaquinaObra.id.desc())
         )
         return list((await self._s.execute(stmt)).scalars().all())
+
+    # ---- CRUD de asignaciones máquina→obra (Calendario de obra) ---------------------------------
+    async def obtener_asignacion(
+        self, maquina_id: int, asignacion_id: int
+    ) -> AsignacionMaquinaObra | None:
+        """Asignación por id ACOTADA a su máquina: una de otra máquina se trata como inexistente
+        para ésta (no se toca por la ruta de una máquina ajena; calca `obtener_mantenimiento`)."""
+        return (
+            await self._s.execute(
+                select(AsignacionMaquinaObra).where(
+                    AsignacionMaquinaObra.id == asignacion_id,
+                    AsignacionMaquinaObra.maquina_id == maquina_id,
+                )
+            )
+        ).scalar_one_or_none()
+
+    async def asignacion_solapada(
+        self,
+        maquina_id: int,
+        fecha_inicio: date,
+        fecha_fin: date | None,
+        *,
+        excluir_id: int | None = None,
+    ) -> bool:
+        """¿Hay otra asignación ACTIVA de la máquina cuyo rango se cruza con [fecha_inicio, fecha_fin]?
+
+        Intervalos con `fecha_fin` NULL = abiertos (infinito). Dos rangos se solapan cuando
+        `nueva.inicio <= existente.fin` Y `nueva.fin >= existente.inicio` (con los NULL tratados como
+        +infinito vía `or_(fecha_fin IS NULL, ...)`, el patrón del módulo). Solo mira filas `activa=true`;
+        `excluir_id` se ignora a sí mismo al editar."""
+        stmt = select(AsignacionMaquinaObra.id).where(
+            AsignacionMaquinaObra.maquina_id == maquina_id,
+            AsignacionMaquinaObra.activa.is_(True),
+            # nueva.inicio <= existente.fin (o existente.fin es NULL = infinito)
+            or_(
+                AsignacionMaquinaObra.fecha_fin.is_(None),
+                AsignacionMaquinaObra.fecha_fin >= fecha_inicio,
+            ),
+        )
+        if fecha_fin is not None:
+            # nueva.fin >= existente.inicio (si nueva.fin es NULL = infinito, siempre se cumple)
+            stmt = stmt.where(AsignacionMaquinaObra.fecha_inicio <= fecha_fin)
+        if excluir_id is not None:
+            stmt = stmt.where(AsignacionMaquinaObra.id != excluir_id)
+        return (await self._s.execute(stmt.limit(1))).first() is not None
+
+    async def otra_asignacion_vigente(
+        self, maquina_id: int, fecha: date, *, excluir_id: int
+    ) -> bool:
+        """¿Queda OTRA asignación activa de la máquina que cubra `fecha` (además de `excluir_id`)?
+
+        Cubrir = `activa` AND `fecha_inicio <= fecha <= fecha_fin`/NULL. Sirve para decidir si al cerrar
+        una asignación la máquina puede volver a DISPONIBLE (no si otra la sigue teniendo ocupada hoy)."""
+        stmt = (
+            select(AsignacionMaquinaObra.id)
+            .where(
+                AsignacionMaquinaObra.maquina_id == maquina_id,
+                AsignacionMaquinaObra.activa.is_(True),
+                AsignacionMaquinaObra.id != excluir_id,
+                AsignacionMaquinaObra.fecha_inicio <= fecha,
+                or_(
+                    AsignacionMaquinaObra.fecha_fin.is_(None),
+                    AsignacionMaquinaObra.fecha_fin >= fecha,
+                ),
+            )
+            .limit(1)
+        )
+        return (await self._s.execute(stmt)).first() is not None
+
+    async def obra_asignable(self, obra_id: int) -> str | None:
+        """Estado de la obra viva por id, o None si no existe / está soft-deleted.
+
+        El service usa el estado devuelto para distinguir el mapeo HTTP: None → 404 (inexistente),
+        `"LIQUIDADA"` → 409 (cerrada). Lectura de solo existencia sobre `obras` (no se escribe)."""
+        return (
+            await self._s.execute(
+                select(Obra.estado).where(Obra.id == obra_id, Obra.eliminado_en.is_(None))
+            )
+        ).scalar_one_or_none()
+
+    async def operador_valido(self, operador_id: int) -> bool:
+        """¿El operador existe como trabajador ACTIVO y no eliminado? Lectura de solo existencia."""
+        stmt = select(Trabajador.id).where(
+            Trabajador.id == operador_id,
+            Trabajador.activo.is_(True),
+            Trabajador.eliminado_en.is_(None),
+        )
+        return (await self._s.execute(stmt.limit(1))).first() is not None
+
+    async def crear_asignacion(
+        self,
+        *,
+        maquina_id: int,
+        obra_id: int,
+        fecha_inicio: date,
+        fecha_fin: date | None,
+        precio_hora: Decimal,
+        minimo_horas: int,
+        operador_id: int | None,
+        activa: bool = True,
+    ) -> AsignacionMaquinaObra:
+        """Inserta la asignación, hace flush (asigna `id`) y emite el evento SSE del calendario. La sesión
+        del tenant ES la transacción (sin commit aquí); el NOTIFY sale al commit del llamador."""
+        asig = AsignacionMaquinaObra(
+            maquina_id=maquina_id,
+            obra_id=obra_id,
+            fecha_inicio=fecha_inicio,
+            fecha_fin=fecha_fin,
+            precio_hora=precio_hora,
+            minimo_horas=minimo_horas,
+            operador_id=operador_id,
+            activa=activa,
+        )
+        self._s.add(asig)
+        await self._s.flush()  # asigna asig.id
+        await self._publicar_asignacion(asig)
+        return asig
+
+    async def actualizar_asignacion(
+        self, asig: AsignacionMaquinaObra, cambios: dict
+    ) -> AsignacionMaquinaObra:
+        """Aplica un parche parcial (solo claves presentes) y reemite el evento. La tabla no tiene
+        `actualizado_en`, así que no hace falta `refresh` para serializar."""
+        for campo, valor in cambios.items():
+            setattr(asig, campo, valor)
+        await self._s.flush()
+        await self._publicar_asignacion(asig)
+        return asig
+
+    async def _publicar_asignacion(self, asig: AsignacionMaquinaObra) -> None:
+        """Evento SSE que consume el calendario de obra (alta y edición comparten payload)."""
+        await publish(
+            self._s,
+            "asignacion_maquina_actualizada",
+            {
+                "asignacion_id": asig.id,
+                "maquina_id": asig.maquina_id,
+                "obra_id": asig.obra_id,
+                "activa": asig.activa,
+            },
+        )
+
+    async def set_estado_maquina(self, maquina: Maquina, estado: str) -> None:
+        """Transiciona el estado de la máquina (helper de la asignación). Solo flush: evita el `refresh`
+        de `actualizar` (no se serializa la máquina en este flujo)."""
+        maquina.estado = estado
+        await self._s.flush()
 
     async def listar_horas(
         self, maquina_id: int, *, limite: int = 100, offset: int = 0
@@ -174,6 +326,16 @@ class SqlMaquinasRepository:
         )
         self._s.add(registro)
         await self._s.flush()  # asigna registro.id
+        await publish(
+            self._s,
+            "registro_horas_creado",
+            {
+                "registro_id": registro.id,
+                "maquina_id": registro.maquina_id,
+                "obra_id": registro.obra_id,
+                "fecha": registro.fecha,
+            },
+        )
         return registro
 
     # ---- Mantenimientos (Fase 1 del cockpit): CRUD sobre la tabla de la migración 0045 -------------
@@ -212,6 +374,16 @@ class SqlMaquinasRepository:
         mant = Mantenimiento(maquina_id=maquina_id, **datos)
         self._s.add(mant)
         await self._s.flush()  # asigna mant.id
+        await publish(
+            self._s,
+            "mantenimiento_registrado",
+            {
+                "mantenimiento_id": mant.id,
+                "maquina_id": mant.maquina_id,
+                "tipo": mant.tipo,
+                "fecha": mant.fecha,
+            },
+        )
         return mant
 
     async def actualizar_mantenimiento(
@@ -370,3 +542,113 @@ class SqlMaquinasRepository:
             )
         ).all()
         return [dict(f._mapping) for f in filas]
+
+    # ---- Calendario de obra (commit 2): lecturas de OPERACIÓN por rango [desde, hasta], sin dinero ---
+    # Cada método corre UNA consulta para todo el rango (el mes agrega en Python; el detalle usa
+    # desde=hasta=fecha) — N+1-free. Los nombres (máquina/obra/operador) se resuelven por JOIN. Los
+    # filtros opcionales se aplican como WHERE condicional (identificadores fijos; valores por bind param).
+    async def horas_calendario(
+        self,
+        desde: date,
+        hasta: date,
+        *,
+        maquina_id: int | None = None,
+        obra_id: int | None = None,
+        operador_id: int | None = None,
+    ) -> list[dict]:
+        """Partes de horas en el rango + nombres. Operador = COALESCE(parte, asignación vigente) resuelto a
+        nombre; LEFT JOIN LATERAL a la asignación vigente (variante LEFT del `_LATERAL_PRECIO`, sin precio)."""
+        params: dict = {"desde": desde, "hasta": hasta}
+        extra = ""
+        if maquina_id is not None:
+            extra += " AND rh.maquina_id = :maquina_id"
+            params["maquina_id"] = maquina_id
+        if obra_id is not None:
+            extra += " AND rh.obra_id = :obra_id"
+            params["obra_id"] = obra_id
+        if operador_id is not None:
+            extra += " AND COALESCE(rh.operador_id, a.operador_id) = :operador_id"
+            params["operador_id"] = operador_id
+        sql = (
+            "SELECT rh.id, rh.maquina_id, m.nombre AS maquina, rh.obra_id, o.nombre AS obra, "
+            "  COALESCE(rh.operador_id, a.operador_id) AS operador_id, "
+            "  NULLIF(TRIM(COALESCE(t.nombres,'') || ' ' || COALESCE(t.apellidos,'')), '') AS operador, "
+            "  rh.horas_trabajadas, rh.horas_facturables, rh.observaciones, rh.origen_registro, rh.fecha "
+            "FROM registros_horas_maquina rh "
+            "JOIN maquinas m ON m.id = rh.maquina_id "
+            "JOIN obras o ON o.id = rh.obra_id "
+            "LEFT JOIN LATERAL ("
+            "  SELECT amo.operador_id FROM asignaciones_maquina_obra amo "
+            "  WHERE amo.maquina_id = rh.maquina_id AND amo.obra_id = rh.obra_id AND amo.activa "
+            "    AND amo.fecha_inicio <= rh.fecha AND (amo.fecha_fin IS NULL OR amo.fecha_fin >= rh.fecha) "
+            "  ORDER BY amo.fecha_inicio DESC, amo.id DESC LIMIT 1"
+            ") a ON true "
+            "LEFT JOIN trabajadores t ON t.id = COALESCE(rh.operador_id, a.operador_id) "
+            "WHERE rh.fecha BETWEEN :desde AND :hasta" + extra + " ORDER BY rh.fecha, rh.id"
+        )
+        return [dict(f._mapping) for f in (await self._s.execute(text(sql), params)).all()]
+
+    async def mantenimientos_calendario(
+        self, desde: date, hasta: date, *, maquina_id: int | None = None
+    ) -> list[dict]:
+        """Mantenimientos HECHOS (por `fecha`) en el rango + nombre de máquina. Sin costo."""
+        params: dict = {"desde": desde, "hasta": hasta}
+        extra = ""
+        if maquina_id is not None:
+            extra += " AND m.maquina_id = :maquina_id"
+            params["maquina_id"] = maquina_id
+        sql = (
+            "SELECT m.id, m.maquina_id, mq.nombre AS maquina, m.tipo, m.descripcion, "
+            "  m.proximo_en_fecha, m.fecha "
+            "FROM mantenimientos m JOIN maquinas mq ON mq.id = m.maquina_id "
+            "WHERE m.fecha BETWEEN :desde AND :hasta" + extra + " ORDER BY m.fecha, m.id"
+        )
+        return [dict(f._mapping) for f in (await self._s.execute(text(sql), params)).all()]
+
+    async def proximos_mantenimientos_calendario(
+        self, desde: date, hasta: date, *, maquina_id: int | None = None
+    ) -> list[dict]:
+        """Mantenimientos PRÓXIMOS programados en el rango: la fecha del evento ES `proximo_en_fecha`."""
+        params: dict = {"desde": desde, "hasta": hasta}
+        extra = ""
+        if maquina_id is not None:
+            extra += " AND m.maquina_id = :maquina_id"
+            params["maquina_id"] = maquina_id
+        sql = (
+            "SELECT m.maquina_id, mq.nombre AS maquina, m.tipo, m.descripcion, "
+            "  m.proximo_en_fecha AS fecha "
+            "FROM mantenimientos m JOIN maquinas mq ON mq.id = m.maquina_id "
+            "WHERE m.proximo_en_fecha BETWEEN :desde AND :hasta" + extra
+            + " ORDER BY m.proximo_en_fecha, m.id"
+        )
+        return [dict(f._mapping) for f in (await self._s.execute(text(sql), params)).all()]
+
+    async def asignaciones_maquina_calendario(
+        self, desde: date, hasta: date, *, maquina_id: int | None = None, obra_id: int | None = None
+    ) -> list[dict]:
+        """Asignaciones máquina→obra ACTIVAS cuyo rango SOLAPA [desde, hasta] + nombres. Sin precio_hora.
+
+        Solape = `fecha_inicio <= hasta AND (fecha_fin IS NULL OR fecha_fin >= desde)` (NULL = abierto).
+        Devuelve rangos (fecha_inicio/fecha_fin); el service los proyecta a cada día que cubren."""
+        params: dict = {"desde": desde, "hasta": hasta}
+        extra = ""
+        if maquina_id is not None:
+            extra += " AND amo.maquina_id = :maquina_id"
+            params["maquina_id"] = maquina_id
+        if obra_id is not None:
+            extra += " AND amo.obra_id = :obra_id"
+            params["obra_id"] = obra_id
+        sql = (
+            "SELECT amo.id AS asignacion_id, amo.maquina_id, mq.nombre AS maquina, "
+            "  amo.obra_id, o.nombre AS obra, amo.operador_id, "
+            "  NULLIF(TRIM(COALESCE(t.nombres,'') || ' ' || COALESCE(t.apellidos,'')), '') AS operador, "
+            "  amo.fecha_inicio, amo.fecha_fin "
+            "FROM asignaciones_maquina_obra amo "
+            "JOIN maquinas mq ON mq.id = amo.maquina_id "
+            "JOIN obras o ON o.id = amo.obra_id "
+            "LEFT JOIN trabajadores t ON t.id = amo.operador_id "
+            "WHERE amo.activa AND amo.fecha_inicio <= :hasta "
+            "  AND (amo.fecha_fin IS NULL OR amo.fecha_fin >= :desde)" + extra
+            + " ORDER BY amo.fecha_inicio, amo.id"
+        )
+        return [dict(f._mapping) for f in (await self._s.execute(text(sql), params)).all()]

@@ -57,6 +57,7 @@ import TabMaquinas from './tabs/TabMaquinas.jsx'
 import TabHerramientas from './tabs/TabHerramientas.jsx'
 import TabTrabajadores from './tabs/TabTrabajadores.jsx'
 import TabNomina from './tabs/TabNomina.jsx'
+import TabCalendario from './tabs/TabCalendario.jsx'
 import { ROUTES } from './routes.jsx'
 
 // Tabs núcleo (E6) + reportes (S2) + facturación (S3) + compras (S4a) + proveedores (S4b) +
@@ -99,6 +100,7 @@ const TABS = {
   '/panel': PanelConstruccion,
   '/cotizaciones-obra': TabCotizacionesObra,
   '/obras': TabObras,
+  '/calendario': TabCalendario,
   '/resbalos': TabResbalos,
   '/maquinas': TabMaquinas,
   '/herramientas': TabHerramientas,

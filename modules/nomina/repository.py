@@ -21,6 +21,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.events import publish
 from modules.nomina.models import (
     DetalleLiquidacion,
     ParametrosLegales,
@@ -181,13 +182,24 @@ class SqlNominaRepository:
         await self._s.flush()
         # `populate_existing` refresca la instancia mapeada con los valores ya persistidos (evita devolver
         # una copia obsoleta si el registro estuviera en el identity map de la sesión).
-        return (
+        registro = (
             await self._s.execute(
                 select(RegistroAsistencia)
                 .where(RegistroAsistencia.id == registro_id)
                 .execution_options(populate_existing=True)
             )
         ).scalar_one()
+        await publish(
+            self._s,
+            "asistencia_registrada",
+            {
+                "registro_id": registro.id,
+                "trabajador_id": registro.trabajador_id,
+                "obra_id": registro.obra_id,
+                "fecha": registro.fecha,
+            },
+        )
+        return registro
 
     # --- detalles de liquidación (UPSERT idempotente) -------------------------
     async def upsert_detalle(

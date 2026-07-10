@@ -302,6 +302,180 @@ class DashboardConstruccion(BaseModel):
     conteos: ConteosDashboard
 
 
+# --- Calendario de obra (GET /obras/calendario, /obras/calendario/dia): commit 2 del plan -----------
+# Vista de OPERACIÓN, no financiera: agrega la actividad de la obra por día (horas de máquina, reportes,
+# asistencia, mantenimientos, consumos, hitos) + lo PLANEADO (asignaciones que aún no produjeron
+# actividad). NINGÚN campo de dinero (sin precio_hora/costo/costo_unitario): el contrato no los trae y la
+# página no los inventa. Los eventos ignoran claves extra del repo (p. ej. `fecha`, que el mes usa para
+# bucketear y el detalle no necesita) vía `extra="ignore"`.
+
+
+class _EventoCalendario(BaseModel):
+    """Base de los eventos del día: ignora claves extra (el repo agrega `fecha` para el bucketing)."""
+
+    model_config = ConfigDict(extra="ignore")
+
+
+class EventoHorasMaquina(_EventoCalendario):
+    """Parte de horas de una máquina en el día (operador y obra resueltos por nombre). Sin ingreso."""
+
+    id: int
+    maquina_id: int
+    maquina: str | None
+    obra_id: int
+    obra: str | None
+    operador_id: int | None
+    operador: str | None
+    horas_trabajadas: Decimal
+    horas_facturables: Decimal
+    observaciones: str | None
+    origen_registro: str
+
+
+class EventoReporteDiario(_EventoCalendario):
+    """Reporte diario de avance de una obra (m²/m³, incidentes, fotos)."""
+
+    id: int
+    obra_id: int
+    obra: str | None
+    reportado_por: str | None
+    avance_descripcion: str | None
+    m2_ejecutados: Decimal | None
+    m3_ejecutados: Decimal | None
+    incidentes: str | None
+    foto_urls: list[str]
+
+
+class EventoAsistencia(_EventoCalendario):
+    """Asistencia de un trabajador en el día. `obra` NULL = día administrativo (la UI pinta 'Administrativo')."""
+
+    id: int
+    trabajador_id: int
+    trabajador: str | None
+    obra_id: int | None
+    obra: str | None
+    horas_trabajadas: Decimal
+    horas_extra_diurnas: Decimal
+    horas_extra_nocturnas: Decimal
+    horas_dominical_festivo: Decimal
+    ausencia: str | None
+
+
+class EventoMantenimiento(_EventoCalendario):
+    """Mantenimiento HECHO en el día (sin costo). `proximo_en_fecha` es la programación del siguiente."""
+
+    id: int
+    maquina_id: int
+    maquina: str | None
+    tipo: str
+    descripcion: str
+    proximo_en_fecha: date | None
+
+
+class EventoConsumo(_EventoCalendario):
+    """Consumo de material imputado a una obra en el día (sin costo unitario)."""
+
+    id: int
+    obra_id: int
+    obra: str | None
+    producto_id: int
+    producto: str | None
+    cantidad: Decimal
+
+
+class EventoHito(_EventoCalendario):
+    """Hito de obra que cae en el día: `hito` = 'inicio' | 'fin_estimada' | 'fin_real'; `estado` de la obra."""
+
+    obra_id: int
+    obra: str | None
+    hito: str
+    estado: str
+
+
+class EventoProximoMantenimiento(_EventoCalendario):
+    """Mantenimiento PRÓXIMO programado para el día (por `proximo_en_fecha`). Sin costo."""
+
+    maquina_id: int
+    maquina: str | None
+    tipo: str
+    descripcion: str
+
+
+class AsignacionMaquinaDia(_EventoCalendario):
+    """Asignación máquina→obra vigente en el día (planeado). Sin precio pactado."""
+
+    asignacion_id: int
+    maquina_id: int
+    maquina: str | None
+    obra_id: int
+    obra: str | None
+    operador_id: int | None
+    operador: str | None
+    fecha_inicio: date
+    fecha_fin: date | None
+
+
+class AsignacionTrabajadorDia(_EventoCalendario):
+    """Asignación trabajador→obra vigente en el día (planeado)."""
+
+    asignacion_id: int
+    trabajador_id: int
+    trabajador: str | None
+    obra_id: int
+    obra: str | None
+    fecha_inicio: date
+    fecha_fin: date | None
+
+
+class ConteosDiaCalendario(BaseModel):
+    """Conteos por origen de un día (alimentan los dots de la grilla). Cero por defecto (día sin ese origen).
+
+    `maquinas_asignadas`/`trabajadores_asignados` no son actividad real: marcan el día 'solo planeado'
+    (borde punteado) cuando no hay ningún otro conteo."""
+
+    horas_maquina: int = 0
+    reportes: int = 0
+    asistencias: int = 0
+    mantenimientos: int = 0
+    consumos: int = 0
+    hitos: int = 0
+    proximos_mantenimientos: int = 0
+    maquinas_asignadas: int = 0
+    trabajadores_asignados: int = 0
+
+
+class DiaCalendario(BaseModel):
+    """Un día del mes CON actividad (los días vacíos no se emiten). `horas_maquina_total` = Σ horas
+    trabajadas de máquina del día (Decimal → string)."""
+
+    fecha: date
+    horas_maquina_total: Decimal
+    conteos: ConteosDiaCalendario
+
+
+class CalendarioMes(BaseModel):
+    """Resumen del mes: solo los días con al menos un conteo > 0 (GET /obras/calendario)."""
+
+    anio: int
+    mes: int
+    dias: list[DiaCalendario]
+
+
+class DetalleDiaCalendario(BaseModel):
+    """Todo lo del día en secciones tipadas (GET /obras/calendario/dia). Sin cifras de dinero."""
+
+    fecha: date
+    horas_maquina: list[EventoHorasMaquina]
+    reportes: list[EventoReporteDiario]
+    asistencia: list[EventoAsistencia]
+    mantenimientos: list[EventoMantenimiento]
+    consumos: list[EventoConsumo]
+    hitos: list[EventoHito]
+    proximos_mantenimientos: list[EventoProximoMantenimiento]
+    planeado_maquinas: list[AsignacionMaquinaDia]
+    planeado_trabajadores: list[AsignacionTrabajadorDia]
+
+
 class ConsumoInventarioCrear(BaseModel):
     """Alta de un consumo de material de una obra. Genera SIEMPRE el movimiento de inventario (salida).
 

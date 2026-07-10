@@ -14,13 +14,19 @@ from core.db.session import get_tenant_db
 from core.tenancy.catalogo import expandir_metapacks
 from modules.cartera.service import construir_cartera_service
 from modules.maquinaria.errors import (
+    AsignacionInexistente,
+    AsignacionSolapada,
     CodigoMaquinaDuplicado,
     MantenimientoInexistente,
     MaquinaInexistente,
+    ObraNoAsignable,
+    OperadorInexistente,
     SinAsignacionActiva,
 )
 from modules.maquinaria.repository import SqlMaquinasRepository
 from modules.maquinaria.schemas import (
+    AsignacionMaquinaActualizar,
+    AsignacionMaquinaCrear,
     AsignacionMaquinaObraLeer,
     EstadoMaquina,
     MantenimientoActualizar,
@@ -127,9 +133,62 @@ async def listar_asignaciones(
     session: AsyncSession = Depends(get_tenant_db),
     _user: Principal = Depends(require_role("vendedor")),
 ) -> list[AsignacionMaquinaObraLeer]:
-    """Asignaciones a obra de la máquina (solo lectura; el alta es de Fase 3)."""
+    """Asignaciones a obra de la máquina (solo lectura)."""
     asignaciones = await _service(session).listar_asignaciones(maquina_id)
     return [AsignacionMaquinaObraLeer.model_validate(a) for a in asignaciones]
+
+
+def _obra_no_asignable_http(exc: ObraNoAsignable) -> HTTPException:
+    """Mapea `ObraNoAsignable` al código del contrato: obra inexistente → 404; LIQUIDADA → 409."""
+    codigo = status.HTTP_404_NOT_FOUND if exc.motivo == "inexistente" else status.HTTP_409_CONFLICT
+    return HTTPException(codigo, str(exc))
+
+
+@router.post(
+    "/maquinas/{maquina_id}/asignaciones",
+    response_model=AsignacionMaquinaObraLeer,
+    status_code=status.HTTP_201_CREATED,
+)
+async def crear_asignacion(
+    maquina_id: int,
+    payload: AsignacionMaquinaCrear,
+    service: MaquinariaService = Depends(get_maquinaria_service),
+    _user: Principal = Depends(require_role("admin")),
+) -> AsignacionMaquinaObraLeer:
+    """Asigna la máquina a una obra (Calendario de obra). `fecha_inicio` default hoy Colombia;
+    `precio_hora`/`minimo_horas` heredan los de la máquina si no se envían. 404 si la máquina/obra/operador
+    no existen; 409 si la obra está LIQUIDADA o el rango se solapa con otra asignación activa."""
+    try:
+        asig = await service.crear_asignacion(maquina_id, payload)
+    except (MaquinaInexistente, OperadorInexistente) as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
+    except ObraNoAsignable as exc:
+        raise _obra_no_asignable_http(exc) from exc
+    except AsignacionSolapada as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+    return AsignacionMaquinaObraLeer.model_validate(asig)
+
+
+@router.patch(
+    "/maquinas/{maquina_id}/asignaciones/{asignacion_id}",
+    response_model=AsignacionMaquinaObraLeer,
+)
+async def actualizar_asignacion(
+    maquina_id: int,
+    asignacion_id: int,
+    payload: AsignacionMaquinaActualizar,
+    service: MaquinariaService = Depends(get_maquinaria_service),
+    _user: Principal = Depends(require_role("admin")),
+) -> AsignacionMaquinaObraLeer:
+    """Edición parcial de una asignación (cerrar, reasignar operador, ajustar tarifa/mínimo). 404 si no
+    existe para esa máquina o el operador no existe; 409 si el nuevo rango se solapa con otra activa."""
+    try:
+        asig = await service.actualizar_asignacion(maquina_id, asignacion_id, payload)
+    except (AsignacionInexistente, OperadorInexistente) as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
+    except AsignacionSolapada as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+    return AsignacionMaquinaObraLeer.model_validate(asig)
 
 
 @router.get("/maquinas/{maquina_id}/horas", response_model=list[RegistroHorasMaquinaLeer])

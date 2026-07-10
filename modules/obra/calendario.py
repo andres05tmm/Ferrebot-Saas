@@ -24,6 +24,7 @@ from decimal import Decimal
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.config.timezone import today_co
 from core.tenancy.catalogo import expandir_metapacks
 from modules.maquinaria.repository import SqlMaquinasRepository
 from modules.obra.repository import SqlObrasRepository
@@ -32,6 +33,9 @@ from modules.obra.schemas import (
     ConteosDiaCalendario,
     DetalleDiaCalendario,
     DiaCalendario,
+    EstadoCalendario,
+    EstadoMaquina,
+    EstadoTrabajador,
 )
 from modules.trabajadores.repository import SqlTrabajadoresRepository
 
@@ -94,6 +98,28 @@ class CalendarioObraService:
             fecha, fecha, obra_id=obra_id, maquina_id=maquina_id, trabajador_id=trabajador_id
         )
         return _detalle_dia(fecha, sec)
+
+    async def estado(self, *, hoy: date | None = None) -> EstadoCalendario:
+        """Foto del ESTADO ACTUAL de la operación a hoy Colombia (¿dónde está cada máquina/trabajador y con
+        qué?). Degrada por capacidad: sin `maquinaria` → maquinas=[]; sin `nomina` → NO se listan las
+        asignaciones trabajador→obra, PERO los operadores de máquinas vigentes sí (vienen de maquinaria).
+
+        `maquinas_raw` ya viene ordenada por el repo (con obra primero, luego nombre). La unión de
+        trabajadores (asignados a obra ∪ operadores de máquina) se compone en Python sobre los mismos datos
+        (sin SQL extra ni N+1): la asignación trabajador→obra manda en obra/desde; la máquina se adjunta
+        desde donde el trabajador es operador."""
+        hoy = hoy or today_co()
+        maquinas_raw = (
+            await self._maq.estado_maquinas_hoy(hoy) if "maquinaria" in self._caps else []
+        )
+        asignados = (
+            await self._trab.estado_trabajadores_hoy(hoy) if "nomina" in self._caps else []
+        )
+        return EstadoCalendario(
+            fecha=hoy,
+            maquinas=[_a_estado_maquina(m) for m in maquinas_raw],
+            trabajadores=_unir_trabajadores(asignados, maquinas_raw),
+        )
 
     async def _recolectar(
         self,
@@ -202,3 +228,49 @@ def _detalle_dia(fecha: date, sec: _Secciones) -> DetalleDiaCalendario:
         planeado_maquinas=sec.asign_maquinas,
         planeado_trabajadores=sec.asign_trabajadores,
     )
+
+
+# --- Estado ACTUAL (compone la foto de ahora a partir de las filas de los repos, sin SQL extra) -------
+def _a_estado_maquina(m: dict) -> EstadoMaquina:
+    """Tipa una fila de `estado_maquinas_hoy` (horas_mes → string decimal: "0" / "6.0000")."""
+    return EstadoMaquina(
+        maquina_id=m["maquina_id"],
+        maquina=m["maquina"],
+        estado=m["estado"],
+        obra_id=m["obra_id"],
+        obra=m["obra"],
+        operador_id=m["operador_id"],
+        operador=m["operador"],
+        desde=m["desde"],
+        horas_mes=str(m["horas_mes"]),
+    )
+
+
+def _unir_trabajadores(asignados: list[dict], maquinas_raw: list[dict]) -> list[EstadoTrabajador]:
+    """Une trabajadores asignados a obra ∪ operadores de máquina (sin duplicar por trabajador_id).
+
+    La asignación trabajador→obra manda en obra/desde; a quien SOLO es operador se le pone la obra de su
+    máquina (desde NULL: no tiene asignación propia). A todos se les adjunta la máquina donde son operador.
+    Orden estable por nombre de trabajador, luego id."""
+    por_id: dict[int, EstadoTrabajador] = {}
+    for a in asignados:
+        por_id[a["trabajador_id"]] = EstadoTrabajador(
+            trabajador_id=a["trabajador_id"], trabajador=a["trabajador"],
+            obra_id=a["obra_id"], obra=a["obra"], desde=a["desde"],
+            maquina_id=None, maquina=None,
+        )
+    for m in maquinas_raw:
+        op_id = m["operador_id"]
+        if op_id is None:
+            continue
+        actual = por_id.get(op_id)
+        if actual is None:   # solo operador (sin asignación trabajador→obra): obra de la máquina, desde NULL
+            por_id[op_id] = EstadoTrabajador(
+                trabajador_id=op_id, trabajador=m["operador"],
+                obra_id=m["obra_id"], obra=m["obra"], desde=None,
+                maquina_id=m["maquina_id"], maquina=m["maquina"],
+            )
+        elif actual.maquina_id is None:   # asignado a obra Y operador: le adjuntamos su máquina
+            actual.maquina_id = m["maquina_id"]
+            actual.maquina = m["maquina"]
+    return sorted(por_id.values(), key=lambda w: ((w.trabajador or ""), w.trabajador_id))

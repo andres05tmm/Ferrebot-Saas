@@ -476,6 +476,59 @@ class DetalleDiaCalendario(BaseModel):
     planeado_trabajadores: list[AsignacionTrabajadorDia]
 
 
+# --- Estado ACTUAL de la operación (GET /obras/calendario/estado) ------------------------------------
+# La foto de "ahora mismo" que el calendario (agenda por día) no responde: ¿dónde está cada máquina, con
+# qué operador y cuántas horas lleva este mes?, ¿dónde está cada trabajador y con qué máquina? Vista de
+# OPERACIÓN a hoy Colombia. NINGÚN campo de dinero (sin precio/costo): el contrato no los trae.
+
+
+class EstadoMaquina(BaseModel):
+    """Estado ACTUAL de una máquina: dónde está y con quién, más las horas del mes en curso.
+
+    `estado` = la columna de estado de la máquina (DISPONIBLE/OCUPADA/MANTENIMIENTO/…). `obra`/`operador`/
+    `desde` salen de su asignación vigente hoy (NULL si está sin obra). `horas_mes` = Σ horas trabajadas
+    del mes calendario en curso como string decimal ("0" si aún no registró horas). Sin dinero."""
+
+    maquina_id: int
+    maquina: str | None
+    estado: str
+    obra_id: int | None
+    obra: str | None
+    operador_id: int | None
+    operador: str | None
+    desde: date | None
+    horas_mes: str
+
+
+class EstadoTrabajador(BaseModel):
+    """Estado ACTUAL de un trabajador en campo: en qué obra está, desde cuándo y con qué máquina opera.
+
+    `obra`/`desde` salen de su asignación trabajador→obra si existe; si SOLO es operador de una máquina,
+    `obra` es la de esa máquina (y `desde` queda NULL, no hay asignación propia). `maquina` es la máquina
+    vigente donde es operador (NULL si ninguna). Sin dinero."""
+
+    trabajador_id: int
+    trabajador: str | None
+    obra_id: int | None
+    obra: str | None
+    desde: date | None
+    maquina_id: int | None
+    maquina: str | None
+
+
+class EstadoCalendario(BaseModel):
+    """Foto del ESTADO ACTUAL de la operación a hoy Colombia (GET /obras/calendario/estado).
+
+    Responde lo que la agenda por día no muestra de un vistazo: TODAS las máquinas (con su obra/operador/
+    horas del mes) y los trabajadores en campo (con su obra y su máquina). Vista de OPERACIÓN, sin dinero.
+    Degrada por capacidad: sin `maquinaria` → maquinas=[]; sin `nomina` → trabajadores solo lista a los
+    operadores de máquinas vigentes (las asignaciones trabajador→obra quedan fuera)."""
+
+    fecha: date
+    maquinas: list[EstadoMaquina]
+    trabajadores: list[EstadoTrabajador]
+
+
 class ConsumoInventarioCrear(BaseModel):
     """Alta de un consumo de material de una obra. Genera SIEMPRE el movimiento de inventario (salida).
 

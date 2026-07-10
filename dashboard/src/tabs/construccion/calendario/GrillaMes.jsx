@@ -90,7 +90,7 @@ export default function GrillaMes({ anio, mes, porFecha, hoy, seleccionada, onSe
         {DIAS_SEMANA.map((d) => <div key={d} className="py-1 text-caption text-muted-foreground">{d}</div>)}
         {celdas.map((c, i) => c === null
           ? <div key={`v-${i}`} />
-          : <Celda key={c.fecha} celda={c} esHoy={c.fecha === hoy}
+          : <Celda key={c.fecha} celda={c} esHoy={c.fecha === hoy} hoy={hoy}
               seleccionada={c.fecha === seleccionada} onSeleccionar={onSeleccionar} />)}
       </div>
 
@@ -99,10 +99,12 @@ export default function GrillaMes({ anio, mes, porFecha, hoy, seleccionada, onSe
   )
 }
 
-function Celda({ celda, esHoy, seleccionada, onSeleccionar }) {
+function Celda({ celda, esHoy, hoy, seleccionada, onSeleccionar }) {
   const conteos = celda.datos?.conteos || {}
   const activos = TIPOS_DOT.filter((t) => Number(conteos[t.clave]) > 0)
-  const planeado = soloPlaneado(conteos)
+  // El borde punteado "solo planeado" solo tiene sentido hacia adelante: un día PASADO sin actividad
+  // no era un plan pendiente, se pinta plano. `hoy` incluido (aún se puede registrar lo de hoy).
+  const planeado = soloPlaneado(conteos) && celda.fecha >= hoy
   const horas = abreviarHoras(celda.datos?.horas_maquina_total)
   const cls = [
     'relative flex min-h-11 flex-col items-center gap-1 rounded-md px-1 py-1 transition-colors duration-fast',
@@ -134,7 +136,7 @@ function Leyenda() {
         </span>
       ))}
       <span className="inline-flex items-center gap-1">
-        <span className="size-2.5 rounded-sm border border-dashed border-border" aria-hidden="true" /> Solo planeado
+        <span className="size-2.5 rounded-sm border border-dashed border-border" aria-hidden="true" /> Solo planeado (próximos días)
       </span>
     </div>
   )

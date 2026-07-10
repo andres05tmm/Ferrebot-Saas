@@ -19,14 +19,8 @@ import { useRealtimeEvent } from '@/components/RealtimeProvider.jsx'
 import FiltrosCalendario from './FiltrosCalendario.jsx'
 import GrillaMes from './GrillaMes.jsx'
 import DetalleDia from './DetalleDia.jsx'
-import { hoyCO, hoyStrCO, qsEntidad, MESES } from './util.js'
-
-// Eventos que cambian la actividad del calendario. El endpoint del mes es barato de re-pedir; los
-// eventos de asignación/horas/asistencia/mantenimiento repintan los dots del día correspondiente.
-const EVENTOS = [
-  'reconnected', 'registro_horas_creado', 'mantenimiento_registrado', 'asistencia_registrada',
-  'asignacion_maquina_actualizada', 'asignacion_trabajador_actualizada', 'obra_actualizada',
-]
+import EstadoActual from './EstadoActual.jsx'
+import { hoyCO, hoyStrCO, qsEntidad, MESES, EVENTOS_CALENDARIO } from './util.js'
 
 export default function CalendarioObra() {
   const { refreshKey } = useOutletContext() ?? {}
@@ -37,7 +31,7 @@ export default function CalendarioObra() {
   // El path lleva los filtros de entidad → cambiarlos refetchea el mes automáticamente (path en deps).
   const mesPath = `/obras/calendario?anio=${anio}&mes=${mes}${qsEntidad(filtros)}`
   const q = useFetch(mesPath, [refreshKey])
-  useRealtimeEvent(EVENTOS, q.refetch)
+  useRealtimeEvent(EVENTOS_CALENDARIO, q.refetch)
 
   // Selects de entidad: se piden SOLO cuando su vista está activa (path null = en reposo, sin fetch).
   const obrasQ = useFetch(filtros.vista === 'obras' ? '/obras' : null)
@@ -84,6 +78,8 @@ export default function CalendarioObra() {
         maquinas={Array.isArray(maquinasQ.data) ? maquinasQ.data : []}
         trabajadores={Array.isArray(trabajadoresQ.data) ? trabajadoresQ.data : []}
       />
+
+      <EstadoActual vista={filtros.vista} refreshKey={refreshKey} />
 
       <GrillaMes
         anio={anio}

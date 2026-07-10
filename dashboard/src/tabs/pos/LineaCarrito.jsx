@@ -47,6 +47,16 @@ export default function LineaCarrito({ it, precio, onCantidad, onQuitar, onEspec
         </button>
       </div>
 
+      {/* Multiplicadores (patrón del FerreBot viejo): SETEAN la cantidad — predecible al ojo; la
+          edición libre queda en el input. El precio se re-consulta solo (efecto firmaPrecios). */}
+      {!it.varia && (
+        <div className="mt-1.5 flex items-center gap-1" role="group" aria-label={`Cantidad rápida de ${it.nombre}`}>
+          {[2, 5, 10].map(n => (
+            <Seg key={n} activo={Number(it.cantidad) === n} onClick={() => onCantidad(String(n))}
+              aria-label={`×${n} de ${it.nombre}`}>×{n}</Seg>
+          ))}
+        </div>
+      )}
       {it.permite_fraccion && !it.usarEspecial && (
         <div className="mt-1.5 flex items-center gap-1" role="group" aria-label={`Fracción de ${it.nombre}`}>
           {FRACCIONES.map(([et, val]) => (

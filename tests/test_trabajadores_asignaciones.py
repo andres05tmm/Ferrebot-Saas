@@ -8,12 +8,13 @@
     obras a la vez), y el evento SSE `asignacion_trabajador_actualizada` (espía publish). Sin dinero ni
     transición de estado (el trabajador no lleva estado).
 """
-from datetime import date
+from datetime import date, timedelta
 from types import SimpleNamespace
 
 import httpx
 import pytest
 from fastapi import FastAPI
+from pydantic import ValidationError
 from httpx import ASGITransport
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -279,6 +280,42 @@ async def test_solape_un_trabajador_no_en_dos_obras(tenant):
             await svc.crear_asignacion(
                 t.id, AsignacionTrabajadorCrear(obra_id=o2, fecha_inicio=date(2026, 7, 5), fecha_fin=date(2026, 7, 20))
             )
+
+
+async def test_reactivar_con_solape_409(tenant):
+    """Cerrar A, crear B sobre el rango viejo de A y REACTIVAR A debe chocar (revalida el solape)."""
+    async with AsyncSession(tenant.engine) as s:
+        svc = _service(s)
+        t = await svc.crear(_trabajador())
+        cid = (
+            await s.execute(text("INSERT INTO clientes (nombre) VALUES ('C') RETURNING id"))
+        ).scalar_one()
+
+        async def _obra() -> int:
+            return (
+                await s.execute(
+                    text("INSERT INTO obras (cliente_id, nombre, estado) VALUES (:c, 'O', 'EN_EJECUCION') RETURNING id"),
+                    {"c": cid},
+                )
+            ).scalar_one()
+
+        o1 = await _obra()
+        o2 = await _obra()
+        a = await svc.crear_asignacion(
+            t.id, AsignacionTrabajadorCrear(obra_id=o1, fecha_inicio=date(2026, 7, 1), fecha_fin=date(2026, 7, 31))
+        )
+        await svc.actualizar_asignacion(t.id, a.id, AsignacionTrabajadorActualizar(activa=False))
+        await svc.crear_asignacion(
+            t.id, AsignacionTrabajadorCrear(obra_id=o2, fecha_inicio=date(2026, 7, 10), fecha_fin=date(2026, 7, 20))
+        )
+        with pytest.raises(AsignacionSolapada):
+            await svc.actualizar_asignacion(t.id, a.id, AsignacionTrabajadorActualizar(activa=True))
+
+
+def test_crear_fecha_fin_pasada_sin_inicio_invalida():
+    """Sin fecha_inicio el default efectivo es HOY Colombia: fecha_fin en el pasado = rango invertido (422)."""
+    with pytest.raises(ValidationError):
+        AsignacionTrabajadorCrear(obra_id=1, fecha_fin=today_co() - timedelta(days=1))
 
 
 async def test_listar_orden_reciente_primero(tenant):

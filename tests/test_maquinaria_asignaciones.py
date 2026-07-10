@@ -14,6 +14,7 @@ from types import SimpleNamespace
 import httpx
 import pytest
 from fastapi import FastAPI
+from pydantic import ValidationError
 from httpx import ASGITransport
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -386,6 +387,55 @@ async def test_solape_cerrada_no_bloquea_posterior(tenant):
             maquina.id, AsignacionMaquinaCrear(obra_id=o2, fecha_inicio=date(2026, 2, 1))
         )
         assert asig.id is not None
+
+
+async def test_reactivar_con_solape_409(tenant):
+    """Cerrar A, crear B sobre el rango viejo de A y REACTIVAR A debe chocar: la reactivación revalida
+    el solape (sin esto quedarían dos activas solapadas — invariante de la feature)."""
+    async with AsyncSession(tenant.engine) as s:
+        svc = _service(s)
+        maquina = await svc.crear(_maquina())
+        cid = await _cliente(s)
+        oid = await _obra(s, cid)
+        o2 = await _obra(s, cid)
+        a = await svc.crear_asignacion(
+            maquina.id,
+            AsignacionMaquinaCrear(obra_id=oid, fecha_inicio=date(2026, 7, 1), fecha_fin=date(2026, 7, 31)),
+        )
+        await svc.actualizar_asignacion(maquina.id, a.id, AsignacionMaquinaActualizar(activa=False))
+        await svc.crear_asignacion(
+            maquina.id,
+            AsignacionMaquinaCrear(obra_id=o2, fecha_inicio=date(2026, 7, 10), fecha_fin=date(2026, 7, 20)),
+        )
+        with pytest.raises(AsignacionSolapada):
+            await svc.actualizar_asignacion(
+                maquina.id, a.id, AsignacionMaquinaActualizar(activa=True)
+            )
+
+
+async def test_reactivar_sin_solape_ok(tenant):
+    """Reactivar cuando NO hay otra activa sobre el rango debe pasar (la revalidación no bloquea de más)."""
+    async with AsyncSession(tenant.engine) as s:
+        svc = _service(s)
+        maquina = await svc.crear(_maquina())
+        cid = await _cliente(s)
+        oid = await _obra(s, cid)
+        a = await svc.crear_asignacion(
+            maquina.id,
+            AsignacionMaquinaCrear(obra_id=oid, fecha_inicio=date(2026, 7, 1), fecha_fin=date(2026, 7, 31)),
+        )
+        await svc.actualizar_asignacion(maquina.id, a.id, AsignacionMaquinaActualizar(activa=False))
+        asig = await svc.actualizar_asignacion(
+            maquina.id, a.id, AsignacionMaquinaActualizar(activa=True)
+        )
+        assert asig.activa is True
+
+
+def test_crear_fecha_fin_pasada_sin_inicio_invalida():
+    """Sin fecha_inicio el default efectivo es HOY Colombia: una fecha_fin en el pasado es rango
+    invertido y el schema la rechaza (422 en HTTP)."""
+    with pytest.raises(ValidationError):
+        AsignacionMaquinaCrear(obra_id=1, fecha_fin=today_co() - timedelta(days=1))
 
 
 async def test_disponible_a_ocupada_al_asignar_hoy(tenant):

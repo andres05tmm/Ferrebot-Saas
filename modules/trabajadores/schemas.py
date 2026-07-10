@@ -12,6 +12,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from core.config.timezone import today_co
+
 TipoVinculacion = Literal["DIRECTO", "PATACALIENTE"]
 
 
@@ -118,11 +120,10 @@ class AsignacionTrabajadorCrear(BaseModel):
 
     @model_validator(mode="after")
     def _rango_valido(self) -> "AsignacionTrabajadorCrear":
-        if (
-            self.fecha_inicio is not None
-            and self.fecha_fin is not None
-            and self.fecha_fin < self.fecha_inicio
-        ):
+        # Compara contra el default EFECTIVO (hoy Colombia) cuando fecha_inicio no viene: sin esto,
+        # omitir fecha_inicio y mandar una fecha_fin en el pasado crearía un rango invertido.
+        inicio = self.fecha_inicio or today_co()
+        if self.fecha_fin is not None and self.fecha_fin < inicio:
             raise ValueError("fecha_fin no puede ser anterior a fecha_inicio")
         return self
 

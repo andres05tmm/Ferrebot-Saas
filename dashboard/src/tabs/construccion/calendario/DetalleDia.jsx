@@ -71,11 +71,16 @@ export default function DetalleDia({ fecha, filtros, onCerrar, onCambio }) {
 
       {q.loading ? (
         <Esqueleto filas={3} />
-      ) : total === 0 ? (
+      ) : total === 0 && !admin ? (
         <EstadoVacio icono={CalendarDays} titulo="Sin actividad este día"
           descripcion="No hay horas de máquina, reportes, asistencia, mantenimientos ni planeación para el filtro seleccionado." />
       ) : (
         <div className="space-y-2 p-3">
+          {total === 0 && (
+            <p className="px-1 text-[12px] text-muted-foreground">
+              Sin actividad este día. Puedes planear asignaciones abajo.
+            </p>
+          )}
           {ver('maquinas') && <SeccionMaquinas horas={horas} />}
           {ver('obras') && <SeccionObras reportes={reportes} consumos={consumos} />}
           {ver('trabajadores') && <SeccionTrabajadores asistencia={asistencia} />}

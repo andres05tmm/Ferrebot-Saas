@@ -52,6 +52,7 @@ export default function CalendarioObra() {
     setFiltros((prev) => ({ ...prev, [campo]: valor }))
   }
   function mover(delta) {
+    setDiaSeleccionado(null) // el detalle abierto pertenece al mes que se abandona
     setPeriodo(({ anio, mes }) => {
       const m = mes + delta
       if (m < 1) return { anio: anio - 1, mes: 12 }

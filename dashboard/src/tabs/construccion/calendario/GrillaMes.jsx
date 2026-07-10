@@ -49,7 +49,7 @@ function tituloCelda(fecha, c, planeado) {
   return `${fecha}: sin actividad`
 }
 
-export default function GrillaMes({ anio, mes, porFecha, hoy, seleccionada, onSeleccionar, onMover }) {
+export default function GrillaMes({ anio, mes, porFecha, hoy, seleccionada, onSeleccionar, onMover, cargando }) {
   const celdas = useMemo(() => {
     const primero = new Date(Date.UTC(anio, mes - 1, 1))
     const offset = (primero.getUTCDay() + 6) % 7
@@ -86,7 +86,7 @@ export default function GrillaMes({ anio, mes, porFecha, hoy, seleccionada, onSe
         </button>
       </div>
 
-      <div className="grid grid-cols-7 gap-1 text-center">
+      <div className={`grid grid-cols-7 gap-1 text-center ${cargando ? 'opacity-60' : ''}`} aria-busy={cargando || undefined}>
         {DIAS_SEMANA.map((d) => <div key={d} className="py-1 text-caption text-muted-foreground">{d}</div>)}
         {celdas.map((c, i) => c === null
           ? <div key={`v-${i}`} />

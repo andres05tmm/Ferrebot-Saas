@@ -146,9 +146,12 @@ class TrabajadoresService:
         cambios = datos.model_dump(exclude_unset=True)
         nueva_fin = cambios.get("fecha_fin", asig.fecha_fin)
         nueva_activa = cambios.get("activa", asig.activa)
+        # Revalida el solape si cambia el rango O si se REACTIVA una asignación cerrada: mientras estuvo
+        # inactiva pudo crearse otra activa sobre el mismo rango.
+        reactivada = nueva_activa and not asig.activa
         if (
             nueva_activa
-            and "fecha_fin" in cambios
+            and ("fecha_fin" in cambios or reactivada)
             and await self._repo.asignacion_solapada(
                 trabajador_id, asig.fecha_inicio, nueva_fin, excluir_id=asignacion_id
             )

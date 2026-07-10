@@ -52,6 +52,8 @@ describe('TabPostventa', () => {
 
     expect(await screen.findByText('4.5')).toBeInTheDocument()
     expect(screen.getByText('Excelente servicio', { exact: false })).toBeInTheDocument()
-    expect(screen.getByLabelText('Horas tras el evento')).toHaveValue(3)
+    // findBy*: el input viene del fetch de config (request distinto al del KPI); en runners lentos
+    // puede resolver después — asumirlo síncrono hacía flaky el test en CI.
+    expect(await screen.findByLabelText('Horas tras el evento')).toHaveValue(3)
   })
 })

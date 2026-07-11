@@ -92,6 +92,8 @@ export const RUTA_FEATURE = {
   // RUTAS_RETAIL → sin supresión de familia), coherente con /obras y el resto del vertical.
   '/calendario': 'obras',
   '/maquinas': 'maquinaria',
+  // Operación de máquina en vivo (cronómetro + rotación, 0055): cuelga de la misma feature `maquinaria`.
+  '/operacion': 'maquinaria',
   '/herramientas': 'herramientas',
   '/trabajadores': 'nomina',
   '/nomina': 'nomina',

@@ -10,7 +10,7 @@ import {
   FileText, FileCheck, Calculator, FileCog,
   CalendarDays, Headset, BookText, HandCoins, ChefHat, Banknote,
   CreditCard, FileSpreadsheet, Star, BedDouble, Undo2, Percent, Library, Landmark, Scale,
-  HardHat, Wrench, ClipboardList, TrendingDown, Gauge, PackageSearch,
+  HardHat, Wrench, ClipboardList, TrendingDown, Gauge, PackageSearch, Timer,
 } from 'lucide-react'
 import { isRouteEnabled } from './lib/features.jsx'
 
@@ -42,6 +42,7 @@ export const ROUTES = [
   { path: '/obras',               label: 'Obras',               icon: HardHat,         group: 'construccion' },
   { path: '/calendario',          label: 'Calendario',          icon: CalendarDays,    group: 'construccion' },
   { path: '/maquinas',            label: 'Maquinaria',          icon: Truck,           group: 'construccion' },
+  { path: '/operacion',           label: 'Operación',           icon: Timer,           group: 'construccion' },
   { path: '/herramientas',        label: 'Herramientas',        icon: Wrench,          group: 'construccion' },
   { path: '/trabajadores',        label: 'Trabajadores',        icon: Users,           group: 'construccion' },
   { path: '/nomina',              label: 'Nómina',              icon: Wallet,          group: 'construccion' },

@@ -1,0 +1,69 @@
+/*
+ * ModalActivar — activa una máquina (arranca el cronómetro). Obra y operador son opcionales: sin obra el
+ * backend usa la asignación vigente de la máquina. POST /maquinas/{id}/operacion/iniciar → 201 sesión, o
+ * 409 (ya corriendo / sin asignación) cuyo detalle se muestra en un toast.
+ */
+import { useState } from 'react'
+import { toast } from 'sonner'
+import {
+  Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
+} from '@/components/ui/dialog.jsx'
+import { useFetch } from '@/components/shared.jsx'
+import { Campo, SELECT_CLS, BTN_PRIMARY, BTN_OUTLINE } from '../comunes.jsx'
+import { postOperacion } from './net.js'
+
+const arr = (x) => (Array.isArray(x) ? x : [])
+const labelTrab = (t) => `${t.nombres || ''} ${t.apellidos || ''}`.trim() || `#${t.id}`
+
+export default function ModalActivar({ maquina, onCerrar, onExito }) {
+  const obrasQ = useFetch(maquina ? '/obras' : null)
+  const trabajadoresQ = useFetch(maquina ? '/trabajadores' : null)
+  const [obraId, setObraId] = useState('')
+  const [operadorId, setOperadorId] = useState('')
+  const [enviando, setEnviando] = useState(false)
+
+  async function activar() {
+    setEnviando(true)
+    const r = await postOperacion(`/maquinas/${maquina.id}/operacion/iniciar`, {
+      ...(obraId ? { obra_id: Number(obraId) } : {}),
+      ...(operadorId ? { operador_id: Number(operadorId) } : {}),
+    })
+    setEnviando(false)
+    if (!r.ok) { toast.error(r.error); return }
+    toast.success(`${maquina.nombre} activada`)
+    onExito?.()
+  }
+
+  return (
+    <Dialog open={maquina != null} onOpenChange={(o) => { if (!o) onCerrar() }}>
+      <DialogContent aria-describedby="activar-desc">
+        <DialogHeader>
+          <DialogTitle>Activar {maquina?.nombre}</DialogTitle>
+          <DialogDescription id="activar-desc">
+            Arranca el cronómetro de la máquina. Si dejas la obra en automático, se usa su asignación vigente.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="grid gap-2.5">
+          <Campo label="Obra" hint="Opcional. Automático usa la asignación vigente de la máquina.">
+            <select value={obraId} onChange={(e) => setObraId(e.target.value)} className={SELECT_CLS}>
+              <option value="">Automático (asignación vigente)</option>
+              {arr(obrasQ.data).map((o) => <option key={o.id} value={o.id}>{o.nombre}</option>)}
+            </select>
+          </Campo>
+          <Campo label="Operador inicial" hint="Opcional. Puedes asignarlo o rotarlo después.">
+            <select value={operadorId} onChange={(e) => setOperadorId(e.target.value)} className={SELECT_CLS}>
+              <option value="">Sin operador</option>
+              {arr(trabajadoresQ.data).map((t) => <option key={t.id} value={t.id}>{labelTrab(t)}</option>)}
+            </select>
+          </Campo>
+        </div>
+        <div className="mt-3 flex justify-end gap-2">
+          <button type="button" onClick={onCerrar} className={`${BTN_OUTLINE} h-9 cursor-pointer`}>Cancelar</button>
+          <button type="button" onClick={activar} disabled={enviando} className={`${BTN_PRIMARY} h-9 cursor-pointer`}>
+            {enviando ? 'Activando…' : 'Activar máquina'}
+          </button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}

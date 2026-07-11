@@ -301,6 +301,8 @@ async def test_anular_no_materializa_ni_factura(tenant):
     assert anulada.estado == "ANULADA"
     assert await _cuenta(tenant.engine, "registros_horas_maquina") == 0
     assert await _cuenta(tenant.engine, "cargos_alquiler") == 0
+    # No queda ningún tramo abierto colgando en la sesión terminal.
+    assert await _cuenta(tenant.engine, "tramos_operador", "finalizado_en IS NULL") == 0
 
 
 async def test_detalle_trae_tramos_con_horas_propuestas(tenant):

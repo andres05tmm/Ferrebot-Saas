@@ -165,9 +165,16 @@ class OperacionMaquinaService:
         return resultado   # None solo si la sesión no tuviera tramos (imposible: iniciar abre uno)
 
     async def anular(self, sesion_id: int) -> SesionMaquina:
-        """Descarta una sesión ABIERTA (no materializa, no factura). 404/409 si no existe o no está abierta."""
+        """Descarta una sesión ABIERTA (no materializa, no factura). 404/409 si no existe o no está abierta.
+
+        Cierra el tramo corriente antes de anular: una sesión terminal no debe dejar un tramo abierto
+        (`finalizado_en` NULL) colgando —el detalle lo mostraría "en curso"—."""
         sesion = await self._sesion_abierta(sesion_id)
-        return await self._op.anular_sesion(sesion, finalizada_en=now_co())
+        ahora = now_co()
+        abierto = await self._op.tramo_abierto(sesion.id)
+        if abierto is not None:
+            await self._op.cerrar_tramo(abierto, finalizado_en=ahora)
+        return await self._op.anular_sesion(sesion, finalizada_en=ahora)
 
     async def tablero(self) -> list[dict]:
         """Sesiones en curso con máquina/obra/operador actual + inicio (para las tarjetas con cronómetro)."""

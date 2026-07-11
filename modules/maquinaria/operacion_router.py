@@ -30,8 +30,10 @@ from modules.maquinaria.schemas import (
     IniciarOperacion,
     RegistroHorasResultado,
     RotarOperador,
+    SesionDetalle,
     SesionLeer,
     TableroSesion,
+    TramoDetalle,
 )
 
 router = APIRouter(
@@ -140,3 +142,21 @@ async def tablero_operacion(
 ) -> list[TableroSesion]:
     """Sesiones en curso (máquina/obra/operador actual + inicio) para las tarjetas con cronómetro en vivo."""
     return [TableroSesion(**fila) for fila in await service.tablero()]
+
+
+# `/operacion/tablero` (estático) se declara ANTES: con `sesion_id:int` "tablero" nunca casa aquí, pero
+# el orden lo deja explícito.
+@router.get("/operacion/{sesion_id}", response_model=SesionDetalle)
+async def obtener_operacion(
+    sesion_id: int,
+    service: OperacionMaquinaService = Depends(get_operacion_service),
+    _user: Principal = Depends(require_role("vendedor")),
+) -> SesionDetalle:
+    """Detalle de una sesión + sus tramos con horas propuestas (para el modal de revisión). 404 si no existe."""
+    try:
+        detalle = await service.detalle(sesion_id)
+    except SesionInexistente as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
+    salida = SesionDetalle.model_validate(detalle["sesion"])
+    salida.tramos = [TramoDetalle(**t) for t in detalle["tramos"]]
+    return salida

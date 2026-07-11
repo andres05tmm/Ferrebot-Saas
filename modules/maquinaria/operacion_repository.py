@@ -80,6 +80,10 @@ class SqlOperacionRepository:
         await self._publicar(sesion, "sesion_maquina_finalizada")
         return sesion
 
+    async def publicar_rotacion(self, sesion: SesionMaquina) -> None:
+        """Evento SSE de rotación de operador (el tablero en vivo refresca el operador actual)."""
+        await self._publicar(sesion, "tramo_operador_rotado")
+
     async def _publicar(self, sesion: SesionMaquina, evento: str) -> None:
         await publish(
             self._s,
@@ -129,6 +133,25 @@ class SqlOperacionRepository:
             .order_by(TramoOperador.iniciado_en, TramoOperador.id)
         )
         return list((await self._s.execute(stmt)).scalars().all())
+
+    async def tramos_detalle(self, sesion_id: int) -> list[dict]:
+        """Tramos de la sesión con el nombre del operador resuelto (LEFT JOIN trabajadores), ordenados por
+        inicio. Lo consume el modal de revisión al finalizar (horas propuestas por tramo)."""
+        filas = (
+            await self._s.execute(
+                text(
+                    "SELECT tr.id, tr.operador_id, "
+                    "  NULLIF(TRIM(COALESCE(t.nombres,'') || ' ' || COALESCE(t.apellidos,'')), '') "
+                    "    AS operador, "
+                    "  tr.iniciado_en, tr.finalizado_en, tr.horas_confirmadas "
+                    "FROM tramos_operador tr "
+                    "LEFT JOIN trabajadores t ON t.id = tr.operador_id "
+                    "WHERE tr.sesion_id = :s ORDER BY tr.iniciado_en, tr.id"
+                ),
+                {"s": sesion_id},
+            )
+        ).all()
+        return [dict(f._mapping) for f in filas]
 
     async def fijar_horas_confirmadas(self, tramo: TramoOperador, horas: Decimal) -> None:
         """Guarda las horas confirmadas del tramo (default = medido por el reloj; el humano las ajusta)."""

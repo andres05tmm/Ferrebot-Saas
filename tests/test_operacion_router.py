@@ -73,6 +73,19 @@ class _FakeOperacion:
             raise self._error
         return _sesion(id=sesion_id, estado="ANULADA")
 
+    async def detalle(self, sesion_id):
+        if self._error:
+            raise self._error
+        return {
+            "sesion": _sesion(id=sesion_id),
+            "tramos": [
+                dict(
+                    id=10, operador_id=7, operador="Juan Pérez", iniciado_en=_AHORA,
+                    finalizado_en=None, horas_propuestas=Decimal("2.5"),
+                )
+            ],
+        }
+
     async def tablero(self):
         return [
             dict(
@@ -197,6 +210,22 @@ async def test_tablero_200_forma():
     assert r.status_code == 200, r.text
     fila = r.json()[0]
     assert fila["maquina"] == "Vibrocompactador" and fila["operador"] == "Juan Pérez"
+
+
+async def test_obtener_detalle_200_forma():
+    async with _cliente(_app(_FakeOperacion())) as c:
+        r = await c.get("/api/v1/operacion/1")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["id"] == 1 and len(body["tramos"]) == 1
+    assert body["tramos"][0]["operador"] == "Juan Pérez"
+    assert body["tramos"][0]["horas_propuestas"] == "2.5"
+
+
+async def test_obtener_detalle_404():
+    async with _cliente(_app(_FakeOperacion(error=SesionInexistente(9)))) as c:
+        r = await c.get("/api/v1/operacion/9")
+    assert r.status_code == 404, r.text
 
 
 async def test_gateado_por_capacidad_maquinaria():

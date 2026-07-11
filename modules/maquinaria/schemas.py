@@ -274,6 +274,24 @@ class SesionLeer(BaseModel):
     notas: str | None
 
 
+class TramoDetalle(BaseModel):
+    """Tramo de una sesión con el operador resuelto y las horas PROPUESTAS (el reloj propone, el humano
+    ajusta). Lo consume el modal de revisión al finalizar."""
+
+    id: int
+    operador_id: int | None
+    operador: str | None
+    iniciado_en: datetime
+    finalizado_en: datetime | None
+    horas_propuestas: Decimal
+
+
+class SesionDetalle(SesionLeer):
+    """Sesión + sus tramos (para el modal de revisión). Extiende `SesionLeer` con el desglose de rotación."""
+
+    tramos: list[TramoDetalle] = Field(default_factory=list)
+
+
 class TableroSesion(BaseModel):
     """Fila del tablero en vivo: una sesión ABIERTA con nombres de máquina/obra y el operador/inicio del
     tramo corriente. Alimenta las tarjetas con cronómetro (el front cuenta desde `tramo_desde`/`iniciada_en`)."""

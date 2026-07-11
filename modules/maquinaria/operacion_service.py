@@ -98,7 +98,25 @@ class OperacionMaquinaService:
         if abierto is not None:
             await self._op.cerrar_tramo(abierto, finalizado_en=ahora)
         await self._op.abrir_tramo(sesion_id=sesion.id, operador_id=operador_id, iniciado_en=ahora)
+        await self._op.publicar_rotacion(sesion)   # el tablero en vivo refresca el operador actual
         return sesion
+
+    async def detalle(self, sesion_id: int) -> dict:
+        """Sesión + sus tramos con horas PROPUESTAS (para el modal de revisión al finalizar).
+
+        Horas propuestas por tramo: lo confirmado si ya existe; si no, lo medido por el reloj
+        (`finalizado_en − iniciado_en`, usando `ahora` para el tramo aún corriendo). 404 si no existe."""
+        sesion = await self._op.obtener_sesion(sesion_id)
+        if sesion is None:
+            raise SesionInexistente(sesion_id)
+        ahora = now_co()
+        tramos = []
+        for tr in await self._op.tramos_detalle(sesion_id):
+            propuestas = tr["horas_confirmadas"]
+            if propuestas is None:
+                propuestas = horas_transcurridas(tr["iniciado_en"], tr["finalizado_en"] or ahora)
+            tramos.append({**tr, "horas_propuestas": propuestas})
+        return {"sesion": sesion, "tramos": tramos}
 
     async def finalizar(
         self, sesion_id: int, ajustes: dict[int, Decimal] | None = None

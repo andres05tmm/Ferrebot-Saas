@@ -303,6 +303,27 @@ async def test_anular_no_materializa_ni_factura(tenant):
     assert await _cuenta(tenant.engine, "cargos_alquiler") == 0
 
 
+async def test_detalle_trae_tramos_con_horas_propuestas(tenant):
+    """El detalle (modal de revisión) trae los tramos con operador resuelto y horas propuestas por el reloj."""
+    async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
+        maquina_id, obra_id, _ = await _seed(s)
+        op_a = await _operador(s, doc="111", nombre="Juan")
+        await s.commit()
+        svc = construir_operacion_service(s)
+        sesion = await svc.iniciar(maquina_id, obra_id=obra_id, operador_id=op_a)
+        await s.commit()
+        await svc.rotar(sesion.id, None)   # segundo tramo sin operador
+        await s.commit()
+        detalle = await svc.detalle(sesion.id)
+
+    assert detalle["sesion"].id == sesion.id
+    tramos = detalle["tramos"]
+    assert len(tramos) == 2
+    assert tramos[0]["operador"] == "Juan Op"          # nombres 'Juan' + apellidos 'Op'
+    assert tramos[1]["operador"] is None               # tramo sin operador
+    assert all("horas_propuestas" in t for t in tramos)
+
+
 # --------------------------- errores de sesión ---------------------------
 
 async def test_finalizar_sesion_inexistente_404(tenant):

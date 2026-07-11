@@ -480,6 +480,20 @@ class MaquinariaService:
         `GET /maquinas/{id}/horas` para adjuntar `turnos` a cada parte del kárdex."""
         return await self._repo.turnos_por_registros(registro_ids)
 
+    async def resumen_de_registro(self, registro_id: int) -> ResultadoRegistroHoras:
+        """Reconstruye el resumen (horas/ingreso/turnos) de un parte YA existente, con `replay=True`.
+
+        Lo usa `finalizar` de la operación en vivo cuando la sesión ya estaba FINALIZADA: en vez de
+        re-materializar (que duplicaría), devuelve el resumen del parte que la sesión generó. Resuelve la
+        asignación vigente del parte para el precio pactado (misma resolución que `registrar_horas`)."""
+        registro = await self._repo.obtener_registro(registro_id)
+        if registro is None:
+            raise MaquinaInexistente(registro_id)   # parte esperado ausente: trata como no encontrado
+        asignacion = await self._repo.asignacion_activa(
+            registro.maquina_id, registro.obra_id, registro.fecha
+        )
+        return await self._resumen(registro, asignacion, replay=True)
+
 
 def _turno_coincidente(turnos: list[dict], datos: RegistroHorasCrear) -> bool:
     """¿El payload coincide con un turno ya registrado (mismo operador, misma franja de inicio y mismas

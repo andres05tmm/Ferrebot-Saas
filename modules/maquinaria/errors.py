@@ -97,3 +97,33 @@ class OperadorInexistente(MaquinariaError):
     def __init__(self, operador_id: int) -> None:
         super().__init__(f"El operador {operador_id} no existe")
         self.operador_id = operador_id
+
+
+class SesionYaAbierta(MaquinariaError):
+    """La máquina ya tiene una sesión de operación ABIERTA → 409.
+
+    Una máquina no puede correr dos sesiones en vivo a la vez (índice único parcial en la BD). Hay que
+    finalizar (o anular) la sesión abierta antes de iniciar otra."""
+
+    def __init__(self, maquina_id: int) -> None:
+        super().__init__(f"La máquina {maquina_id} ya tiene una sesión de operación abierta")
+        self.maquina_id = maquina_id
+
+
+class SesionInexistente(MaquinariaError):
+    """No hay sesión de operación con ese id → 404."""
+
+    def __init__(self, sesion_id: int) -> None:
+        super().__init__(f"La sesión de operación {sesion_id} no existe")
+        self.sesion_id = sesion_id
+
+
+class SesionNoAbierta(MaquinariaError):
+    """La sesión no está ABIERTA (ya se finalizó o anuló) → 409.
+
+    Rotar/finalizar/anular exigen una sesión en curso; una FINALIZADA/ANULADA es terminal."""
+
+    def __init__(self, sesion_id: int, estado: str) -> None:
+        super().__init__(f"La sesión de operación {sesion_id} no está abierta (estado {estado})")
+        self.sesion_id = sesion_id
+        self.estado = estado

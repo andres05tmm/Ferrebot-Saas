@@ -54,6 +54,7 @@ import PanelConstruccion from './tabs/construccion/panel/PanelConstruccion.jsx'
 import TabCotizacionesObra from './tabs/TabCotizacionesObra.jsx'
 import TabResbalos from './tabs/TabResbalos.jsx'
 import TabMaquinas from './tabs/TabMaquinas.jsx'
+import TabOperacionMaquinas from './tabs/TabOperacionMaquinas.jsx'
 import TabHerramientas from './tabs/TabHerramientas.jsx'
 import TabTrabajadores from './tabs/TabTrabajadores.jsx'
 import TabNomina from './tabs/TabNomina.jsx'
@@ -103,6 +104,7 @@ const TABS = {
   '/calendario': TabCalendario,
   '/resbalos': TabResbalos,
   '/maquinas': TabMaquinas,
+  '/operacion': TabOperacionMaquinas,
   '/herramientas': TabHerramientas,
   '/trabajadores': TabTrabajadores,
   '/nomina': TabNomina,

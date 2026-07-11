@@ -48,6 +48,7 @@ from modules.bancos.gmail.webhook import crear_router_bancolombia
 from modules.bancos.gmail.wiring import construir_webhook_bancolombia_deps
 from modules.faq.router import router as faq_router
 from modules.herramientas.router import router as herramientas_router
+from modules.maquinaria.operacion_router import router as maquinaria_operacion_router
 from modules.maquinaria.router import router as maquinaria_router
 from modules.nomina.router import router as nomina_router
 from modules.obra.router import router as obras_router
@@ -178,6 +179,7 @@ def create_app(spa_dist: Path | None = None) -> FastAPI:
     app.include_router(obras_router, prefix="/api/v1")          # /obras* — feature `obras`
     app.include_router(cotizacion_obra_router, prefix="/api/v1")  # /cotizaciones-obra* — feature `cotizaciones_aiu` (Ola A F2)
     app.include_router(maquinaria_router, prefix="/api/v1")     # /maquinas* — feature `maquinaria`
+    app.include_router(maquinaria_operacion_router, prefix="/api/v1")  # /operacion* — máquina en vivo (0055)
     app.include_router(herramientas_router, prefix="/api/v1")   # /herramientas* — feature `herramientas`
     app.include_router(cartera_router, prefix="/api/v1")        # /cartera-alquiler* — feature `cartera_alquiler` (Fase 5)
     app.include_router(trabajadores_router, prefix="/api/v1")   # /trabajadores* — feature `nomina`

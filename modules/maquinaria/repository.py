@@ -290,6 +290,34 @@ class SqlMaquinasRepository:
             stmt = stmt.with_for_update()
         return (await self._s.execute(stmt)).scalar_one_or_none()
 
+    async def obtener_registro(self, registro_id: int) -> RegistroHorasMaquina | None:
+        """Parte de horas por id (para reconstruir el resumen de una sesión ya finalizada — replay)."""
+        return (
+            await self._s.execute(
+                select(RegistroHorasMaquina).where(RegistroHorasMaquina.id == registro_id)
+            )
+        ).scalar_one_or_none()
+
+    async def asignaciones_vigentes_hoy(
+        self, maquina_id: int, hoy: date
+    ) -> list[AsignacionMaquinaObra]:
+        """Asignaciones ACTIVAS de la máquina que cubren `hoy` (activa, fecha_inicio ≤ hoy ≤ fecha_fin/
+        NULL). Sirve para inferir la obra al iniciar una operación cuando hay una sola vigente."""
+        stmt = (
+            select(AsignacionMaquinaObra)
+            .where(
+                AsignacionMaquinaObra.maquina_id == maquina_id,
+                AsignacionMaquinaObra.activa.is_(True),
+                AsignacionMaquinaObra.fecha_inicio <= hoy,
+                or_(
+                    AsignacionMaquinaObra.fecha_fin.is_(None),
+                    AsignacionMaquinaObra.fecha_fin >= hoy,
+                ),
+            )
+            .order_by(AsignacionMaquinaObra.fecha_inicio.desc(), AsignacionMaquinaObra.id.desc())
+        )
+        return list((await self._s.execute(stmt)).scalars().all())
+
     async def registro_del_dia(
         self, maquina_id: int, obra_id: int, fecha: date
     ) -> RegistroHorasMaquina | None:

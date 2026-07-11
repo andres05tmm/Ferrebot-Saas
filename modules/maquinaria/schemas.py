@@ -224,6 +224,89 @@ class RegistroHorasResultado(BaseModel):
     turnos: list[TurnoLeer] = Field(default_factory=list)   # franjas de operador del día (rotación)
 
 
+# --- Operación de máquina EN VIVO (cronómetro + rotación de operadores, migración 0055) --------------
+
+
+class IniciarOperacion(BaseModel):
+    """Activar una máquina. `maquina_id` viaja por la ruta. `obra_id` es opcional: si falta, el service
+    infiere la asignación vigente hoy (por el invariante de no-solape hay a lo sumo una). `operador_id`
+    es el primer operador del cronómetro (opcional: se puede activar sin asignar aún)."""
+
+    obra_id: int | None = None
+    operador_id: int | None = None
+
+
+class RotarOperador(BaseModel):
+    """Cambiar de operador en vivo: cierra el tramo corriente y abre otro. `operador_id` puede ser null
+    (la máquina queda corriendo sin operador asignado en ese tramo)."""
+
+    operador_id: int | None = None
+
+
+class AjusteTramo(BaseModel):
+    """Ajuste manual de las horas de un tramo al finalizar (el supervisor confirma/edita lo del reloj)."""
+
+    tramo_id: int
+    horas: Decimal = Field(ge=0)
+
+
+class FinalizarOperacion(BaseModel):
+    """Finalizar y materializar la sesión. `ajustes` pisa las horas medidas por el reloj tramo a tramo;
+    los tramos no incluidos usan el tiempo medido (default)."""
+
+    ajustes: list[AjusteTramo] = Field(default_factory=list)
+
+
+class SesionLeer(BaseModel):
+    """Vista de salida de una sesión de operación (todas las columnas del ORM)."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    maquina_id: int
+    obra_id: int
+    asignacion_id: int
+    fecha: date
+    estado: str
+    iniciada_en: datetime
+    finalizada_en: datetime | None
+    registro_horas_id: int | None
+    notas: str | None
+
+
+class TramoDetalle(BaseModel):
+    """Tramo de una sesión con el operador resuelto y las horas PROPUESTAS (el reloj propone, el humano
+    ajusta). Lo consume el modal de revisión al finalizar."""
+
+    id: int
+    operador_id: int | None
+    operador: str | None
+    iniciado_en: datetime
+    finalizado_en: datetime | None
+    horas_propuestas: Decimal
+
+
+class SesionDetalle(SesionLeer):
+    """Sesión + sus tramos (para el modal de revisión). Extiende `SesionLeer` con el desglose de rotación."""
+
+    tramos: list[TramoDetalle] = Field(default_factory=list)
+
+
+class TableroSesion(BaseModel):
+    """Fila del tablero en vivo: una sesión ABIERTA con nombres de máquina/obra y el operador/inicio del
+    tramo corriente. Alimenta las tarjetas con cronómetro (el front cuenta desde `tramo_desde`/`iniciada_en`)."""
+
+    sesion_id: int
+    maquina_id: int
+    maquina: str
+    obra_id: int
+    obra: str
+    iniciada_en: datetime
+    operador_id: int | None
+    operador: str | None
+    tramo_desde: datetime | None
+
+
 # --- Mantenimientos (Fase 1 del cockpit): CRUD sobre la tabla de la migración 0045 ------------------
 
 

@@ -39,6 +39,10 @@ tipo_mantenimiento = PgEnum(
 origen_registro = PgEnum(
     "MANUAL", "TELEGRAM_BOT", "IMPORTACION", name="origen_registro", create_type=False
 )
+# Estado de una sesión de operación en vivo (migración 0055). Lo crea la migración; aquí solo se mapea.
+estado_sesion_maquina = PgEnum(
+    "ABIERTA", "FINALIZADA", "ANULADA", name="estado_sesion_maquina", create_type=False
+)
 
 
 class Maquina(TenantBase):
@@ -135,6 +139,62 @@ class TurnoHorasMaquina(TenantBase):
     hora_inicio: Mapped[time | None] = mapped_column(Time)
     hora_fin: Mapped[time | None] = mapped_column(Time)
     horas: Mapped[Decimal] = mapped_column(CANTIDAD, nullable=False)
+    creado_en: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class SesionMaquina(TenantBase):
+    """Sesión de operación EN VIVO de una máquina (cronómetro + rotación, migración 0055).
+
+    Captura efímera: activar abre la sesión (`iniciada_en`), rotar/finalizar mueven sus `TramoOperador`,
+    y FINALIZAR la materializa en el parte diario (`RegistroHorasMaquina`) reusando el motor de horas y
+    cartera. `asignacion_id` fija el precio/mínimo pactados; `registro_horas_id` (NULL hasta finalizar)
+    enlaza el parte generado y es el ancla anti-doble-facturación (finalizar dos veces = replay). Un
+    índice único parcial en la BD garantiza una sola sesión ABIERTA por máquina. FKs mapeadas como
+    BigInteger sin `relationship` (patrón del repo). La base ES la frontera del tenant (sin `empresa_id`).
+    """
+
+    __tablename__ = "sesiones_maquina"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    maquina_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    obra_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    asignacion_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    fecha: Mapped[date] = mapped_column(Date, nullable=False)   # día Colombia (clave natural del parte)
+    estado: Mapped[str] = mapped_column(
+        estado_sesion_maquina, nullable=False, server_default="ABIERTA"
+    )
+    iniciada_en: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    finalizada_en: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    registro_horas_id: Mapped[int | None] = mapped_column(BigInteger)   # parte materializado (provenance)
+    notas: Mapped[str | None] = mapped_column(Text)
+    creado_en: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class TramoOperador(TenantBase):
+    """Franja de un operador dentro de una sesión de operación en vivo (rotación, migración 0055).
+
+    `iniciado_en`/`finalizado_en` son instantes absolutos (TIMESTAMPTZ); `finalizado_en` NULL = tramo
+    corriendo (un solo abierto por sesión, garantizado por índice único parcial). `horas_confirmadas` es
+    lo que el supervisor confirma al finalizar (el reloj propone `finalizado_en − iniciado_en`, el humano
+    ajusta). `operador_id` referencia `trabajadores.id` (FK en la migración; ORM sin `relationship`).
+    Borrar/anular la sesión arrastra sus tramos (ON DELETE CASCADE en la migración)."""
+
+    __tablename__ = "tramos_operador"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    sesion_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    operador_id: Mapped[int | None] = mapped_column(BigInteger)
+    iniciado_en: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    finalizado_en: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    horas_confirmadas: Mapped[Decimal | None] = mapped_column(CANTIDAD)
     creado_en: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

@@ -44,8 +44,10 @@ async def test_tenant_upgrade_downgrade_limpio(tenant):
     # + 1 de la máquina de estados de transmisión de nómina electrónica (estado_transmision_nomina, Fase 7,
     # 0050_fe_obra_nomina_cune; esa migración también agrega facturas_electronicas.obra_id y las columnas
     # de transmisión de detalles_liquidacion, que no son enums) = 42, + 2 de pedidos a proveedor
-    # (pedido_prov_estado, pedido_prov_condicion, 0052_pedidos_proveedor) = 44. Total: 44.
-    assert enums == 44
+    # (pedido_prov_estado, pedido_prov_condicion, 0052_pedidos_proveedor) = 44. 0053_ventas_pagos y
+    # 0054_turnos_horas_maquina NO añaden enums (solo tablas/columnas) = 44, + 1 de la operación de máquina
+    # en vivo (estado_sesion_maquina, 0055_operacion_maquina_vivo) = 45. Total: 45.
+    assert enums == 45
 
     await tenant.engine.dispose()
     downgrade_tenant(tenant.url, "base")

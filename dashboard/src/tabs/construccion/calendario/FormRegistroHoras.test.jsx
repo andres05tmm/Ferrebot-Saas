@@ -115,6 +115,28 @@ describe('FormRegistroHoras — POST de horas/turno', () => {
     expect(toast.success).not.toHaveBeenCalled()
   })
 
+  it('una fecha FUTURA no dispara el POST (guard de ventana del parte)', async () => {
+    const fetchMock = instalarFetch()
+    render(<FormRegistroHoras maquinaFija={MAQUINA} onExito={vi.fn()} onCancelar={vi.fn()} />)
+    fireEvent.change(await screen.findByLabelText('Obra'), { target: { value: '5' } })
+    fireEvent.change(screen.getByLabelText('Horas trabajadas'), { target: { value: '5' } })
+    fireEvent.change(screen.getByLabelText('Fecha'), { target: { value: '2999-12-15' } })
+    fireEvent.click(screen.getByRole('button', { name: /Registrar horas/i }))
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('No se puede registrar un parte de un día futuro'))
+    expect(payloadDe(fetchMock)).toBeNull()
+  })
+
+  it('una fecha más vieja que la ventana no dispara el POST', async () => {
+    const fetchMock = instalarFetch()
+    render(<FormRegistroHoras maquinaFija={MAQUINA} onExito={vi.fn()} onCancelar={vi.fn()} />)
+    fireEvent.change(await screen.findByLabelText('Obra'), { target: { value: '5' } })
+    fireEvent.change(screen.getByLabelText('Horas trabajadas'), { target: { value: '5' } })
+    fireEvent.change(screen.getByLabelText('Fecha'), { target: { value: '2020-01-15' } })
+    fireEvent.click(screen.getByRole('button', { name: /Registrar horas/i }))
+    await waitFor(() => expect(toast.error).toHaveBeenCalled())
+    expect(payloadDe(fetchMock)).toBeNull()
+  })
+
   it('muestra el detail del backend ante un 409 (sin asignación activa)', async () => {
     const detalle = 'La máquina no tiene una asignación activa que cubra la fecha'
     instalarFetch({ postResp: jsonResp({ detail: detalle }, 409) })

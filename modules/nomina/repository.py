@@ -61,6 +61,19 @@ class SqlNominaRepository:
         return (await self._s.execute(stmt)).scalar_one_or_none()
 
     # --- periodos -------------------------------------------------------------
+    async def periodo_solapado(self, fecha_inicio, fecha_fin) -> bool:
+        """¿Existe ya un periodo cuyo rango se cruce con [fecha_inicio, fecha_fin]? (solape estándar:
+        inicio_existente <= fin_nuevo AND fin_existente >= inicio_nuevo). Guard anti doble liquidación."""
+        stmt = (
+            select(PeriodoNomina.id)
+            .where(
+                PeriodoNomina.fecha_inicio <= fecha_fin,
+                PeriodoNomina.fecha_fin >= fecha_inicio,
+            )
+            .limit(1)
+        )
+        return (await self._s.execute(stmt)).scalar_one_or_none() is not None
+
     async def crear_periodo(
         self, datos: PeriodoCrear, params: ParametrosLegales
     ) -> PeriodoNomina:

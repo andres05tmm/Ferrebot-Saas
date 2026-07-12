@@ -3,6 +3,8 @@
  * y badge de estado de cita. El backend emite/recibe ISO con offset -05:00; aquí no se asume la zona
  * del navegador: las fechas de filtro son YYYY-MM-DD en Colombia y el datetime-local se sella a -05:00.
  */
+import { hoyStrCO } from '@/lib/fechas'
+
 export const TIPOS_RECURSO = ['profesional', 'sala', 'equipo', 'mesa', 'cancha']
 export const DIAS_SEMANA = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo']
 export const ESTADOS = ['pendiente', 'confirmada', 'cumplida', 'cancelada', 'no_show']
@@ -59,10 +61,8 @@ export function ConfirmacionBadge({ confirmacion }) {
   )
 }
 
-/** Hoy en Colombia como YYYY-MM-DD (sin ambigüedad de zona del navegador). */
-export function hoyCO() {
-  return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
-}
+/** Hoy en Colombia como YYYY-MM-DD (alias del helper compartido para los consumidores de agenda). */
+export const hoyCO = hoyStrCO
 
 /** Hoy + `dias` en Colombia como YYYY-MM-DD. */
 export function masDiasCO(dias) {

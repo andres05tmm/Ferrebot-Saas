@@ -20,6 +20,7 @@ from modules.nomina.errors import (
     ParametrosLegalesInexistentes,
     PeriodoBloqueado,
     PeriodoNominaInexistente,
+    PeriodoSolapado,
     TrabajadorNoLiquidable,
 )
 from modules.nomina.models import DetalleLiquidacion, PeriodoNomina, ProrrateoNominaObra
@@ -160,7 +161,7 @@ async def crear_periodo(
     """Crea un periodo (congela el snapshot de parámetros vigente). 409 si no hay parámetros vigentes."""
     try:
         periodo = await service.crear_periodo(payload)
-    except ParametrosLegalesInexistentes as exc:
+    except (ParametrosLegalesInexistentes, PeriodoSolapado) as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
     return _periodo_leer(periodo)
 

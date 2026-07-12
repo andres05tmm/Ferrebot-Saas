@@ -161,6 +161,17 @@ class SqlCajaRepository:
         })
         return movimiento
 
+    async def estado_obra(self, obra_id: int) -> str | None:
+        """Estado de la obra viva (None si no existe o está soft-deleted). Valida el `obra_id` de un
+        gasto imputado ANTES del insert (sin esto la FK revienta con 500 y una LIQUIDADA aceptaría
+        gastos que su snapshot congelado ya no refleja)."""
+        return (
+            await self._s.execute(
+                text("SELECT estado FROM obras WHERE id = :id AND eliminado_en IS NULL"),
+                {"id": obra_id},
+            )
+        ).scalar_one_or_none()
+
     async def gasto_por_key(self, idempotency_key: str) -> Gasto | None:
         return (
             await self._s.execute(

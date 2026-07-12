@@ -9,12 +9,15 @@
  */
 import { useState } from 'react'
 import { useOutletContext } from 'react-router-dom'
+import { toast } from 'sonner'
 import { Timer, Truck, PlayCircle } from 'lucide-react'
 import { useFetch, ErrorMsg } from '@/components/shared.jsx'
 import { useRealtimeEvent } from '@/components/RealtimeProvider.jsx'
+import { useAuth } from '@/hooks/useAuth'
 import { Card } from '@/components/ui/card.jsx'
 import { Semaforo, EstadoVacio, Esqueleto, BTN_PRIMARY } from './construccion/comunes.jsx'
 import { estadoMaquina } from './construccion/operacion/estadoMaquina.js'
+import { postOperacion } from './construccion/operacion/net.js'
 import TarjetaOperacion from './construccion/operacion/TarjetaOperacion.jsx'
 import ModalActivar from './construccion/operacion/ModalActivar.jsx'
 import ModalRotar from './construccion/operacion/ModalRotar.jsx'
@@ -31,12 +34,22 @@ const labelMaq = (m) => (m.codigo ? `${m.codigo} · ${m.nombre}` : m.nombre)
 
 export default function TabOperacionMaquinas() {
   const { refreshKey } = useOutletContext() ?? {}
+  const admin = useAuth().isAdmin()
   const tableroQ = useFetch('/operacion/tablero', [refreshKey])
   const maquinasQ = useFetch('/maquinas', [refreshKey])
   const [modal, setModal] = useState(null)   // {tipo:'activar', maquina} | {tipo:'rotar'|'finalizar', sesion}
 
   const refetch = () => { tableroQ.refetch(); maquinasQ.refetch() }
   useRealtimeEvent(EVENTOS, refetch)
+
+  // Anular (solo admin): descarta una activación por error SIN materializar (Finalizar factura el
+  // mínimo pactado aunque las horas se ajusten a 0 — la salida correcta para el error es esta).
+  async function anular(sesion) {
+    if (!window.confirm(`¿Anular la operación de ${sesion.maquina}? No se registrará ningún parte ni cobro.`)) return
+    const r = await postOperacion(`/operacion/${sesion.sesion_id}/anular`)
+    if (r.ok) { toast.success('Operación anulada (sin parte ni cobro)'); refetch() }
+    else toast.error(r.error)
+  }
 
   const sesiones = Array.isArray(tableroQ.data) ? tableroQ.data : []
   const maquinas = Array.isArray(maquinasQ.data) ? maquinasQ.data : []
@@ -81,6 +94,7 @@ export default function TabOperacionMaquinas() {
                 sesion={s}
                 onRotar={(sesion) => setModal({ tipo: 'rotar', sesion })}
                 onFinalizar={(sesion) => setModal({ tipo: 'finalizar', sesion })}
+                onAnular={admin ? anular : null}
               />
             ))}
           </div>

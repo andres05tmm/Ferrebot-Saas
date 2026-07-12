@@ -9,7 +9,7 @@ import { Card } from '@/components/ui/card.jsx'
 import { Semaforo, BTN_PRIMARY, BTN_OUTLINE } from '../comunes.jsx'
 import { useCronometro } from './useCronometro.js'
 
-export default function TarjetaOperacion({ sesion, onRotar, onFinalizar }) {
+export default function TarjetaOperacion({ sesion, onRotar, onFinalizar, onAnular }) {
   const total = useCronometro(sesion.iniciada_en)
   const tramo = useCronometro(sesion.tramo_desde || sesion.iniciada_en)
 
@@ -58,6 +58,16 @@ export default function TarjetaOperacion({ sesion, onRotar, onFinalizar }) {
           <Square className="size-4" aria-hidden="true" /> Finalizar
         </button>
       </div>
+      {/* Salida para la activación por error (solo admin): Finalizar SIEMPRE factura el mínimo. */}
+      {onAnular && (
+        <button
+          type="button"
+          onClick={() => onAnular(sesion)}
+          className="self-end text-[11px] font-medium text-muted-foreground cursor-pointer hover:text-destructive"
+        >
+          Anular sin cobrar
+        </button>
+      )}
     </Card>
   )
 }

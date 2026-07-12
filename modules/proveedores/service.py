@@ -46,8 +46,10 @@ class ProveedoresService:
         """Registra el abono y devuelve la factura con el saldo recalculado.
 
         404 si la factura no existe; 422 si el monto excede el pendiente (criterio: no sobre-abonar).
+        El check lee el pendiente BAJO LOCK (FOR UPDATE): dos abonos concurrentes se serializan y el
+        segundo ve el pendiente ya recalculado (sin el lock ambos pasarían y se sobre-abonaría).
         """
-        factura = await self._repo.obtener(datos.factura_id)
+        factura = await self._repo.obtener(datos.factura_id, bloquear=True)
         if factura is None:
             raise FacturaProveedorInexistente(datos.factura_id)
         if datos.monto > factura.pendiente:

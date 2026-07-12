@@ -15,6 +15,8 @@ from core.tenancy.catalogo import expandir_metapacks
 from modules.cartera.service import construir_cartera_service
 from modules.maquinaria.errors import (
     MaquinaInexistente,
+    MaquinaNoOperable,
+    ObraNoAsignable,
     OperadorInexistente,
     SesionInexistente,
     SesionNoAbierta,
@@ -75,7 +77,7 @@ async def iniciar_operacion(
         )
     except (MaquinaInexistente, OperadorInexistente) as exc:
         raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
-    except (SesionYaAbierta, SinAsignacionActiva) as exc:
+    except (SesionYaAbierta, SinAsignacionActiva, MaquinaNoOperable) as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
     return SesionLeer.model_validate(sesion)
 
@@ -115,6 +117,10 @@ async def finalizar_operacion(
         raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
     except (SesionNoAbierta, SinAsignacionActiva) as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+    except ObraNoAsignable as exc:
+        # La obra se liquidó (o desapareció) con la sesión corriendo: la materialización no procede.
+        codigo = status.HTTP_404_NOT_FOUND if exc.motivo == "inexistente" else status.HTTP_409_CONFLICT
+        raise HTTPException(codigo, str(exc)) from exc
     return RegistroHorasResultado.model_validate(resultado)
 
 

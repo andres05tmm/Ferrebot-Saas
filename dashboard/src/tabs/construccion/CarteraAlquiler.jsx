@@ -33,6 +33,7 @@ import {
   CalendarClock, TriangleAlert,
 } from 'lucide-react'
 import { api } from '@/lib/api'
+import { hoyStrCO as hoyCO } from '@/lib/fechas'
 import { cop, num, useFetch } from '@/components/shared.jsx'
 import { useRealtimeEvent } from '@/components/RealtimeProvider.jsx'
 import { useFeatures } from '@/lib/features.jsx'
@@ -70,11 +71,6 @@ export function tonoColita(diasSinAbono, umbral = UMBRAL_COLITA_DEFAULT) {
 
 const ESTADO_CUPO = { verde: 'Holgado', ambar: 'Al límite', rojo: 'Excedido', gris: 'Sin tope' }
 const BARRA = { verde: 'bg-success', ambar: 'bg-warning', rojo: 'bg-destructive', gris: 'bg-muted-foreground' }
-
-function hoyCO() {
-  // YYYY-MM-DD de HOY en hora Colombia (regla #4: nunca date.today() crudo).
-  return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
-}
 
 // ── Gate: solo monta el árbol real (y sus fetch/subscripciones) si la empresa tiene la capacidad ──
 // Separar el gate del cuerpo evita llamar hooks (useFetch/useRealtimeEvent) cuando la feature está

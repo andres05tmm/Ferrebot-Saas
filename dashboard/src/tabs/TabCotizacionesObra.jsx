@@ -367,7 +367,14 @@ function CotizacionForm({ cotizacion, onClose, onGuardada }) {
   })
   const [items, setItems] = useState(
     cotizacion?.items?.length
-      ? cotizacion.items.map((it) => ({ descripcion: it.descripcion, unidad: it.unidad, cantidad: String(it.cantidad), valor_unitario: String(it.valor_unitario) }))
+      ? cotizacion.items.map((it) => ({
+          descripcion: it.descripcion, unidad: it.unidad, cantidad: String(it.cantidad), valor_unitario: String(it.valor_unitario),
+          // Costos internos estimados (no editables aquí, pero el PUT reemplaza el set completo de
+          // ítems: si no se re-envían, se pierden y el presupuesto de obra queda sin desglose).
+          costo_material_est: it.costo_material_est ?? null,
+          costo_mano_obra_est: it.costo_mano_obra_est ?? null,
+          costo_equipo_est: it.costo_equipo_est ?? null,
+        }))
       : [{ ...ITEM_VACIO }],
   )
   const [enviando, setEnviando] = useState(false)
@@ -399,6 +406,9 @@ function CotizacionForm({ cotizacion, onClose, onGuardada }) {
       items: itemsLimpios.map((it, i) => ({
         orden: i + 1, descripcion: it.descripcion.trim(), unidad: it.unidad.trim(),
         cantidad: String(Number(it.cantidad) || 0), valor_unitario: String(Number(it.valor_unitario) || 0),
+        ...(it.costo_material_est != null ? { costo_material_est: String(it.costo_material_est) } : {}),
+        ...(it.costo_mano_obra_est != null ? { costo_mano_obra_est: String(it.costo_mano_obra_est) } : {}),
+        ...(it.costo_equipo_est != null ? { costo_equipo_est: String(it.costo_equipo_est) } : {}),
       })),
     }
     // El número sólo se envía al CREAR (editable, autogenerado si va vacío); el PUT no lo acepta.

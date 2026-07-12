@@ -47,8 +47,8 @@ const RESBALO_MIN_PCT = 5
 // Chip neutro para metadatos de la fila (obra, categoría). Pill de token, sin color de estado.
 const CHIP = 'inline-flex items-center rounded-full border border-border bg-surface-2 px-2 py-0.5 text-[10px] font-medium text-muted-foreground'
 
-// Idempotencia (regla 8): la compra es una operación crítica. Cada envío lleva una key nueva; un
-// reintento de red reusa la misma (misma key + mismo payload → la compra original, no un duplicado).
+// Idempotencia (regla 8): la compra es una operación crítica. La key vive en un useMemo sobre el
+// payload: reintentar sin editar reusa la MISMA key (replay); editar el form la renueva.
 function nuevaIdemKey() {
   try { return crypto.randomUUID() } catch { return `c-${Date.now()}-${Math.random().toString(16).slice(2)}` }
 }
@@ -168,6 +168,14 @@ function RegistrarCompra({ construccion, obras, onRegistrada }) {
     [items],
   )
 
+  // Key estable mientras el payload no cambie: el reintento tras timeout (el server SÍ commiteó) es
+  // replay, no un duplicado de stock/CxP. Editar el form renueva la key (y si se reusara con payload
+  // distinto, el backend responde 409 idempotencia_conflicto — nunca duplica).
+  const idemKey = useMemo(
+    () => nuevaIdemKey(),
+    [proveedor, items, obraId, categoria, esViaje, precioVenta, aCredito, numeroFactura, vencimiento],
+  )
+
   // Los items de catálogo (con producto) y los de obra (sin producto) no se mezclan: al cambiar de modo
   // se limpia la lista para que el payload sea coherente.
   function cambiarModo(nuevo) {
@@ -211,7 +219,7 @@ function RegistrarCompra({ construccion, obras, onRegistrada }) {
     try {
       const res = await api('/compras', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Idempotency-Key': nuevaIdemKey() },
+        headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idemKey },
         body: JSON.stringify(payload),
       })
       if (res.ok) {

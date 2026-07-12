@@ -2,7 +2,7 @@
  * ModalGastoRapido — registrar un gasto sin salir del cockpit /hoy (reforma F4).
  * POST /gastos (idempotente); exige caja abierta (409 → mensaje claro con el porqué).
  */
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { api } from '@/lib/api'
 import { Button } from '@/components/ui/button.jsx'
@@ -24,6 +24,9 @@ export default function ModalGastoRapido({ abierto, onCerrar, onRegistrado }) {
   const [enviando, setEnviando] = useState(false)
 
   const valido = Number(monto) > 0
+  // Key estable mientras el payload no cambie: un reintento tras timeout (el server SÍ commiteó) es
+  // replay, no duplicado. Editar cualquier campo renueva la key (payload nuevo = operación nueva).
+  const idemKey = useMemo(() => crypto.randomUUID(), [categoria, monto, concepto])
 
   async function registrar(e) {
     e?.preventDefault?.()
@@ -32,7 +35,7 @@ export default function ModalGastoRapido({ abierto, onCerrar, onRegistrado }) {
     try {
       const res = await api('/gastos', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Idempotency-Key': crypto.randomUUID() },
+        headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idemKey },
         body: JSON.stringify({ categoria, monto: Number(monto), concepto: concepto.trim() || null }),
       })
       if (res.ok) {

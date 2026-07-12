@@ -18,6 +18,7 @@ import { toast } from 'sonner'
 import { api } from '@/lib/api'
 import { useFetch } from '@/components/shared.jsx'
 import { Campo, SELECT_CLS, BTN_PRIMARY, BTN_OUTLINE } from '../comunes.jsx'
+import { sumarDiasCO, VENTANA_DIAS_PARTE } from '@/lib/fechas'
 import { hoyStrCO, h } from './util.js'
 
 const arr = (x) => (Array.isArray(x) ? x : [])
@@ -40,11 +41,17 @@ export default function FormRegistroHoras({ maquinaFija, fechaDefault, onExito, 
   })
   const set = (k) => (e) => setF((prev) => ({ ...prev, [k]: e.target.value }))
 
+  // Ventana del parte (espeja el guard 422 del backend): hoy o hasta N días atrás, nunca futuro.
+  const hoy = hoyStrCO()
+  const minFecha = sumarDiasCO(hoy, -VENTANA_DIAS_PARTE)
+
   function validar(maquinaId) {
     if (!maquinaId) return 'Elige la máquina'
     if (!f.obra_id) return 'Elige la obra'
     if (f.horas_trabajadas === '' || Number(f.horas_trabajadas) <= 0) return 'Indica las horas trabajadas'
     if (f.hora_inicio && f.hora_fin && f.hora_fin <= f.hora_inicio) return 'La hora fin debe ser posterior al inicio'
+    if (f.fecha > hoy) return 'No se puede registrar un parte de un día futuro'
+    if (f.fecha < minFecha) return `El parte solo se puede registrar hasta ${VENTANA_DIAS_PARTE} días atrás`
     return null
   }
 
@@ -95,8 +102,8 @@ export default function FormRegistroHoras({ maquinaFija, fechaDefault, onExito, 
             {arr(obrasQ.data).map((o) => <option key={o.id} value={o.id}>{o.nombre}</option>)}
           </select>
         </Campo>
-        <Campo label="Fecha">
-          <input type="date" value={f.fecha} onChange={set('fecha')} className={SELECT_CLS} />
+        <Campo label="Fecha" hint={`Hoy o hasta ${VENTANA_DIAS_PARTE} días atrás.`}>
+          <input type="date" value={f.fecha} onChange={set('fecha')} min={minFecha} max={hoy} className={SELECT_CLS} />
         </Campo>
         <Campo label="Horas trabajadas" requerido>
           <input type="number" inputMode="decimal" step="0.5" min="0" value={f.horas_trabajadas}

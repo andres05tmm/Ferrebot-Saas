@@ -6,6 +6,7 @@
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { api, apiJson } from '@/lib/api'
+import { hoyStrCO } from '@/lib/fechas'
 import { cop } from '@/components/shared.jsx'
 import { Button } from '@/components/ui/button.jsx'
 import { Input } from '@/components/ui/input.jsx'
@@ -101,7 +102,7 @@ export default function ModalAbonoProveedor({ abierto, onCerrar, onRegistrado })
           <div className="space-y-1.5">
             <Label htmlFor="ap-fecha">Fecha (opcional)</Label>
             <Input id="ap-fecha" type="date" value={fecha} onChange={(e) => setFecha(e.target.value)}
-              aria-label="Fecha abono" />
+              max={hoyStrCO()} aria-label="Fecha abono" />
           </div>
           <Button type="submit" disabled={!valido || enviando} className="w-full">
             {enviando ? 'Registrando…' : 'Registrar abono'}

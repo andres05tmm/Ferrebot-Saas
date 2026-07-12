@@ -15,16 +15,9 @@ export const DIAS_SEMANA = ['L', 'M', 'X', 'J', 'V', 'S', 'D']
 export const MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio',
   'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
 
-// Año/mes de HOY en hora Colombia (UTC-5). Espeja `hoyCO` de historial/VistaMes.jsx.
-export function hoyCO() {
-  const s = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
-  return { anio: Number(s.slice(0, 4)), mes: Number(s.slice(5, 7)) }
-}
-
-// Fecha de HOY (YYYY-MM-DD) en hora Colombia, para marcar el día actual en la grilla.
-export function hoyStrCO() {
-  return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
-}
+// "Hoy Colombia" vive en el helper compartido; aquí solo se re-exporta para los consumidores del
+// calendario (hoyCO = año/mes del periodo visible, hoyStrCO = YYYY-MM-DD del día actual).
+export { hoyStrCO, anioMesCO as hoyCO } from '@/lib/fechas'
 
 // Querystring de los filtros de ENTIDAD (no la vista): solo agrega los ids con valor. Comparte el
 // contrato del backend (obra_id/maquina_id/trabajador_id). Devuelve '' o '&clave=valor…' (concatenable).

@@ -21,6 +21,7 @@ import { useFetch } from '@/components/shared.jsx'
 import { useAuth } from '@/hooks/useAuth'
 import { Card } from '@/components/ui/card.jsx'
 import { Semaforo, EstadoVacio, Esqueleto, BTN_OUTLINE } from '../comunes.jsx'
+import { sumarDiasCO, VENTANA_DIAS_PARTE } from '@/lib/fechas'
 import { qsEntidad, fechaLarga, hoyStrCO, h, fechaCorta } from './util.js'
 import FormAsignacionMaquina from './FormAsignacionMaquina.jsx'
 import FormAsignacionTrabajador from './FormAsignacionTrabajador.jsx'
@@ -40,6 +41,8 @@ export default function DetalleDia({ fecha, filtros, onCerrar, onCambio }) {
   // Relación temporal del día vs. HOY (Colombia): decide el encabezado de Planeado y si se puede planear.
   const hoy = hoyStrCO()
   const cuando = fecha < hoy ? 'pasado' : fecha > hoy ? 'futuro' : 'hoy'
+  // Solo se registran partes de hoy o hasta N días atrás (espeja el guard 422 del backend).
+  const registrable = fecha <= hoy && fecha >= sumarDiasCO(hoy, -VENTANA_DIAS_PARTE)
 
   const horas = arr(d.horas_maquina)
   const reportes = arr(d.reportes)
@@ -88,7 +91,7 @@ export default function DetalleDia({ fecha, filtros, onCerrar, onCambio }) {
                 : 'Sin actividad este día. Puedes planear asignaciones abajo.'}
             </p>
           )}
-          {ver('maquinas') && <SeccionMaquinas horas={horas} fecha={fecha} onCambio={recargar} />}
+          {ver('maquinas') && <SeccionMaquinas horas={horas} fecha={fecha} registrable={registrable} onCambio={recargar} />}
           {ver('obras') && <SeccionObras reportes={reportes} consumos={consumos} />}
           {ver('trabajadores') && <SeccionTrabajadores asistencia={asistencia} />}
           {ver('maquinas') && <SeccionMantenimientos hechos={mantenimientos} proximos={proximos} />}
@@ -123,8 +126,9 @@ function Linea({ children }) {
 
 // Máquinas del día: lista de partes (con desglose de turnos si la máquina rotó operadores) + acceso a
 // registrar horas. El bloque se renderiza SIEMPRE que la vista incluya máquinas (aunque no haya partes
-// aún) para que quede a mano el botón "Registrar horas"; sin partes muestra una línea guía discreta.
-function SeccionMaquinas({ horas, fecha, onCambio }) {
+// aún); el botón "Registrar horas" solo aparece en días `registrable` (hoy o la ventana corta hacia
+// atrás) — un día futuro o ya lejano es solo lectura.
+function SeccionMaquinas({ horas, fecha, registrable, onCambio }) {
   const [abrir, setAbrir] = useState(false)
   return (
     <details open className="rounded-md border border-border-subtle bg-surface">
@@ -134,11 +138,13 @@ function SeccionMaquinas({ horas, fecha, onCambio }) {
         <span className="ml-auto tabular text-[11px] text-muted-foreground">{horas.length}</span>
       </summary>
       <div className="space-y-2 px-3 pb-3 pt-1">
-        <button type="button" onClick={() => setAbrir((v) => !v)} aria-expanded={abrir}
-          className={`${BTN_OUTLINE} min-h-11 cursor-pointer px-2.5 text-[12px] sm:min-h-0 sm:h-7`}>
-          <Plus className="size-3.5" /> Registrar horas
-        </button>
-        {abrir && (
+        {registrable && (
+          <button type="button" onClick={() => setAbrir((v) => !v)} aria-expanded={abrir}
+            className={`${BTN_OUTLINE} min-h-11 cursor-pointer px-2.5 text-[12px] sm:min-h-0 sm:h-7`}>
+            <Plus className="size-3.5" /> Registrar horas
+          </button>
+        )}
+        {registrable && abrir && (
           <FormRegistroHoras fechaDefault={fecha}
             onExito={() => { setAbrir(false); onCambio?.() }} onCancelar={() => setAbrir(false)} />
         )}
@@ -288,12 +294,16 @@ function SeccionPlaneado({ maquinas, trabajadores, hitos, admin, fecha, cuando, 
   if (!admin && !conteo) return null
   const puedeAsignar = admin && cuando !== 'pasado'
 
-  async function cerrar(path, nombre) {
+  async function cerrar(path, nombre, fechaInicio) {
     if (!window.confirm(`¿Cerrar la asignación de ${nombre}? Se marcará como finalizada hoy.`)) return
+    // Una asignación planeada a FUTURO no puede cerrar "hoy" (dejaría fecha_fin < fecha_inicio, que el
+    // backend rechaza con 422): se cierra en su propio día de inicio.
+    const hoy = hoyStrCO()
+    const fin = fechaInicio && fechaInicio > hoy ? fechaInicio : hoy
     try {
       const res = await api(path, {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ activa: false, fecha_fin: hoyStrCO() }),
+        body: JSON.stringify({ activa: false, fecha_fin: fin }),
       })
       if (res.ok) { toast.success('Asignación cerrada'); onCambio?.() }
       else toast.error('No se pudo cerrar la asignación')
@@ -343,7 +353,7 @@ function SeccionPlaneado({ maquinas, trabajadores, hitos, admin, fecha, cuando, 
               </div>
               {admin && (
                 <button type="button"
-                  onClick={() => cerrar(`/maquinas/${p.maquina_id}/asignaciones/${p.asignacion_id}`, p.maquina || `Máquina #${p.maquina_id}`)}
+                  onClick={() => cerrar(`/maquinas/${p.maquina_id}/asignaciones/${p.asignacion_id}`, p.maquina || `Máquina #${p.maquina_id}`, p.fecha_inicio)}
                   className="inline-flex min-h-11 shrink-0 cursor-pointer items-center rounded-md px-2.5 py-2 text-[11px] font-medium text-muted-foreground hover:bg-surface-2 hover:text-destructive sm:min-h-0 sm:py-1">
                   Cerrar
                 </button>
@@ -364,7 +374,7 @@ function SeccionPlaneado({ maquinas, trabajadores, hitos, admin, fecha, cuando, 
               </div>
               {admin && (
                 <button type="button"
-                  onClick={() => cerrar(`/trabajadores/${p.trabajador_id}/asignaciones/${p.asignacion_id}`, p.trabajador || `Trabajador #${p.trabajador_id}`)}
+                  onClick={() => cerrar(`/trabajadores/${p.trabajador_id}/asignaciones/${p.asignacion_id}`, p.trabajador || `Trabajador #${p.trabajador_id}`, p.fecha_inicio)}
                   className="inline-flex min-h-11 shrink-0 cursor-pointer items-center rounded-md px-2.5 py-2 text-[11px] font-medium text-muted-foreground hover:bg-surface-2 hover:text-destructive sm:min-h-0 sm:py-1">
                   Cerrar
                 </button>

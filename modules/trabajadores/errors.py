@@ -35,6 +35,18 @@ class AsignacionSolapada(TrabajadoresError):
         self.fecha_fin = fecha_fin
 
 
+class RangoAsignacionInvalido(TrabajadoresError):
+    """El parche dejaría `fecha_fin < fecha_inicio` → 422 (mismo guard que maquinaria: el CREATE valida
+    en el schema, el PATCH aquí — un rango invertido desaparece de toda consulta)."""
+
+    def __init__(self, fecha_inicio: object, fecha_fin: object) -> None:
+        super().__init__(
+            f"La fecha fin ({fecha_fin}) no puede ser anterior al inicio ({fecha_inicio}) de la asignación"
+        )
+        self.fecha_inicio = fecha_inicio
+        self.fecha_fin = fecha_fin
+
+
 class AsignacionInexistente(TrabajadoresError):
     """No hay asignación con ese id para el trabajador indicado → 404 (acotada a su trabajador)."""
 

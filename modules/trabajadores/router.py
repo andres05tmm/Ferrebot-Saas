@@ -17,6 +17,7 @@ from modules.trabajadores.errors import (
     AsignacionInexistente,
     AsignacionSolapada,
     ObraNoAsignable,
+    RangoAsignacionInvalido,
     TrabajadorDuplicado,
     TrabajadorInexistente,
 )
@@ -170,6 +171,8 @@ async def actualizar_asignacion_trabajador(
         raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
     except AsignacionSolapada as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+    except RangoAsignacionInvalido as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
     return AsignacionTrabajadorLeer.model_validate(asig)
 
 

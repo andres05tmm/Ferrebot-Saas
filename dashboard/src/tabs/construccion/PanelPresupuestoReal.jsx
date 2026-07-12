@@ -33,8 +33,10 @@
  * Presentación tokenizada (design system del repo, comunes.jsx). El total autoritativo es el del backend
  * (función pura money-safe `calcular_gasto_real_obra`); acá solo se formatea y se dibujan proporciones.
  */
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
+// hoyCO = fecha de hoy en Colombia (YYYY-MM-DD), default de los formularios (helper compartido, regla #4).
+import { hoyStrCO as hoyCO, sumarDiasCO, VENTANA_DIAS_PARTE } from '@/lib/fechas'
 import {
   Gauge, Wallet, ShoppingCart, Users, Timer, Package, Lock, Search,
   TrendingUp, TrendingDown, Minus, X, CheckCircle2,
@@ -92,13 +94,15 @@ function normalizarGastoReal(raw) {
 export default function PanelPresupuestoReal({ obra, onCambio }) {
   const liquidada = obra.estado === 'LIQUIDADA'
   const finalizada = obra.estado === 'FINALIZADA'
-  const gastoQ = useFetch(`/obras/${obra.id}/gasto-real`)
-  // El snapshot congelado solo se pide si la obra ya está liquidada (si no, el path falsy deja el hook en reposo).
+  // LIQUIDADA → la fuente es el SNAPSHOT congelado (mismos nombres de campos que gasto-real); pedir el
+  // gasto-real vivo mostraría cifras "congeladas" que cambian solas si algo se imputa después.
+  const gastoQ = useFetch(liquidada ? null : `/obras/${obra.id}/gasto-real`)
   const liqQ = useFetch(liquidada ? `/obras/${obra.id}/liquidacion` : null)
+  const fuente = liquidada ? liqQ : gastoQ
 
   const [form, setForm] = useState(null)   // null | 'gasto' | 'horas' | 'consumo'
 
-  const g = normalizarGastoReal(gastoQ.data)
+  const g = normalizarGastoReal(fuente.data)
   const cerrarForm = () => setForm(null)
   const trasImputar = () => { cerrarForm(); gastoQ.refetch() }
 
@@ -114,9 +118,9 @@ export default function PanelPresupuestoReal({ obra, onCambio }) {
         )}
       </div>
 
-      {gastoQ.loading ? (
+      {fuente.loading ? (
         <EsqueletoPanel />
-      ) : gastoQ.error ? (
+      ) : fuente.error ? (
         <p className="rounded-md bg-destructive/10 px-3 py-2 text-[12px] text-destructive">No se pudo calcular el gasto real de la obra.</p>
       ) : !g ? (
         <p className="py-6 text-center text-[12px] text-muted-foreground">Sin datos de gasto real.</p>
@@ -329,10 +333,6 @@ function MarcoForm({ titulo, onCancelar, enviando, onGuardar, textoGuardar, chil
   )
 }
 
-// Fecha de hoy en Colombia (YYYY-MM-DD) como default de los formularios (regla zona horaria).
-function hoyCO() {
-  return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
-}
 
 const CATEGORIA_GASTO = [
   ['REPUESTOS', 'Repuestos'], ['MANTENIMIENTO_MAQUINA', 'Mantenimiento de máquina'], ['ALMUERZOS', 'Almuerzos'],
@@ -357,6 +357,8 @@ function FormImputarGasto({ obraId, onHecho, onCancelar }) {
   const [f, setF] = useState({ concepto: '', monto: '', categoria_gasto: 'OTRO', metodo_pago: 'EFECTIVO', numero_referencia: '' })
   const [enviando, setEnviando] = useState(false)
   const set = (k) => (e) => setF((p) => ({ ...p, [k]: e.target.value }))
+  // Key estable mientras el payload no cambie: reintentar tras timeout es replay, no un gasto doble.
+  const idemKey = useMemo(() => crypto.randomUUID(), [f])
 
   async function guardar() {
     if (!f.concepto.trim()) { toast.error('Describe el gasto'); return }
@@ -372,7 +374,7 @@ function FormImputarGasto({ obraId, onHecho, onCancelar }) {
     }
     setEnviando(true)
     try {
-      const res = await api('/gastos', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+      const res = await api('/gastos', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idemKey }, body: JSON.stringify(payload) })
       if (!res.ok) {
         // 409 = no hay caja abierta: el gasto postea SU egreso de caja (invariante), así que exige caja.
         toast.error(res.status === 409 ? 'Abre la caja antes de imputar un gasto' : 'No se pudo imputar el gasto')
@@ -418,9 +420,15 @@ function FormRegistrarHoras({ obraId, onHecho, onCancelar }) {
   const [enviando, setEnviando] = useState(false)
   const set = (k) => (e) => setF((p) => ({ ...p, [k]: e.target.value }))
 
+  // Ventana del parte (espeja el guard 422 del backend): hoy o hasta N días atrás, nunca futuro.
+  const hoy = hoyCO()
+  const minFecha = sumarDiasCO(hoy, -VENTANA_DIAS_PARTE)
+
   async function guardar() {
     if (!f.maquina_id) { toast.error('Elige la máquina'); return }
     if (!(n(f.horas_trabajadas) > 0)) { toast.error('Las horas trabajadas deben ser mayores que cero'); return }
+    if (f.fecha > hoy) { toast.error('No se puede registrar un parte de un día futuro'); return }
+    if (f.fecha < minFecha) { toast.error(`El parte solo se puede registrar hasta ${VENTANA_DIAS_PARTE} días atrás`); return }
     const payload = {
       obra_id: obraId,                                  // la obra viaja en el cuerpo; la máquina, en la ruta
       fecha: f.fecha,
@@ -457,8 +465,8 @@ function FormRegistrarHoras({ obraId, onHecho, onCancelar }) {
           <Campo label="Horas trabajadas" requerido hint="Se factura el máximo entre esto y el mínimo pactado">
             <Input type="number" min="0" step="0.25" value={f.horas_trabajadas} onChange={set('horas_trabajadas')} className="h-8 text-right" />
           </Campo>
-          <Campo label="Fecha">
-            <Input type="date" value={f.fecha} onChange={set('fecha')} className="h-8" />
+          <Campo label="Fecha" hint={`Hoy o hasta ${VENTANA_DIAS_PARTE} días atrás`}>
+            <Input type="date" value={f.fecha} onChange={set('fecha')} min={minFecha} max={hoy} className="h-8" />
           </Campo>
           <Campo label="Observaciones">
             <Input value={f.observaciones} onChange={set('observaciones')} placeholder="Opcional" className="h-8" />
@@ -491,6 +499,9 @@ function FormRegistrarConsumo({ obraId, onHecho, onCancelar }) {
   const [f, setF] = useState({ cantidad: '', costo_unitario: '', fecha: hoyCO(), observaciones: '' })
   const [enviando, setEnviando] = useState(false)
   const set = (k) => (e) => setF((p) => ({ ...p, [k]: e.target.value }))
+  // El backend soporta idempotency_key en el body (mueve STOCK): sin ella un reintento tras timeout
+  // descuenta inventario dos veces. Estable mientras el payload no cambie.
+  const idemKey = useMemo(() => crypto.randomUUID(), [sel, f])
 
   function elegir(p) { setSel({ id: p.id, nombre: p.nombre }); setQ('') }
 
@@ -504,6 +515,7 @@ function FormRegistrarConsumo({ obraId, onHecho, onCancelar }) {
       costo_unitario: String(n(f.costo_unitario)),
       fecha: f.fecha,
       observaciones: f.observaciones.trim() || null,
+      idempotency_key: idemKey,
     }
     setEnviando(true)
     try {

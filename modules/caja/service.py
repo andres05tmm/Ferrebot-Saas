@@ -8,7 +8,7 @@ from decimal import Decimal
 
 from core.config.timezone import now_co, today_co
 from modules.caja.arqueo import calcular_arqueo
-from modules.caja.errors import CajaNoAbierta, GastoInexistente
+from modules.caja.errors import CajaNoAbierta, GastoInexistente, ObraNoImputable
 from modules.caja.models import Caja, CajaMovimiento, Gasto
 from modules.caja.repository import SqlCajaRepository
 from modules.proveedores.errors import (
@@ -183,6 +183,15 @@ class CajaService:
             previo = await self._repo.gasto_por_key(idempotency_key)
             if previo is not None:
                 return ResultadoGasto(previo, replay=True)
+
+        # Validación de la obra imputada ANTES de mover nada: inexistente → 404 (antes: FK → 500);
+        # LIQUIDADA → 409 (su gasto real es un snapshot congelado; no admite más imputaciones).
+        if obra_id is not None:
+            estado_obra = await self._repo.estado_obra(obra_id)
+            if estado_obra is None:
+                raise ObraNoImputable(obra_id, "inexistente")
+            if estado_obra == "LIQUIDADA":
+                raise ObraNoImputable(obra_id, "liquidada")
 
         # Validación del vínculo a CxP ANTES de mover nada (defaults seguros: no gasto a medias).
         if factura_proveedor_id is not None:

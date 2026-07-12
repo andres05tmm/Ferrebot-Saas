@@ -13,6 +13,19 @@ class CajaNoAbierta(CajaError):
         self.usuario_id = usuario_id
 
 
+class ObraNoImputable(CajaError):
+    """El `obra_id` del gasto no admite imputación. `motivo` decide el mapeo HTTP del router:
+
+    - `"inexistente"` (no existe o soft-deleted) → 404 (antes reventaba la FK con 500);
+    - `"liquidada"` (snapshot inmutable: su gasto real quedó congelado) → 409.
+    """
+
+    def __init__(self, obra_id: int, motivo: str) -> None:
+        super().__init__(f"La obra {obra_id} no admite imputar gastos ({motivo})")
+        self.obra_id = obra_id
+        self.motivo = motivo
+
+
 class GastoInexistente(CajaError):
     """No existe un gasto con ese id (p. ej. al aprobar uno de la bandeja de revisión). El router → 404."""
 

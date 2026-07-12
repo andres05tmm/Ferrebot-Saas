@@ -9,6 +9,7 @@ import { useOutletContext } from 'react-router-dom'
 import { toast } from 'sonner'
 import { ChevronDown, ChevronRight, Pencil, Trash2 } from 'lucide-react'
 import { api } from '@/lib/api'
+import { hoyStrCO } from '@/lib/fechas'
 import { useFetch, cop } from '@/components/shared.jsx'
 import { useRealtimeEvent } from '@/components/RealtimeProvider.jsx'
 import { useAuth } from '@/hooks/useAuth.js'
@@ -26,7 +27,7 @@ const EVENTOS = [
   'reconnected',
 ]
 const fechaCO = (iso) => new Date(iso).toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
-const hoyCO = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
+const hoyCO = hoyStrCO
 
 export default function VistaDia() {
   const { refreshKey } = useOutletContext() ?? {}

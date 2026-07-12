@@ -3,7 +3,9 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+from core.config.timezone import today_co
 
 # Categoría de compra del vertical construcción (spec 11). Literales EXACTOS a la spec 01_MODELO_DATOS
 # y al enum `categoria_compra` (tenant 0048).
@@ -46,6 +48,15 @@ class CompraCrear(BaseModel):
     proveedor: ProveedorRef
     fecha: date | None = None
     items: list[CompraItemCrear] = Field(min_length=1)
+
+    @field_validator("fecha")
+    @classmethod
+    def _fecha_no_futura(cls, v: date | None) -> date | None:
+        """Una compra se registra cuando ya ocurrió: fecha futura = typo (entraría stock hoy pero la
+        compra desaparecería del listado del mes en curso)."""
+        if v is not None and v > today_co():
+            raise ValueError("La fecha de la compra no puede ser futura")
+        return v
     # Idempotencia (ai-tools.md §4): la fija el cliente/bot. En REST llega por el header
     # `Idempotency-Key` (el router la copia aquí). Misma key + mismo payload → la compra original;
     # misma key + payload distinto → idempotencia_conflicto.

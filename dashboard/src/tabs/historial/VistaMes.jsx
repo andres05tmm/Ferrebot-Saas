@@ -6,6 +6,7 @@
  */
 import { useMemo, useState } from 'react'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { anioMesCO as hoyCO } from '@/lib/fechas'
 import { useFetch, cop, num } from '@/components/shared.jsx'
 import { useRealtimeEvent } from '@/components/RealtimeProvider.jsx'
 import { Card } from '@/components/ui/card.jsx'
@@ -13,11 +14,6 @@ import { Card } from '@/components/ui/card.jsx'
 const DIAS_SEMANA = ['L', 'M', 'X', 'J', 'V', 'S', 'D']
 const MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio',
   'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
-
-function hoyCO() {
-  const s = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
-  return { anio: Number(s.slice(0, 4)), mes: Number(s.slice(5, 7)) }
-}
 
 // Intensidad 0..4 relativa al mejor día del mes (para el heatmap con el color primario del tenant).
 function nivel(total, max) {

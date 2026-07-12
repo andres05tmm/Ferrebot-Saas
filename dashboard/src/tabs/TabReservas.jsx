@@ -8,17 +8,13 @@ import { useState } from 'react'
 import { toast } from 'sonner'
 import { BedDouble, CalendarClock } from 'lucide-react'
 import { cop } from '@/components/shared.jsx'
+import { hoyStrCO as hoyCO } from '@/lib/fechas'
 import { useHabitaciones, useCrearReserva } from '@/lib/queries'
 import { Card } from '@/components/ui/card.jsx'
 import { Input } from '@/components/ui/input.jsx'
 import { Button } from '@/components/ui/button.jsx'
 
 const arr = (d) => (Array.isArray(d) ? d : [])
-
-// Fecha de HOY en Colombia (YYYY-MM-DD) para el default y el mínimo del date input.
-function hoyCO() {
-  return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
-}
 
 function FormReserva({ hab, checkin, noches, onHecho }) {
   const [nombre, setNombre] = useState('')

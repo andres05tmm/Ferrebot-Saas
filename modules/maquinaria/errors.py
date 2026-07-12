@@ -67,6 +67,19 @@ class AsignacionSolapada(MaquinariaError):
         self.fecha_fin = fecha_fin
 
 
+class RangoAsignacionInvalido(MaquinariaError):
+    """El parche dejaría `fecha_fin < fecha_inicio` → 422. El CREATE ya lo valida en el schema; el PATCH
+    (p. ej. "Cerrar" con fecha_fin=hoy sobre una asignación planeada a futuro) debe validarlo aquí:
+    un rango invertido desaparece de toda consulta como dato corrupto silencioso."""
+
+    def __init__(self, fecha_inicio: object, fecha_fin: object) -> None:
+        super().__init__(
+            f"La fecha fin ({fecha_fin}) no puede ser anterior al inicio ({fecha_inicio}) de la asignación"
+        )
+        self.fecha_inicio = fecha_inicio
+        self.fecha_fin = fecha_fin
+
+
 class AsignacionInexistente(MaquinariaError):
     """No hay asignación con ese id para la máquina indicada → 404.
 
@@ -89,6 +102,27 @@ class ObraNoAsignable(MaquinariaError):
         super().__init__(f"La obra {obra_id} no admite asignación ({motivo})")
         self.obra_id = obra_id
         self.motivo = motivo
+
+
+class MaquinaNoOperable(MaquinariaError):
+    """La máquina no está en un estado operable (MANTENIMIENTO/DAÑADA/BAJA) → 409.
+
+    Guard de `iniciar` operación en vivo: una máquina en taller o de baja no se puede activar aunque
+    conserve una asignación activa (el frontend la filtra, pero el backend es la última línea)."""
+
+    def __init__(self, maquina_id: int, estado: str) -> None:
+        super().__init__(f"La máquina {maquina_id} no se puede operar (estado {estado})")
+        self.maquina_id = maquina_id
+        self.estado = estado
+
+
+class FechaMantenimientoInvalida(MaquinariaError):
+    """La fecha del mantenimiento es futura → 422. Un mantenimiento se registra cuando ya ocurrió;
+    lo por venir va en `proximo_en_fecha`."""
+
+    def __init__(self, fecha: object) -> None:
+        super().__init__(f"La fecha del mantenimiento ({fecha}) no puede ser futura")
+        self.fecha = fecha
 
 
 class OperadorInexistente(MaquinariaError):

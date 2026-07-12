@@ -10,6 +10,7 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 
 import DetalleDia from './DetalleDia.jsx'
+import { hoyStrCO } from './util.js'
 
 function jsonResp(data, status = 200) { return { ok: status < 400, status, json: async () => data } }
 
@@ -92,10 +93,21 @@ describe('DetalleDia — detalle del día (rediseño PIM)', () => {
     expect(screen.queryByText(/8:00.*13:00/)).toBeNull()
   })
 
-  it('ofrece "Registrar horas" en la sección Máquinas (captura de campo, todos los roles)', async () => {
-    renderDetalle(PAST)
+  it('ofrece "Registrar horas" en un día registrable (hoy) — captura de campo, todos los roles', async () => {
+    renderDetalle(hoyStrCO())
     await screen.findAllByText('Minicargador')
     expect(screen.getByRole('button', { name: /Registrar horas/i })).toBeInTheDocument()
+  })
+
+  it('NO ofrece "Registrar horas" en días fuera de la ventana (pasado lejano o futuro)', async () => {
+    renderDetalle(PAST)
+    await screen.findAllByText('Minicargador')
+    expect(screen.queryByRole('button', { name: /Registrar horas/i })).toBeNull()
+    cleanup()
+    instalarFetch()
+    renderDetalle(FUTURE)
+    await screen.findByText('Planeado')
+    expect(screen.queryByRole('button', { name: /Registrar horas/i })).toBeNull()
   })
 })
 

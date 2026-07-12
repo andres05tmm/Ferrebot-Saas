@@ -12,7 +12,7 @@ from core.auth import Principal, require_role
 from core.auth.features import require_feature
 from core.db.session import get_tenant_db
 from modules.caja.config import get_caja_obligatoria
-from modules.caja.errors import CajaNoAbierta, GastoInexistente
+from modules.caja.errors import CajaNoAbierta, GastoInexistente, ObraNoImputable
 from modules.caja.repository import SqlCajaRepository
 from modules.caja.schemas import (
     AperturaCrear,
@@ -163,6 +163,9 @@ async def registrar_gasto(
         )
     except CajaNoAbierta as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+    except ObraNoImputable as exc:
+        codigo = status.HTTP_404_NOT_FOUND if exc.motivo == "inexistente" else status.HTTP_409_CONFLICT
+        raise HTTPException(codigo, str(exc)) from exc
     except FacturaProveedorInexistente as exc:
         raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
     except AbonoInvalido as exc:

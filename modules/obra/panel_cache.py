@@ -45,7 +45,9 @@ class PanelCache:
 
 panel_cache = PanelCache()
 
-# Caché del cockpit de construcción (GET /obras/dashboard). TTL 5 min (objetivo "<2s" del plan, spec 13):
-# el dashboard agrega muchas secciones (KPIs del mes, máquinas, alertas) y se recarga seguido; un TTL más
-# largo que el del panel operativo lo sirve al instante sin martillar Postgres. Misma semántica por empresa.
-dashboard_cache = PanelCache(ttl=300.0)
+# Caché del cockpit de construcción (GET /obras/dashboard). TTL 30s, igual al panel: ninguna mutación
+# invalida estas cachés y el frontend refetchea por SSE al instante — con 5 min el dueño imputaba un
+# gasto y veía el cockpit "congelado" contradiciendo las listas vivas. 30s sigue absorbiendo las
+# recargas rápidas (objetivo "<2s", spec 13); la invalidación exacta por mutación queda como evolución.
+# ponytail: TTL corto en vez de invalidar en cada mutación; si 30s de desfase molesta, invalidar por empresa_id.
+dashboard_cache = PanelCache(ttl=30.0)

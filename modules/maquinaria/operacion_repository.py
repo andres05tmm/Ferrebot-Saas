@@ -54,10 +54,13 @@ class SqlOperacionRepository:
             )
         ).scalar_one_or_none()
 
-    async def obtener_sesion(self, sesion_id: int) -> SesionMaquina | None:
-        return (
-            await self._s.execute(select(SesionMaquina).where(SesionMaquina.id == sesion_id))
-        ).scalar_one_or_none()
+    async def obtener_sesion(self, sesion_id: int, *, bloquear: bool = False) -> SesionMaquina | None:
+        """`bloquear=True` toma FOR UPDATE sobre la sesión: serializa finalizar/rotar/anular concurrentes
+        (dos finalizar simultáneos pasarían ambos el check de estado y materializarían turnos dobles)."""
+        stmt = select(SesionMaquina).where(SesionMaquina.id == sesion_id)
+        if bloquear:
+            stmt = stmt.with_for_update()
+        return (await self._s.execute(stmt)).scalar_one_or_none()
 
     async def finalizar_sesion(
         self, sesion: SesionMaquina, *, finalizada_en: datetime, registro_horas_id: int

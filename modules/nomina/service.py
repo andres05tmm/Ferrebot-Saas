@@ -29,6 +29,7 @@ from modules.nomina.errors import (
     ParametrosLegalesInexistentes,
     PeriodoBloqueado,
     PeriodoNominaInexistente,
+    PeriodoSolapado,
     TrabajadorNoLiquidable,
 )
 from modules.nomina.models import (
@@ -147,6 +148,7 @@ class NominaRepo(Protocol):
     """Puerto de datos de nómina (lo implementa `SqlNominaRepository`; los tests lo pueden falsear)."""
 
     async def parametros_vigentes(self, fecha: date) -> ParametrosLegales | None: ...
+    async def periodo_solapado(self, fecha_inicio: date, fecha_fin: date) -> bool: ...
     async def crear_periodo(self, datos: PeriodoCrear, params: ParametrosLegales) -> PeriodoNomina: ...
     async def obtener_periodo(self, periodo_id: int) -> PeriodoNomina | None: ...
     async def listar_periodos(self) -> list[PeriodoNomina]: ...
@@ -194,6 +196,9 @@ class NominaService:
             raise ParametrosLegalesInexistentes(
                 f"no hay parámetros legales vigentes al {datos.fecha_inicio.isoformat()}"
             )
+        # Rangos disjuntos: dos periodos que compartan días liquidarían la misma asistencia dos veces.
+        if await self._repo.periodo_solapado(datos.fecha_inicio, datos.fecha_fin):
+            raise PeriodoSolapado(datos.fecha_inicio, datos.fecha_fin)
         periodo = await self._repo.crear_periodo(datos, params)
         log.info(
             "periodo_nomina_creado", periodo_id=periodo.id, tipo=periodo.tipo,

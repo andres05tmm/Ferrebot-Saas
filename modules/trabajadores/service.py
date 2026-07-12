@@ -12,6 +12,7 @@ from modules.trabajadores.errors import (
     AsignacionInexistente,
     AsignacionSolapada,
     ObraNoAsignable,
+    RangoAsignacionInvalido,
     TrabajadorDuplicado,
     TrabajadorInexistente,
 )
@@ -146,6 +147,9 @@ class TrabajadoresService:
         cambios = datos.model_dump(exclude_unset=True)
         nueva_fin = cambios.get("fecha_fin", asig.fecha_fin)
         nueva_activa = cambios.get("activa", asig.activa)
+        # El CREATE valida el rango en el schema; el PATCH debe hacerlo aquí (no viaja fecha_inicio).
+        if nueva_fin is not None and nueva_fin < asig.fecha_inicio:
+            raise RangoAsignacionInvalido(asig.fecha_inicio, nueva_fin)
         # Revalida el solape si cambia el rango O si se REACTIVA una asignación cerrada: mientras estuvo
         # inactiva pudo crearse otra activa sobre el mismo rango.
         reactivada = nueva_activa and not asig.activa

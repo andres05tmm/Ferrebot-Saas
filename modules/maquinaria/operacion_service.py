@@ -14,6 +14,7 @@ from services.calculations.maquinas import horas_transcurridas
 
 from modules.maquinaria.errors import (
     MaquinaInexistente,
+    MaquinaNoOperable,
     OperadorInexistente,
     SesionInexistente,
     SesionNoAbierta,
@@ -52,6 +53,10 @@ class OperacionMaquinaService:
         maquina = await self._maq_repo.obtener(maquina_id)
         if maquina is None:
             raise MaquinaInexistente(maquina_id)
+        # Última línea contra el estado (el tablero filtra, pero la API es abierta): una máquina en
+        # taller/de baja no se activa aunque conserve una asignación activa.
+        if maquina.estado in ("MANTENIMIENTO", "DAÑADA", "BAJA"):
+            raise MaquinaNoOperable(maquina_id, maquina.estado)
         if await self._op.sesion_abierta_de_maquina(maquina_id) is not None:
             raise SesionYaAbierta(maquina_id)
 
@@ -127,7 +132,9 @@ class OperacionMaquinaService:
 
         IDEMPOTENTE: si la sesión ya estaba FINALIZADA, NO re-materializa — devuelve el resumen del parte
         que generó (replay). Ancla: `sesion.registro_horas_id`. 404/409 si no existe o fue ANULADA."""
-        sesion = await self._op.obtener_sesion(sesion_id)
+        # FOR UPDATE: dos finalizar concurrentes pasarían ambos el check de estado y duplicarían los
+        # turnos (y el cargo a cartera). El lock serializa; el segundo entra ya FINALIZADA → replay.
+        sesion = await self._op.obtener_sesion(sesion_id, bloquear=True)
         if sesion is None:
             raise SesionInexistente(sesion_id)
         if sesion.estado == "FINALIZADA":
@@ -181,7 +188,8 @@ class OperacionMaquinaService:
         return await self._op.tablero()
 
     async def _sesion_abierta(self, sesion_id: int) -> SesionMaquina:
-        sesion = await self._op.obtener_sesion(sesion_id)
+        # Con lock: rotar/anular concurrentes con un finalizar se serializan sobre la fila de la sesión.
+        sesion = await self._op.obtener_sesion(sesion_id, bloquear=True)
         if sesion is None:
             raise SesionInexistente(sesion_id)
         if sesion.estado != "ABIERTA":

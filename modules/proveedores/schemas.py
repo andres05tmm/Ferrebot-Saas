@@ -2,7 +2,17 @@
 from datetime import date
 from decimal import Decimal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+from core.config.timezone import today_co
+
+
+def _no_futura(v: date | None) -> date | None:
+    """Una factura o un abono se registran cuando ya ocurrieron: fecha futura = typo que descuadra
+    los reportes del periodo. (El vencimiento sí puede ser futuro; este guard no le aplica.)"""
+    if v is not None and v > today_co():
+        raise ValueError("La fecha no puede ser futura")
+    return v
 
 
 class ProveedorLeer(BaseModel):
@@ -39,6 +49,8 @@ class FacturaProveedorCrear(BaseModel):
     # el motor de pagar lo deriva de `fecha + plazo_default_dias` (comportamiento actual sin cambios).
     fecha_vencimiento: date | None = None
 
+    _fecha_no_futura = field_validator("fecha")(_no_futura)
+
     @model_validator(mode="after")
     def _vencimiento_no_anterior_a_fecha(self) -> "FacturaProveedorCrear":
         """Si se dan ambas fechas, el vencimiento no puede ser anterior a la fecha de la factura.
@@ -61,6 +73,8 @@ class AbonoCrear(BaseModel):
     factura_id: str = Field(min_length=1)
     monto: Decimal = Field(gt=0)
     fecha: date | None = None   # default hoy Colombia en el servicio
+
+    _fecha_no_futura = field_validator("fecha")(_no_futura)
 
 
 class FacturaProveedorLeer(BaseModel):

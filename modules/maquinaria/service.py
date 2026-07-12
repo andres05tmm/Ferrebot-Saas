@@ -18,10 +18,12 @@ from modules.maquinaria.errors import (
     AsignacionInexistente,
     AsignacionSolapada,
     CodigoMaquinaDuplicado,
+    FechaMantenimientoInvalida,
     MantenimientoInexistente,
     MaquinaInexistente,
     ObraNoAsignable,
     OperadorInexistente,
+    RangoAsignacionInvalido,
     SinAsignacionActiva,
 )
 from modules.maquinaria.models import (
@@ -188,6 +190,9 @@ class MaquinariaService:
 
         nueva_fin = cambios.get("fecha_fin", asig.fecha_fin)
         nueva_activa = cambios.get("activa", asig.activa)
+        # El CREATE valida el rango en el schema; el PATCH debe hacerlo aquí (no viaja fecha_inicio).
+        if nueva_fin is not None and nueva_fin < asig.fecha_inicio:
+            raise RangoAsignacionInvalido(asig.fecha_inicio, nueva_fin)
         # Revalida el solape si cambia el rango O si se REACTIVA una asignación cerrada: mientras estuvo
         # inactiva pudo crearse otra activa sobre el mismo rango, y reactivar sin chequear rompería el
         # invariante de no-solape.
@@ -239,6 +244,10 @@ class MaquinariaService:
         cambia `maquina.estado`: pasar la máquina a MANTENIMIENTO/DISPONIBLE es una decisión aparte, por
         `PATCH /maquinas/{id}` (registrar un servicio no la saca de operación por sí solo)."""
         await self.obtener(maquina_id)   # valida existencia (404 si no)
+        # Un mantenimiento se registra cuando ya ocurrió (lo por venir va en `proximo_en_fecha`); una
+        # fecha futura por typo se volvería "el último mantenimiento" y apagaría las alertas del panel.
+        if datos.fecha is not None and datos.fecha > today_co():
+            raise FechaMantenimientoInvalida(datos.fecha)
         valores = datos.model_dump()
         valores["fecha"] = datos.fecha or today_co()
         return await self._repo.crear_mantenimiento(maquina_id, valores)
@@ -251,6 +260,8 @@ class MaquinariaService:
         if mant is None:
             raise MantenimientoInexistente(mantenimiento_id)
         cambios = datos.model_dump(exclude_unset=True)
+        if cambios.get("fecha") is not None and cambios["fecha"] > today_co():
+            raise FechaMantenimientoInvalida(cambios["fecha"])
         return await self._repo.actualizar_mantenimiento(mant, cambios)
 
     async def eliminar_mantenimiento(self, maquina_id: int, mantenimiento_id: int) -> None:
@@ -286,6 +297,14 @@ class MaquinariaService:
         maquina = await self._repo.obtener(maquina_id)
         if maquina is None:
             raise MaquinaInexistente(maquina_id)
+
+        # Una obra LIQUIDADA es un snapshot inmutable: no admite más partes de horas (mismo guard y
+        # mapeo HTTP que el alta de asignación: inexistente → 404, liquidada → 409).
+        estado_obra = await self._repo.obra_asignable(datos.obra_id)
+        if estado_obra is None:
+            raise ObraNoAsignable(datos.obra_id, "inexistente")
+        if estado_obra == "LIQUIDADA":
+            raise ObraNoAsignable(datos.obra_id, "liquidada")
 
         # Lock del ancla (asignación) → sección crítica del pre-check de idempotencia.
         asignacion = await self._repo.asignacion_activa(

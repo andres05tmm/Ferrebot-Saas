@@ -59,10 +59,15 @@ class SqlProveedoresRepository:
         await self._s.flush()
         return FacturaProveedorLeer.model_validate(orm)
 
-    async def obtener(self, factura_id: str) -> FacturaProveedorLeer | None:
-        orm = (
-            await self._s.execute(select(FacturaProveedor).where(FacturaProveedor.id == factura_id))
-        ).scalar_one_or_none()
+    async def obtener(
+        self, factura_id: str, *, bloquear: bool = False
+    ) -> FacturaProveedorLeer | None:
+        """`bloquear=True` toma FOR UPDATE: el check de sobre-abono del servicio debe leer el pendiente
+        DENTRO de la sección crítica (dos abonos concurrentes pasarían ambos el check sin el lock)."""
+        stmt = select(FacturaProveedor).where(FacturaProveedor.id == factura_id)
+        if bloquear:
+            stmt = stmt.with_for_update()
+        orm = (await self._s.execute(stmt)).scalar_one_or_none()
         return FacturaProveedorLeer.model_validate(orm) if orm is not None else None
 
     async def mapa_por_ids(self, ids: list[str]) -> dict[str, FacturaProveedorLeer]:

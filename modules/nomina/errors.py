@@ -22,6 +22,21 @@ class ParametrosLegalesInexistentes(NominaError):
     """
 
 
+class PeriodoSolapado(NominaError):
+    """Ya existe un periodo cuyo rango se cruza con el nuevo (409).
+
+    Dos periodos que compartan días liquidarían (y pagarían) la MISMA asistencia dos veces, e
+    imputarían doble costo a las obras. El rango [fecha_inicio, fecha_fin] debe ser disjunto.
+    """
+
+    def __init__(self, fecha_inicio: object, fecha_fin: object) -> None:
+        super().__init__(
+            f"ya existe un periodo de nómina que se solapa con [{fecha_inicio}, {fecha_fin}]"
+        )
+        self.fecha_inicio = fecha_inicio
+        self.fecha_fin = fecha_fin
+
+
 class PeriodoBloqueado(NominaError):
     """La acción no aplica al estado del periodo (409).
 

@@ -30,6 +30,7 @@ import {
   Gauge, Pencil, Trash2, Coins,
 } from 'lucide-react'
 import { api } from '@/lib/api'
+import { hoyStrCO as hoyCO } from '@/lib/fechas'
 import { useFetch, cop, num } from '@/components/shared.jsx'
 import { Semaforo, Campo, BTN_PRIMARY, BTN_OUTLINE, SELECT_CLS } from './comunes.jsx'
 import FormAsignacionMaquina from './calendario/FormAsignacionMaquina.jsx'
@@ -46,20 +47,17 @@ const ESTADO_MAQ = [
 
 const n = (v) => { const x = Number(v); return Number.isFinite(x) ? x : 0 }
 
-// Fecha de HOY en hora Colombia (YYYY-MM-DD). Las fechas del backend son 'YYYY-MM-DD', así que las
-// comparaciones lexicográficas coinciden con las cronológicas (regla #4: nunca `date.today()` crudo).
-function hoyCO() {
-  return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
-}
 function diasEntre(desde, hasta) {
   const a = new Date(`${desde}T00:00:00`), b = new Date(`${hasta}T00:00:00`)
   return Math.round((b - a) / 86_400_000)
 }
 
 // Asignación que cubre (obra, fecha) de un parte. Las asignaciones vienen fecha_inicio DESC, así que el
-// primer match respeta el desempate del backend (la más reciente que cubre la fecha).
+// primer match respeta el desempate del backend (la más reciente ACTIVA que cubre la fecha — el
+// backend tarifa solo con `activa`; sin ese filtro el "Ingreso" podía tomar el precio de una desactivada).
 function asignacionDe(registro, asignaciones) {
   return asignaciones.find((a) =>
+    a.activa &&
     a.obra_id === registro.obra_id &&
     a.fecha_inicio <= registro.fecha &&
     (!a.fecha_fin || registro.fecha <= a.fecha_fin),
@@ -476,8 +474,8 @@ function FormMantenimiento({ maquinaId, hoy, onCancelar, onCreado }) {
             {Object.entries(TIPO_MANT).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
           </select>
         </Campo>
-        <Campo label="Fecha">
-          <input type="date" value={f.fecha} onChange={set('fecha')} className={SELECT_CLS} />
+        <Campo label="Fecha" hint="Cuándo se hizo (lo por venir va en «Próximo»).">
+          <input type="date" value={f.fecha} onChange={set('fecha')} max={hoy} className={SELECT_CLS} />
         </Campo>
         <Campo label="Descripción" requerido className="sm:col-span-2">
           <input value={f.descripcion} onChange={set('descripcion')} placeholder="Cambio de aceite y filtros" className={SELECT_CLS} />

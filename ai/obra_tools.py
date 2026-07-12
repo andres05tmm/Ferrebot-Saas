@@ -42,10 +42,10 @@ from core.auth.rbac import satisface
 from core.config.timezone import today_co
 from core.llm.base import ImageBlock, ToolCall, ToolSpec
 from core.llm.factory import LLMResuelto
-from modules.caja.errors import CajaNoAbierta
+from modules.caja.errors import CajaNoAbierta, ObraNoImputable
 from modules.caja.schemas import CategoriaGastoVertical
 from modules.caja.service import CajaService
-from modules.maquinaria.errors import MaquinaInexistente, SinAsignacionActiva
+from modules.maquinaria.errors import MaquinaInexistente, ObraNoAsignable, SinAsignacionActiva
 from modules.maquinaria.models import Maquina
 from modules.maquinaria.schemas import RegistroHorasCrear
 from modules.maquinaria.service import MaquinariaService
@@ -279,6 +279,9 @@ async def _registrar_horas_maquina(
         res = await deps.maquinaria.registrar_horas(maquina.id, datos)
     except MaquinaInexistente as exc:
         return ErrorTool("maquina_no_encontrada", str(exc), recuperable=True)
+    except ObraNoAsignable as exc:
+        # Obra liquidada (snapshot congelado) o borrada: el parte no procede.
+        return ErrorTool("obra_no_asignable", str(exc), recuperable=True)
     except SinAsignacionActiva as exc:
         # Sin asignación activa no hay precio ni mínimo pactados: no se puede facturar la hora.
         return ErrorTool("sin_asignacion", str(exc), recuperable=True)
@@ -402,6 +405,9 @@ async def _registrar_gasto_recibo(
         )
     except CajaNoAbierta as exc:
         return ErrorTool("caja_cerrada", str(exc), recuperable=True)
+    except ObraNoImputable as exc:
+        # Obra liquidada (snapshot congelado) o borrada entre la resolución y el insert.
+        return ErrorTool("obra_no_imputable", str(exc), recuperable=True)
 
     g = res.gasto
     if recibo.requiere_revision:

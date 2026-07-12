@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.auth import Principal, require_role
 from core.auth.features import get_capacidades, require_feature
+from core.config.timezone import today_co
 from core.db.session import get_tenant_db
 from core.tenancy.catalogo import expandir_metapacks
 from modules.cartera.service import construir_cartera_service
@@ -17,10 +18,12 @@ from modules.maquinaria.errors import (
     AsignacionInexistente,
     AsignacionSolapada,
     CodigoMaquinaDuplicado,
+    FechaMantenimientoInvalida,
     MantenimientoInexistente,
     MaquinaInexistente,
     ObraNoAsignable,
     OperadorInexistente,
+    RangoAsignacionInvalido,
     SinAsignacionActiva,
 )
 from modules.maquinaria.repository import SqlMaquinasRepository
@@ -189,6 +192,8 @@ async def actualizar_asignacion(
         raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
     except AsignacionSolapada as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+    except RangoAsignacionInvalido as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
     return AsignacionMaquinaObraLeer.model_validate(asig)
 
 
@@ -211,6 +216,28 @@ async def listar_horas(
         leer.turnos = [TurnoLeer(**t) for t in turnos.get(h.id, [])]
         salida.append(leer)
     return salida
+
+
+# Ventana del parte manual: HOY o hasta N días atrás (el operador que olvidó anotar), nunca futuro.
+# El guard vive en el ROUTER a propósito: es la única puerta donde la fecha viene del cliente. El bot
+# fija today_co() y la sesión en vivo materializa con la fecha del servidor (puede ser >N días si se
+# olvidó finalizar) — un guard en el servicio las rompería.
+VENTANA_DIAS_PARTE = 3
+
+
+def _validar_fecha_parte(fecha) -> None:
+    hoy = today_co()
+    if fecha > hoy:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "No se puede registrar un parte de horas de un día futuro",
+        )
+    if (hoy - fecha).days > VENTANA_DIAS_PARTE:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            f"El parte solo se puede registrar hasta {VENTANA_DIAS_PARTE} días atrás; "
+            "para corregir un día anterior contacta al administrador",
+        )
 
 
 @router.post(
@@ -236,6 +263,7 @@ async def registrar_horas(
     para que el seam asiente el consumo de horas como cargo en el ledger de fiados (misma transacción). El
     cargo es idempotente por `registro.id`; sin la capacidad, el registro conserva su comportamiento previo.
     """
+    _validar_fecha_parte(payload.fecha)
     cartera = (
         construir_cartera_service(session)
         if "cartera_alquiler" in expandir_metapacks(capacidades)
@@ -245,6 +273,8 @@ async def registrar_horas(
         resultado = await _service(session, cartera).registrar_horas(maquina_id, payload)
     except MaquinaInexistente as exc:
         raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
+    except ObraNoAsignable as exc:
+        raise _obra_no_asignable_http(exc) from exc
     except SinAsignacionActiva as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
     return RegistroHorasResultado.model_validate(resultado)
@@ -287,6 +317,8 @@ async def crear_mantenimiento(
         mantenimiento = await service.crear_mantenimiento(maquina_id, payload)
     except MaquinaInexistente as exc:
         raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
+    except FechaMantenimientoInvalida as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
     return MantenimientoLeer.model_validate(mantenimiento)
 
 
@@ -307,6 +339,8 @@ async def actualizar_mantenimiento(
         )
     except MantenimientoInexistente as exc:
         raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
+    except FechaMantenimientoInvalida as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
     return MantenimientoLeer.model_validate(mantenimiento)
 
 

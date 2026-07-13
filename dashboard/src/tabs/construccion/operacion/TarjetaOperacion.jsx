@@ -6,12 +6,20 @@
  */
 import { Truck, Building2, User, RotateCw, Square } from 'lucide-react'
 import { Card } from '@/components/ui/card.jsx'
+import { hoyStrCO } from '@/lib/fechas'
 import { Semaforo, BTN_PRIMARY, BTN_OUTLINE } from '../comunes.jsx'
 import { useCronometro } from './useCronometro.js'
+
+// Día Colombia (YYYY-MM-DD) de un instante ISO — para detectar la sesión que viene de OTRO día.
+const diaCO = (iso) => new Date(iso).toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
+const diaCorto = (iso) => new Date(iso).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', timeZone: 'America/Bogota' })
 
 export default function TarjetaOperacion({ sesion, onRotar, onFinalizar, onAnular }) {
   const total = useCronometro(sesion.iniciada_en)
   const tramo = useCronometro(sesion.tramo_desde || sesion.iniciada_en)
+  // Una sesión abierta desde OTRO día se delata con fecha (F2.6): solo el cronómetro no alcanzaba y
+  // se colaban partes fantasma de sesiones olvidadas.
+  const deOtroDia = sesion.iniciada_en && diaCO(sesion.iniciada_en) !== hoyStrCO()
 
   return (
     <Card className="flex flex-col gap-3 p-4">
@@ -26,7 +34,9 @@ export default function TarjetaOperacion({ sesion, onRotar, onFinalizar, onAnula
             <span className="truncate">{sesion.obra}</span>
           </div>
         </div>
-        <Semaforo tono="azul">En operación</Semaforo>
+        {deOtroDia
+          ? <Semaforo tono="ambar">Desde el {diaCorto(sesion.iniciada_en)}</Semaforo>
+          : <Semaforo tono="azul">En operación</Semaforo>}
       </div>
 
       <div className="rounded-md bg-surface-2 px-3 py-2 text-center">

@@ -287,9 +287,12 @@ class TramoDetalle(BaseModel):
 
 
 class SesionDetalle(SesionLeer):
-    """Sesión + sus tramos (para el modal de revisión). Extiende `SesionLeer` con el desglose de rotación."""
+    """Sesión + sus tramos (para el modal de revisión). Extiende `SesionLeer` con el desglose de rotación
+    y el mínimo PACTADO de la asignación (F2.6): un total por debajo del mínimo se factura al mínimo, y
+    el supervisor debe verlo antes de confirmar."""
 
     tramos: list[TramoDetalle] = Field(default_factory=list)
+    minimo_horas: Decimal | None = None
 
 
 class TableroSesion(BaseModel):

@@ -14,8 +14,9 @@
 import { useState } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import { CalendarDays } from 'lucide-react'
-import { useFetch } from '@/components/shared.jsx'
+import { useFetch, useIsMobile } from '@/components/shared.jsx'
 import { useRealtimeEvent } from '@/components/RealtimeProvider.jsx'
+import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet.jsx'
 import FiltrosCalendario from './FiltrosCalendario.jsx'
 import GrillaMes from './GrillaMes.jsx'
 import DetalleDia from './DetalleDia.jsx'
@@ -24,6 +25,7 @@ import { hoyCO, hoyStrCO, qsEntidad, MESES, EVENTOS_CALENDARIO } from './util.js
 
 export default function CalendarioObra() {
   const { refreshKey } = useOutletContext() ?? {}
+  const movil = useIsMobile()
   const [{ anio, mes }, setPeriodo] = useState(hoyCO())
   const [diaSeleccionado, setDiaSeleccionado] = useState(null)
   const [filtros, setFiltros] = useState({ vista: 'todos', obraId: '', maquinaId: '', trabajadorId: '' })
@@ -92,11 +94,26 @@ export default function CalendarioObra() {
         cargando={q.loading}
       />
 
-      {diaSeleccionado && (
+      {/* Detalle del día: en móvil sube como SHEET inferior (F2.6) — tocar un día en el celular abría
+          el detalle DEBAJO de la grilla, fuera de la vista; en desktop sigue inline bajo el calendario. */}
+      {diaSeleccionado && !movil && (
         <DetalleDia
           fecha={diaSeleccionado} filtros={filtros}
           onCerrar={() => setDiaSeleccionado(null)} onCambio={q.refetch}
         />
+      )}
+      {movil && (
+        <Sheet open={diaSeleccionado != null} onOpenChange={(o) => { if (!o) setDiaSeleccionado(null) }}>
+          <SheetContent side="bottom" className="p-3">
+            <SheetTitle className="sr-only">Detalle del día</SheetTitle>
+            {diaSeleccionado && (
+              <DetalleDia
+                fecha={diaSeleccionado} filtros={filtros}
+                onCerrar={() => setDiaSeleccionado(null)} onCambio={q.refetch}
+              />
+            )}
+          </SheetContent>
+        </Sheet>
       )}
     </div>
   )

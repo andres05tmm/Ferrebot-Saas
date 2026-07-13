@@ -14,18 +14,31 @@ import { Campo, SELECT_CLS, BTN_PRIMARY, BTN_OUTLINE, Esqueleto } from '../comun
 import { num } from '@/components/shared.jsx'
 import { postOperacion, horaIso } from './net.js'
 
+// Una sesión que propone más de esto por tramo casi seguro quedó ABIERTA por error (olvidaron
+// finalizar): el modal lo advierte antes de facturar horas fantasma.
+const HORAS_SOSPECHOSAS = 16
+
 export default function ModalFinalizar({ sesion, onCerrar, onExito }) {
   const detalleQ = useFetch(sesion ? `/operacion/${sesion.sesion_id}` : null)
   const [horas, setHoras] = useState({})   // tramo_id → string (override)
   const [enviando, setEnviando] = useState(false)
 
   const tramos = Array.isArray(detalleQ.data?.tramos) ? detalleQ.data.tramos : []
+  const minimo = Number(detalleQ.data?.minimo_horas)
   const valor = (t) => (horas[t.id] !== undefined ? horas[t.id] : String(Number(t.horas_propuestas)))
+  // Vacío ≠ 0 (F2.6): un campo en blanco NO se factura en silencio — se exige el 0 explícito.
+  const hayVacios = tramos.some((t) => String(valor(t)).trim() === '' || !Number.isFinite(Number(valor(t))))
   const total = tramos.reduce((s, t) => s + (Number(valor(t)) || 0), 0)
+  const sesionSospechosa = tramos.some((t) => Number(t.horas_propuestas) > HORAS_SOSPECHOSAS)
+  const aplicaMinimo = Number.isFinite(minimo) && minimo > 0 && total < minimo
 
   async function finalizar() {
+    if (hayVacios) {
+      toast.error('Indica las horas de cada tramo (escribe 0 si un tramo no trabajó)')
+      return
+    }
     setEnviando(true)
-    const ajustes = tramos.map((t) => ({ tramo_id: t.id, horas: Number(valor(t)) || 0 }))
+    const ajustes = tramos.map((t) => ({ tramo_id: t.id, horas: Number(valor(t)) }))
     const r = await postOperacion(`/operacion/${sesion.sesion_id}/finalizar`, { ajustes })
     setEnviando(false)
     if (!r.ok) { toast.error(r.error); return }
@@ -71,9 +84,26 @@ export default function ModalFinalizar({ sesion, onCerrar, onExito }) {
           </ul>
         )}
 
-        <div className="mt-1 flex items-center justify-between border-t border-border-subtle pt-2 text-[13px]">
-          <span className="text-muted-foreground">Total del día</span>
-          <span className="font-semibold tabular-nums text-foreground">{num(total)} h</span>
+        {/* Sesión olvidada: el reloj propone horas absurdas → advertir ANTES de facturar (F2.6). */}
+        {sesionSospechosa && (
+          <p className="rounded-md bg-warning/10 px-3 py-2 text-[12px] text-warning">
+            El reloj propone más de {HORAS_SOSPECHOSAS} h en un tramo: ¿la sesión quedó abierta por
+            error? Ajusta las horas reales, o pide a un administrador «Anular sin cobrar».
+          </p>
+        )}
+
+        <div className="mt-1 space-y-1 border-t border-border-subtle pt-2 text-[13px]">
+          <div className="flex items-center justify-between">
+            <span className="text-muted-foreground">Total del día</span>
+            <span className="font-semibold tabular-nums text-foreground">{num(total)} h</span>
+          </div>
+          {/* El mínimo pactado manda (F2.6): que el 3h→5h no sorprenda en el toast de después. */}
+          {aplicaMinimo && (
+            <div className="flex items-center justify-between text-[12px]">
+              <span className="text-muted-foreground">Se factura el mínimo pactado</span>
+              <span className="font-semibold tabular-nums text-foreground">{num(minimo)} h</span>
+            </div>
+          )}
         </div>
 
         <div className="mt-3 flex justify-end gap-2">

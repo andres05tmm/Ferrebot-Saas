@@ -165,4 +165,5 @@ async def obtener_operacion(
         raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
     salida = SesionDetalle.model_validate(detalle["sesion"])
     salida.tramos = [TramoDetalle(**t) for t in detalle["tramos"]]
+    salida.minimo_horas = detalle.get("minimo_horas")
     return salida

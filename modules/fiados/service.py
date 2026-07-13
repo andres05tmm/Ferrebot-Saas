@@ -66,3 +66,8 @@ class FiadosService:
 
     async def deudas(self) -> list[dict]:
         return await self._repo.deudas()
+
+    async def fiados_de(self, cliente_id: int) -> list[Fiado]:
+        """Fiados vivos de un cliente (cliente sin fiados o inexistente → lista vacía, sin 404: es una
+        lectura para poblar el modal de abono, no una mutación)."""
+        return await self._repo.fiados_con_saldo(cliente_id)

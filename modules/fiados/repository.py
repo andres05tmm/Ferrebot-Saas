@@ -92,6 +92,19 @@ class SqlFiadosRepository:
         })
         return movimiento
 
+    async def fiados_con_saldo(self, cliente_id: int) -> list[Fiado]:
+        """Fiados VIVOS (saldo > 0) de un cliente, viejos primero (el abono natural paga lo más antiguo).
+        Alimenta el modal de abono del dashboard (F2.3); acotado por cliente, no necesita paginación."""
+        return list(
+            (
+                await self._s.execute(
+                    select(Fiado)
+                    .where(Fiado.cliente_id == cliente_id, Fiado.saldo > 0)
+                    .order_by(Fiado.creado_en.asc(), Fiado.id.asc())
+                )
+            ).scalars().all()
+        )
+
     async def deudas(self) -> list[dict]:
         rows = (
             await self._s.execute(

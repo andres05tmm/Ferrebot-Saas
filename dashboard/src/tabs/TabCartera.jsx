@@ -18,6 +18,8 @@ import { useFeatures, esConstruccion } from '@/lib/features.jsx'
 import { Card } from '@/components/ui/card.jsx'
 import { Input } from '@/components/ui/input.jsx'
 import { Button } from '@/components/ui/button.jsx'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs.jsx'
+import ModalAbonoFiado from '@/components/ModalAbonoFiado.jsx'
 import CarteraAlquilerSection from './construccion/CarteraAlquiler.jsx'
 
 const arr = (d) => (Array.isArray(d) ? d : [])
@@ -58,7 +60,7 @@ function Kpi({ label, value, hint }) {
   )
 }
 
-function SeccionDeudores({ deudores, onOptOut }) {
+function SeccionDeudores({ deudores, onOptOut, onAbonar }) {
   return (
     <Card className="p-3">
       <h2 className="text-sm font-semibold mb-2 inline-flex items-center gap-1.5">
@@ -87,6 +89,9 @@ function SeccionDeudores({ deudores, onOptOut }) {
                 </div>
               </div>
               <div className="font-semibold tabular-nums text-[13px]">{cop(d.saldo)}</div>
+              <Button size="sm" variant="outline" className="shrink-0" onClick={() => onAbonar(d)}>
+                Abonar
+              </Button>
               <Button size="sm" variant="ghost" className="shrink-0"
                 aria-label={`${d.opt_out ? 'Reactivar' : 'Pausar'} recordatorios de ${d.nombre}`}
                 title={d.opt_out ? 'Reactivar recordatorios' : 'Pausar recordatorios (opt-out)'}
@@ -125,7 +130,8 @@ function SeccionPagos({ pagos, onVerificar }) {
         </ul>
       )}
       <p className="mt-2 text-[11px] text-muted-foreground">
-        Verificar el comprobante NO registra el abono: hazlo en Clientes/Fiados (mueve caja).
+        Verificar el comprobante NO registra el abono: usa «Abonar» en el deudor (baja el saldo del
+        fiado; no mueve caja).
       </p>
     </Card>
   )
@@ -202,6 +208,7 @@ function CarteraAdmin() {
   const promesasQ = useFetch('/cobranza/promesas?estado=vigente')
   const configQ = useFetch('/cobranza/config')
   const recuperadoQ = useFetch('/cobranza/recuperado?dias=30')
+  const [abonando, setAbonando] = useState(null)   // deudor con el modal de abono abierto, o null
 
   useRealtimeEvent(EVENTOS, () => {
     deudoresQ.refetch(); pagosQ.refetch(); promesasQ.refetch(); recuperadoQ.refetch()
@@ -226,13 +233,15 @@ function CarteraAdmin() {
     )
   }
 
-  // Cobranza retail (KPIs + deudores + pagos + reglas). Sus números son REALES también para la obra:
-  // la cartera de alquiler comparte el ledger de fiados, así que los deudores de cobranza son los suyos.
-  // Solo cambia el ORDEN por familia (ver abajo), no el contenido.
+  // Cobranza del agente (KPIs + deudores + pagos + reglas). Sus números son REALES también para la
+  // obra: la cartera de alquiler comparte el ledger de fiados. El KPI de total se rotula sin
+  // ambigüedad en construcción (convive con el "por cobrar" de alquiler en la otra pestaña).
   const cobranza = (
-    <>
+    <div className="space-y-3">
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-        <Kpi label="En cartera" value={deudoresQ.loading ? '…' : cop(total)} />
+        <Kpi label={construccion ? 'Cartera que cobra el agente' : 'En cartera'}
+          value={deudoresQ.loading ? '…' : cop(total)}
+          hint={construccion ? 'clientes con saldo sobre el mínimo del motor' : undefined} />
         <Kpi label="Recuperado" value={recuperadoQ.loading ? '…' : cop(recuperadoQ.data?.total)}
           hint="últimos 30 días, tras recordatorio" />
         <Kpi label="Deudores" value={deudoresQ.loading ? '…' : deudores.length} />
@@ -241,13 +250,13 @@ function CarteraAdmin() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-        <SeccionDeudores deudores={deudores} onOptOut={onOptOut} />
+        <SeccionDeudores deudores={deudores} onOptOut={onOptOut} onAbonar={setAbonando} />
         <div className="space-y-3">
           <SeccionPagos pagos={pagos} onVerificar={onVerificar} />
           <SeccionConfig config={configQ.data} refetch={configQ.refetch} />
         </div>
       </div>
-    </>
+    </div>
   )
 
   // Cartera de alquiler (vertical construcción, flag `cartera_alquiler`): se auto-gatea por la capacidad
@@ -260,10 +269,30 @@ function CarteraAdmin() {
         <HandCoins className="size-4.5 text-primary" /> Cartera
       </h1>
 
-      {/* Orden por familia: para la constructora, la cartera de ALQUILER es su cartera principal → va
-          ARRIBA; la cobranza (compartida) queda debajo. Para retail, el orden original (cobranza primero,
-          alquiler al fondo si acaso la tuviera). Solo cambia el orden, no el contenido. */}
-      {construccion ? <>{alquiler}{cobranza}</> : <>{cobranza}{alquiler}</>}
+      {/* Dos dominios comparten la página (F2.3): en construcción van en PESTAÑAS —la cartera de
+          alquiler es la principal (default) y la cobranza del agente al lado— para que sus KPIs no se
+          lean como el mismo número (hallazgo F1: dos "lo que me deben" divergentes en una columna).
+          Retail conserva el layout apilado de siempre (cobranza primero). */}
+      {construccion ? (
+        <Tabs defaultValue="alquiler">
+          <TabsList>
+            <TabsTrigger value="alquiler">Alquiler de maquinaria</TabsTrigger>
+            <TabsTrigger value="cobranza">Cobranza del agente</TabsTrigger>
+          </TabsList>
+          <TabsContent value="alquiler" className="mt-3">{alquiler}</TabsContent>
+          <TabsContent value="cobranza" className="mt-3">{cobranza}</TabsContent>
+        </Tabs>
+      ) : (
+        <>{cobranza}{alquiler}</>
+      )}
+
+      <ModalAbonoFiado
+        abierto={abonando != null}
+        onCerrar={() => setAbonando(null)}
+        titulo={abonando ? `Abono de ${abonando.nombre}` : undefined}
+        clienteId={abonando?.cliente_id}
+        onExito={() => { setAbonando(null); deudoresQ.refetch() }}
+      />
     </div>
   )
 }

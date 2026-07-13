@@ -44,6 +44,13 @@ function instalarFetch() {
     if (u.includes('/cobranza/config')) return Promise.resolve(jsonResp(CONFIG))
     if (u.includes('/cobranza/recuperado')) return Promise.resolve(jsonResp({ total: '85000.00', dias: 30 }))
     if (u.includes('/opt-out')) return Promise.resolve(jsonResp(null, 204))
+    // Abonos desde el dashboard (F2.3): fiados vivos del cliente + POST del abono.
+    if (u.includes('/fiados?cliente_id=1')) return Promise.resolve(jsonResp([
+      { id: 41, cliente_id: 1, venta_id: null, monto: '150000.00', saldo: '150000.00', creado_en: '2026-06-01T13:00:00+00:00' },
+    ]))
+    if (u.includes('/fiados/41/abono') && opts?.method === 'POST') {
+      return Promise.resolve(jsonResp({ id: 90, fiado_id: 41, tipo: 'ABONO', monto: '50000.00', creado_en: '2026-06-12T13:00:00+00:00' }, 201))
+    }
     return Promise.resolve(jsonResp([]))
   })
   vi.stubGlobal('fetch', fetchMock)
@@ -93,6 +100,27 @@ describe('TabCartera', () => {
     expect(llamadas).toContainEqual(['/api/v1/cobranza/pagos-reportados/7/verificar', 'POST'])
   })
 
+  it('Abonar en un deudor abre el modal, lista sus fiados y postea el abono con Idempotency-Key (F2.3)', async () => {
+    comoAdmin()
+    const fetchMock = instalarFetch()
+    render(<MemoryRouter><TabCartera /></MemoryRouter>)
+    await screen.findByText('Ana Pérez')
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Abonar' })[0])
+    // El modal pide los fiados del cliente y muestra el saldo como tope.
+    expect(await screen.findByText(/Saldo del fiado/)).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('Monto'), { target: { value: '50000' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Registrar abono' }))
+
+    await screen.findByText('Ana Pérez')   // el modal cierra y la lista sigue
+    const call = fetchMock.mock.calls.find(
+      (c) => String(c[0]).includes('/fiados/41/abono') && c[1]?.method === 'POST',
+    )
+    expect(call).toBeTruthy()
+    expect(JSON.parse(call[1].body)).toEqual({ monto: '50000' })
+    expect(new Headers(call[1].headers).get('Idempotency-Key')).toBeTruthy()
+  })
+
   it('el toggle de opt-out llama al endpoint con el valor invertido', async () => {
     comoAdmin()
     const fetchMock = instalarFetch()
@@ -121,12 +149,19 @@ describe('TabCartera', () => {
   }
 
   // Los títulos de sección son headings ("Deudores" también existe como label de KPI → usar el heading).
-  it('construcción: la cartera de alquiler va ARRIBA de la cobranza (deudores)', async () => {
+  it('construcción (F2.3): dos PESTAÑAS — Alquiler (default) y Cobranza del agente al hacer click', async () => {
     comoAdmin(); instalarFetch()
     renderCartera(['construccion', 'obras', 'pos', 'inventario', 'fiados', 'pack_cobranza', 'cartera_alquiler'])
-    const alquiler = await screen.findByRole('heading', { name: 'Cartera de alquiler' })
-    const deudores = screen.getByRole('heading', { name: 'Deudores' })
-    expect(precede(alquiler, deudores)).toBe(true)   // alquiler primero
+    // La pestaña default es la cartera de alquiler (la principal del gremio).
+    expect(await screen.findByRole('heading', { name: 'Cartera de alquiler' })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Deudores' })).toBeNull()   // cobranza en su pestaña
+    // Cambiar a la pestaña de cobranza revela deudores con su KPI desambiguado.
+    // (Radix Tabs activa en mouseDown; click solo no cambia la pestaña en jsdom.)
+    const trigger = screen.getByRole('tab', { name: 'Cobranza del agente' })
+    fireEvent.mouseDown(trigger)
+    fireEvent.click(trigger)
+    expect(await screen.findByRole('heading', { name: 'Deudores' })).toBeInTheDocument()
+    expect(screen.getByText('Cartera que cobra el agente')).toBeInTheDocument()
   })
 
   it('retail: la cobranza (deudores) va ARRIBA de la cartera de alquiler', async () => {

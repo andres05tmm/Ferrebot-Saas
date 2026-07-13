@@ -6,19 +6,19 @@
 import { useEffect, useState } from 'react'
 import { NavLink } from 'react-router-dom'
 import { ChevronDown, ChevronRight, PanelLeftClose, PanelLeftOpen, Command, Sun, Moon } from 'lucide-react'
-import { ROUTES, GROUPS, routesByGroup } from '@/routes.jsx'
+import { ROUTES, groupsFor, routesByGroup } from '@/routes.jsx'
 import { useFeatures, isRouteEnabled } from '@/lib/features.jsx'
 import { useBranding } from '@/lib/branding.jsx'
 import { cn } from '@/lib/utils'
 
 function loadGroupState() {
+  // Solo lo persistido: un grupo sin entrada cae a su `collapsedByDefault` al renderizar (los ids
+  // varían por familia — construcción usa obra/comercial/recursos/materiales/plata).
   try {
     const raw = localStorage.getItem('ferrebot_sidebar_groups')
     if (raw) return JSON.parse(raw)
   } catch {}
-  const initial = {}
-  for (const g of GROUPS) initial[g.id] = !g.collapsedByDefault
-  return initial
+  return {}
 }
 
 function saveGroupState(state) {
@@ -98,10 +98,10 @@ export default function Sidebar({ collapsed, setCollapsed, onOpenCommand, colorS
           <SidebarLink key={item.path} item={item} collapsed={collapsed} />
         ))}
 
-        {GROUPS.map(group => {
+        {groupsFor(features).map(group => {
           const items = routesByGroup(group.id, features)
           if (!items.length) return null
-          const isOpen = collapsed ? true : !!groupOpen[group.id]
+          const isOpen = collapsed ? true : (groupOpen[group.id] ?? !group.collapsedByDefault)
           return (
             <div key={group.id} className="mt-4">
               {!collapsed && (

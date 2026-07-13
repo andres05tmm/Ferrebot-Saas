@@ -6,17 +6,25 @@
 import { useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { LayoutDashboard, ChevronUp, X } from 'lucide-react'
-import { GROUPS, routesByGroup, ROUTES } from '@/routes.jsx'
+import { groupsFor, groupOf, routesByGroup, ROUTES } from '@/routes.jsx'
 import { useFeatures, resolveHomePath } from '@/lib/features.jsx'
 import { useAuth } from '@/hooks/useAuth.js'
 import { cn } from '@/lib/utils'
 
+// Un id SIN icono = grupo invisible en el bottom nav (fallo silencioso): cada familia de grupos
+// (GROUPS y GROUPS_CONSTRUCCION) debe tener TODOS sus ids aquí. Lo cubre el test de MobileNav.
 const GROUP_ICONS = {
   operacion:    ROUTES.find(r => r.path === '/ventas')?.icon,
   construccion: ROUTES.find(r => r.path === '/obras')?.icon,   // HardHat — sin esto el grupo entero desaparecía del bottom nav
   gestion:      ROUTES.find(r => r.path === '/clientes')?.icon,
   reportes:     ROUTES.find(r => r.path === '/historial')?.icon,
   fiscal:       ROUTES.find(r => r.path === '/facturacion')?.icon,
+  // Familia construcción (F2.1): navegación por flujo de trabajo.
+  obra:         ROUTES.find(r => r.path === '/obras')?.icon,        // HardHat
+  comercial:    ROUTES.find(r => r.path === '/cotizaciones-obra')?.icon,  // ClipboardList
+  recursos:     ROUTES.find(r => r.path === '/maquinas')?.icon,     // Truck
+  materiales:   ROUTES.find(r => r.path === '/inventario')?.icon,   // Package
+  plata:        ROUTES.find(r => r.path === '/cartera')?.icon,      // HandCoins
 }
 
 export default function MobileNav() {
@@ -32,8 +40,9 @@ export default function MobileNav() {
   const homeRoute = ROUTES.find(r => r.path === homePath)
   const HomeIcon = homeRoute?.icon || LayoutDashboard
   const isHome = location.pathname === homePath || location.pathname === '/'
-  const activeGroup = ROUTES.find(r => r.path === location.pathname)?.group
-  const drawer = openGroup ? GROUPS.find(g => g.id === openGroup) : null
+  const groups = groupsFor(features)
+  const activeGroup = groupOf(location.pathname, features)
+  const drawer = openGroup ? groups.find(g => g.id === openGroup) : null
 
   function go(path) {
     navigate(path)
@@ -92,7 +101,7 @@ export default function MobileNav() {
           active={isHome}
           onClick={() => go(homePath)}
         />
-        {GROUPS.map(group => {
+        {groups.map(group => {
           const Icon = GROUP_ICONS[group.id]
           // Igual que el Sidebar: ocultar el grupo si el tenant no tiene rutas habilitadas en él
           // (evita un botón muerto —p. ej. Construcción en un tenant retail— con drawer vacío).

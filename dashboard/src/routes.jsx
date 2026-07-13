@@ -2,6 +2,11 @@
  * Routes config — fuente única de verdad de la IA del dashboard.
  * Consumida por App (Routes), Sidebar/MobileNav (nav) y CommandPalette (búsqueda).
  * El gating por empresa lo decide `isRouteEnabled(path, features)` con las features de GET /config.
+ *
+ * DOS familias de navegación (F2.1): la familia CONSTRUCCIÓN agrupa por flujo de trabajo (patrón
+ * Procore: Obra / Comercial / Recursos / Materiales / Plata) vía `grupoObra`/`labelObra` opcionales
+ * por ruta y `groupsFor(features)`; el resto de familias conserva los GROUPS de siempre. El gating
+ * por feature (features.jsx) es ortogonal y no cambia.
  */
 import {
   LayoutDashboard, Home, ShoppingCart, Wallet, Package,
@@ -12,7 +17,7 @@ import {
   CreditCard, FileSpreadsheet, Star, BedDouble, Undo2, Percent, Library, Landmark, Scale,
   HardHat, Wrench, ClipboardList, TrendingDown, Gauge, PackageSearch, Timer,
 } from 'lucide-react'
-import { isRouteEnabled } from './lib/features.jsx'
+import { esConstruccion, isRouteEnabled } from './lib/features.jsx'
 
 export const ROUTES = [
   // Portadas — top-level, sin grupo. Mutuamente excluyentes: `/inicio` (agente de servicios) y `/hoy`
@@ -27,8 +32,8 @@ export const ROUTES = [
   // Operación
   { path: '/ventas',              label: 'Ventas Rápidas',      icon: ShoppingCart,    group: 'operacion' },
   { path: '/devoluciones',        label: 'Devoluciones',        icon: Undo2,           group: 'operacion' },
-  { path: '/caja',                label: 'Caja',                icon: Wallet,          group: 'operacion' },
-  { path: '/inventario',          label: 'Inventario',          icon: Package,         group: 'operacion' },
+  { path: '/caja',                label: 'Caja',                icon: Wallet,          group: 'operacion', grupoObra: 'plata',      labelObra: 'Caja menor', ordenObra: 3 },
+  { path: '/inventario',          label: 'Inventario',          icon: Package,         group: 'operacion', grupoObra: 'materiales', labelObra: 'Materiales' },
   { path: '/agenda',              label: 'Agenda',              icon: CalendarDays,    group: 'operacion' },
   { path: '/reservas',            label: 'Reservas',            icon: BedDouble,       group: 'operacion' },
   { path: '/pedidos',             label: 'Pedidos',             icon: ChefHat,         group: 'operacion' },
@@ -38,26 +43,27 @@ export const ROUTES = [
   { path: '/conocimiento',        label: 'Conocimiento',        icon: BookText,        group: 'operacion' },
 
   // Construcción (vertical PIM) — gated por sus flags finas (cotizaciones_aiu/obras/maquinaria/herramientas/nomina).
-  { path: '/cotizaciones-obra',   label: 'Cotizaciones AIU',    icon: ClipboardList,   group: 'construccion' },
-  { path: '/obras',               label: 'Obras',               icon: HardHat,         group: 'construccion' },
-  { path: '/calendario',          label: 'Calendario',          icon: CalendarDays,    group: 'construccion' },
-  { path: '/maquinas',            label: 'Maquinaria',          icon: Truck,           group: 'construccion' },
-  { path: '/operacion',           label: 'Operación',           icon: Timer,           group: 'construccion' },
-  { path: '/herramientas',        label: 'Herramientas',        icon: Wrench,          group: 'construccion' },
-  { path: '/trabajadores',        label: 'Trabajadores',        icon: Users,           group: 'construccion' },
-  { path: '/nomina',              label: 'Nómina',              icon: Wallet,          group: 'construccion' },
-  { path: '/resbalos',            label: 'Resbalos y precios',  icon: TrendingDown,    group: 'construccion' },
+  // En la familia construcción se reparten por flujo (grupoObra); "AIU" cae del label (jerga interna).
+  { path: '/cotizaciones-obra',   label: 'Cotizaciones AIU',    icon: ClipboardList,   group: 'construccion', grupoObra: 'comercial', labelObra: 'Cotizaciones', ordenObra: 1 },
+  { path: '/obras',               label: 'Obras',               icon: HardHat,         group: 'construccion', grupoObra: 'obra' },
+  { path: '/calendario',          label: 'Calendario',          icon: CalendarDays,    group: 'construccion', grupoObra: 'obra' },
+  { path: '/maquinas',            label: 'Maquinaria',          icon: Truck,           group: 'construccion', grupoObra: 'recursos' },
+  { path: '/operacion',           label: 'Operación',           icon: Timer,           group: 'construccion', grupoObra: 'obra',      labelObra: 'Operación en vivo' },
+  { path: '/herramientas',        label: 'Herramientas',        icon: Wrench,          group: 'construccion', grupoObra: 'recursos' },
+  { path: '/trabajadores',        label: 'Trabajadores',        icon: Users,           group: 'construccion', grupoObra: 'recursos' },
+  { path: '/nomina',              label: 'Nómina',              icon: Wallet,          group: 'construccion', grupoObra: 'recursos' },
+  { path: '/resbalos',            label: 'Resbalos y precios',  icon: TrendingDown,    group: 'construccion', grupoObra: 'comercial', ordenObra: 3 },
 
   // Gestión
-  { path: '/clientes',            label: 'Clientes',            icon: Users,           group: 'gestion' },
-  { path: '/cartera',             label: 'Cartera',             icon: HandCoins,       group: 'gestion' },
-  { path: '/cobros',              label: 'Cobros',              icon: CreditCard,      group: 'gestion' },
-  { path: '/compras',             label: 'Compras',             icon: Truck,           group: 'gestion' },
-  { path: '/pedidos-proveedor',   label: 'Pedidos a proveedor', icon: PackageSearch,   group: 'gestion' },
-  { path: '/proveedores',         label: 'Proveedores',         icon: Building2,       group: 'gestion' },
-  { path: '/cuentas-por-pagar',   label: 'Cuentas por pagar',   icon: Banknote,        group: 'gestion' },
-  { path: '/gastos',              label: 'Gastos',              icon: Receipt,         group: 'gestion' },
-  { path: '/conciliacion',        label: 'Conciliación',        icon: Landmark,        group: 'gestion' },
+  { path: '/clientes',            label: 'Clientes',            icon: Users,           group: 'gestion', grupoObra: 'comercial', ordenObra: 2 },
+  { path: '/cartera',             label: 'Cartera',             icon: HandCoins,       group: 'gestion', grupoObra: 'plata', ordenObra: 1 },
+  { path: '/cobros',              label: 'Cobros',              icon: CreditCard,      group: 'gestion', grupoObra: 'plata' },
+  { path: '/compras',             label: 'Compras',             icon: Truck,           group: 'gestion', grupoObra: 'materiales', labelObra: 'Compras de obra' },
+  { path: '/pedidos-proveedor',   label: 'Pedidos a proveedor', icon: PackageSearch,   group: 'gestion', grupoObra: 'materiales' },
+  { path: '/proveedores',         label: 'Proveedores',         icon: Building2,       group: 'gestion', grupoObra: 'materiales' },
+  { path: '/cuentas-por-pagar',   label: 'Cuentas por pagar',   icon: Banknote,        group: 'gestion', grupoObra: 'plata' },
+  { path: '/gastos',              label: 'Gastos',              icon: Receipt,         group: 'gestion', grupoObra: 'plata', labelObra: 'Gastos de obra', ordenObra: 2 },
+  { path: '/conciliacion',        label: 'Conciliación',        icon: Landmark,        group: 'gestion', grupoObra: 'plata' },
 
   // Reportes
   { path: '/historial',           label: 'Historial',           icon: History,         group: 'reportes' },
@@ -83,8 +89,48 @@ export const GROUPS = [
   { id: 'fiscal',    label: 'Fiscal',    collapsedByDefault: true  },
 ]
 
+// Grupos de la familia CONSTRUCCIÓN (F2.1): navegación por flujo de trabajo, benchmark Procore
+// (Portfolio/Field/Financials/Resources) hablado en el idioma del gremio. Reportes/fiscal conservan
+// su grupo (las rutas fiscales aplican si el tenant tiene esas features; vacíos se ocultan solos).
+export const GROUPS_CONSTRUCCION = [
+  { id: 'obra',       label: 'Obra',       collapsedByDefault: false },
+  { id: 'comercial',  label: 'Comercial',  collapsedByDefault: false },
+  { id: 'recursos',   label: 'Recursos',   collapsedByDefault: false },
+  { id: 'materiales', label: 'Materiales', collapsedByDefault: false },
+  { id: 'plata',      label: 'Plata',      collapsedByDefault: false },
+  { id: 'reportes',   label: 'Reportes',   collapsedByDefault: false },
+  { id: 'fiscal',     label: 'Fiscal',     collapsedByDefault: true  },
+]
+
+/** Los grupos de navegación de la familia del tenant. */
+export function groupsFor(features = []) {
+  return esConstruccion(features) ? GROUPS_CONSTRUCCION : GROUPS
+}
+
+// Grupo efectivo de una ruta en la familia dada. En construcción manda `grupoObra`; reportes/fiscal
+// conservan su grupo; una ruta sin grupoObra no pertenece a ningún grupo de obra (el gating por
+// features ya suprime las que no aplican — esto es solo el fallback coherente).
+function grupoDe(route, esCons) {
+  if (!esCons) return route.group
+  if (route.grupoObra) return route.grupoObra
+  return route.group === 'reportes' || route.group === 'fiscal' ? route.group : null
+}
+
+/** Grupo (id) al que pertenece un path para el tenant — para marcar el grupo activo en el nav móvil. */
+export function groupOf(path, features = []) {
+  const route = ROUTES.find(r => r.path === path)
+  return route ? grupoDe(route, esConstruccion(features)) : null
+}
+
 export function routesByGroup(groupId, features = []) {
-  return ROUTES.filter(r => r.group === groupId && isRouteEnabled(r.path, features))
+  const esCons = esConstruccion(features)
+  const items = ROUTES.filter(r => grupoDe(r, esCons) === groupId && isRouteEnabled(r.path, features))
+  if (!esCons) return items
+  return items
+    // Orden deliberado dentro del grupo de obra (`ordenObra`); sin él, el orden del array (sort estable).
+    .sort((a, b) => (a.ordenObra ?? 99) - (b.ordenObra ?? 99))
+    // Label efectivo resuelto aquí para que los consumidores (nav, palette) usen `item.label` sin más.
+    .map(r => (r.labelObra ? { ...r, label: r.labelObra } : r))
 }
 
 export function findRoute(path) {

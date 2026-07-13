@@ -9,7 +9,7 @@ import {
   CommandGroup, CommandItem, CommandShortcut, CommandSeparator,
 } from '@/components/ui/command.jsx'
 import { Plus, RefreshCw } from 'lucide-react'
-import { ROUTES, GROUPS } from '@/routes.jsx'
+import { ROUTES, groupsFor, routesByGroup } from '@/routes.jsx'
 import { useFeatures, isRouteEnabled } from '@/lib/features.jsx'
 
 export default function CommandPalette({ open, setOpen, onRefresh }) {
@@ -86,8 +86,8 @@ export default function CommandPalette({ open, setOpen, onRefresh }) {
           })}
         </CommandGroup>
 
-        {GROUPS.map(group => {
-          const items = ROUTES.filter(r => r.group === group.id && isRouteEnabled(r.path, features))
+        {groupsFor(features).map(group => {
+          const items = routesByGroup(group.id, features)
           if (!items.length) return null
           return (
             <CommandGroup key={group.id} heading={group.label}>

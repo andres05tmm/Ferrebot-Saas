@@ -68,7 +68,8 @@ export default function FormAsignacionTrabajador({ trabajadorFija, fechaInicioDe
         <Campo label="Obra" requerido>
           <select value={f.obra_id} onChange={set('obra_id')} className={SELECT_CLS}>
             <option value="">Elige…</option>
-            {arr(obrasQ.data).map((o) => <option key={o.id} value={o.id}>{o.nombre}</option>)}
+            {/* Una obra LIQUIDADA no admite asignaciones (409 del backend) — mejor no ofrecerla. */}
+            {arr(obrasQ.data).filter((o) => o.estado !== 'LIQUIDADA').map((o) => <option key={o.id} value={o.id}>{o.nombre}</option>)}
           </select>
         </Campo>
         <Campo label="Fecha inicio">

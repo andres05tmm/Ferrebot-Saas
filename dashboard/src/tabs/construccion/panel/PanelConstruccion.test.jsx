@@ -97,8 +97,9 @@ describe('PanelConstruccion — cockpit del dueño (F3)', () => {
     expect(await screen.findByText('$650.000')).toBeInTheDocument()   // ingreso del mes
     expect(fetchMock.mock.calls.some((c) => String(c[0]).includes('/obras/dashboard'))).toBe(true)
     expect(screen.getByText('$380.000')).toBeInTheDocument()          // gastos del mes
-    // Utilidad y flujo comparten valor → ambas teselas lo muestran.
-    expect(screen.getAllByText('$270.000').length).toBeGreaterThanOrEqual(2)
+    // F2.4: la utilidad aparece UNA vez — murió la tesela "Flujo de caja" (alias del mismo número).
+    expect(screen.getAllByText('$270.000')).toHaveLength(1)
+    expect(screen.queryByText('Flujo de caja')).toBeNull()
     // El semáforo de margen (verde) lleva etiqueta (color-not-only).
     expect(screen.getByText('Saludable')).toBeInTheDocument()
   })

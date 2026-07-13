@@ -36,7 +36,8 @@
 import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
 // hoyCO = fecha de hoy en Colombia (YYYY-MM-DD), default de los formularios (helper compartido, regla #4).
-import { hoyStrCO as hoyCO, sumarDiasCO, VENTANA_DIAS_PARTE } from '@/lib/fechas'
+import { hoyStrCO as hoyCO } from '@/lib/fechas'
+import FormRegistroHoras from './calendario/FormRegistroHoras.jsx'
 import {
   Gauge, Wallet, ShoppingCart, Users, Timer, Package, Lock, Search,
   TrendingUp, TrendingDown, Minus, X, CheckCircle2,
@@ -139,7 +140,10 @@ export default function PanelPresupuestoReal({ obra, onCambio }) {
             <>
               <Acciones activo={form} onAbrir={setForm} />
               {form === 'gasto' && <FormImputarGasto obraId={obra.id} onHecho={trasImputar} onCancelar={cerrarForm} />}
-              {form === 'horas' && <FormRegistrarHoras obraId={obra.id} onHecho={trasImputar} onCancelar={cerrarForm} />}
+              {form === 'horas' && (
+                <FormRegistroHoras obraFija={{ id: obra.id, nombre: obra.nombre }}
+                  onExito={trasImputar} onCancelar={cerrarForm} />
+              )}
               {form === 'consumo' && <FormRegistrarConsumo obraId={obra.id} onHecho={trasImputar} onCancelar={cerrarForm} />}
               <BarraLiquidar obra={obra} finalizada={finalizada} onHecho={() => { gastoQ.refetch(); onCambio?.() }} />
             </>
@@ -408,82 +412,8 @@ function FormImputarGasto({ obraId, onHecho, onCancelar }) {
   )
 }
 
-// ── Registrar horas de máquina (POST /maquinas/{maquina_id}/horas con obra_id — router de maquinaria) ──
-function FormRegistrarHoras({ obraId, onHecho, onCancelar }) {
-  const maquinasQ = useFetch('/maquinas')   // catálogo Fase 1; el backend tarifa por la asignación activa
-  const maquinas = (Array.isArray(maquinasQ.data) ? maquinasQ.data : []).filter((m) => m.estado !== 'BAJA')
-  const [f, setF] = useState({ maquina_id: '', fecha: hoyCO(), horas_trabajadas: '', observaciones: '' })
-  const [enviando, setEnviando] = useState(false)
-  const set = (k) => (e) => setF((p) => ({ ...p, [k]: e.target.value }))
-
-  // Ventana del parte (espeja el guard 422 del backend): hoy o hasta N días atrás, nunca futuro.
-  const hoy = hoyCO()
-  const minFecha = sumarDiasCO(hoy, -VENTANA_DIAS_PARTE)
-
-  async function guardar() {
-    if (!f.maquina_id) { toast.error('Elige la máquina'); return }
-    if (!(n(f.horas_trabajadas) > 0)) { toast.error('Las horas trabajadas deben ser mayores que cero'); return }
-    if (f.fecha > hoy) { toast.error('No se puede registrar un parte de un día futuro'); return }
-    if (f.fecha < minFecha) { toast.error(`El parte solo se puede registrar hasta ${VENTANA_DIAS_PARTE} días atrás`); return }
-    const payload = {
-      obra_id: obraId,                                  // la obra viaja en el cuerpo; la máquina, en la ruta
-      fecha: f.fecha,
-      horas_trabajadas: String(n(f.horas_trabajadas)),  // STRING → Decimal exacto (las horas no se redondean)
-      observaciones: f.observaciones.trim() || null,
-    }
-    setEnviando(true)
-    try {
-      const res = await api(`/maquinas/${Number(f.maquina_id)}/horas`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
-      if (!res.ok) {
-        // 409 = no hay asignación activa de esa máquina a la obra que cubra la fecha → no se puede tarifar.
-        toast.error(res.status === 409 ? 'La máquina no está asignada a esta obra' : 'No se pudieron registrar las horas')
-        return
-      }
-      toast.success(mensajeHoras(await res.json().catch(() => ({}))))
-      onHecho()
-    } catch { toast.error('Error de conexión') } finally { setEnviando(false) }
-  }
-
-  return (
-    <MarcoForm titulo="Registrar horas de máquina" onCancelar={onCancelar} enviando={enviando} onGuardar={guardar} textoGuardar="Guardar horas">
-      {maquinasQ.loading ? (
-        <p className="py-4 text-center text-[12px] text-muted-foreground">Cargando máquinas…</p>
-      ) : maquinas.length === 0 ? (
-        <p className="rounded-md bg-surface px-3 py-3 text-[12px] text-muted-foreground">No hay máquinas registradas. Da de alta una máquina y asígnala a la obra antes de registrar horas.</p>
-      ) : (
-        <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
-          <Campo label="Máquina" requerido className="sm:col-span-3">
-            <select value={f.maquina_id} onChange={set('maquina_id')} className={SELECT_COMPACTO}>
-              <option value="">Elige una máquina…</option>
-              {maquinas.map((m) => <option key={m.id} value={m.id}>{m.codigo} · {m.nombre}</option>)}
-            </select>
-          </Campo>
-          <Campo label="Horas trabajadas" requerido hint="Se factura el máximo entre esto y el mínimo pactado">
-            <Input type="number" min="0" step="0.25" value={f.horas_trabajadas} onChange={set('horas_trabajadas')} className="h-8 text-right" />
-          </Campo>
-          <Campo label="Fecha" hint={`Hoy o hasta ${VENTANA_DIAS_PARTE} días atrás`}>
-            <Input type="date" value={f.fecha} onChange={set('fecha')} min={minFecha} max={hoy} className="h-8" />
-          </Campo>
-          <Campo label="Observaciones">
-            <Input value={f.observaciones} onChange={set('observaciones')} placeholder="Opcional" className="h-8" />
-          </Campo>
-        </div>
-      )}
-    </MarcoForm>
-  )
-}
-
-// Aviso tras registrar horas desde `RegistroHorasResultado`: "6h facturables. Mínimo cubierto. Ingreso
-// $900.000." Armado defensivo (cualquier campo puede faltar). `replay=true` = el parte de ese día ya
-// existía (idempotencia por clave natural máquina·obra·fecha): no se duplicó.
-function mensajeHoras(r) {
-  const partes = []
-  if (r.horas_facturables != null) partes.push(`${num(r.horas_facturables)}h facturables`)
-  if (r.minimo_cubierto != null) partes.push(r.minimo_cubierto ? 'mínimo cubierto' : 'por debajo del mínimo')
-  if (r.ingreso != null) partes.push(`ingreso ${cop(r.ingreso)}`)
-  const base = r.replay ? 'Horas ya registradas para ese día' : 'Horas registradas'
-  return partes.length ? `${base}. ${partes.join('. ')}.` : `${base}.`
-}
+// Las horas de máquina se registran con el MISMO formulario del calendario (F2.5, prop `obraFija`):
+// murió el duplicado local, que no soportaba turnos/rotación y hardcodeaba el mensaje del 409.
 
 // ── Registrar consumo de inventario (POST /obras/{id}/consumos) ───────────────────────────────────────
 function FormRegistrarConsumo({ obraId, onHecho, onCancelar }) {

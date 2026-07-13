@@ -1,19 +1,23 @@
 /*
- * PanelConstruccion — el cockpit del dueño de una constructora (F3, vertical PIM). Portada de la familia
- * construcción para el ADMIN: de un vistazo cada mañana, ¿alguna obra está perdiendo plata?, ¿mis
- * máquinas están produciendo?, ¿qué debo atender? Riesgo-primero: KPIs del mes → alertas → obras por
- * riesgo → máquinas → barras → actividad en vivo.
+ * PanelConstruccion — el cockpit del dueño de una constructora (vertical PIM). Portada de la familia
+ * construcción para el ADMIN: de un vistazo cada mañana, ¿qué debo atender?, ¿alguna obra está perdiendo
+ * plata?, ¿mis máquinas están produciendo?
  *
- * Un SOLO request agregado y cacheado (GET /obras/dashboard, admin-only, TTL 5 min server-side) alimenta
+ * DESATURADO en F2.4 (rediseño): UNA columna con jerarquía riesgo-primero — alertas ARRIBA del todo (lo
+ * accionable), 1 fila de 3 KPIs (murió el "Flujo de caja" alias de la utilidad), obras por riesgo a todo
+ * lo ancho (los nombres ya no se truncan), máquinas, gráficos (colapsables en móvil) y la actividad en
+ * vivo al FONDO (antes ocupaba la columna derecha premium, casi siempre vacía).
+ *
+ * Un SOLO request agregado y cacheado (GET /obras/dashboard, admin-only, TTL 30s server-side) alimenta
  * todo el tablero; `useRealtimeEvent` lo refresca ante los eventos que mueven caja/obra/máquina. RBAC: el
  * vendedor no ve cifras financieras → si no es admin, se le manda a /obras (la vista operativa). El dinero
  * llega como STRING decimal y se formatea con cop(); las secciones son presentación pura.
  */
 import { MotionConfig } from 'framer-motion'
 import { Navigate, useOutletContext, Link } from 'react-router-dom'
-import { HardHat, Plus } from 'lucide-react'
+import { HardHat, Plus, ChartColumn } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth.js'
-import { useFetch, ErrorMsg } from '@/components/shared.jsx'
+import { useFetch, useIsMobile, ErrorMsg } from '@/components/shared.jsx'
 import { useRealtimeEvent } from '@/components/RealtimeProvider.jsx'
 import { Card } from '@/components/ui/card.jsx'
 import { EstadoVacio, BTN_PRIMARY } from '../comunes.jsx'
@@ -91,26 +95,39 @@ export default function PanelConstruccion() {
           </Card>
         ) : (
           <>
+            {/* Riesgo primero: lo que el dueño debe ATENDER va antes que las cifras. */}
+            <ListaAlertas alertas={d.alertas} conteos={d.conteos} />
             <KpisMes kpis={d.kpis_mes} />
-
-            <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-              <div className="space-y-4 lg:col-span-2">
-                <ListaAlertas alertas={d.alertas} conteos={d.conteos} />
-                <TablaObrasRiesgo obras={d.portafolio?.obras} />
-                <EstadoMaquinas maquinas={d.maquinas} />
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                  <BarrasUtilidad obras={d.portafolio?.obras} />
-                  <TopMaquinasMes maquinas={d.maquinas?.top_mes} />
-                </div>
-              </div>
-              <aside className="space-y-4">
-                <FeedActividad />
-              </aside>
-            </div>
+            <TablaObrasRiesgo obras={d.portafolio?.obras} />
+            <EstadoMaquinas maquinas={d.maquinas} />
+            <Graficos obras={d.portafolio?.obras} topMaquinas={d.maquinas?.top_mes} />
+            <FeedActividad />
           </>
         )}
       </div>
     </MotionConfig>
+  )
+}
+
+// Gráficos del mes: siempre visibles en desktop; en móvil viven COLAPSADOS bajo un <details> nativo
+// (F2.4): son contexto, no acción — el dueño en el celular llega primero a alertas/obras/máquinas.
+function Graficos({ obras, topMaquinas }) {
+  const contenido = (
+    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+      <BarrasUtilidad obras={obras} />
+      <TopMaquinasMes maquinas={topMaquinas} />
+    </div>
+  )
+  if (!useIsMobile()) return contenido
+  return (
+    <details className="rounded-lg border border-border bg-surface">
+      <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3 text-[13px] font-semibold text-foreground">
+        <ChartColumn className="size-4 text-muted-foreground" aria-hidden="true" />
+        Gráficos del mes
+        <span className="ml-auto text-caption font-normal text-muted-foreground">tocar para ver</span>
+      </summary>
+      <div className="px-3 pb-3">{contenido}</div>
+    </details>
   )
 }
 
@@ -131,18 +148,13 @@ function PanelSkeleton() {
   return (
     <div className="space-y-4" aria-hidden="true">
       <Cabecera />
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        {Array.from({ length: 4 }).map((_, i) => (
+      <Card className="h-24 animate-pulse bg-surface-2" />
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        {Array.from({ length: 3 }).map((_, i) => (
           <Card key={i} className="h-24 animate-pulse bg-surface-2" />
         ))}
       </div>
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <div className="space-y-4 lg:col-span-2">
-          <Card className="h-40 animate-pulse bg-surface-2" />
-          <Card className="h-64 animate-pulse bg-surface-2" />
-        </div>
-        <Card className="h-64 animate-pulse bg-surface-2" />
-      </div>
+      <Card className="h-64 animate-pulse bg-surface-2" />
     </div>
   )
 }

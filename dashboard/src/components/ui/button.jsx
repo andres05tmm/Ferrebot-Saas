@@ -22,6 +22,10 @@ const buttonVariants = cva(
         sm:      'h-9 rounded-md px-3 text-xs sm:h-8',
         lg:      'h-11 rounded-md px-6 sm:h-10',
         icon:    'h-10 w-10 sm:h-9 sm:w-9',
+        // Calca BTN_PRIMARY/BTN_OUTLINE de construcción (F2.0): target táctil ≥40px en móvil vía
+        // min-height, y en sm+ se libera para que la altura densa la ponga el uso (h-7/h-8/h-9 por
+        // className). Es la vía de migración para extinguir esas constantes.
+        touch:   'min-h-10 px-3 sm:min-h-0',
       },
     },
     defaultVariants: { variant: 'default', size: 'default' },

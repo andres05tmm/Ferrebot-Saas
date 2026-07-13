@@ -70,7 +70,9 @@ export default function TabInventario() {
     cargar(q, 0, false)
   }, [q, refreshKey, cargar])
 
-  const stockQ = useFetch('/inventario/stock', [refreshKey])
+  // limite=500 (F2.7): el default del backend es 100 y la lista de productos pagina sin tope — a partir
+  // de la fila ~101 el stock "desaparecía" en silencio y parecía que esos productos no manejaban stock.
+  const stockQ = useFetch('/inventario/stock?limite=500', [refreshKey])
   const stockMap = useMemo(() => {
     const m = new Map()
     for (const s of (Array.isArray(stockQ.data) ? stockQ.data : [])) m.set(s.producto_id, s)
@@ -233,6 +235,9 @@ function AjusteForm({ productoId, onDone }) {
   const [contada, setContada] = useState('')
   const [enviando, setEnviando] = useState(false)
   const [error, setError] = useState('')
+  // Keys estables por payload (F2.7): un reintento tras timeout es replay, no doble movimiento de stock.
+  const keyConteo = useMemo(() => crypto.randomUUID(), [productoId, contada])
+  const keyAjuste = useMemo(() => crypto.randomUUID(), [productoId, delta, motivo])
 
   // Conteo físico (set-to-absolute): el admin escribe el número REAL contado; el backend calcula el
   // delta y deja el stock en ese valor (así se cuadran los negativos). POST /inventario/conteo.
@@ -242,7 +247,7 @@ function AjusteForm({ productoId, onDone }) {
     try {
       const res = await api('/inventario/conteo', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Idempotency-Key': crypto.randomUUID() },
+        headers: { 'Content-Type': 'application/json', 'Idempotency-Key': keyConteo },
         body: JSON.stringify({ producto_id: productoId, cantidad_contada: Number(contada), motivo: 'conteo físico' }),
       })
       if (res.ok) {
@@ -261,7 +266,7 @@ function AjusteForm({ productoId, onDone }) {
     try {
       const res = await api('/inventario/ajuste', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Idempotency-Key': crypto.randomUUID() },
+        headers: { 'Content-Type': 'application/json', 'Idempotency-Key': keyAjuste },
         body: JSON.stringify({ producto_id: productoId, cantidad: n, motivo: motivo.trim() }),
       })
       if (res.ok) onDone()

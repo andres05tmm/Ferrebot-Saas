@@ -97,25 +97,29 @@ describe('PanelPresupuestoReal', () => {
     })
   })
 
-  it('registrar horas postea a /maquinas/{maquina_id}/horas con obra_id en el cuerpo', async () => {
+  it('registrar horas usa el form COMPARTIDO del calendario con la obra FIJA (F2.5) y postea con obra_id', async () => {
     const fetchMock = montar(GASTO_REAL, OBRA, (u, opts) => {
       if (u.includes('/maquinas') && u.endsWith('/horas') && opts?.method === 'POST') {
-        return Promise.resolve(jsonResp({ registro_id: 5, horas_facturables: '6', minimo_cubierto: true, ingreso: '900000', replay: false }, 201))
+        return Promise.resolve(jsonResp({ registro_id: 5, turnos: [], horas_trabajadas: '6', horas_facturables: '6', minimo_cubierto: true, ingreso: '900000', replay: false }, 201))
       }
       if (u.endsWith('/maquinas')) return Promise.resolve(jsonResp([{ id: 3, codigo: 'M-001', nombre: 'Retro', estado: 'DISPONIBLE' }]))
+      if (u.includes('/trabajadores')) return Promise.resolve(jsonResp([]))
       return null
     })
 
     fireEvent.click(await screen.findByRole('button', { name: /Registrar horas/ }))
+    // La obra va FIJA (input readonly con el nombre); se elige máquina y horas.
+    expect(await screen.findByDisplayValue(OBRA.nombre)).toBeInTheDocument()
     fireEvent.change(await screen.findByLabelText('Máquina'), { target: { value: '3' } })
     fireEvent.change(screen.getByLabelText('Horas trabajadas'), { target: { value: '6' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Guardar horas' }))
+    const botones = screen.getAllByRole('button', { name: /Registrar horas/ })
+    fireEvent.click(botones[botones.length - 1])   // el submit del form (el primero es el toggle)
 
     await waitFor(() => {
       const call = fetchMock.mock.calls.find((c) => String(c[0]).includes('/maquinas/3/horas') && c[1]?.method === 'POST')
       expect(call).toBeTruthy()
       const body = JSON.parse(call[1].body)
-      expect(body).toMatchObject({ obra_id: 7, horas_trabajadas: '6' })
+      expect(body).toMatchObject({ obra_id: 7, horas_trabajadas: 6 })
       expect(body.fecha).toMatch(/^\d{4}-\d{2}-\d{2}$/)   // fecha por defecto hoy Colombia
     })
   })

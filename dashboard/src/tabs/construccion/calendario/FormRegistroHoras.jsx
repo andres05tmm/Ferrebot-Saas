@@ -3,10 +3,12 @@
  * Clon estructural de FormAsignacionMaquina: caja bordeada + grid de Campos + botones. Lo ve CUALQUIER
  * rol (el vendedor registra horas desde el campo); no gatea por admin.
  *
- * Se usa en DOS sitios: la sección Máquinas del detalle del día (elige máquina de la lista) y el kárdex de
- * la ficha (máquina FIJA por prop `maquinaFija`, sin select). Soporta ROTACIÓN de operadores: si el día ya
- * tiene un parte de (máquina, obra), enviar un operador o franja distintos agrega un TURNO nuevo y el
- * backend recalcula el total del día — la respuesta trae `horas_trabajadas` del DÍA para el toast.
+ * Se usa en TRES sitios: la sección Máquinas del detalle del día (elige máquina y obra), el kárdex de la
+ * ficha (máquina FIJA por prop `maquinaFija`, sin select) y el panel presupuesto-vs-real de la obra
+ * (obra FIJA por prop `obraFija` — F2.5: mató al formulario duplicado que vivía allí sin soporte de
+ * turnos). Soporta ROTACIÓN de operadores: si el día ya tiene un parte de (máquina, obra), enviar un
+ * operador o franja distintos agrega un TURNO nuevo y el backend recalcula el total del día — la
+ * respuesta trae `horas_trabajadas` del DÍA para el toast.
  *
  * POST /maquinas/{id}/horas {obra_id, horas_trabajadas, fecha?, operador_id?, hora_inicio?, hora_fin?,
  * observaciones?} → 200/201 RegistroHorasRespuesta {turnos, horas_trabajadas, horas_facturables, ingreso,
@@ -30,13 +32,13 @@ async function detalleError(res) {
   try { const b = await res.json(); return typeof b?.detail === 'string' ? b.detail : null } catch { return null }
 }
 
-export default function FormRegistroHoras({ maquinaFija, fechaDefault, onExito, onCancelar }) {
+export default function FormRegistroHoras({ maquinaFija, obraFija, fechaDefault, onExito, onCancelar }) {
   const maquinasQ = useFetch(maquinaFija ? null : '/maquinas')
-  const obrasQ = useFetch('/obras')
+  const obrasQ = useFetch(obraFija ? null : '/obras')
   const trabajadoresQ = useFetch('/trabajadores')
   const [enviando, setEnviando] = useState(false)
   const [f, setF] = useState({
-    maquina_id: '', obra_id: '', operador_id: '',
+    maquina_id: '', obra_id: obraFija ? String(obraFija.id) : '', operador_id: '',
     fecha: fechaDefault || hoyStrCO(), horas_trabajadas: '', hora_inicio: '', hora_fin: '', observaciones: '',
   })
   const set = (k) => (e) => setF((prev) => ({ ...prev, [k]: e.target.value }))
@@ -96,12 +98,19 @@ export default function FormRegistroHoras({ maquinaFija, fechaDefault, onExito, 
             </select>
           </Campo>
         )}
-        <Campo label="Obra" requerido>
-          <select value={f.obra_id} onChange={set('obra_id')} className={SELECT_CLS}>
-            <option value="">Elige…</option>
-            {arr(obrasQ.data).map((o) => <option key={o.id} value={o.id}>{o.nombre}</option>)}
-          </select>
-        </Campo>
+        {obraFija ? (
+          <Campo label="Obra">
+            <input value={obraFija.nombre} readOnly className={`${SELECT_CLS} text-muted-foreground`} />
+          </Campo>
+        ) : (
+          <Campo label="Obra" requerido>
+            <select value={f.obra_id} onChange={set('obra_id')} className={SELECT_CLS}>
+              <option value="">Elige…</option>
+              {/* Una obra LIQUIDADA es snapshot inmutable: el backend rechaza el parte (409) — mejor no ofrecerla. */}
+              {arr(obrasQ.data).filter((o) => o.estado !== 'LIQUIDADA').map((o) => <option key={o.id} value={o.id}>{o.nombre}</option>)}
+            </select>
+          </Campo>
+        )}
         <Campo label="Fecha" hint={`Hoy o hasta ${VENTANA_DIAS_PARTE} días atrás.`}>
           <input type="date" value={f.fecha} onChange={set('fecha')} min={minFecha} max={hoy} className={SELECT_CLS} />
         </Campo>

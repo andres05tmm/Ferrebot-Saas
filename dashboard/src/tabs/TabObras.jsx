@@ -18,10 +18,15 @@ import {
   CalendarDays, MapPin, ClipboardList, Camera, TriangleAlert, Ruler,
 } from 'lucide-react'
 import { api } from '@/lib/api'
-import { useFetch } from '@/components/shared.jsx'
+import { useFetch, cop } from '@/components/shared.jsx'
 import { useRealtimeEvent } from '@/components/RealtimeProvider.jsx'
 import { Card } from '@/components/ui/card.jsx'
 import { Input } from '@/components/ui/input.jsx'
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
+  AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from '@/components/ui/alert-dialog.jsx'
+import PageHeader from '@/components/PageHeader.jsx'
 import { Semaforo, Chips, Campo, EstadoVacio, Esqueleto, BTN_PRIMARY, BTN_OUTLINE, SELECT_CLS } from './construccion/comunes.jsx'
 import PanelPresupuestoReal from './construccion/PanelPresupuestoReal.jsx'
 import ResumenPortafolio from './construccion/ResumenPortafolio.jsx'
@@ -80,19 +85,26 @@ export default function TabObras() {
 
   return (
     <div className="space-y-3">
+      {/* Header compartido de página (F2.5): título + acción principal; la toolbar queda para buscar/filtrar. */}
+      <PageHeader
+        icono={Building2}
+        titulo="Obras"
+        sublinea="Presupuesto vs real de cada obra: contra ellas se cargan horas, gastos y compras."
+        acciones={(
+          <button onClick={() => setEditando(editando === 'nueva' ? null : 'nueva')} className={`${BTN_PRIMARY} h-9 shrink-0`}>
+            <Plus className="size-4" /> Nueva obra
+          </button>
+        )}
+      />
+
       {/* Home de obra (Fase 8): foto agregada y cacheada del portafolio, arriba de la lista. */}
       <ResumenPortafolio refreshKey={refreshKey} />
 
       <Card className="p-3">
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="relative min-w-[200px] flex-1">
-            <Search className="size-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
-            <Input value={q} onChange={(e) => setQ(e.target.value)}
-              placeholder="Buscar obra por nombre, cliente o ubicación…" aria-label="Buscar obra" className="pl-9" />
-          </div>
-          <button onClick={() => setEditando(editando === 'nueva' ? null : 'nueva')} className={`${BTN_PRIMARY} h-9 shrink-0`}>
-            <Plus className="size-4" /> Nueva obra
-          </button>
+        <div className="relative">
+          <Search className="size-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+          <Input value={q} onChange={(e) => setQ(e.target.value)}
+            placeholder="Buscar obra por nombre, cliente o ubicación…" aria-label="Buscar obra" className="pl-9" />
         </div>
         {chips.length > 1 && (
           <div className="mt-2.5">
@@ -189,9 +201,9 @@ function ObraDetalle({ id, obra, onEditar, onCambio }) {
   const detalle = detalleQ.data || obra
   const reportes = Array.isArray(reportesQ.data) ? reportesQ.data : []
   const [ocupado, setOcupado] = useState(false)
+  const [confirmando, setConfirmando] = useState(null)   // 'liquidar' | 'archivar' | null
 
   async function transicionar(dest) {
-    if (dest.confirmar && !window.confirm('Liquidar cierra la obra de forma definitiva: no admite nuevos gastos. ¿Continuar?')) return
     setOcupado(true)
     try {
       // La transición va por el endpoint dedicado PATCH /obras/{id}/estado (valida el ciclo de vida en
@@ -206,7 +218,6 @@ function ObraDetalle({ id, obra, onEditar, onCambio }) {
   }
 
   async function eliminar() {
-    if (!window.confirm(`¿Archivar la obra "${obra.nombre}"? Dejará de aparecer en el listado.`)) return
     try {
       const res = await api(`/obras/${obra.id}`, { method: 'DELETE' })
       if (res.ok) { toast.success('Obra archivada'); onCambio() }
@@ -239,7 +250,8 @@ function ObraDetalle({ id, obra, onEditar, onCambio }) {
             <div className="flex flex-wrap items-center gap-1.5">
               <span className="text-[11px] text-muted-foreground">Cambiar estado:</span>
               {transiciones.map((t) => (
-                <button key={t.estado} onClick={() => transicionar(t)} disabled={ocupado} className={`${BTN_OUTLINE} h-8`}>
+                <button key={t.estado} disabled={ocupado} className={`${BTN_OUTLINE} h-8`}
+                  onClick={() => (t.confirmar ? setConfirmando({ tipo: 'liquidar', dest: t }) : transicionar(t))}>
                   {t.label}
                 </button>
               ))}
@@ -248,10 +260,36 @@ function ObraDetalle({ id, obra, onEditar, onCambio }) {
 
           <div className="flex items-center gap-1.5 pt-0.5">
             <button onClick={onEditar} className={`${BTN_OUTLINE} h-8`}><Pencil className="size-3.5" /> Editar</button>
-            <button onClick={eliminar} className="inline-flex h-8 items-center justify-center gap-1.5 rounded-md border border-border bg-surface px-3 text-sm font-medium text-destructive transition-colors duration-fast hover:bg-destructive/10">
+            <button onClick={() => setConfirmando({ tipo: 'archivar' })} className="inline-flex h-8 items-center justify-center gap-1.5 rounded-md border border-border bg-surface px-3 text-sm font-medium text-destructive transition-colors duration-fast hover:bg-destructive/10">
               <Trash2 className="size-3.5" /> Archivar
             </button>
           </div>
+
+          {/* Confirmaciones destructivas con contexto (F2.5): el alert-dialog reemplaza al window.confirm
+              genérico; archivar una obra con plata encima muestra su gasto real acumulado. */}
+          <AlertDialog open={confirmando != null} onOpenChange={(o) => { if (!o) setConfirmando(null) }}>
+            {confirmando?.tipo === 'archivar' && (
+              <DialogoArchivar obra={detalle}
+                onConfirmar={() => { setConfirmando(null); eliminar() }} />
+            )}
+            {confirmando?.tipo === 'liquidar' && (
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>¿Liquidar la obra «{detalle.nombre}»?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    Liquidar congela el snapshot financiero de forma definitiva: la obra no admite más
+                    gastos, horas ni compras. Esta acción no se puede deshacer.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                  <AlertDialogAction onClick={() => { const d = confirmando.dest; setConfirmando(null); transicionar(d) }}>
+                    Liquidar obra
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            )}
+          </AlertDialog>
         </div>
 
         {/* Reportes diarios (bitácora de campo) */}
@@ -303,6 +341,36 @@ function ReporteItem({ reporte }) {
   )
 }
 
+// Confirmación de archivado con contexto: pide el gasto real de la obra y lo pone en la advertencia —
+// archivar una obra con plata encima saca sus cifras del panel/rollup sin rastro visible (hallazgo F1).
+function DialogoArchivar({ obra, onConfirmar }) {
+  const gastoQ = useFetch(`/obras/${obra.id}/gasto-real`)
+  const d = gastoQ.data || {}
+  const gasto = Number(d.gasto_total ?? d.total ?? 0)
+  const activa = obra.estado === 'EN_EJECUCION' || obra.estado === 'FINALIZADA'
+  return (
+    <AlertDialogContent>
+      <AlertDialogHeader>
+        <AlertDialogTitle>¿Archivar la obra «{obra.nombre}»?</AlertDialogTitle>
+        <AlertDialogDescription>
+          {gastoQ.loading
+            ? 'Calculando el gasto real de la obra…'
+            : gasto > 0
+              ? `Esta obra lleva ${cop(gasto)} de gasto real registrado. Al archivarla, sus cifras salen del panel y del rollup del portafolio.`
+              : 'Dejará de aparecer en el listado y en el panel.'}
+          {activa && ' Además sigue ' + (obra.estado === 'EN_EJECUCION' ? 'EN EJECUCIÓN' : 'FINALIZADA sin liquidar') + '.'}
+        </AlertDialogDescription>
+      </AlertDialogHeader>
+      <AlertDialogFooter>
+        <AlertDialogCancel>Cancelar</AlertDialogCancel>
+        <AlertDialogAction variant="destructive" onClick={onConfirmar} disabled={gastoQ.loading}>
+          Archivar de todas formas
+        </AlertDialogAction>
+      </AlertDialogFooter>
+    </AlertDialogContent>
+  )
+}
+
 function Dato({ etiqueta, valor }) {
   return (
     <div className="min-w-0">
@@ -341,8 +409,15 @@ function ObraForm({ obra, onClose, onGuardada }) {
       ubicacion: f.ubicacion.trim() || null,
       notas: f.notas.trim() || null,
     }
-    if (f.fecha_inicio) payload.fecha_inicio = f.fecha_inicio
-    if (f.fecha_fin_estimada) payload.fecha_fin_estimada = f.fecha_fin_estimada
+    // En EDICIÓN, un campo de fecha vacío significa LIMPIARLA (null explícito); antes se omitía del
+    // payload y una fecha equivocada quedaba imposible de borrar (hallazgo F1). Al crear, vacío = no enviar.
+    if (edicion) {
+      payload.fecha_inicio = f.fecha_inicio || null
+      payload.fecha_fin_estimada = f.fecha_fin_estimada || null
+    } else {
+      if (f.fecha_inicio) payload.fecha_inicio = f.fecha_inicio
+      if (f.fecha_fin_estimada) payload.fecha_fin_estimada = f.fecha_fin_estimada
+    }
 
     setEnviando(true)
     try {

@@ -16,7 +16,7 @@ from __future__ import annotations
 from datetime import date
 from decimal import Decimal
 
-from sqlalchemy import delete, func, select, text
+from sqlalchemy import bindparam, delete, func, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -79,6 +79,17 @@ class SqlCotizacionObraRepository:
             .order_by(ItemCotizacionObra.orden, ItemCotizacionObra.id)
         )
         return list((await self._s.execute(stmt)).scalars().all())
+
+    async def nombres_clientes(self, ids: list[int]) -> dict[int, str]:
+        """Nombres de clientes por lote (F2.9): la lista de cotizaciones muestra A QUIÉN se cotizó sin
+        N+1 ni exponer solo el id."""
+        if not ids:
+            return {}
+        stmt = text("SELECT id, nombre FROM clientes WHERE id IN :ids").bindparams(
+            bindparam("ids", expanding=True)
+        )
+        filas = (await self._s.execute(stmt, {"ids": list(set(ids))})).all()
+        return {f[0]: f[1] for f in filas}
 
     async def listar(
         self, *, estado: str | None = None, cliente_id: int | None = None

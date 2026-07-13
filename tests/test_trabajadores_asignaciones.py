@@ -375,3 +375,31 @@ async def test_evento_asignacion_trabajador_actualizada(tenant, monkeypatch):
     payload = eventos[0][1]
     assert payload["trabajador_id"] == t.id
     assert payload["obra_id"] == oid
+
+
+# ---- F2.9: un trabajador INACTIVO no se asigna a obra ------------------------
+async def test_asignar_trabajador_inactivo_falla_409(tenant):
+    from sqlalchemy import text as _text
+    from modules.trabajadores.errors import TrabajadorInactivo
+    from modules.trabajadores.schemas import TrabajadorActualizar
+
+    async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
+        svc = _service(s)
+        trabajador = await svc.crear(TrabajadorCrear(
+            tipo_vinculacion="DIRECTO", tipo_documento="CC", documento="999888",
+            nombres="Inactivo", apellidos="Prueba", cargo="Operador",
+        ))
+        cid = (
+            await s.execute(_text("INSERT INTO clientes (nombre, saldo_fiado) VALUES ('C', 0) RETURNING id"))
+        ).scalar_one()
+        obra_id = (
+            await s.execute(
+                _text("INSERT INTO obras (cliente_id, nombre) VALUES (:c, 'O') RETURNING id"), {"c": cid}
+            )
+        ).scalar_one()
+        await svc.actualizar(trabajador.id, TrabajadorActualizar(activo=False))
+        await s.flush()
+        with pytest.raises(TrabajadorInactivo):
+            await svc.crear_asignacion(
+                trabajador.id, AsignacionTrabajadorCrear(obra_id=obra_id)
+            )

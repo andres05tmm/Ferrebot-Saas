@@ -19,6 +19,16 @@ class TrabajadorDuplicado(TrabajadoresError):
         self.documento = documento
 
 
+class TrabajadorInactivo(TrabajadoresError):
+    """El trabajador está INACTIVO (baja laboral reversible) → 409 al asignarlo a obra.
+
+    Un inactivo no debe aparecer "en obra" en el calendario ni liquidarse; se reactiva primero."""
+
+    def __init__(self, trabajador_id: int) -> None:
+        super().__init__(f"El trabajador {trabajador_id} está inactivo: reactívalo antes de asignarlo")
+        self.trabajador_id = trabajador_id
+
+
 class AsignacionSolapada(TrabajadoresError):
     """Ya hay una asignación ACTIVA del trabajador cuyo rango se cruza con el nuevo → 409.
 

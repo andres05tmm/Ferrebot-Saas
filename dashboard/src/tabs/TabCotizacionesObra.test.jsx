@@ -122,6 +122,10 @@ describe('TabCotizacionesObra', () => {
 
     fireEvent.click(await screen.findByText('Pavimentación vía La Estrella'))   // expande la fila
     fireEvent.click(await screen.findByText('Convertir a obra'))
+    // F2.9: confirmación con contexto (alert-dialog) antes del POST — se acepta desde el diálogo.
+    expect(await screen.findByRole('alertdialog')).toBeInTheDocument()
+    const botones = screen.getAllByRole('button', { name: 'Convertir a obra' })
+    fireEvent.click(botones[botones.length - 1])   // la acción del diálogo (el primero es el trigger)
 
     await waitFor(() => {
       const call = fetchMock.mock.calls.find((c) => String(c[0]).includes('/cotizaciones-obra/7/convertir-obra') && c[1]?.method === 'POST')

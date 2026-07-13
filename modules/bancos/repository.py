@@ -43,7 +43,7 @@ _CANDIDATOS_CREDITO = (
 _CANDIDATOS_DEBITO = (
     "SELECT 'gasto' AS tipo, x.id, x.monto AS monto, x.creado_en::date AS fecha, x.concepto AS descripcion "
     "FROM gastos x "
-    "WHERE x.monto = :monto AND x.creado_en::date = :fecha "
+    "WHERE x.monto = :monto AND x.creado_en::date = :fecha AND x.anulado_en IS NULL "
     + _NO_ENLAZADO.replace(":tipo", "'gasto'")
     + "UNION ALL "
     "SELECT 'abono' AS tipo, x.id, x.monto AS monto, x.fecha AS fecha, "

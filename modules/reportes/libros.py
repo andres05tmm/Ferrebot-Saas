@@ -64,7 +64,8 @@ class SqlLibrosRepository:
             "AND coalesce(fecha_operacion, creado_en) <= :fin", p,
         )
         totales["gastos"] = await self._escalar(
-            "SELECT coalesce(sum(monto),0) FROM gastos WHERE creado_en >= :inicio AND creado_en <= :fin", p,
+            "SELECT coalesce(sum(monto),0) FROM gastos "
+            "WHERE creado_en >= :inicio AND creado_en <= :fin AND anulado_en IS NULL", p,
         )
         totales["compras"] = await self._escalar(
             "SELECT coalesce(sum(base),0) FROM compras_fiscal WHERE creado_en >= :inicio AND creado_en <= :fin", p,
@@ -123,7 +124,7 @@ class SqlLibrosRepository:
         )
         await _agregar(
             f"SELECT {dia_local.format(col='creado_en')} AS d, 'gasto:' || id, monto "
-            "FROM gastos WHERE creado_en >= :inicio AND creado_en <= :fin ORDER BY d",
+            "FROM gastos WHERE creado_en >= :inicio AND creado_en <= :fin AND anulado_en IS NULL ORDER BY d",
             "gastos",
         )
         # Retenciones: un movimiento por renglón; filtra por concepto = el tipo de retención.

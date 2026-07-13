@@ -137,3 +137,24 @@ class GastoLeer(BaseModel):
     telegram_user_id: str | None = None
     telegram_message_id: str | None = None
     requiere_revision: bool = False
+    # Rechazo de la bandeja (0056): NULL = vivo. La reversa de caja está asentada como ingreso inverso.
+    anulado_en: datetime | None = None
+    motivo_rechazo: str | None = None
+
+
+class GastoRechazar(BaseModel):
+    """Body del POST /gastos/{id}/rechazar: motivo opcional del rechazo (lo escribe el admin)."""
+
+    motivo: str | None = Field(default=None, max_length=500)
+
+
+class GastoImputacionPatch(BaseModel):
+    """PATCH /gastos/{id}/imputacion — re-imputar un gasto PENDIENTE antes de aprobarlo.
+
+    Solo destino/clasificación: obra, máquina, categoría del vertical y concepto. NUNCA el monto (su
+    egreso de caja ya está posteado; cambiar plata = rechazar y registrar el gasto correcto)."""
+
+    obra_id: int | None = None
+    maquina_id: int | None = None
+    categoria_gasto: CategoriaGastoVertical | None = None
+    concepto: str | None = Field(default=None, max_length=300)

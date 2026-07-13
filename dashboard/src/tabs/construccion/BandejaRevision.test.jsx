@@ -74,13 +74,59 @@ describe('BandejaRevision — cola de recibos del bot (F5)', () => {
     expect(screen.queryByText('$15.000')).toBeNull()
   })
 
-  it('no pinta nada cuando la cola está vacía', async () => {
+  it('cola vacía → estado "al día" visible (F2.2: la bandeja ya no desaparece en silencio)', async () => {
     comoAdmin()
     instalarFetch([])
-    const { container } = render(<BandejaRevision refreshKey={0} />)
-    await new Promise((r) => setTimeout(r, 20))
+    render(<BandejaRevision refreshKey={0} />)
+    expect(await screen.findByText(/Bandeja del bot al día/)).toBeInTheDocument()
     expect(screen.queryByText(/Por revisar/)).toBeNull()
-    expect(container).toBeEmptyDOMElement()
+  })
+
+  it('rechazar abre confirmación con motivo y dispara POST /gastos/{id}/rechazar (F2.2)', async () => {
+    comoAdmin()
+    const fetchMock = instalarFetch()
+    render(<BandejaRevision refreshKey={0} />)
+    await screen.findByText('Por revisar · 2 recibos del bot')
+
+    fireEvent.click(screen.getAllByText('Rechazar')[0])
+    // Confirmación destructiva con el copy de la reversa.
+    expect(await screen.findByText(/¿Rechazar el recibo de \$15\.000\?/)).toBeInTheDocument()
+    expect(screen.getByText(/movimiento inverso/)).toBeInTheDocument()
+    fireEvent.change(screen.getByPlaceholderText(/monto ilegible/), { target: { value: 'recibo repetido' } })
+    fireEvent.click(screen.getByRole('button', { name: /Rechazar y devolver a caja/ }))
+
+    await waitFor(() => {
+      const call = fetchMock.mock.calls.find(
+        (c) => String(c[0]).includes('/gastos/1/rechazar') && c[1]?.method === 'POST',
+      )
+      expect(call).toBeTruthy()
+      expect(JSON.parse(call[1].body)).toEqual({ motivo: 'recibo repetido' })
+    })
+    // La fila rechazada sale de la cola (optimista).
+    await waitFor(() => expect(screen.getByText('Por revisar · 1 recibo del bot')).toBeInTheDocument())
+  })
+
+  it('corregir imputación dispara PATCH /gastos/{id}/imputacion con solo lo elegido (F2.2)', async () => {
+    comoAdmin()
+    const fetchMock = instalarFetch()
+    render(<BandejaRevision refreshKey={0} />)
+    await screen.findByText('Por revisar · 2 recibos del bot')
+
+    fireEvent.click(screen.getAllByTitle('Corregir imputación')[1])   // el gasto #2, sin categoría
+    fireEvent.change(await screen.findByLabelText('Categoría'), { target: { value: 'COMBUSTIBLE' } })
+    fireEvent.change(screen.getByLabelText('Concepto'), { target: { value: 'ACPM retro' } })
+    fireEvent.click(screen.getByRole('button', { name: /Guardar imputación/ }))
+
+    await waitFor(() => {
+      const call = fetchMock.mock.calls.find(
+        (c) => String(c[0]).includes('/gastos/2/imputacion') && c[1]?.method === 'PATCH',
+      )
+      expect(call).toBeTruthy()
+      const body = JSON.parse(call[1].body)
+      expect(body.categoria_gasto).toBe('COMBUSTIBLE')
+      expect(body.concepto).toBe('ACPM retro')
+      expect(body).not.toHaveProperty('monto')   // el monto JAMÁS viaja
+    })
   })
 
   it('no pinta nada si el fetch falla', async () => {

@@ -392,7 +392,7 @@ class SqlReportesRepository:
                     Gasto.categoria,
                     func.coalesce(func.sum(Gasto.monto), 0).label("total"),
                 )
-                .where(Gasto.creado_en >= inicio, Gasto.creado_en <= fin)
+                .where(Gasto.creado_en >= inicio, Gasto.creado_en <= fin, Gasto.anulado_en.is_(None))
                 .group_by(Gasto.categoria)
             )
         ).all()

@@ -26,6 +26,19 @@ class ObraNoImputable(CajaError):
         self.motivo = motivo
 
 
+class GastoNoPendiente(CajaError):
+    """La acción solo aplica a gastos PENDIENTES de revisión → 409.
+
+    Rechazar o re-imputar exige `requiere_revision = true` y no anulado: lo aprobado es definitivo
+    (su egreso quedó asentado) y lo rechazado ya tiene su reversa. Cambiar el monto o el destino de un
+    gasto definitivo = rechazarlo y registrar uno nuevo."""
+
+    def __init__(self, gasto_id: int, accion: str) -> None:
+        super().__init__(f"El gasto {gasto_id} no está pendiente de revisión: no se puede {accion}")
+        self.gasto_id = gasto_id
+        self.accion = accion
+
+
 class GastoInexistente(CajaError):
     """No existe un gasto con ese id (p. ej. al aprobar uno de la bandeja de revisión). El router → 404."""
 

@@ -173,6 +173,14 @@ export function Kpi({ label, valor, sublinea, tono = 'neutro', tendencia = null,
     : <div className={`rounded-md bg-surface-2 px-3 py-2 ${className}`}>{cuerpo}</div>
 }
 
+// Taxonomía de gasto del vertical construcción (spec 09, enum `categoria_gasto` del backend) con sus
+// labels humanos. Única copia: la consumen el form de gasto de obra y la bandeja de revisión.
+export const CATEGORIAS_GASTO_VERTICAL = [
+  ['REPUESTOS', 'Repuestos'], ['MANTENIMIENTO_MAQUINA', 'Mantenimiento de máquina'], ['ALMUERZOS', 'Almuerzos'],
+  ['TRANSPORTE_PERSONAL', 'Transporte de personal'], ['COMBUSTIBLE', 'Combustible'], ['PAPELERIA', 'Papelería'],
+  ['SERVICIOS_PUBLICOS', 'Servicios públicos'], ['ARRIENDO', 'Arriendo'], ['IMPUESTOS', 'Impuestos'], ['OTRO', 'Otro'],
+]
+
 // Clases de botón compartidas (calcan el botón primario del vecino). La altura se pasa por `className`
 // en cada uso (h-9 en toolbars, h-10 en formularios).
 // `min-h-10 sm:min-h-0`: target táctil ≥40px en móvil sin tocar la altura por-uso (h-9/h-10); en sm+

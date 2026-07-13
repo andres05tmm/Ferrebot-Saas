@@ -110,6 +110,10 @@ class Gasto(TenantBase):
     requiere_revision: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default=text("false")
     )
+    # Rechazo de la bandeja (0056): NULL = gasto vivo. El rechazo anula con un INGRESO inverso de caja
+    # (nunca delete) y es idempotente por esta columna; los lectores filtran `anulado_en IS NULL`.
+    anulado_en: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    motivo_rechazo: Mapped[str | None] = mapped_column(Text)
     creado_en: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

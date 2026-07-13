@@ -44,7 +44,7 @@ import {
 import { api } from '@/lib/api'
 import { useFetch, cop, num } from '@/components/shared.jsx'
 import { Input } from '@/components/ui/input.jsx'
-import { Campo, EstadoVacio, BTN_PRIMARY, BTN_OUTLINE, SELECT_CLS } from './comunes.jsx'
+import { Campo, EstadoVacio, BTN_PRIMARY, BTN_OUTLINE, SELECT_CLS, CATEGORIAS_GASTO_VERTICAL } from './comunes.jsx'
 
 // Select compacto (h-8) para los formularios inline: deriva del SELECT_CLS del design system cambiando
 // solo la altura (h-9→h-8). Se hace por `replace` —no por `${SELECT_CLS} h-8`— porque dos utilidades de
@@ -334,11 +334,7 @@ function MarcoForm({ titulo, onCancelar, enviando, onGuardar, textoGuardar, chil
 }
 
 
-const CATEGORIA_GASTO = [
-  ['REPUESTOS', 'Repuestos'], ['MANTENIMIENTO_MAQUINA', 'Mantenimiento de máquina'], ['ALMUERZOS', 'Almuerzos'],
-  ['TRANSPORTE_PERSONAL', 'Transporte de personal'], ['COMBUSTIBLE', 'Combustible'], ['PAPELERIA', 'Papelería'],
-  ['SERVICIOS_PUBLICOS', 'Servicios públicos'], ['ARRIENDO', 'Arriendo'], ['IMPUESTOS', 'Impuestos'], ['OTRO', 'Otro'],
-]
+const CATEGORIA_GASTO = CATEGORIAS_GASTO_VERTICAL   // única copia en comunes.jsx (spec 09)
 // El backend (GastoCrear) exige la `categoria` POS NOT NULL (taxonomía del retail); la del vertical
 // (`categoria_gasto`) convive con ella. Se deriva la POS más cercana desde la del vertical (default 'otros').
 const CATEGORIA_POS = {

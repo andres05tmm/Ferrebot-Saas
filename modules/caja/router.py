@@ -12,7 +12,7 @@ from core.auth import Principal, require_role
 from core.auth.features import require_feature
 from core.db.session import get_tenant_db
 from modules.caja.config import get_caja_obligatoria
-from modules.caja.errors import CajaNoAbierta, GastoInexistente, ObraNoImputable
+from modules.caja.errors import CajaNoAbierta, GastoInexistente, GastoNoPendiente, ObraNoImputable
 from modules.caja.repository import SqlCajaRepository
 from modules.caja.schemas import (
     AperturaCrear,
@@ -21,7 +21,9 @@ from modules.caja.schemas import (
     CierreCrear,
     EstadoCajaLeer,
     GastoCrear,
+    GastoImputacionPatch,
     GastoLeer,
+    GastoRechazar,
     MovimientoCrear,
     MovimientoLeer,
 )
@@ -194,11 +196,59 @@ async def aprobar_gasto(
     session: AsyncSession = Depends(get_tenant_db),
     _user: Principal = Depends(require_role("admin")),
 ) -> GastoLeer:
-    """Aprueba un gasto de la bandeja (baja `requiere_revision`). Idempotente; 404 si el id no existe."""
+    """Aprueba un gasto de la bandeja (baja `requiere_revision`). Idempotente; 404 si el id no existe;
+    409 si fue rechazado (no se resucita: su reversa ya está asentada)."""
     try:
         gasto = await _service(session).aprobar_gasto(gasto_id)
     except GastoInexistente as exc:
         raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
+    except GastoNoPendiente as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+    return GastoLeer.model_validate(gasto)
+
+
+@gastos_router.post("/gastos/{gasto_id}/rechazar", response_model=GastoLeer)
+async def rechazar_gasto(
+    gasto_id: int,
+    payload: GastoRechazar,
+    session: AsyncSession = Depends(get_tenant_db),
+    user: Principal = Depends(require_role("admin")),
+    modo_empresa: bool = Depends(get_caja_obligatoria),
+) -> GastoLeer:
+    """Rechaza un gasto PENDIENTE de la bandeja: devuelve la plata a caja con un movimiento INVERSO
+    (ingreso por el monto exacto) y lo marca anulado. Idempotente (re-rechazar = replay). Admin.
+    404 si no existe; 409 si no está pendiente o no hay caja abierta para la reversa."""
+    try:
+        gasto = await _service(session).rechazar_gasto(
+            gasto_id, usuario_id=user.user_id, motivo=payload.motivo, modo_empresa=modo_empresa
+        )
+    except GastoInexistente as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
+    except (GastoNoPendiente, CajaNoAbierta) as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+    return GastoLeer.model_validate(gasto)
+
+
+@gastos_router.patch("/gastos/{gasto_id}/imputacion", response_model=GastoLeer)
+async def editar_imputacion_gasto(
+    gasto_id: int,
+    payload: GastoImputacionPatch,
+    session: AsyncSession = Depends(get_tenant_db),
+    _user: Principal = Depends(require_role("admin")),
+) -> GastoLeer:
+    """Re-imputa un gasto PENDIENTE antes de aprobarlo (obra/máquina/categoría/concepto — nunca el
+    monto). Admin. 404 si no existe; 409 si ya es definitivo o la obra está liquidada."""
+    try:
+        gasto = await _service(session).editar_imputacion(
+            gasto_id, payload.model_dump(exclude_unset=True)
+        )
+    except GastoInexistente as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
+    except GastoNoPendiente as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+    except ObraNoImputable as exc:
+        codigo = status.HTTP_404_NOT_FOUND if exc.motivo == "inexistente" else status.HTTP_409_CONFLICT
+        raise HTTPException(codigo, str(exc)) from exc
     return GastoLeer.model_validate(gasto)
 
 

@@ -8,7 +8,7 @@ from decimal import Decimal
 
 from core.config.timezone import now_co, today_co
 from modules.caja.arqueo import calcular_arqueo
-from modules.caja.errors import CajaNoAbierta, GastoInexistente, ObraNoImputable
+from modules.caja.errors import CajaNoAbierta, GastoInexistente, GastoNoPendiente, ObraNoImputable
 from modules.caja.models import Caja, CajaMovimiento, Gasto
 from modules.caja.repository import SqlCajaRepository
 from modules.proveedores.errors import (
@@ -233,8 +233,63 @@ class CajaService:
 
     async def aprobar_gasto(self, gasto_id: int) -> Gasto:
         """Aprueba un gasto de la bandeja (baja `requiere_revision`). Idempotente: aprobar dos veces deja
-        el mismo resultado. Falla con `GastoInexistente` si el id no existe (default seguro)."""
+        el mismo resultado. Falla con `GastoInexistente` si el id no existe (default seguro); un gasto
+        RECHAZADO no se puede resucitar aprobándolo (su reversa ya está asentada)."""
         gasto = await self._repo.obtener_gasto(gasto_id)
         if gasto is None:
             raise GastoInexistente(gasto_id)
+        if gasto.anulado_en is not None:
+            raise GastoNoPendiente(gasto_id, "aprobar")
         return await self._repo.marcar_revisado(gasto)
+
+    # Campos re-imputables de un gasto PENDIENTE. Nunca el monto: su egreso ya está posteado —
+    # cambiar plata = rechazar (reversa) y registrar el gasto correcto.
+    _CAMPOS_IMPUTACION = frozenset({"obra_id", "maquina_id", "categoria_gasto", "concepto"})
+
+    async def rechazar_gasto(
+        self, gasto_id: int, *, usuario_id: int, motivo: str | None = None, modo_empresa: bool = False
+    ) -> Gasto:
+        """Rechaza un gasto PENDIENTE de la bandeja: postea el movimiento de caja INVERSO (ingreso por el
+        monto exacto — nunca delete: invariante «nada mueve caja sin movimiento») y marca `anulado_en`.
+
+        IDEMPOTENTE por `anulado_en` (re-rechazar devuelve el gasto sin segunda reversa); el FOR UPDATE
+        sobre el gasto serializa rechazos concurrentes. 404 si no existe; 409 si no está pendiente
+        (aprobado/manual: definitivo) o si no hay caja abierta donde postear la reversa."""
+        gasto = await self._repo.obtener_gasto(gasto_id, bloquear=True)
+        if gasto is None:
+            raise GastoInexistente(gasto_id)
+        if gasto.anulado_en is not None:
+            return gasto                                   # replay: la reversa ya está asentada
+        if not gasto.requiere_revision:
+            raise GastoNoPendiente(gasto_id, "rechazar")
+        # Cinturón: un gasto vinculado a CxP generó SU abono (ADR 0028); revertirlo exigiría revertir
+        # también el abono. Los gastos de bandeja (bot) nunca traen el vínculo — si aparece, no procede.
+        if gasto.abono_proveedor_id is not None:
+            raise GastoNoPendiente(gasto_id, "rechazar (vinculado a cuenta por pagar)")
+        caja = await self._abierta(usuario_id, modo_empresa=modo_empresa, lock=True)
+        if caja is None:
+            raise CajaNoAbierta(usuario_id)
+        await self._repo.insertar_movimiento(
+            caja_id=caja.id, tipo="ingreso", monto=gasto.monto,
+            concepto=f"Reversa gasto #{gasto.id} (rechazado)",
+        )
+        return await self._repo.anular_gasto(gasto, anulado_en=now_co(), motivo=motivo)
+
+    async def editar_imputacion(self, gasto_id: int, cambios: dict) -> Gasto:
+        """Re-imputa un gasto PENDIENTE de la bandeja antes de aprobarlo (obra/máquina/categoría/concepto).
+
+        Solo mientras `requiere_revision = true` y no anulado: lo aprobado es definitivo. El `obra_id`
+        se valida como en `registrar_gasto` (inexistente → 404, LIQUIDADA → 409)."""
+        gasto = await self._repo.obtener_gasto(gasto_id, bloquear=True)
+        if gasto is None:
+            raise GastoInexistente(gasto_id)
+        if gasto.anulado_en is not None or not gasto.requiere_revision:
+            raise GastoNoPendiente(gasto_id, "editar")
+        efectivos = {k: v for k, v in cambios.items() if k in self._CAMPOS_IMPUTACION}
+        if efectivos.get("obra_id") is not None:
+            estado_obra = await self._repo.estado_obra(efectivos["obra_id"])
+            if estado_obra is None:
+                raise ObraNoImputable(efectivos["obra_id"], "inexistente")
+            if estado_obra == "LIQUIDADA":
+                raise ObraNoImputable(efectivos["obra_id"], "liquidada")
+        return await self._repo.actualizar_imputacion(gasto, efectivos)

@@ -172,6 +172,197 @@ def _app(tenant, *, user_id: int, rol: str) -> FastAPI:
     return app
 
 
+# ---- Rechazo de la bandeja (F2.2): reversa por movimiento INVERSO, nunca delete -------------------
+# INVARIANTE (carve-out, test-primero): el gasto ya posteó su egreso al crearse; rechazarlo debe
+# insertar un INGRESO de caja por el monto exacto (el arqueo vuelve al valor pre-gasto) y marcar
+# `anulado_en` (idempotencia). Jamás se borra ni edita un movimiento de caja existente.
+
+async def _gasto_bandeja(s: AsyncSession, uid: int, *, monto="35000", obra_id=None):
+    res = await _svc(s).registrar_gasto(
+        usuario_id=uid, categoria="otros", monto=Decimal(monto), concepto="del bot",
+        origen_registro="TELEGRAM_BOT", requiere_revision=True, obra_id=obra_id,
+    )
+    return res.gasto
+
+
+async def test_rechazar_postea_ingreso_inverso_y_el_arqueo_vuelve_al_pre_gasto(tenant):
+    async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
+        uid = await _usuario(s)
+        await _svc(s).abrir(usuario_id=uid, saldo_inicial=Decimal("100000"))
+        gasto = await _gasto_bandeja(s, uid, monto="35000")
+        await s.commit()
+        gid = gasto.id
+
+    # Pre-condición: el gasto bajó el esperado a 65.000.
+    async with AsyncSession(tenant.engine) as s:
+        assert (await _svc(s).arqueo(uid)).saldo_esperado == Decimal("65000.00")
+
+    async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
+        rechazado = await _svc(s).rechazar_gasto(gid, usuario_id=uid, motivo="monto ilegible")
+        await s.commit()
+    assert rechazado.anulado_en is not None
+    assert rechazado.motivo_rechazo == "monto ilegible"
+    assert rechazado.requiere_revision is False
+
+    async with AsyncSession(tenant.engine) as s:
+        # La reversa es un movimiento INVERSO (ingreso), no un delete del egreso original.
+        filas = (
+            await s.execute(text("SELECT tipo, monto FROM caja_movimientos ORDER BY id"))
+        ).all()
+        assert [(f[0], f[1]) for f in filas] == [("egreso", Decimal("35000.00")), ("ingreso", Decimal("35000.00"))]
+        # El arqueo vuelve EXACTAMENTE al valor pre-gasto (invariante).
+        assert (await _svc(s).arqueo(uid)).saldo_esperado == Decimal("100000.00")
+
+
+async def test_rechazar_es_idempotente(tenant):
+    async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
+        uid = await _usuario(s)
+        await _svc(s).abrir(usuario_id=uid, saldo_inicial=Decimal("0"))
+        gasto = await _gasto_bandeja(s, uid)
+        await s.commit()
+        gid = gasto.id
+
+    async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
+        r1 = await _svc(s).rechazar_gasto(gid, usuario_id=uid)
+        await s.commit()
+    async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
+        r2 = await _svc(s).rechazar_gasto(gid, usuario_id=uid)   # replay: no segunda reversa
+        await s.commit()
+    assert r2.anulado_en == r1.anulado_en
+
+    async with AsyncSession(tenant.engine) as s:
+        ingresos = (
+            await s.execute(text("SELECT count(*) FROM caja_movimientos WHERE tipo='ingreso'"))
+        ).scalar_one()
+    assert ingresos == 1                                   # una sola reversa
+
+
+async def test_rechazar_gasto_no_pendiente_falla_409(tenant):
+    import pytest
+    from modules.caja.errors import GastoNoPendiente
+
+    async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
+        uid = await _usuario(s)
+        await _svc(s).abrir(usuario_id=uid, saldo_inicial=Decimal("0"))
+        # Manual limpio (nunca estuvo en bandeja) y uno de bandeja YA aprobado: ninguno se puede rechazar.
+        manual = await _svc(s).registrar_gasto(
+            usuario_id=uid, categoria="transporte", monto=Decimal("15000"), concepto="taxi",
+        )
+        aprobado = await _gasto_bandeja(s, uid)
+        await s.commit()
+        await _svc(s).aprobar_gasto(aprobado.id)
+        await s.commit()
+
+    for gid in (manual.gasto.id, aprobado.id):
+        async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
+            with pytest.raises(GastoNoPendiente):
+                await _svc(s).rechazar_gasto(gid, usuario_id=uid)
+
+
+async def test_rechazar_sin_caja_abierta_falla(tenant):
+    import pytest
+    from modules.caja.errors import CajaNoAbierta
+
+    async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
+        uid = await _usuario(s)
+        await _svc(s).abrir(usuario_id=uid, saldo_inicial=Decimal("0"))
+        gasto = await _gasto_bandeja(s, uid)
+        await s.commit()
+        await _svc(s).cerrar(usuario_id=uid, saldo_contado=Decimal("0"))
+        await s.commit()
+
+    # Sin caja abierta la reversa no tiene dónde postear su ingreso.
+    async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
+        with pytest.raises(CajaNoAbierta):
+            await _svc(s).rechazar_gasto(gasto.id, usuario_id=uid)
+
+
+async def test_rechazado_sale_de_listados_bandeja_y_gasto_real_de_obra(tenant):
+    from modules.obra.repository import SqlObrasRepository
+
+    async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
+        uid = await _usuario(s)
+        obra_id = await _seed_obra(s)
+        await _svc(s).abrir(usuario_id=uid, saldo_inicial=Decimal("0"))
+        gasto = await _gasto_bandeja(s, uid, monto="80000", obra_id=obra_id)
+        await s.commit()
+        gid = gasto.id
+
+    async with AsyncSession(tenant.engine) as s:
+        agregados = await SqlObrasRepository(s).agregados_gasto_batch([obra_id])
+        assert agregados[obra_id].total_gastos == Decimal("80000.00")   # pre: el gasto cuenta
+
+    async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
+        await _svc(s).rechazar_gasto(gid, usuario_id=uid)
+        await s.commit()
+
+    async with AsyncSession(tenant.engine) as s:
+        # Fuera de la bandeja, de los listados y del gasto real de la obra.
+        assert await _svc(s).listar_revision() == []
+        listados = await SqlCajaRepository(s).listar_gastos()
+        assert gid not in [g.id for g in listados]
+        agregados = await SqlObrasRepository(s).agregados_gasto_batch([obra_id])
+        assert agregados.get(obra_id) is None or agregados[obra_id].total_gastos == Decimal("0")
+
+
+async def test_editar_imputacion_solo_mientras_pendiente(tenant):
+    import pytest
+    from modules.caja.errors import GastoNoPendiente
+
+    async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
+        uid = await _usuario(s)
+        obra_id = await _seed_obra(s)
+        await _svc(s).abrir(usuario_id=uid, saldo_inicial=Decimal("0"))
+        gasto = await _gasto_bandeja(s, uid)     # sin obra ni categoría (el bot no supo imputar)
+        await s.commit()
+        gid = gasto.id
+
+    async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
+        editado = await _svc(s).editar_imputacion(
+            gid, {"obra_id": obra_id, "categoria_gasto": "COMBUSTIBLE", "concepto": "ACPM retro"}
+        )
+        await s.commit()
+    assert editado.obra_id == obra_id
+    assert editado.categoria_gasto == "COMBUSTIBLE"
+    assert editado.concepto == "ACPM retro"
+
+    # Tras aprobar, la imputación queda definitiva (cambiar plata o destino = rechazar y recrear).
+    async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
+        await _svc(s).aprobar_gasto(gid)
+        await s.commit()
+    async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
+        with pytest.raises(GastoNoPendiente):
+            await _svc(s).editar_imputacion(gid, {"concepto": "otro"})
+
+
+async def test_http_rechazar_y_editar_imputacion(tenant):
+    async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
+        uid = await _usuario(s, rol="admin")
+        obra_id = await _seed_obra(s)
+        await _svc(s).abrir(usuario_id=uid, saldo_inicial=Decimal("0"))
+        g1 = await _gasto_bandeja(s, uid)
+        g2 = await _gasto_bandeja(s, uid, monto="9000")
+        await s.commit()
+
+    transport = ASGITransport(app=_app(tenant, user_id=uid, rol="admin"), raise_app_exceptions=False)
+    async with httpx.AsyncClient(transport=transport, base_url="http://t") as c:
+        patch = await c.patch(f"/api/v1/gastos/{g1.id}/imputacion", json={"obra_id": obra_id})
+        rech = await c.post(f"/api/v1/gastos/{g1.id}/rechazar", json={"motivo": "borroso"})
+        sin_motivo = await c.post(f"/api/v1/gastos/{g2.id}/rechazar", json={})
+    assert patch.status_code == 200, patch.text
+    assert patch.json()["obra_id"] == obra_id
+    assert rech.status_code == 200, rech.text
+    assert rech.json()["anulado_en"] is not None
+    assert rech.json()["motivo_rechazo"] == "borroso"
+    assert sin_motivo.status_code == 200, sin_motivo.text
+
+    # RBAC: el rechazo es acción de supervisión (admin); el vendedor no puede.
+    transport = ASGITransport(app=_app(tenant, user_id=uid, rol="vendedor"), raise_app_exceptions=False)
+    async with httpx.AsyncClient(transport=transport, base_url="http://t") as c:
+        prohibido = await c.post(f"/api/v1/gastos/{g2.id}/rechazar", json={})
+    assert prohibido.status_code == 403, prohibido.text
+
+
 async def test_http_bandeja_y_aprobar_admin_y_vendedor_403(tenant):
     async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
         uid = await _usuario(s, rol="admin")

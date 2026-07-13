@@ -145,8 +145,10 @@ class FuenteContableRepository:
         row = (
             await self._s.execute(
                 text(
+                    # Un gasto RECHAZADO (0056) no se proyecta (replay-safe); el rechazo solo aplica a
+                    # gastos de bandeja, que se proyectan al aprobarse — no hay retracción que emitir.
                     "SELECT id, creado_en, monto, categoria, (abono_proveedor_id IS NOT NULL) AS salda "
-                    "FROM gastos WHERE id=:id"
+                    "FROM gastos WHERE id=:id AND anulado_en IS NULL"
                 ),
                 {"id": gasto_id},
             )

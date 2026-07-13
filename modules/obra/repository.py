@@ -253,7 +253,9 @@ class SqlObrasRepository:
         pura, que redondea sólo al final (money-safe)."""
         total_gastos = (
             await self._s.execute(
-                select(func.coalesce(func.sum(Gasto.monto), 0)).where(Gasto.obra_id == obra_id)
+                select(func.coalesce(func.sum(Gasto.monto), 0)).where(
+                    Gasto.obra_id == obra_id, Gasto.anulado_en.is_(None)   # rechazados no cuentan (0056)
+                )
             )
         ).scalar_one()
         total_compras = (
@@ -316,7 +318,7 @@ class SqlObrasRepository:
             (
                 await self._s.execute(
                     select(Gasto.obra_id, func.coalesce(func.sum(Gasto.monto), 0))
-                    .where(Gasto.obra_id.in_(obra_ids))
+                    .where(Gasto.obra_id.in_(obra_ids), Gasto.anulado_en.is_(None))   # sin rechazados (0056)
                     .group_by(Gasto.obra_id)
                 )
             ).all()

@@ -252,7 +252,7 @@ class SqlCajaRepository:
         requiere_revision: bool | None = None, obra_id: int | None = None,
         origen_registro: str | None = None,
     ) -> list[Gasto]:
-        stmt = select(Gasto)
+        stmt = select(Gasto).where(Gasto.anulado_en.is_(None))   # los rechazados no existen para el negocio
         if desde is not None:
             stmt = stmt.where(Gasto.creado_en >= desde)
         if hasta is not None:
@@ -267,15 +267,38 @@ class SqlCajaRepository:
         stmt = stmt.order_by(Gasto.creado_en.desc(), Gasto.id.desc()).limit(limite).offset(offset)
         return list((await self._s.execute(stmt)).scalars().all())
 
-    async def obtener_gasto(self, gasto_id: int) -> Gasto | None:
-        return (
-            await self._s.execute(select(Gasto).where(Gasto.id == gasto_id))
-        ).scalar_one_or_none()
+    async def obtener_gasto(self, gasto_id: int, *, bloquear: bool = False) -> Gasto | None:
+        """`bloquear=True` toma FOR UPDATE: rechazar/editar leen el estado del gasto DENTRO de la
+        sección crítica (dos rechazos concurrentes duplicarían la reversa sin el lock)."""
+        stmt = select(Gasto).where(Gasto.id == gasto_id)
+        if bloquear:
+            stmt = stmt.with_for_update()
+        return (await self._s.execute(stmt)).scalar_one_or_none()
 
     async def marcar_revisado(self, gasto: Gasto) -> Gasto:
         """Baja el flag de revisión (aprobar en la bandeja). Idempotente: aprobar un gasto ya revisado
         lo deja igual (no hay estado que revertir)."""
         gasto.requiere_revision = False
+        await self._s.flush()
+        return gasto
+
+    async def anular_gasto(self, gasto: Gasto, *, anulado_en: datetime, motivo: str | None) -> Gasto:
+        """Marca el gasto RECHAZADO (0056). La reversa de caja la inserta el servicio ANTES, en la misma
+        tx (invariante: nada mueve caja sin movimiento — y nada se anula sin su reversa)."""
+        gasto.anulado_en = anulado_en
+        gasto.motivo_rechazo = motivo
+        gasto.requiere_revision = False
+        await self._s.flush()
+        await publish(self._s, "gasto_rechazado", {
+            "gasto_id": gasto.id, "monto": str(gasto.monto), "motivo": motivo,
+        })
+        return gasto
+
+    async def actualizar_imputacion(self, gasto: Gasto, cambios: dict) -> Gasto:
+        """Re-imputa un gasto PENDIENTE de la bandeja (obra/máquina/categoría/concepto — nunca el monto:
+        su egreso ya está posteado). La validación de estado la hace el servicio."""
+        for campo, valor in cambios.items():
+            setattr(gasto, campo, valor)
         await self._s.flush()
         return gasto
 
@@ -285,7 +308,8 @@ class SqlCajaRepository:
         total = (
             await self._s.execute(
                 select(func.coalesce(func.sum(Gasto.monto), 0)).where(
-                    Gasto.creado_en >= inicio, Gasto.creado_en <= fin
+                    Gasto.creado_en >= inicio, Gasto.creado_en <= fin,
+                    Gasto.anulado_en.is_(None),
                 )
             )
         ).scalar_one()

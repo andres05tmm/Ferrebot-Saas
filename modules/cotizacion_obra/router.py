@@ -98,12 +98,13 @@ def _a_leer(armada: CotizacionArmada) -> CotizacionObraLeer:
     )
 
 
-def _a_resumen(armada: CotizacionArmada) -> CotizacionObraResumen:
+def _a_resumen(armada: CotizacionArmada, *, cliente_nombre: str | None = None) -> CotizacionObraResumen:
     c = armada.cotizacion
     return CotizacionObraResumen(
         id=c.id,
         numero=c.numero,
         cliente_id=c.cliente_id,
+        cliente_nombre=cliente_nombre,
         nombre_obra=c.nombre_obra,
         ubicacion=c.ubicacion,
         fecha_emision=c.fecha_emision,
@@ -122,9 +123,11 @@ async def listar_cotizaciones(
     service: CotizacionObraService = Depends(get_cotizacion_obra_service),
     _user: Principal = Depends(require_role("vendedor")),
 ) -> list[CotizacionObraResumen]:
-    """Cotizaciones (más recientes primero), filtrables por estado y cliente."""
+    """Cotizaciones (más recientes primero), filtrables por estado y cliente. Con el NOMBRE del
+    cliente resuelto en lote (F2.9): la lista debe decir a quién se cotizó, no un id."""
     armadas = await service.listar(estado=estado, cliente_id=cliente_id)
-    return [_a_resumen(a) for a in armadas]
+    nombres = await service.nombres_clientes([a.cotizacion.cliente_id for a in armadas])
+    return [_a_resumen(a, cliente_nombre=nombres.get(a.cotizacion.cliente_id)) for a in armadas]
 
 
 @router.post(

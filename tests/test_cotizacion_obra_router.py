@@ -96,6 +96,10 @@ class _FakeCotizService:
         self.ultimo_filtro = (estado, cliente_id)
         return [_armada(c, i) for c, i in self._store.values()]
 
+    async def nombres_clientes(self, ids):
+        # F2.9: la lista resuelve el nombre del cliente en lote; el fake responde un nombre sintético.
+        return {cid: f"Cliente {cid}" for cid in ids}
+
     async def actualizar(self, cid, datos):
         if cid not in self._store:
             raise CotizacionInexistente(cid)

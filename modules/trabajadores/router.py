@@ -19,6 +19,7 @@ from modules.trabajadores.errors import (
     ObraNoAsignable,
     RangoAsignacionInvalido,
     TrabajadorDuplicado,
+    TrabajadorInactivo,
     TrabajadorInexistente,
 )
 from modules.trabajadores.repository import SqlTrabajadoresRepository
@@ -140,14 +141,15 @@ async def crear_asignacion_trabajador(
     _user: Principal = Depends(require_role("admin")),
 ) -> AsignacionTrabajadorLeer:
     """Asigna el trabajador a una obra. `fecha_inicio` default hoy Colombia. 404 si trabajador/obra no
-    existen; 409 si la obra está LIQUIDADA o el rango se solapa con otra asignación activa."""
+    existen; 409 si el trabajador está inactivo, la obra está LIQUIDADA o el rango se solapa con otra
+    asignación activa."""
     try:
         asig = await service.crear_asignacion(trabajador_id, payload)
     except TrabajadorInexistente as exc:
         raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
     except ObraNoAsignable as exc:
         raise _obra_no_asignable_http(exc) from exc
-    except AsignacionSolapada as exc:
+    except (AsignacionSolapada, TrabajadorInactivo) as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
     return AsignacionTrabajadorLeer.model_validate(asig)
 

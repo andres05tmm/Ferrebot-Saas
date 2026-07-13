@@ -68,6 +68,7 @@ class CotizacionObraRepo(Protocol):
     async def listar(
         self, *, estado: str | None = None, cliente_id: int | None = None
     ) -> list[tuple[CotizacionObra, list[ItemCotizacionObra]]]: ...
+    async def nombres_clientes(self, ids: list[int]) -> dict[int, str]: ...
     async def crear(self, datos: CotizacionObraCrear, *, numero: str) -> CotizacionObra: ...
     async def actualizar_cabecera(self, cotizacion: CotizacionObra, cambios: dict) -> CotizacionObra: ...
     async def reemplazar_items(self, cotizacion_id: int, items: list) -> None: ...
@@ -118,6 +119,10 @@ class CotizacionObraService:
         """Cotizaciones (más recientes primero), filtrables por estado y cliente, con su total."""
         filas = await self._repo.listar(estado=estado, cliente_id=cliente_id)
         return [CotizacionArmada(c, items, self._totales(c, items)) for c, items in filas]
+
+    async def nombres_clientes(self, ids: list[int]) -> dict[int, str]:
+        """Nombres de clientes por lote (F2.9), para que la lista muestre a quién se cotizó."""
+        return await self._repo.nombres_clientes(ids)
 
     async def actualizar(
         self, cotizacion_id: int, datos: CotizacionObraActualizar

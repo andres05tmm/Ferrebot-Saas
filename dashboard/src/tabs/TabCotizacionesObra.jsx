@@ -22,10 +22,27 @@ import {
 import { api } from '@/lib/api'
 import { useFetch } from '@/components/shared.jsx'
 import { cop } from '@/components/shared.jsx'
+import { hoyStrCO, sumarDiasCO } from '@/lib/fechas'
 import { useRealtimeEvent } from '@/components/RealtimeProvider.jsx'
 import { Card } from '@/components/ui/card.jsx'
 import { Input } from '@/components/ui/input.jsx'
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
+  AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from '@/components/ui/alert-dialog.jsx'
 import { Semaforo, Chips, Campo, EstadoVacio, Esqueleto, BTN_PRIMARY, BTN_OUTLINE, SELECT_CLS } from './construccion/comunes.jsx'
+
+// Lee el `detail` de un error del backend (409 con causa) sin romper si el body no es JSON.
+async function detalleError(res) {
+  try { const b = await res.json(); return typeof b?.detail === 'string' ? b.detail : null } catch { return null }
+}
+
+// Día Colombia (YYYY-MM-DD) del instante ISO + fecha corta legible.
+const diaCO = (iso) => (iso ? new Date(iso).toLocaleDateString('en-CA', { timeZone: 'America/Bogota' }) : null)
+const fechaCortaCO = (ymd) => {
+  if (!ymd) return ''
+  return new Date(`${ymd}T12:00:00-05:00`).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', timeZone: 'America/Bogota' })
+}
 
 // Estado de cotización (enum del ORM) → tono del semáforo + etiqueta humana.
 const ESTADO = {
@@ -172,8 +189,10 @@ function CotizacionFila({ cotizacion, onEditar, onCambio }) {
             <Semaforo tono={est.tono}>{est.label}</Semaforo>
           </div>
           <div className="mt-0.5 flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-[11px] text-muted-foreground">
+            {/* F2.9: a QUIÉN se cotizó y hasta CUÁNDO vale — antes solo "N días" desde una emisión invisible. */}
+            {cotizacion.cliente_nombre && <span className="truncate">{cotizacion.cliente_nombre}</span>}
             {cotizacion.ubicacion && <span className="inline-flex items-center gap-1 truncate"><MapPin className="size-3" aria-hidden="true" />{cotizacion.ubicacion}</span>}
-            <span className="inline-flex items-center gap-1"><CalendarClock className="size-3" aria-hidden="true" />{cotizacion.vigencia_dias} días</span>
+            <Vencimiento cotizacion={cotizacion} />
           </div>
         </div>
         <span className="tabular text-[13px] font-semibold text-foreground">{cop(cotizacion.total)}</span>
@@ -185,6 +204,21 @@ function CotizacionFila({ cotizacion, onEditar, onCambio }) {
   )
 }
 
+// Vencimiento derivado (emisión + vigencia): "vence 12 ago". Si ya pasó y sigue ENVIADA, el aviso va
+// en ámbar — nada marca VENCIDA automáticamente (transición manual), pero el dueño lo ve venir.
+function Vencimiento({ cotizacion }) {
+  const emision = diaCO(cotizacion.fecha_emision)
+  if (!emision || !cotizacion.vigencia_dias) return null
+  const vence = sumarDiasCO(emision, Number(cotizacion.vigencia_dias))
+  const pasada = vence < hoyStrCO() && cotizacion.estado === 'ENVIADA'
+  return (
+    <span className={`inline-flex items-center gap-1 ${pasada ? 'font-medium text-warning' : ''}`}>
+      <CalendarClock className="size-3" aria-hidden="true" />
+      {pasada ? `venció el ${fechaCortaCO(vence)}` : `vence el ${fechaCortaCO(vence)}`}
+    </span>
+  )
+}
+
 function CotizacionDetalle({ id, cotizacion, onEditar, onCambio }) {
   // Detalle bajo demanda: GET /cotizaciones-obra/{id} trae `items` + `totales` (desglose AIU).
   const detalleQ = useFetch(`/cotizaciones-obra/${cotizacion.id}`)
@@ -192,6 +226,7 @@ function CotizacionDetalle({ id, cotizacion, onEditar, onCambio }) {
   const items = Array.isArray(detalle.items) ? detalle.items : []
   const totales = detalle.totales
   const [ocupado, setOcupado] = useState(false)
+  const [confirmarConversion, setConfirmarConversion] = useState(false)
 
   async function transicionar(dest) {
     setOcupado(true)
@@ -199,7 +234,8 @@ function CotizacionDetalle({ id, cotizacion, onEditar, onCambio }) {
       const res = await api(`/cotizaciones-obra/${cotizacion.id}/estado`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ estado: dest.estado }),
       })
-      if (!res.ok) { toast.error('No se pudo cambiar el estado'); return }
+      // F2.9: el 409 trae la CAUSA (transición inválida del ciclo de vida) — mostrarla, no tragarla.
+      if (!res.ok) { toast.error((await detalleError(res)) || 'No se pudo cambiar el estado'); return }
       toast.success(`Cotización ${metaEstado(dest.estado).label.toLowerCase()}`)
       detalleQ.refetch(); onCambio()
     } catch { toast.error('Error de conexión') } finally { setOcupado(false) }
@@ -222,7 +258,6 @@ function CotizacionDetalle({ id, cotizacion, onEditar, onCambio }) {
   }
 
   async function convertir() {
-    if (!window.confirm('Convertir esta cotización ganada en obra. La obra hereda cliente, nombre y ubicación. ¿Continuar?')) return
     setOcupado(true)
     try {
       const res = await api(`/cotizaciones-obra/${cotizacion.id}/convertir-obra`, { method: 'POST' })
@@ -233,7 +268,7 @@ function CotizacionDetalle({ id, cotizacion, onEditar, onCambio }) {
       } else if (res.status === 403) {
         toast.error('Sólo un administrador convierte una cotización en obra')
       } else {
-        toast.error('No se pudo convertir a obra')
+        toast.error((await detalleError(res)) || 'No se pudo convertir a obra')
       }
     } catch { toast.error('Error de conexión') } finally { setOcupado(false) }
   }
@@ -296,7 +331,28 @@ function CotizacionDetalle({ id, cotizacion, onEditar, onCambio }) {
             )}
             <button onClick={descargarExcel} className={`${BTN_OUTLINE} h-8`}><Download className="size-3.5" /> Excel</button>
             {detalle.estado === 'GANADA' && (
-              <button onClick={convertir} disabled={ocupado} className={`${BTN_PRIMARY} h-8`}><ArrowRightLeft className="size-3.5" /> Convertir a obra</button>
+              <>
+                <button onClick={() => setConfirmarConversion(true)} disabled={ocupado} className={`${BTN_PRIMARY} h-8`}>
+                  <ArrowRightLeft className="size-3.5" /> Convertir a obra
+                </button>
+                <AlertDialog open={confirmarConversion} onOpenChange={setConfirmarConversion}>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>¿Convertir «{detalle.nombre_obra}» en obra?</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        La obra hereda cliente, nombre y ubicación, y su presupuesto queda anclado a esta
+                        cotización. La conversión es idempotente (repetirla devuelve la misma obra).
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                      <AlertDialogAction onClick={() => { setConfirmarConversion(false); convertir() }}>
+                        Convertir a obra
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              </>
             )}
           </div>
         </div>

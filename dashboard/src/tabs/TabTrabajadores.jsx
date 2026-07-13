@@ -213,9 +213,20 @@ function TrabajadorForm({ trabajador, onClose, onGuardado }) {
       cargo: f.cargo.trim(),
       telefono: f.telefono.trim() || null,
       email: f.email.trim() || null,
-      // Solo el campo económico de su naturaleza; el otro va null (no aplica).
-      salario_base: directo && f.salario_base ? Number(f.salario_base) : null,
-      tarifa_hora: !directo && f.tarifa_hora ? Number(f.tarifa_hora) : null,
+    }
+    // El campo económico de su naturaleza (F2.9): si quedó VACÍO en edición se OMITE — el null
+    // explícito borraba el salario persistido y la siguiente liquidación reventaba con 422
+    // TrabajadorNoLiquidable (hallazgo F1). El del OTRO tipo va null solo al crear o al cambiar de
+    // tipo de vinculación (ahí sí "no aplica").
+    const cambioTipo = edicion && trabajador?.tipo_vinculacion !== f.tipo_vinculacion
+    if (directo) {
+      if (f.salario_base) payload.salario_base = Number(f.salario_base)
+      else if (!edicion) payload.salario_base = null
+      if (!edicion || cambioTipo) payload.tarifa_hora = null
+    } else {
+      if (f.tarifa_hora) payload.tarifa_hora = Number(f.tarifa_hora)
+      else if (!edicion) payload.tarifa_hora = null
+      if (!edicion || cambioTipo) payload.salario_base = null
     }
     if (f.fecha_ingreso) payload.fecha_ingreso = f.fecha_ingreso
 

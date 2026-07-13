@@ -14,6 +14,7 @@ from modules.trabajadores.errors import (
     ObraNoAsignable,
     RangoAsignacionInvalido,
     TrabajadorDuplicado,
+    TrabajadorInactivo,
     TrabajadorInexistente,
 )
 from modules.trabajadores.models import AsignacionTrabajadorObra, Trabajador
@@ -113,10 +114,13 @@ class TrabajadoresService:
     ) -> AsignacionTrabajadorObra:
         """Asigna el trabajador a una obra (Calendario de obra). Sin dinero ni transición de estado.
 
-        Validaciones: trabajador vivo (404 TrabajadorInexistente); obra existente y no LIQUIDADA
-        (ObraNoAsignable `inexistente`/`liquidada`); sin solape con otra asignación activa (AsignacionSolapada,
+        Validaciones: trabajador vivo (404 TrabajadorInexistente) y ACTIVO (409 TrabajadorInactivo, F2.9:
+        un inactivo no debe aparecer "en obra"); obra existente y no LIQUIDADA (ObraNoAsignable
+        `inexistente`/`liquidada`); sin solape con otra asignación activa (AsignacionSolapada,
         un trabajador no está en dos obras el mismo día). `fecha_inicio` default hoy Colombia (regla #4)."""
-        await self.obtener(trabajador_id)   # valida existencia (404 si no)
+        trabajador = await self.obtener(trabajador_id)   # valida existencia (404 si no)
+        if not trabajador.activo:
+            raise TrabajadorInactivo(trabajador_id)
 
         estado_obra = await self._repo.obra_asignable(datos.obra_id)
         if estado_obra is None:

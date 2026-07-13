@@ -7,16 +7,10 @@
 import { Truck, Building2, User } from 'lucide-react'
 import { cop, num } from '@/components/shared.jsx'
 import { Semaforo } from '../comunes.jsx'
+// Estado de máquina → tono + etiqueta: única fuente en construccion/estadoMaquina.js (F2.8).
+import { ESTADO_MAQUINA as ESTADO } from '../estadoMaquina.js'
 import { SeccionPanel, n } from './piezas.jsx'
 
-// Estado de máquina → tono del punto + etiqueta. Ámbar aquí es 'warning' (mantenimiento), no la marca.
-const ESTADO = {
-  DISPONIBLE:    { tono: 'verde', label: 'Disponible' },
-  OCUPADA:       { tono: 'azul',  label: 'En obra' },
-  MANTENIMIENTO: { tono: 'ambar', label: 'Mantenimiento' },
-  DAÑADA:        { tono: 'rojo',  label: 'Dañada' },
-  BAJA:          { tono: 'gris',  label: 'De baja' },
-}
 const ORDEN = ['OCUPADA', 'DISPONIBLE', 'MANTENIMIENTO', 'DAÑADA', 'BAJA']
 
 export default function EstadoMaquinas({ maquinas }) {

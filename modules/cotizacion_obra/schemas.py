@@ -143,6 +143,8 @@ class CotizacionObraResumen(BaseModel):
     id: int
     numero: str
     cliente_id: int
+    # Nombre resuelto en lote (F2.9): el dueño debe ver A QUIÉN cotizó sin cruzar ids a mano.
+    cliente_nombre: str | None = None
     nombre_obra: str
     ubicacion: str | None
     fecha_emision: datetime

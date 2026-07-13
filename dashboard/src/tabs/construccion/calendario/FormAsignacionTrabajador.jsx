@@ -13,6 +13,9 @@ import { useFetch } from '@/components/shared.jsx'
 import { Campo, SELECT_CLS, BTN_PRIMARY, BTN_OUTLINE } from '../comunes.jsx'
 import { hoyStrCO } from './util.js'
 
+// Un trabajador INACTIVO no se asigna a obra (el backend lo rechaza con 409) — mejor no ofrecerlo.
+const activos = (ts) => (Array.isArray(ts) ? ts : []).filter((t) => t.activo !== false)
+
 const arr = (x) => (Array.isArray(x) ? x : [])
 const labelTrab = (t) => `${t.nombres || ''} ${t.apellidos || ''}`.trim() || `#${t.id}`
 
@@ -61,7 +64,7 @@ export default function FormAsignacionTrabajador({ trabajadorFija, fechaInicioDe
           <Campo label="Trabajador" requerido>
             <select value={f.trabajador_id} onChange={set('trabajador_id')} className={SELECT_CLS}>
               <option value="">Elige…</option>
-              {arr(trabajadoresQ.data).map((t) => <option key={t.id} value={t.id}>{labelTrab(t)}</option>)}
+              {activos(trabajadoresQ.data).map((t) => <option key={t.id} value={t.id}>{labelTrab(t)}</option>)}
             </select>
           </Campo>
         )}

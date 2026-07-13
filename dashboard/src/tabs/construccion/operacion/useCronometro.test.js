@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { formatearElapsed } from './useCronometro.js'
-import { estadoMaquina } from './estadoMaquina.js'
+import { estadoMaquina } from '../estadoMaquina.js'   // única fuente desde F2.8
 
 describe('formatearElapsed', () => {
   it('formatea ms como H:MM:SS con cero-padding', () => {

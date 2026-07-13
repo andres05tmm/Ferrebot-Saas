@@ -1,9 +1,12 @@
 /*
- * KpisMes — la fila de indicadores del mes en el cockpit del dueño. Cuatro teselas, riesgo a la vista:
+ * KpisMes — la fila de indicadores del mes en el cockpit del dueño. TRES teselas, riesgo a la vista:
  *   1. Ingreso del mes  (alquiler + resbalos)  · Δ% vs mes anterior — subir es BUENO (verde ↑).
  *   2. Gastos del mes    (gastos + compras)     · Δ% vs mes anterior — subir es MALO (rojo ↑, color invertido).
  *   3. Utilidad estimada (numeral Oswald grande) + `Semaforo` del margen (rojo <0 · ámbar 0–3% · verde ≥3%).
- *   4. Flujo de caja neto del mes.
+ *
+ * La cuarta tesela ("Flujo de caja") murió en F2.4: el backend la sirve como ALIAS de la utilidad (v1
+ * documentado) y el dueño veía el mismo número dos veces con subtítulos distintos (hallazgo F1). Vuelve
+ * solo cuando exista el cálculo real de flujo.
  *
  * Dinero llega como STRING decimal → se formatea con cop(). Numerales en font-display (Oswald); el ámbar
  * es marca, jamás semáforo: el riesgo del margen va con la píldora `Semaforo`.
@@ -85,15 +88,10 @@ export default function KpisMes({ kpis }) {
       numeral: <span className={`${NUM_GRANDE} text-3xl ${tonoUtil}`}>{cop(utilidad)}</span>,
       sub: `Margen ${n(kpis.margen_pct).toLocaleString('es-CO', { maximumFractionDigits: 1 })}% del ingreso`,
     },
-    {
-      label: 'Flujo de caja',
-      numeral: <span className={`${NUM_GRANDE} text-2xl text-foreground`}>{cop(n(kpis.flujo_caja_neto))}</span>,
-      sub: 'Ingresos menos egresos del mes',
-    },
   ]
 
   return (
-    <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
       {tiles.map((t, i) => (
         <MotionCard key={t.label} custom={i} variants={TESELA} initial="hidden" animate="visible" className="flex flex-col gap-1.5 p-4">
           <div className="flex items-center gap-2">

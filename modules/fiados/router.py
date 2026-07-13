@@ -1,5 +1,5 @@
 """Router de fiados (`/fiados/*`). RBAC: vendedor (api-contract.md). Núcleo: sin require_feature."""
-from fastapi import APIRouter, Depends, Header, HTTPException, Response, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.auth import Principal, require_role
@@ -62,6 +62,18 @@ async def abonar_fiado(
     if res.replay:
         response.status_code = status.HTTP_200_OK
     return MovimientoFiadoLeer.model_validate(res.movimiento)
+
+
+@router.get("/fiados", response_model=list[FiadoLeer])
+async def listar_fiados(
+    cliente_id: int = Query(..., description="Cliente cuyos fiados con saldo se listan"),
+    session: AsyncSession = Depends(get_tenant_db),
+    _user: Principal = Depends(require_role("vendedor")),
+) -> list[FiadoLeer]:
+    """Fiados VIVOS (saldo > 0) de un cliente, viejos primero. Alimenta el modal de abono del
+    dashboard (F2.3). Cliente sin fiados → lista vacía."""
+    fiados = await _service(session).fiados_de(cliente_id)
+    return [FiadoLeer.model_validate(f) for f in fiados]
 
 
 @router.get("/fiados/deudas", response_model=list[DeudaLeer])

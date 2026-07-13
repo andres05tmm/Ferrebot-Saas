@@ -30,8 +30,9 @@ import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import {
   Wallet, Plus, Search, Pencil, Truck, Building2, ChevronDown, ChevronRight,
-  CalendarClock, TriangleAlert,
+  CalendarClock,
 } from 'lucide-react'
+import ModalAbonoFiado from '@/components/ModalAbonoFiado.jsx'
 import { api } from '@/lib/api'
 import { hoyStrCO as hoyCO } from '@/lib/fechas'
 import { cop, num, useFetch } from '@/components/shared.jsx'
@@ -130,8 +131,8 @@ function CarteraAlquilerActiva() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <Kpi variante="card" label="Cupo otorgado" valor={cuposQ.loading ? '…' : cop(cupoTotal)}
           sublinea={`${cupos.length} cliente${cupos.length === 1 ? '' : 's'} con cupo`} />
-        <Kpi variante="card" label="Consumido" valor={cuposQ.loading ? '…' : cop(consumidoTotal)}
-          sublinea="saldo de alquiler en el ledger" />
+        <Kpi variante="card" label="Saldo de alquiler por cobrar" valor={cuposQ.loading ? '…' : cop(consumidoTotal)}
+          sublinea="consumido del cupo, aún sin abonar" />
         <Kpi variante="card" label="Colitas" valor={colitasQ.loading ? '…' : colitas.length}
           sublinea={`obras estancadas · +${umbral} d sin abono`} />
         <Kpi variante="card" label="Cupos excedidos" valor={cuposQ.loading ? '…' : nExcedidos}
@@ -297,17 +298,35 @@ function ColitaFila({ colita, umbral }) {
         {abierta ? <ChevronDown className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
           : <ChevronRight className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />}
       </button>
-      {abierta && <ObraCargos id={panelId} obraId={colita.obra_id} />}
+      {abierta && <ObraCargos id={panelId} obraId={colita.obra_id} clienteId={colita.cliente_id} />}
     </li>
   )
 }
 
-// Detalle de cargos de una obra (perezoso al expandir): horas de máquina asentadas + abonos + saldo.
-function ObraCargos({ id, obraId }) {
+// Detalle de cargos de una obra (perezoso al expandir): horas de máquina asentadas + abonos + saldo,
+// y desde F2.3 el botón "Registrar abono" (antes la cartera era de solo lectura: los abonos solo
+// entraban por el bot — hallazgo F1).
+function ObraCargos({ id, obraId, clienteId }) {
   const q = useFetch(`/cartera-alquiler/obras/${obraId}`)
+  const [abonando, setAbonando] = useState(false)
   const d = q.data || {}
   const cargos = arr(d.cargos)
   const abonos = arr(d.abonos)
+
+  // Fiados abonables de ESTA obra (cada cargo referencia su fiado; dedupe, solo con saldo). Si el
+  // payload no trae fiados (versión vieja del API), el modal cae al modo por-cliente.
+  const fiados = useMemo(() => {
+    const m = new Map()
+    for (const c of cargos) {
+      if (c.fiado_id != null && n(c.fiado_saldo) > 0 && !m.has(c.fiado_id)) {
+        m.set(c.fiado_id, {
+          id: c.fiado_id, saldo: n(c.fiado_saldo),
+          label: `${c.maquina_nombre || `Máquina #${c.maquina_id}`} · ${c.fecha || fechaCorta(c.creado_en)}`,
+        })
+      }
+    }
+    return [...m.values()]
+  }, [cargos])
 
   return (
     <div id={id} className="border-t border-border-subtle bg-surface-2/40 px-4 py-3.5">
@@ -344,10 +363,25 @@ function ObraCargos({ id, obraId }) {
           <b className="tabular text-[13px] font-semibold text-foreground">{cop(d.saldo)}</b>
         </span>
       </div>
-      <p className="mt-2 inline-flex items-start gap-1 text-[11px] text-muted-foreground">
-        <TriangleAlert className="mt-0.5 size-3 shrink-0" aria-hidden="true" />
-        Los abonos se registran en Clientes/Fiados (mueven caja); aquí solo se consulta.
+      {n(d.saldo) > 0 && (
+        <div className="mt-2 flex justify-end">
+          <button type="button" onClick={() => setAbonando(true)} className={`${BTN_PRIMARY} h-8`}>
+            Registrar abono
+          </button>
+        </div>
+      )}
+      <p className="mt-2 text-[11px] text-muted-foreground">
+        El abono baja el saldo del fiado; no mueve caja (el pago puede entrar por transferencia).
       </p>
+
+      <ModalAbonoFiado
+        abierto={abonando}
+        onCerrar={() => setAbonando(false)}
+        titulo="Abono de alquiler"
+        fiados={fiados.length > 0 ? fiados : undefined}
+        clienteId={fiados.length === 0 ? clienteId : undefined}
+        onExito={() => { setAbonando(false); q.refetch() }}
+      />
     </div>
   )
 }

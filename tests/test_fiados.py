@@ -80,3 +80,27 @@ async def test_abono_idempotente(tenant):
         assert (await s.execute(text("SELECT count(*) FROM fiados_movimientos WHERE tipo='abono'"))).scalar_one() == 1
         saldo = (await s.execute(text("SELECT saldo FROM fiados WHERE id=:f"), {"f": fid})).scalar_one()
         assert saldo == Decimal("7000.00")   # abonado una sola vez (10000 − 3000)
+
+
+# ---- Listado por cliente (F2.3): alimenta el modal de abono del dashboard ----
+async def test_fiados_de_cliente_solo_con_saldo_y_viejos_primero(tenant):
+    async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
+        cid = await _cliente(s)
+        otro = await _cliente(s)
+        await s.commit()
+        viejo = (await _svc(s).crear(cliente_id=cid, venta_id=None, monto=Decimal("5000"))).fiado
+        nuevo = (await _svc(s).crear(cliente_id=cid, venta_id=None, monto=Decimal("8000"))).fiado
+        pagado = (await _svc(s).crear(cliente_id=cid, venta_id=None, monto=Decimal("2000"))).fiado
+        ajeno = (await _svc(s).crear(cliente_id=otro, venta_id=None, monto=Decimal("999"))).fiado
+        await s.commit()
+        await _svc(s).abonar(fiado_id=pagado.id, monto=Decimal("2000"))   # saldo 0 → fuera
+        await s.commit()
+
+    async with AsyncSession(tenant.engine) as s:
+        fiados = await _svc(s).fiados_de(cid)
+    ids = [f.id for f in fiados]
+    assert ids == [viejo.id, nuevo.id]          # viejos primero; el saldado no aparece
+    assert ajeno.id not in ids                  # solo los del cliente pedido
+    # Cliente sin fiados → lista vacía (sin 404: es una lectura de modal).
+    async with AsyncSession(tenant.engine) as s:
+        assert await _svc(s).fiados_de(999999) == []

@@ -16,28 +16,19 @@ import { useOutletContext } from 'react-router-dom'
 import { toast } from 'sonner'
 import { Truck, Plus, Search, Gauge, ChevronDown, ChevronRight } from 'lucide-react'
 import { api } from '@/lib/api'
-import { useFetch, cop, num } from '@/components/shared.jsx'
+import { useFetch, useIsMobile, cop, num } from '@/components/shared.jsx'
 import { useRealtimeEvent } from '@/components/RealtimeProvider.jsx'
 import { useAuth } from '@/hooks/useAuth'
 import { Card } from '@/components/ui/card.jsx'
 import { Input } from '@/components/ui/input.jsx'
+import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet.jsx'
 import { Semaforo, Chips, Campo, EstadoVacio, Esqueleto, BTN_PRIMARY, BTN_OUTLINE } from './construccion/comunes.jsx'
 import FichaMaquina from './construccion/FichaMaquina.jsx'
+import { estadoMaquina } from './construccion/estadoMaquina.js'
 
-// Estado de máquina (enum del ORM) → tono + etiqueta. OCUPADA se rotula "En obra" (más claro para el
-// operador); el VALOR sigue siendo OCUPADA, tal cual el ORM.
-const MAQUINA = {
-  DISPONIBLE:    { tono: 'verde', label: 'Disponible' },
-  OCUPADA:       { tono: 'azul',  label: 'En obra' },
-  MANTENIMIENTO: { tono: 'ambar', label: 'Mantenimiento' },
-  DAÑADA:        { tono: 'rojo',  label: 'Dañada' },
-  BAJA:          { tono: 'gris',  label: 'De baja' },
-}
+// Estado de máquina → tono + etiqueta: única fuente en construccion/estadoMaquina.js (F2.8).
 const ORDEN_ESTADOS = ['DISPONIBLE', 'OCUPADA', 'MANTENIMIENTO', 'DAÑADA', 'BAJA']
-
-function metaEstado(estado) {
-  return MAQUINA[estado] || { tono: 'gris', label: estado || '—' }
-}
+const metaEstado = estadoMaquina
 
 export default function TabMaquinas() {
   const { refreshKey } = useOutletContext() ?? {}
@@ -140,6 +131,7 @@ export default function TabMaquinas() {
 // natural). La cabecera colapsada conserva el vistazo: nombre, semáforo, código/tipo/placa y tarifa.
 function MaquinaFila({ maquina, admin, obrasNombre, onEditar, onCambio }) {
   const [abierta, setAbierta] = useState(false)
+  const movil = useIsMobile()
   const est = metaEstado(maquina.estado)
   const panelId = `maquina-ficha-${maquina.id}`
 
@@ -180,11 +172,26 @@ function MaquinaFila({ maquina, admin, obrasNombre, onEditar, onCambio }) {
           : <ChevronRight className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />}
       </button>
 
-      {abierta && (
+      {/* Ficha: inline en desktop; en móvil sube como SHEET inferior (F2.8) — la ficha es larga
+          (asignaciones + kárdex + mantenimientos) y expandida en la lista dejaba al usuario perdido. */}
+      {abierta && !movil && (
         <FichaMaquina
           id={panelId} maquina={maquina} isAdmin={admin} obrasNombre={obrasNombre}
           onEditar={onEditar} onCambio={onCambio}
         />
+      )}
+      {movil && (
+        <Sheet open={abierta} onOpenChange={setAbierta}>
+          <SheetContent side="bottom" className="p-3">
+            <SheetTitle className="sr-only">Ficha de {maquina.nombre}</SheetTitle>
+            {abierta && (
+              <FichaMaquina
+                id={panelId} maquina={maquina} isAdmin={admin} obrasNombre={obrasNombre}
+                onEditar={onEditar} onCambio={onCambio}
+              />
+            )}
+          </SheetContent>
+        </Sheet>
       )}
     </li>
   )

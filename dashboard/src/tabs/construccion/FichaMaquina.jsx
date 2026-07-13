@@ -33,17 +33,15 @@ import { api } from '@/lib/api'
 import { hoyStrCO as hoyCO } from '@/lib/fechas'
 import { useFetch, cop, num } from '@/components/shared.jsx'
 import { Semaforo, Campo, BTN_PRIMARY, BTN_OUTLINE, SELECT_CLS } from './comunes.jsx'
+import { ESTADOS_MAQUINA } from './estadoMaquina.js'
 import FormAsignacionMaquina from './calendario/FormAsignacionMaquina.jsx'
 import FormRegistroHoras from './calendario/FormRegistroHoras.jsx'
 import TurnosSublineas from './calendario/Turnos.jsx'
 
-// Etiquetas humanas del tipo de mantenimiento (enum del ORM) y del estado de máquina. Se mantienen
-// locales para que la ficha sea autocontenida (y testeable) sin acoplarse al mapa de TabMaquinas.
+// Etiquetas humanas del tipo de mantenimiento (enum del ORM). El estado de máquina viene de la única
+// fuente construccion/estadoMaquina.js (F2.8: antes vivía cuadruplicado).
 const TIPO_MANT = { PREVENTIVO: 'Preventivo', CORRECTIVO: 'Correctivo', INSPECCION: 'Inspección' }
-const ESTADO_MAQ = [
-  ['DISPONIBLE', 'Disponible'], ['OCUPADA', 'En obra'], ['MANTENIMIENTO', 'Mantenimiento'],
-  ['DAÑADA', 'Dañada'], ['BAJA', 'De baja'],
-]
+const ESTADO_MAQ = ESTADOS_MAQUINA
 
 const n = (v) => { const x = Number(v); return Number.isFinite(x) ? x : 0 }
 

@@ -78,6 +78,11 @@ class SqlMaquinasRepository:
             setattr(maquina, campo, valor)
         await self._s.flush()
         await self._s.refresh(maquina)
+        # F2.8: el tablero de operación y el panel YA se suscriben a este evento (estaba suscrito pero
+        # nunca publicado): sin él, cambiar el estado en un dispositivo dejaba al resto desactualizado.
+        await publish(self._s, "maquina_actualizada", {
+            "maquina_id": maquina.id, "estado": maquina.estado,
+        })
         return maquina
 
     async def soft_delete(self, maquina_id: int) -> bool:
@@ -244,9 +249,13 @@ class SqlMaquinasRepository:
 
     async def set_estado_maquina(self, maquina: Maquina, estado: str) -> None:
         """Transiciona el estado de la máquina (helper de la asignación). Solo flush: evita el `refresh`
-        de `actualizar` (no se serializa la máquina en este flujo)."""
+        de `actualizar` (no se serializa la máquina en este flujo). Publica `maquina_actualizada` (F2.8):
+        el tablero/panel se suscriben y así el flip OCUPADA/DISPONIBLE refresca los otros dispositivos."""
         maquina.estado = estado
         await self._s.flush()
+        await publish(self._s, "maquina_actualizada", {
+            "maquina_id": maquina.id, "estado": estado,
+        })
 
     async def listar_horas(
         self, maquina_id: int, *, limite: int = 100, offset: int = 0

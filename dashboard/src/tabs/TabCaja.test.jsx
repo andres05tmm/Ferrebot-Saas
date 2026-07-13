@@ -94,16 +94,17 @@ describe('TabCaja — caja abierta', () => {
 })
 
 describe('TabCaja — construcción (caja menor de obra)', () => {
-  it('oculta "Ventas hoy", los ingresos por método y la fila "+ Ventas en efectivo" del cuadre', async () => {
-    instalarFetch()
+  it('oculta "Ventas hoy" y los ingresos por método; el cuadre MUESTRA la fila de ventas si hay plata real (F2.7)', async () => {
+    instalarFetch()   // ARQUEO_ABIERTA trae ventas_efectivo=30000: el backend SÍ la suma en el esperado
     renderCaja(CONSTRUCCION)
     await screen.findByText('Caja abierta')
 
     // La obra no vende por mostrador: fuera el KPI de ventas y la card de ingresos por método.
     expect(screen.queryByText('Ventas hoy')).toBeNull()
     expect(screen.queryByText(/Ingresos por método/)).toBeNull()
-    // El cuadre pierde la fila de ventas efectivo (siempre $0), pero conserva el resto.
-    expect(screen.queryByText('+ Ventas en efectivo')).toBeNull()
+    // F2.7: con ventas_efectivo > 0 la fila SE MUESTRA (ocultarla dejaba componentes que no sumaban
+    // el esperado); solo se omite cuando de verdad es $0.
+    expect(screen.getByText('+ Ventas en efectivo')).toBeInTheDocument()
     expect(screen.getByText('= Efectivo esperado')).toBeInTheDocument()
     expect(screen.getByText('− Egresos (gastos)')).toBeInTheDocument()
     // Sub-copy del KPI de efectivo esperado reencuadrado a caja menor.
@@ -112,6 +113,17 @@ describe('TabCaja — construcción (caja menor de obra)', () => {
     // La operación de caja se conserva: apertura (KPI + fila del cuadre) y gastos del día.
     expect(screen.getAllByText('Apertura').length).toBeGreaterThan(0)
     expect(screen.getByText('Gasolina')).toBeInTheDocument()
+  })
+
+  it('cuadre SIN ventas reales: la fila se omite; y el sobrante-como-venta NO existe en construcción (F2.7)', async () => {
+    instalarFetch({ arqueo: { ...ARQUEO_ABIERTA, ventas_efectivo: '0', saldo_esperado: '42000' } })
+    renderCaja(CONSTRUCCION)
+    await screen.findByText('Caja abierta')
+    expect(screen.queryByText('+ Ventas en efectivo')).toBeNull()
+    // Con sobrante en el contado, el botón de "registrar como venta" no se ofrece (ingresos ficticios).
+    fireEvent.change(screen.getByLabelText('Saldo contado'), { target: { value: '50000' } })
+    expect(screen.getByText(/\(sobrante\)/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /como venta y cerrar/ })).toBeNull()
   })
 })
 

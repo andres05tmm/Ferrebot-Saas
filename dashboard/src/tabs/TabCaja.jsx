@@ -11,7 +11,7 @@
  * pierde la fila "+ Ventas en efectivo". Apertura/cierre, movimientos manuales y gastos quedan intactos.
  * Para retail (Punto Rojo, demos) TODO queda idéntico.
  */
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import { toast } from 'sonner'
 import {
@@ -83,7 +83,7 @@ export default function TabCaja() {
       </div>
 
       {/* Estado de la caja: abrir (cerrada) o cerrar con arqueo (abierta) */}
-      <EstadoCaja arqueo={arqueo} abierta={abierta} esperado={esperado} onDone={recargar} />
+      <EstadoCaja arqueo={arqueo} abierta={abierta} esperado={esperado} onDone={recargar} construccion={construccion} />
 
       {/* Cuadre (+ ingresos por método solo en retail: la caja menor de obra no tiene ventas por método) */}
       {construccion ? (
@@ -105,7 +105,7 @@ export default function TabCaja() {
 }
 
 // ── Estado de la caja ─────────────────────────────────────────────────────────
-function EstadoCaja({ arqueo, abierta, esperado, onDone }) {
+function EstadoCaja({ arqueo, abierta, esperado, onDone, construccion = false }) {
   const Icono = abierta ? LockOpen : Lock
   const tono = abierta ? 'text-success bg-success/15' : 'text-muted-foreground bg-surface-2'
   const horaApertura = arqueo.fecha_apertura
@@ -126,7 +126,7 @@ function EstadoCaja({ arqueo, abierta, esperado, onDone }) {
         </div>
       </div>
       <div className="mt-3">
-        {abierta ? <CierreForm esperado={esperado} onDone={onDone} /> : <AperturaForm onDone={onDone} />}
+        {abierta ? <CierreForm esperado={esperado} onDone={onDone} construccion={construccion} /> : <AperturaForm onDone={onDone} />}
       </div>
     </Card>
   )
@@ -165,10 +165,13 @@ function AperturaForm({ onDone }) {
   )
 }
 
-function CierreForm({ esperado, onDone }) {
+function CierreForm({ esperado, onDone, construccion = false }) {
   const [contado, setContado] = useState('')
   const [enviando, setEnviando] = useState(false)
   const dif = contado === '' ? null : Number(contado) - esperado   // contado − esperado
+  // Key estable mientras el contado no cambie: reintentar el sobrante tras timeout es replay, no
+  // una segunda venta ficticia (F2.7).
+  const idemKeySobrante = useMemo(() => nuevaKey(), [contado])
 
   async function cerrarCaja(n) {
     const res = await api('/caja/cierre', {
@@ -201,7 +204,7 @@ function CierreForm({ esperado, onDone }) {
     try {
       const res = await api('/ventas', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Idempotency-Key': nuevaKey() },
+        headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idemKeySobrante },
         body: JSON.stringify({
           metodo_pago: 'efectivo', origen: 'web',
           lineas: [{ descripcion: 'Sobrante cierre de caja', cantidad: 1, precio_unitario: dif }],
@@ -233,7 +236,9 @@ function CierreForm({ esperado, onDone }) {
           {dif < 0 ? ' (faltante)' : dif > 0 ? ' (sobrante)' : ' (cuadra)'}
         </p>
       )}
-      {dif !== null && dif > 0 && (
+      {/* Solo retail (F2.7): una constructora no vende por mostrador — convertir el sobrante de la
+          caja menor en una "venta" fabricaría ingresos ficticios; su descuadre se persiste tal cual. */}
+      {!construccion && dif !== null && dif > 0 && (
         <Button onClick={registrarSobranteYCerrar} disabled={enviando} className="w-full gap-1.5">
           <Coins className="size-4" />
           {enviando ? 'Cerrando…' : `Registrar sobrante (${cop(dif)}) como venta y cerrar`}
@@ -296,11 +301,14 @@ function CuadreEfectivo({ arqueo, abierta, totalGastos, construccion = false }) 
       </Card>
     )
   }
-  // Construcción (caja menor): sin ventas de mostrador, la fila "+ Ventas en efectivo" es siempre $0 → se
-  // omite. El resto del arqueo (apertura, ingresos manuales, egresos) es idéntico.
+  // Construcción (caja menor): la fila "+ Ventas en efectivo" se omite SOLO cuando de verdad es $0 —
+  // el backend SÍ la suma en saldo_esperado (F2.7: si el bot u otra vía registró una venta, ocultarla
+  // dejaba componentes que no sumaban el total). El resto del arqueo es idéntico.
   const filas = [
     { label: 'Apertura', val: num(arqueo.saldo_inicial), signo: '' },
-    ...(construccion ? [] : [{ label: '+ Ventas en efectivo', val: num(arqueo.ventas_efectivo), signo: '+' }]),
+    ...(construccion && num(arqueo.ventas_efectivo) === 0
+      ? []
+      : [{ label: '+ Ventas en efectivo', val: num(arqueo.ventas_efectivo), signo: '+' }]),
     ...(num(arqueo.ingresos) > 0 ? [{ label: '+ Ingresos manuales', val: num(arqueo.ingresos), signo: '+' }] : []),
     { label: '− Egresos (gastos)', val: num(arqueo.egresos), signo: '-' },
   ]
@@ -333,6 +341,8 @@ function MovimientoForm({ onDone }) {
   const [monto, setMonto] = useState('')
   const [concepto, setConcepto] = useState('')
   const [enviando, setEnviando] = useState(false)
+  // Key estable mientras el payload no cambie: el reintento tras timeout es replay, no doble movimiento.
+  const idemKey = useMemo(() => nuevaKey(), [tipo, monto, concepto])
 
   async function registrar() {
     const n = Number(monto)
@@ -341,7 +351,7 @@ function MovimientoForm({ onDone }) {
     try {
       const res = await api('/caja/movimiento', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Idempotency-Key': nuevaKey() },
+        headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idemKey },
         body: JSON.stringify({ tipo, monto: n, concepto: concepto.trim() || null }),
       })
       if (res.ok) { toast.success('Movimiento registrado'); setMonto(''); setConcepto(''); onDone() }

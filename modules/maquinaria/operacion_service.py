@@ -110,7 +110,9 @@ class OperacionMaquinaService:
         """Sesión + sus tramos con horas PROPUESTAS (para el modal de revisión al finalizar).
 
         Horas propuestas por tramo: lo confirmado si ya existe; si no, lo medido por el reloj
-        (`finalizado_en − iniciado_en`, usando `ahora` para el tramo aún corriendo). 404 si no existe."""
+        (`finalizado_en − iniciado_en`, usando `ahora` para el tramo aún corriendo). Incluye el
+        `minimo_horas` PACTADO de la asignación (F2.6): el supervisor debe ver que un total por debajo
+        del mínimo se factura al mínimo ANTES de confirmar. 404 si no existe."""
         sesion = await self._op.obtener_sesion(sesion_id)
         if sesion is None:
             raise SesionInexistente(sesion_id)
@@ -121,7 +123,12 @@ class OperacionMaquinaService:
             if propuestas is None:
                 propuestas = horas_transcurridas(tr["iniciado_en"], tr["finalizado_en"] or ahora)
             tramos.append({**tr, "horas_propuestas": propuestas})
-        return {"sesion": sesion, "tramos": tramos}
+        asignacion = await self._maq_repo.obtener_asignacion(sesion.maquina_id, sesion.asignacion_id)
+        return {
+            "sesion": sesion,
+            "tramos": tramos,
+            "minimo_horas": asignacion.minimo_horas if asignacion is not None else None,
+        }
 
     async def finalizar(
         self, sesion_id: int, ajustes: dict[int, Decimal] | None = None

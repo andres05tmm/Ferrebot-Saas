@@ -174,12 +174,21 @@ export function Kpi({ label, valor, sublinea, tono = 'neutro', tendencia = null,
 }
 
 // Taxonomía de gasto del vertical construcción (spec 09, enum `categoria_gasto` del backend) con sus
-// labels humanos. Única copia: la consumen el form de gasto de obra y la bandeja de revisión.
+// labels humanos. Única copia: la consumen el form de gasto de obra, la bandeja de revisión y el
+// modal de gasto rápido (variante construcción, F2.7).
 export const CATEGORIAS_GASTO_VERTICAL = [
   ['REPUESTOS', 'Repuestos'], ['MANTENIMIENTO_MAQUINA', 'Mantenimiento de máquina'], ['ALMUERZOS', 'Almuerzos'],
   ['TRANSPORTE_PERSONAL', 'Transporte de personal'], ['COMBUSTIBLE', 'Combustible'], ['PAPELERIA', 'Papelería'],
   ['SERVICIOS_PUBLICOS', 'Servicios públicos'], ['ARRIENDO', 'Arriendo'], ['IMPUESTOS', 'Impuestos'], ['OTRO', 'Otro'],
 ]
+
+// La columna POS `categoria` es un ENUM NOT NULL (taxonomía del retail): del vertical se deriva la POS
+// más cercana (default 'otros'). Única copia (antes vivía en PanelPresupuestoReal).
+export const CATEGORIA_POS_DEL_VERTICAL = {
+  REPUESTOS: 'mantenimiento', MANTENIMIENTO_MAQUINA: 'mantenimiento', ALMUERZOS: 'otros',
+  TRANSPORTE_PERSONAL: 'transporte', COMBUSTIBLE: 'transporte', PAPELERIA: 'papeleria',
+  SERVICIOS_PUBLICOS: 'servicios', ARRIENDO: 'servicios', IMPUESTOS: 'otros', OTRO: 'otros',
+}
 
 // Clases de botón compartidas (calcan el botón primario del vecino). La altura se pasa por `className`
 // en cada uso (h-9 en toolbars, h-10 en formularios).

@@ -50,6 +50,18 @@ async function agregarMartillo() {
 // La línea del carrito es la única con este label: presencia = el producto está EN el carrito.
 const enCarrito = (nombre) => screen.getByLabelText(`Cantidad de ${nombre}`)
 
+// El carrito es un widget: pill flotante → Sheet lateral. Abrirlo antes de tocar líneas o Checkout.
+async function abrirCarrito() {
+  fireEvent.click(screen.getByLabelText('Abrir carrito'))
+  await screen.findByText(/Registrar venta/)   // el checkout montó dentro del Sheet
+}
+
+// Venta OK: el Sheet se cierra y el pill vuelve a su estado vacío ("Carrito").
+async function carritoLimpio() {
+  await waitFor(() =>
+    expect(screen.getByLabelText('Abrir carrito')).toHaveTextContent(/^Carrito$/))
+}
+
 beforeEach(() => { localStorage.clear() })
 afterEach(() => { cleanup(); vi.restoreAllMocks() })
 
@@ -76,6 +88,7 @@ describe('TabVentasRapidas', () => {
     const fetchMock = instalarFetch()
     render(<TabVentasRapidas />)
     await agregarMartillo()
+    await abrirCarrito()
     await waitFor(() =>
       expect(fetchMock.mock.calls.some(c => /\/productos\/1\/precio/.test(String(c[0])))).toBe(true))
     // total del servidor ($10.000), no el precio_venta*cantidad ($11.900). Aparece en el total y el c/u.
@@ -86,8 +99,9 @@ describe('TabVentasRapidas', () => {
     const fetchMock = instalarFetch()
     render(<TabVentasRapidas />)
     await agregarMartillo()
+    await abrirCarrito()
     fireEvent.click(screen.getByText(/Registrar venta/))
-    await screen.findByText(/Busca o escanea/)   // carrito limpio tras el éxito
+    await carritoLimpio()   // el Sheet cerró y el pill quedó vacío tras el éxito
 
     const { headers, body } = ventaPost(fetchMock)
     expect(headers.get('Idempotency-Key')).toBeTruthy()
@@ -100,12 +114,33 @@ describe('TabVentasRapidas', () => {
     render(<TabVentasRapidas />)
     fireEvent.change(screen.getByLabelText('Buscar producto'), { target: { value: 'tal' } })
     fireEvent.click(await screen.findByLabelText('Agregar Taladro'))
+    await abrirCarrito()
     fireEvent.click(await screen.findByText(/Especial/))
     fireEvent.click(screen.getByText(/Registrar venta/))
-    await screen.findByText(/Busca o escanea/)
+    await carritoLimpio()
 
     const { body } = ventaPost(fetchMock)
     expect(body.lineas[0].precio_unitario).toBe(90000)
+  })
+})
+
+// --- Widget del carrito: pill flotante + Sheet lateral -------------------------
+
+describe('TabVentasRapidas — widget del carrito', () => {
+  it('el pill muestra conteo + total en vivo y abre el Sheet; F4 lo alterna', async () => {
+    instalarFetch()
+    render(<TabVentasRapidas />)
+    const pill = screen.getByLabelText('Abrir carrito')
+    expect(pill).toHaveTextContent(/^Carrito$/)          // vacío: versión muda
+
+    await agregarMartillo()
+    await waitFor(() => expect(pill).toHaveTextContent('Cobrar'))
+    expect(pill.textContent).toContain('1')                    // badge de conteo en el pill
+    expect(screen.queryByText(/Registrar venta/)).toBeNull()   // Sheet aún cerrado
+
+    fireEvent.keyDown(document, { key: 'F4' })           // F4 abre…
+    await screen.findByText(/Registrar venta/)
+    expect(enCarrito('Martillo')).toBeInTheDocument()
   })
 })
 
@@ -116,6 +151,7 @@ describe('TabVentasRapidas — cantidad rápida y barcode', () => {
     const fetchMock = instalarFetch()
     render(<TabVentasRapidas />)
     await agregarMartillo()
+    await abrirCarrito()
     fireEvent.click(screen.getByLabelText('×5 de Martillo'))
     await waitFor(() =>
       expect(fetchMock.mock.calls.some(c => /\/productos\/1\/precio\?cantidad=5/.test(String(c[0])))).toBe(true))
@@ -130,6 +166,7 @@ describe('TabVentasRapidas — cantidad rápida y barcode', () => {
     for (const ch of '7701') fireEvent.keyDown(document, { key: ch })
     fireEvent.keyDown(document, { key: 'Enter' })
 
+    await abrirCarrito()
     expect(await screen.findByLabelText('Cantidad de Martillo')).toBeInTheDocument()
     expect(fetchMock.mock.calls.some(c => String(c[0]).includes('/productos?q='))).toBe(false)
   })
@@ -142,6 +179,7 @@ describe('TabVentasRapidas — pago mixto', () => {
     const fetchMock = instalarFetch()
     render(<TabVentasRapidas />)
     await agregarMartillo()
+    await abrirCarrito()
     await waitFor(() =>
       expect(fetchMock.mock.calls.some(c => /\/productos\/1\/precio/.test(String(c[0])))).toBe(true))
     fireEvent.keyDown(document, { key: '5', altKey: true })   // Alt+5 → mixto
@@ -149,7 +187,7 @@ describe('TabVentasRapidas — pago mixto', () => {
     // El resto sale solo: total $10.000 − $4.000 = $6.000 por transferencia (default).
     await screen.findByText('$6.000')
     fireEvent.click(screen.getByText(/Registrar venta/))
-    await screen.findByText(/Busca o escanea/)
+    await carritoLimpio()
 
     const { body } = ventaPost(fetchMock)
     expect(body.metodo_pago).toBe('mixto')
@@ -163,6 +201,7 @@ describe('TabVentasRapidas — pago mixto', () => {
     instalarFetch()
     render(<TabVentasRapidas />)
     await agregarMartillo()
+    await abrirCarrito()
     fireEvent.keyDown(document, { key: '5', altKey: true })
     await screen.findByLabelText('Parte en efectivo')   // sin monto: inválido
     expect(screen.getByText(/Registrar venta/).closest('button')).toBeDisabled()
@@ -176,11 +215,13 @@ describe('TabVentasRapidas — carrito persistente y en espera', () => {
     instalarFetch()
     const { unmount } = render(<TabVentasRapidas />)
     await agregarMartillo()
+    await abrirCarrito()
     enCarrito('Martillo')
     unmount()
 
     instalarFetch()
     render(<TabVentasRapidas />)
+    await abrirCarrito()
     expect(await screen.findByLabelText('Cantidad de Martillo')).toBeInTheDocument()
   })
 
@@ -188,6 +229,7 @@ describe('TabVentasRapidas — carrito persistente y en espera', () => {
     instalarFetch()
     render(<TabVentasRapidas />)
     await agregarMartillo()
+    await abrirCarrito()
     fireEvent.click(screen.getByText('En espera'))
     await screen.findByText(/Busca o escanea/)          // mostrador libre
     const chip = screen.getByLabelText('Retomar venta en espera 1')
@@ -228,6 +270,7 @@ describe('TabVentasRapidas — guard de caja', () => {
     })
     renderConGuard()
     await agregarMartillo()
+    await abrirCarrito()
     fireEvent.click(screen.getByText(/Registrar venta/))
 
     await screen.findByText('¿Cuánto dinero hay en caja?')
@@ -248,12 +291,13 @@ describe('TabVentasRapidas — guard de caja', () => {
     })
     renderConGuard()
     await agregarMartillo()
+    await abrirCarrito()
     fireEvent.click(screen.getByText(/Registrar venta/))
     await screen.findByText('¿Cuánto dinero hay en caja?')
 
     fireEvent.change(screen.getByLabelText('Dinero en caja'), { target: { value: '50000' } })
     fireEvent.click(screen.getByText('Abrir caja y registrar la venta'))
-    await screen.findByText(/Busca o escanea/)   // carrito limpio: la venta se registró
+    await carritoLimpio()   // la venta se registró y el widget cerró
 
     const apertura = fetchMock.mock.calls.find(c => String(c[0]).includes('/caja/apertura'))
     expect(JSON.parse(apertura[1].body)).toEqual({ saldo_inicial: 50000 })
@@ -281,13 +325,14 @@ describe('TabVentasRapidas — guard de caja', () => {
     })
     renderConGuard()
     await agregarMartillo()
+    await abrirCarrito()
     fireEvent.click(screen.getByText(/Registrar venta/))
     await screen.findByText('¿Cuánto dinero hay en caja?')
     expect(enCarrito('Martillo')).toBeInTheDocument()          // el 409 no vació el carrito
 
     fireEvent.change(screen.getByLabelText('Dinero en caja'), { target: { value: '20000' } })
     fireEvent.click(screen.getByText('Abrir caja y registrar la venta'))
-    await screen.findByText(/Busca o escanea/)
+    await carritoLimpio()
 
     const posts = ventaPosts(fetchMock)
     expect(posts).toHaveLength(2)
@@ -310,6 +355,7 @@ describe('TabVentasRapidas — guard de caja', () => {
     })
     renderConGuard()
     await agregarMartillo()
+    await abrirCarrito()
     fireEvent.click(screen.getByText(/Registrar venta/))
     await screen.findByText('¿Cuánto dinero hay en caja?')
 

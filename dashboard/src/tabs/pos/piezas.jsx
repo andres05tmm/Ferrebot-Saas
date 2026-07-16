@@ -48,6 +48,7 @@ export function AtajosHint() {
       <span><Kbd>F2</Kbd> o <Kbd>/</Kbd> buscar</span>
       <span><Kbd>↑</Kbd><Kbd>↓</Kbd> elegir</span>
       <span><Kbd>Enter</Kbd> agrega</span>
+      <span><Kbd>F4</Kbd> carrito</span>
       <span><Kbd>F9</Kbd> cobrar</span>
       <span><Kbd>Alt</Kbd>+<Kbd>1</Kbd>–<Kbd>5</Kbd> pago</span>
       <span>o escanea un código</span>

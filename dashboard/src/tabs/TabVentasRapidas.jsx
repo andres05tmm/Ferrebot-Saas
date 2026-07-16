@@ -39,6 +39,8 @@ import usePosCatalogo from './pos/usePosCatalogo.js'
 import { filtrarYRankear, normalizarLocal } from './pos/filtroLocal.js'
 import { leerFavs, toggleFav } from './pos/favoritos.js'
 import GrillaCatalogo from './pos/GrillaCatalogo.jsx'
+import ModalCantidad from './pos/ModalCantidad.jsx'
+import { tipoVenta } from './pos/cantidad.js'
 import LineaCarrito from './pos/LineaCarrito.jsx'
 import Checkout from './pos/Checkout.jsx'
 import ClientePicker from './pos/ClientePicker.jsx'
@@ -75,6 +77,7 @@ export default function TabVentasRapidas() {
   const [chip, setChip] = useState('todo')   // vista default del viejo: todo el catálogo por secciones
   const [gastoAbierto, setGastoAbierto] = useState(false)
   const [miscAbierta, setMiscAbierta] = useState(false)
+  const [modalProd, setModalProd] = useState(null)   // producto en captura de fracción/sub-unidad
   const [cajaAbierta, setCajaAbierta] = useState(null)   // null = aún no se sabe (sin pill)
   const [carrito, setCarrito] = useState(() => leerLS(CART_KEY, []))
   const [enEspera, setEnEspera] = useState(() => leerLS(ESPERA_KEY, []))
@@ -163,10 +166,11 @@ export default function TabVentasRapidas() {
   // Precio server-authoritative por línea de catálogo (debounce 250ms + abort). Se dispara cuando
   // cambian las cantidades. Las líneas "especial" y "varia" NO consultan (su precio es explícito).
   const firmaPrecios = carrito
-    .filter(it => !it.varia && !it.usarEspecial)
+    .filter(it => !it.varia && !it.usarEspecial && it.precio_manual == null)
     .map(it => `${it.key}:${it.producto_id}:${it.cantidad}`).join('|')
   useEffect(() => {
-    const lineas = carrito.filter(it => !it.varia && !it.usarEspecial && Number(it.cantidad) > 0)
+    const lineas = carrito.filter(
+      it => !it.varia && !it.usarEspecial && it.precio_manual == null && Number(it.cantidad) > 0)
     if (lineas.length === 0) return undefined
     const ctrl = new AbortController()
     const t = setTimeout(async () => {
@@ -193,6 +197,7 @@ export default function TabVentasRapidas() {
   const totalLinea = useCallback((it) => {
     const cant = Number(it.cantidad) || 0
     if (it.varia) return (Number(it.precio_unitario) || 0) * cant
+    if (it.precio_manual != null) return Number(it.precio_manual)   // total explícito (override / pesos)
     if (it.usarEspecial && it.precio_especial != null) return Number(it.precio_especial) * cant
     const srv = precios[it.key]
     if (srv && srv.total != null && !srv.error) return srv.total
@@ -279,26 +284,48 @@ export default function TabVentasRapidas() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // Arma una línea de carrito a partir del producto. `cantidad`/`precioManual`/`desc` los fija el modal
+  // de fracción/sub-unidad; el tap simple usa el default (1 unidad, sin override).
+  function lineaDeProducto(p, { cantidad = 1, precioManual = null, desc = null } = {}) {
+    return {
+      key: nuevaKey(), producto_id: p.id, nombre: p.nombre, cantidad, varia: false,
+      precio_normal: Number(p.precio_venta),
+      precio_especial: p.precio_especial != null ? Number(p.precio_especial) : null,
+      usarEspecial: false,
+      precio_manual: precioManual, desc,
+      codigo: p.codigo, categoria: p.categoria,
+      unidad_medida: p.unidad_medida, permite_fraccion: p.permite_fraccion,
+      precio_umbral: p.precio_umbral != null ? Number(p.precio_umbral) : null,
+      precio_sobre_umbral: p.precio_sobre_umbral != null ? Number(p.precio_sobre_umbral) : null,
+    }
+  }
+
   function agregarProducto(p) {
     setCarrito(prev => {
-      const i = prev.findIndex(it => it.producto_id === p.id)
+      const i = prev.findIndex(it => it.producto_id === p.id && it.precio_manual == null)
       if (i >= 0) {
         const copia = [...prev]
         copia[i] = { ...copia[i], cantidad: Number(copia[i].cantidad) + 1 }
         return copia
       }
-      return [...prev, {
-        key: nuevaKey(), producto_id: p.id, nombre: p.nombre, cantidad: 1, varia: false,
-        precio_normal: Number(p.precio_venta),
-        precio_especial: p.precio_especial != null ? Number(p.precio_especial) : null,
-        usarEspecial: false,
-        codigo: p.codigo, categoria: p.categoria,
-        unidad_medida: p.unidad_medida, permite_fraccion: p.permite_fraccion,
-        precio_umbral: p.precio_umbral != null ? Number(p.precio_umbral) : null,
-        precio_sobre_umbral: p.precio_sobre_umbral != null ? Number(p.precio_sobre_umbral) : null,
-      }]
+      return [...prev, lineaDeProducto(p)]
     })
     setQ(''); setSel(0)   // el término se limpia; la lista filtrada se deriva de él
+  }
+
+  // Tap en la grilla: los productos por fracción/sub-unidad abren su modal de captura; el resto se
+  // agrega directo (cantidad 1). El lector de código de barras siempre va directo.
+  function alTocar(p) {
+    if (tipoVenta(p)) setModalProd(p)
+    else agregarProducto(p)
+  }
+
+  // Confirmación del modal: empuja SIEMPRE una línea nueva (no fusiona: cada fracción/monto es su
+  // propia línea, como el dashboard viejo).
+  function agregarDesdeModal({ cantidad, precioManual, desc }) {
+    if (!modalProd) return
+    setCarrito(prev => [...prev, lineaDeProducto(modalProd, { cantidad, precioManual, desc })])
+    setModalProd(null)
   }
 
   function agregarVaria({ descripcion, cantidad, precio_unitario }) {
@@ -378,8 +405,10 @@ export default function TabVentasRapidas() {
         descripcion: it.nombre, cantidad: Number(it.cantidad), precio_unitario: Number(it.precio_unitario),
       }
       const linea = { producto_id: it.producto_id, cantidad: Number(it.cantidad) }
-      // Override explícito solo si eligió "especial"; si no, el backend recalcula con el motor.
-      if (it.usarEspecial && it.precio_especial != null) linea.precio_unitario = Number(it.precio_especial)
+      // Override explícito: "especial" (precio por unidad del producto) o "a mano"/pesos (total de la
+      // línea → precio por unidad = total/cantidad). Si no, el backend recalcula con el motor.
+      if (it.precio_manual != null) linea.precio_unitario = Number(it.precio_manual) / (Number(it.cantidad) || 1)
+      else if (it.usarEspecial && it.precio_especial != null) linea.precio_unitario = Number(it.precio_especial)
       return linea
     })
     const payload = { metodo_pago: metodoPago, origen: 'web', lineas }
@@ -503,7 +532,7 @@ export default function TabVentasRapidas() {
             categorias={categorias}
             chip={chip} setChip={setChip}
             sel={sel}
-            onTap={agregarProducto}
+            onTap={alTocar}
             slotBusqueda={(
               <>
                 <div className="relative">
@@ -527,7 +556,7 @@ export default function TabVentasRapidas() {
                     </div>
                     <div className="flex flex-wrap gap-1.5" role="group" aria-label="Más vendidos">
                       {frecuentes.map(p => (
-                        <button key={p.id} onClick={() => agregarProducto(p)}
+                        <button key={p.id} onClick={() => alTocar(p)}
                           aria-label={`Agregar ${p.nombre} (más vendido)`}
                           className="inline-flex items-center h-8 px-3 rounded-full border border-border bg-surface text-caption hover:border-primary/40 hover:bg-primary/5 transition-colors">
                           {p.nombre}
@@ -611,6 +640,7 @@ export default function TabVentasRapidas() {
           <VariaForm onAdd={(v) => { agregarVaria(v); setMiscAbierta(false) }} />
         </DialogContent>
       </Dialog>
+      <ModalCantidad prod={modalProd} onCerrar={() => setModalProd(null)} onConfirmar={agregarDesdeModal} />
     </div>
   )
 }

@@ -12,9 +12,12 @@ const GRANEL = { grm: 'g', gramos: 'g', cms: 'cm' }   // sub-unidades de venta a
 
 export default function LineaCarrito({ it, precio, onCantidad, onQuitar, onEspecial }) {
   const granel = !it.varia && GRANEL[(it.unidad_medida || '').toLowerCase()]
-  const usaServidor = !it.varia && !it.usarEspecial
+  // Precio a mano / pesos: total explícito de la línea (no consulta al servidor).
+  const manual = !it.varia && it.precio_manual != null
+  const usaServidor = !it.varia && !it.usarEspecial && !manual
   const cargando = usaServidor && precio?.loading
   const unit = it.varia ? Number(it.precio_unitario)
+    : manual ? Number(it.precio_manual) / (Number(it.cantidad) || 1)
     : it.usarEspecial ? Number(it.precio_especial)
     : precio?.precio_unitario
   const faltanMayorista = it.precio_umbral != null && !it.usarEspecial &&
@@ -25,6 +28,7 @@ export default function LineaCarrito({ it, precio, onCantidad, onQuitar, onEspec
       <div className="flex items-center gap-2">
         <div className="min-w-0 flex-1">
           <div className="text-body-sm truncate">{it.nombre}</div>
+          {it.desc && <div className="text-caption text-muted-foreground truncate">{it.desc}</div>}
           <div className="text-caption text-muted-foreground tabular flex items-center gap-1.5">
             {cargando ? 'calculando…' : unit != null ? `${cop(unit)} c/u` : '—'}
             {precio?.regla && precio.regla !== 'simple' && !it.usarEspecial && (
@@ -38,6 +42,7 @@ export default function LineaCarrito({ it, precio, onCantidad, onQuitar, onEspec
           aria-label={`Cantidad de ${it.nombre}`} className="w-16 h-8 text-center" />
         <span className="w-20 text-right text-body-sm tabular shrink-0">
           {cop(it.varia ? Number(it.precio_unitario) * Number(it.cantidad || 0)
+            : manual ? Number(it.precio_manual)
             : it.usarEspecial ? Number(it.precio_especial) * Number(it.cantidad || 0)
             : (precio?.total ?? Number(it.precio_normal || 0) * Number(it.cantidad || 0)))}
         </span>

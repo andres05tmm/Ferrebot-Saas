@@ -37,6 +37,10 @@ def esquema_de(producto: Producto) -> EsquemaPrecio:
             FraccionPrecio(decimal=fr.decimal, precio_total=fr.precio_total)
             for fr in producto.fracciones
         ),
+        # Sin esto el esquema queda en "Unidad" y el granel (gramo/cm/ml) NUNCA se aplica en
+        # calcular_precio → el endpoint GET /productos/{id}/precio (que el POS consulta por línea)
+        # cobraría la sub-unidad como precio_venta*cantidad. La señal granel la da unidad_medida.
+        unidad_medida=producto.unidad_medida,
     )
 
 

@@ -1,9 +1,9 @@
 /*
  * ModalCantidad — al tocar un producto que se vende por fracción o sub-unidad, abre el modal de
  * captura (réplica del dashboard viejo): pintura por fracción de galón, lija por cm, puntilla por
- * gramos, tintilla por ml, producto por kilo. Determina la CANTIDAD decimal (y, si el cajero regatea
- * un monto o entra en modo "pesos", un `precioManual` = total explícito de la línea). El precio final
- * de la línea lo pone igual el servidor vía /precio; el preview de aquí sale de los mismos datos.
+ * gramos, tintilla por ml, producto por kilo. Determina la CANTIDAD decimal; el precio final de la
+ * línea lo pone el servidor vía /precio, y el total de abajo a la derecha es EDITABLE (regatear un
+ * monto) → si el cajero lo cambia, esa cifra viaja como precio de la línea (override).
  */
 import { useState } from 'react'
 import { cop } from '@/components/shared.jsx'
@@ -35,6 +35,21 @@ function kgDesc(n) {
   return `${n} kg`
 }
 
+// Botón "KPI" (réplica del viejo): título grande + precio neutro debajo. Se usa para las fracciones
+// de pintura y los accesos rápidos de granel/kg.
+function BotonKpi({ activo, onClick, titulo, precio, sub }) {
+  return (
+    <button type="button" onClick={onClick} aria-pressed={activo}
+      className={`flex flex-col items-center justify-center gap-1 h-14 rounded-md border px-2 text-center transition-colors ${
+        activo ? 'border-primary bg-primary/10' : 'border-border bg-surface hover:bg-surface-2'}`}>
+      <span className={`text-body-sm font-semibold leading-none ${activo ? 'text-primary' : 'text-foreground'}`}>{titulo}</span>
+      {precio != null
+        ? <span className="text-caption tabular leading-none text-muted-foreground">{cop(precio)}</span>
+        : sub ? <span className="text-[11px] leading-none text-muted-foreground">{sub}</span> : null}
+    </button>
+  )
+}
+
 export default function ModalCantidad({ prod, onCerrar, onConfirmar }) {
   return (
     <Dialog open={prod != null} onOpenChange={(o) => { if (!o) onCerrar() }}>
@@ -60,20 +75,22 @@ function FormCantidad({ prod, tipo, onConfirmar, onCancelar }) {
   const [valor, setValor] = useState('')             // gramos/ml: sub-unidades o pesos según `modo`
   const [cmVal, setCmVal] = useState('')             // cm
   const [kgVal, setKgVal] = useState('')             // kg
-  const [manual, setManual] = useState('')           // override de $ (pintura/cm/kg)
+  // Total editable de abajo: `precio` es lo que se muestra/edita; `tocado` marca que el cajero lo
+  // cambió a mano (regateo). Mientras no lo toque, sigue al total calculado.
+  const [precio, setPrecio] = useState('')
+  const [tocado, setTocado] = useState(false)
 
-  const manualNum = Number(manual) || 0
-
-  // Resuelve { cantidad, precioManual, total, desc } según el tipo.
-  const r = resolver()
-  const valido = r.cantidad > 0 && (r.precioManual == null || r.precioManual > 0)
+  const r = resolver()                               // { cantidad, precioManual (base), total, desc }
+  // El override editable gana sobre el precioManual base (pesos / pintura mixta).
+  const precioManual = tocado && Number(precio) > 0 ? Number(precio) : r.precioManual
+  const totalMostrado = tocado ? precio : String(Math.round(r.total))
+  const valido = r.cantidad > 0 && (precioManual == null || precioManual > 0)
 
   function resolver() {
     if (tipo === 'fraccion') {
       const cantidad = unidades + (fracSel ? Number(fracSel.decimal) : 0)
       const desc = [unidades > 0 ? `${unidades} u` : '', fracSel ? fracSel.fraccion : '']
         .filter(Boolean).join(' + ')
-      if (manualNum > 0) return { cantidad, precioManual: manualNum, total: manualNum, desc }
       // Unidades enteras + fracción a la vez: el motor no lo expresa en una cantidad; el modal ya
       // sabe el total exacto (unidades a precio lleno + la fracción a su precio bonito).
       if (unidades > 0 && fracSel) {
@@ -96,18 +113,16 @@ function FormCantidad({ prod, tipo, onConfirmar, onCancelar }) {
     }
     if (tipo === 'cm') {
       const cantidad = Number(cmVal) || 0
-      const precioManual = manualNum > 0 ? manualNum : null
-      return { cantidad, precioManual, total: precioManual ?? previewMotor(prod, cantidad), desc: `${cantidad} cm` }
+      return { cantidad, precioManual: null, total: previewMotor(prod, cantidad), desc: `${cantidad} cm` }
     }
     // kg
     const cantidad = Number(kgVal) || 0
-    const precioManual = manualNum > 0 ? manualNum : null
-    return { cantidad, precioManual, total: precioManual ?? previewMotor(prod, cantidad), desc: kgDesc(cantidad) }
+    return { cantidad, precioManual: null, total: previewMotor(prod, cantidad), desc: kgDesc(cantidad) }
   }
 
   function confirmar() {
     if (!valido) return
-    onConfirmar({ cantidad: r.cantidad, precioManual: r.precioManual, desc: r.desc })
+    onConfirmar({ cantidad: r.cantidad, precioManual, desc: r.desc })
   }
 
   return (
@@ -134,16 +149,14 @@ function FormCantidad({ prod, tipo, onConfirmar, onCancelar }) {
             <div>
               <Label className="text-caption uppercase tracking-wider text-muted-foreground">Fracción adicional</Label>
               <div className="mt-1.5 grid grid-cols-3 gap-1.5">
-                <Seg activo={fracSel == null} onClick={() => setFracSel(null)}>Ninguna</Seg>
+                <BotonKpi activo={fracSel == null} onClick={() => setFracSel(null)}
+                  titulo="Ninguna" sub="sólo unidades" />
                 {fraccionesOrdenadas(prod).map((f) => (
-                  <Seg key={f.fraccion} activo={fracSel?.fraccion === f.fraccion} onClick={() => setFracSel(f)}>
-                    <span className="block">{f.fraccion}</span>
-                    <span className="block text-[10px] text-success">{cop(Number(f.precio_total))}</span>
-                  </Seg>
+                  <BotonKpi key={f.fraccion} activo={fracSel?.fraccion === f.fraccion}
+                    onClick={() => setFracSel(f)} titulo={f.fraccion} precio={Number(f.precio_total)} />
                 ))}
               </div>
             </div>
-            <OverrideDolar valor={manual} onChange={setManual} />
           </>
         )}
 
@@ -152,11 +165,8 @@ function FormCantidad({ prod, tipo, onConfirmar, onCancelar }) {
             <div className="grid grid-cols-3 gap-1.5">
               {[[ENVASE[tipo].full, paquete], [ENVASE[tipo].half, paquete / 2], [ENVASE[tipo].quarter, paquete / 4]]
                 .map(([et, q]) => (
-                  <Seg key={et} activo={modo === 'sub' && Number(valor) === q}
-                    onClick={() => { setModo('sub'); setValor(String(q)) }}>
-                    <span className="block">{et}</span>
-                    <span className="block text-[10px] text-muted-foreground">{cop(previewMotor(prod, q))}</span>
-                  </Seg>
+                  <BotonKpi key={et} activo={modo === 'sub' && Number(valor) === q}
+                    onClick={() => { setModo('sub'); setValor(String(q)) }} titulo={et} precio={previewMotor(prod, q)} />
                 ))}
             </div>
             <div className="flex gap-1.5">
@@ -173,38 +183,39 @@ function FormCantidad({ prod, tipo, onConfirmar, onCancelar }) {
         )}
 
         {tipo === 'cm' && (
-          <>
-            <div>
-              <Label className="text-caption uppercase tracking-wider text-muted-foreground">Cantidad en centímetros</Label>
-              <div className="mt-1.5 flex items-center gap-2">
-                <Input type="number" min="0" step="any" value={cmVal} autoFocus
-                  onChange={(e) => setCmVal(e.target.value)} aria-label="Cantidad en centímetros" />
-                <span className="text-caption text-muted-foreground">cm</span>
-              </div>
+          <div>
+            <Label className="text-caption uppercase tracking-wider text-muted-foreground">Cantidad en centímetros</Label>
+            <div className="mt-1.5 flex items-center gap-2">
+              <Input type="number" min="0" step="any" value={cmVal} autoFocus
+                onChange={(e) => setCmVal(e.target.value)} aria-label="Cantidad en centímetros" />
+              <span className="text-caption text-muted-foreground">cm</span>
             </div>
-            <OverrideDolar valor={manual} onChange={setManual} />
-          </>
+          </div>
         )}
 
         {tipo === 'kg' && (
           <>
             <div className="grid grid-cols-3 gap-1.5">
               {KG_RAPIDOS.map(([et, q]) => (
-                <Seg key={et} activo={Number(kgVal) === q} onClick={() => setKgVal(String(q))}>
-                  <span className="block">{et}</span>
-                  <span className="block text-[10px] text-muted-foreground">{cop(previewMotor(prod, q))}</span>
-                </Seg>
+                <BotonKpi key={et} activo={Number(kgVal) === q} onClick={() => setKgVal(String(q))}
+                  titulo={et} precio={previewMotor(prod, q)} />
               ))}
             </div>
             <Input type="number" min="0" step="0.5" value={kgVal}
               onChange={(e) => setKgVal(e.target.value)} placeholder="kg" aria-label="Cantidad en kilos" />
-            <OverrideDolar valor={manual} onChange={setManual} />
           </>
         )}
 
+        {/* Total editable: se ve el precio calculado y el cajero puede sobreescribirlo (regatear). */}
         <div className="flex items-center justify-between border-t border-border pt-3">
           <span className="text-caption text-muted-foreground">{r.desc || '—'}</span>
-          <span className="text-body font-semibold tabular">{cop(r.total)}</span>
+          <div className="flex items-center gap-1">
+            <span className="text-body font-semibold text-muted-foreground">$</span>
+            <input type="number" min="0" step="any" value={totalMostrado}
+              onChange={(e) => { const v = e.target.value; setPrecio(v); setTocado(v !== '') }}
+              aria-label="Precio total (editable)"
+              className="w-28 bg-transparent text-right text-xl font-bold tabular text-foreground outline-none border-b border-transparent focus:border-primary" />
+          </div>
         </div>
       </div>
 
@@ -213,20 +224,6 @@ function FormCantidad({ prod, tipo, onConfirmar, onCancelar }) {
         <Button type="button" disabled={!valido} onClick={confirmar}>Agregar al carrito</Button>
       </DialogFooter>
     </>
-  )
-}
-
-function OverrideDolar({ valor, onChange }) {
-  return (
-    <div>
-      <Label htmlFor="cant-manual" className="text-caption text-muted-foreground">Precio a mano (opcional)</Label>
-      <div className="mt-1.5 flex items-center gap-2">
-        <span className="text-muted-foreground">$</span>
-        <Input id="cant-manual" type="number" min="0" step="any" value={valor}
-          onChange={(e) => onChange(e.target.value)} placeholder="dejar vacío = precio calculado"
-          aria-label="Precio a mano" />
-      </div>
-    </div>
   )
 }
 

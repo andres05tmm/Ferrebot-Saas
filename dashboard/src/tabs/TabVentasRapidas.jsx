@@ -3,7 +3,11 @@
  *
  * Orquestador del POS: es dueño del carrito, los precios del servidor, los atajos de teclado, el guard
  * de caja y el POST /ventas. La presentación vive en tabs/pos/ (GrillaCatalogo, LineaCarrito, Checkout,
- * ClientePicker, VariaForm, piezas).
+ * ClientePicker, PillCarrito, piezas).
+ *
+ * REESTRUCTURA (widget de carrito): la grilla usa TODO el ancho; el carrito es un pill flotante
+ * (conteo + total vivo) que abre un Sheet lateral en desktop — en móvil sigue la barra fija + drawer.
+ * La búsqueda y los filtros van en una barra sticky bajo el header (600+ productos sin perderlos).
  *
  * BÚSQUEDA HÍBRIDA (reforma): el catálogo completo vive en el navegador (usePosCatalogo) y escribir
  * filtra la grilla AL INSTANTE (filtroLocal, sin red); la búsqueda inteligente del servidor (4 capas:
@@ -21,17 +25,13 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
-import { Flame, Lock, LockOpen, Receipt, Search, ShoppingCart, Sparkles, Star, X } from 'lucide-react'
+import { Flame, Search, ShoppingCart, Star, X } from 'lucide-react'
 import { api, apiJson } from '@/lib/api'
 import { useIsMobile } from '@/components/shared.jsx'
 import ModalAbrirCaja from '@/components/ModalAbrirCaja.jsx'
-import ModalGastoRapido from '@/components/ModalGastoRapido.jsx'
-import {
-  Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
-} from '@/components/ui/dialog.jsx'
 import { useFeatures } from '@/lib/features.jsx'
 import { usePreferencias } from '@/lib/preferencias.jsx'
-import { Card } from '@/components/ui/card.jsx'
+import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet.jsx'
 import { Input } from '@/components/ui/input.jsx'
 import { Button } from '@/components/ui/button.jsx'
 import { AtajosHint, guardarLS, leerLS, METODOS, nuevaKey } from './pos/piezas.jsx'
@@ -44,7 +44,7 @@ import { tipoVenta } from './pos/cantidad.js'
 import LineaCarrito from './pos/LineaCarrito.jsx'
 import Checkout from './pos/Checkout.jsx'
 import ClientePicker from './pos/ClientePicker.jsx'
-import VariaForm from './pos/VariaForm.jsx'
+import PillCarrito from './pos/PillCarrito.jsx'
 import BarraMovilPos from './pos/BarraMovilPos.jsx'
 import DrawerCarrito from './pos/DrawerCarrito.jsx'
 
@@ -75,10 +75,7 @@ export default function TabVentasRapidas() {
   const [frecuentes, setFrecuentes] = useState([])
   const [favoritos, setFavoritos] = useState(() => leerFavs())
   const [chip, setChip] = useState('todo')   // vista default del viejo: todo el catálogo por secciones
-  const [gastoAbierto, setGastoAbierto] = useState(false)
-  const [miscAbierta, setMiscAbierta] = useState(false)
   const [modalProd, setModalProd] = useState(null)   // producto en captura de fracción/sub-unidad
-  const [cajaAbierta, setCajaAbierta] = useState(null)   // null = aún no se sabe (sin pill)
   const [carrito, setCarrito] = useState(() => leerLS(CART_KEY, []))
   const [enEspera, setEnEspera] = useState(() => leerLS(ESPERA_KEY, []))
   const [precios, setPrecios] = useState({})  // key → {total, precio_unitario, regla, loading}
@@ -90,10 +87,10 @@ export default function TabVentasRapidas() {
   const [cliente, setCliente] = useState(null)
   const [documento, setDocumento] = useState(documentoDefault)
   const [enviando, setEnviando] = useState(false)
-  // Móvil (≤767px, mismo umbral del bottom nav): el carrito vive en un drawer inferior y la barra
-  // fija muestra el total; el panel se monta UNA sola vez (aquí o en desktop, nunca ambos).
+  // El carrito es un WIDGET en ambos modos: pill flotante + Sheet lateral (desktop) o barra fija +
+  // drawer inferior (móvil). El panel se monta UNA sola vez (en uno u otro, nunca ambos).
   const isMobile = useIsMobile()
-  const [drawerAbierto, setDrawerAbierto] = useState(false)
+  const [carritoAbierto, setCarritoAbierto] = useState(false)
   // Guard de caja (`caja_obligatoria`): la venta que quedó esperando a que se abra la caja.
   // Guarda el payload Y su Idempotency-Key ya generada: al abrir caja se reintenta EXACTAMENTE
   // el mismo cobro (sin repetir la venta ni arriesgar un duplicado).
@@ -137,15 +134,6 @@ export default function TabVentasRapidas() {
       .catch(() => setFrecuentes([]))
   }, [])
   const frecuentesIds = useMemo(() => new Set(frecuentes.map(p => p.id)), [frecuentes])
-
-  // Pill de caja (réplica del header del viejo): estado al montar y tras abrir/registrar.
-  const refrescarCaja = useCallback(() => {
-    if (!features.includes('caja')) return
-    apiJson('/caja/estado')
-      .then(d => setCajaAbierta(!!d?.abierta))
-      .catch(() => setCajaAbierta(null))
-  }, [features])
-  useEffect(() => { refrescarCaja() }, [refrescarCaja])
 
   // Resaltado al inicio de la lista cada vez que cambia el término.
   useEffect(() => { setSel(0) }, [term])
@@ -254,6 +242,9 @@ export default function TabVentasRapidas() {
       if (e.key === 'F9' || (e.key === 'Enter' && (e.ctrlKey || e.metaKey))) {
         e.preventDefault(); registrarRef.current?.(); return
       }
+      if (e.key === 'F4') {
+        e.preventDefault(); setCarritoAbierto(v => !v); return
+      }
       if (e.altKey && /^[1-9]$/.test(e.key)) {
         const idx = Number(e.key) - 1
         if (idx < METODOS.length) { e.preventDefault(); setMetodoPago(METODOS[idx]) }
@@ -328,11 +319,6 @@ export default function TabVentasRapidas() {
     setModalProd(null)
   }
 
-  function agregarVaria({ descripcion, cantidad, precio_unitario }) {
-    setCarrito(prev => [...prev, {
-      key: nuevaKey(), producto_id: null, nombre: descripcion, cantidad, precio_unitario, varia: true,
-    }])
-  }
   // Ventas en espera: aparca el carrito actual (con su cliente) y deja el mostrador libre para
   // atender al siguiente; "Retomar" lo trae de vuelta (si había uno vivo, se aparca primero).
   function ponerEnEspera() {
@@ -377,8 +363,7 @@ export default function TabVentasRapidas() {
         setCarrito([]); setPrecios({}); setCliente(null); setMetodoPago('efectivo')
         setRecibido(''); setEfectivoMixto(''); setMetodoResto('transferencia')
         setDocumento(documentoDefault)
-        setDrawerAbierto(false)   // móvil: la venta cerró, el drawer también
-        refrescarCaja()           // la primera venta del día pudo abrir la caja (guard)
+        setCarritoAbierto(false)   // la venta cerró, el widget del carrito también
         toast.success('Venta registrada')
         return true
       }
@@ -396,7 +381,7 @@ export default function TabVentasRapidas() {
       toast.error('Error de conexión')
       return false
     } finally { setEnviando(false) }
-  }, [documentoDefault, refrescarCaja])
+  }, [documentoDefault])
 
   async function registrar() {
     if (carrito.length === 0) return
@@ -441,10 +426,11 @@ export default function TabVentasRapidas() {
   }
   registrarRef.current = registrar
 
-  // Panel único del carrito (líneas + cliente + checkout): se monta en la Card de desktop O en el
-  // drawer móvil — nunca en ambos (labels/inputs sin duplicar). El título vive en el header rojo
-  // (desktop) o en el del drawer (móvil).
-  const panelCarrito = (
+  // Panel único del carrito en DOS bloques: `seccionLineas` (espera + líneas + cliente, scrolleable
+  // en el Sheet) y `seccionCheckout` (pago + Registrar, fijo abajo en el Sheet para que el botón
+  // nunca se pierda con carritos largos). Se montan en el Sheet de desktop O en el drawer móvil —
+  // nunca en ambos (labels/inputs sin duplicar).
+  const seccionLineas = (
     <>
       {(carrito.length > 0 || enEspera.length > 0) && (
         <div className="flex items-center justify-end mb-2">
@@ -492,127 +478,112 @@ export default function TabVentasRapidas() {
           Con cliente → factura a su nombre; sin cliente → consumidor final.
         </p>
       )}
-
-      <Checkout
-        metodoPago={metodoPago} setMetodoPago={setMetodoPago}
-        recibido={recibido} setRecibido={setRecibido} cambio={cambio}
-        efectivoMixto={efectivoMixto} setEfectivoMixto={setEfectivoMixto}
-        metodoResto={metodoResto} setMetodoResto={setMetodoResto}
-        restanteMixto={restanteMixto} mixtoValido={mixtoValido}
-        mostrarDocumento={mostrarDocumento} opcionesDocumento={opcionesDocumento}
-        documento={documento} setDocumento={setDocumento}
-        total={total} enviando={enviando} carritoVacio={carrito.length === 0}
-        onRegistrar={registrar}
-      />
     </>
   )
 
+  const seccionCheckout = (
+    <Checkout
+      metodoPago={metodoPago} setMetodoPago={setMetodoPago}
+      recibido={recibido} setRecibido={setRecibido} cambio={cambio}
+      efectivoMixto={efectivoMixto} setEfectivoMixto={setEfectivoMixto}
+      metodoResto={metodoResto} setMetodoResto={setMetodoResto}
+      restanteMixto={restanteMixto} mixtoValido={mixtoValido}
+      mostrarDocumento={mostrarDocumento} opcionesDocumento={opcionesDocumento}
+      documento={documento} setDocumento={setDocumento}
+      total={total} enviando={enviando} carritoVacio={carrito.length === 0}
+      onRegistrar={registrar}
+    />
+  )
+
   return (
-    <div className={isMobile ? 'space-y-3 pb-20' : 'grid grid-cols-1 lg:grid-cols-3 gap-3'}>
-      <div className={isMobile ? 'space-y-3' : 'lg:col-span-2 space-y-3'}>
-        {cajaAbierta != null && (
-          <div className="flex justify-end">
-            <span role="status"
-              className={`inline-flex items-center gap-1.5 h-8 px-3 rounded-md border text-caption font-medium ${
-                cajaAbierta ? 'border-success/30 bg-success/10 text-success'
-                  : 'border-warning/40 bg-warning/10 text-warning'}`}>
-              {cajaAbierta ? <LockOpen className="size-3.5" aria-hidden="true" /> : <Lock className="size-3.5" aria-hidden="true" />}
-              {cajaAbierta ? 'Caja abierta' : 'Caja cerrada'}
-            </span>
+    <div className={`space-y-3 ${isMobile ? 'pb-20' : 'pb-24'}`}>
+      <GrillaCatalogo
+        productos={buscando ? resultados : productos}
+        buscando={buscando} fuente={fuente}
+        frecuentesIds={frecuentesIds}
+        favoritos={favoritos} onToggleFav={(id) => setFavoritos(f => toggleFav(f, id))}
+        cantidades={cantidades}
+        categorias={categorias}
+        chip={chip} setChip={setChip}
+        sel={sel}
+        onTap={alTocar}
+        slotBusqueda={(
+          <div className="relative">
+            <Search className="size-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+            <Input ref={searchRef} value={q} onChange={(e) => setQ(e.target.value)}
+              placeholder="Buscar producto…  Enter agrega el primero" aria-label="Buscar producto"
+              className="pl-9 h-12 rounded-lg" />
+            <kbd className="absolute right-3 top-1/2 -translate-y-1/2 rounded border border-border bg-surface-2 px-1.5 text-[10px] text-muted-foreground" aria-hidden="true">↵</kbd>
           </div>
         )}
-
-        <Card className="p-3">
-          <GrillaCatalogo
-            productos={buscando ? resultados : productos}
-            buscando={buscando} fuente={fuente}
-            frecuentesIds={frecuentesIds}
-            favoritos={favoritos} onToggleFav={(id) => setFavoritos(f => toggleFav(f, id))}
-            cantidades={cantidades}
-            categorias={categorias}
-            chip={chip} setChip={setChip}
-            sel={sel}
-            onTap={alTocar}
-            slotBusqueda={(
-              <>
-                <div className="relative">
-                  <Search className="size-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
-                  <Input ref={searchRef} value={q} onChange={(e) => setQ(e.target.value)}
-                    placeholder="Buscar producto…  Enter agrega el primero" aria-label="Buscar producto"
-                    className="pl-9 h-11 rounded-lg" />
-                  <kbd className="absolute right-3 top-1/2 -translate-y-1/2 rounded border border-border bg-surface-2 px-1.5 text-[10px] text-muted-foreground" aria-hidden="true">↵</kbd>
-                </div>
-                {parcial && (
-                  <p className="mt-1 text-caption text-muted-foreground">
-                    Catálogo grande: la búsqueda va directa al servidor.
-                  </p>
-                )}
-
-                {/* MÁS VENDIDOS — chips de un toque (réplica del viejo): lo que más rota, sin buscar. */}
-                {!buscando && frecuentes.length > 0 && (
-                  <div className="mt-3">
-                    <div className="flex items-center gap-1.5 text-caption font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">
-                      <Flame className="size-3.5 text-warning" aria-hidden="true" /> Más vendidos
-                    </div>
-                    <div className="flex flex-wrap gap-1.5" role="group" aria-label="Más vendidos">
-                      {frecuentes.map(p => (
-                        <button key={p.id} onClick={() => alTocar(p)}
-                          aria-label={`Agregar ${p.nombre} (más vendido)`}
-                          className="inline-flex items-center h-8 px-3 rounded-full border border-border bg-surface text-caption hover:border-primary/40 hover:bg-primary/5 transition-colors">
-                          {p.nombre}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {!buscando && (
-                  <div className="mt-3 flex items-center justify-end gap-2">
-                    {features.includes('caja') && (
-                      <Button variant="outline" size="sm" onClick={() => setGastoAbierto(true)} className="h-8 gap-1.5">
-                        <Receipt className="size-3.5" /> Registrar gasto
-                      </Button>
-                    )}
-                    <Button variant="outline" size="sm" onClick={() => setMiscAbierta(true)} className="h-8 gap-1.5">
-                      <Sparkles className="size-3.5" /> Venta miscelánea
-                    </Button>
-                  </div>
-                )}
-
-                {!buscando && favoritos.size === 0 && (
-                  <p className="mt-3 flex items-center gap-2 rounded-md border border-border bg-surface-2/50 px-3 py-2 text-caption text-muted-foreground">
-                    <Star className="size-3.5 text-warning shrink-0" aria-hidden="true" />
-                    Marca la estrella en cualquier producto para agregarlo a favoritos.
-                  </p>
-                )}
-              </>
+        slotExtras={(
+          <>
+            {parcial && (
+              <p className="mt-2 text-caption text-muted-foreground">
+                Catálogo grande: la búsqueda va directa al servidor.
+              </p>
             )}
-          />
-        </Card>
 
-        <AtajosHint />
-      </div>
+            {/* MÁS VENDIDOS — chips de un toque (réplica del viejo): lo que más rota, sin buscar. */}
+            {!buscando && frecuentes.length > 0 && (
+              <div className="mt-3">
+                <div className="flex items-center gap-1.5 text-caption font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">
+                  <Flame className="size-3.5 text-warning" aria-hidden="true" /> Más vendidos
+                </div>
+                <div className="flex flex-wrap gap-1.5" role="group" aria-label="Más vendidos">
+                  {frecuentes.map(p => (
+                    <button key={p.id} onClick={() => alTocar(p)}
+                      aria-label={`Agregar ${p.nombre} (más vendido)`}
+                      className="inline-flex items-center h-8 px-3 rounded-full border border-border bg-surface text-caption hover:border-primary/40 hover:bg-primary/5 transition-colors">
+                      {p.nombre}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {!buscando && favoritos.size === 0 && (
+              <p className="mt-3 flex items-center gap-2 rounded-md border border-border bg-surface-2/50 px-3 py-2 text-caption text-muted-foreground">
+                <Star className="size-3.5 text-warning shrink-0" aria-hidden="true" />
+                Marca la estrella en cualquier producto para agregarlo a favoritos.
+              </p>
+            )}
+          </>
+        )}
+      />
+
+      <AtajosHint />
 
       {!isMobile && (
-        <Card className="p-0 overflow-hidden flex flex-col self-start">
-          {/* Header rojo del carrito (réplica del viejo): título + conteo vivo. */}
-          <div className="flex items-center gap-2 bg-primary text-primary-foreground px-3.5 py-2.5">
-            <ShoppingCart className="size-4" aria-hidden="true" />
-            <h2 className="text-caption font-semibold uppercase tracking-wider flex-1">Carrito</h2>
-            <span className="min-w-6 h-6 px-1.5 grid place-items-center rounded-full bg-white/20 text-sm font-bold tabular"
-              aria-label={`${carrito.length} en el carrito`}>
-              {carrito.length}
-            </span>
-          </div>
-          <div className="p-3.5 flex flex-col">{panelCarrito}</div>
-        </Card>
+        <>
+          <PillCarrito total={total} numItems={carrito.length} onAbrir={() => setCarritoAbierto(true)} />
+          {/* El carrito completo entra como Sheet lateral: líneas scrolleables + checkout fijo abajo. */}
+          <Sheet open={carritoAbierto} onOpenChange={setCarritoAbierto}>
+            <SheetContent side="right" aria-describedby={undefined}
+              className="p-0 gap-0 flex flex-col overflow-hidden [&>button]:text-primary-foreground [&>button]:top-3.5">
+              <div className="flex items-center gap-2 bg-primary text-primary-foreground px-4 py-3 pr-12 shrink-0">
+                <ShoppingCart className="size-4" aria-hidden="true" />
+                <SheetTitle className="text-caption font-semibold uppercase tracking-wider text-primary-foreground flex-1">
+                  Carrito
+                </SheetTitle>
+                <span className="min-w-6 h-6 px-1.5 grid place-items-center rounded-full bg-white/20 text-sm font-bold tabular"
+                  aria-label={`${carrito.length} en el carrito`}>
+                  {carrito.length}
+                </span>
+              </div>
+              <div className="flex-1 overflow-y-auto px-4 py-3 scrollbar-aurora">{seccionLineas}</div>
+              <div className="border-t border-border px-4 py-3 shrink-0">{seccionCheckout}</div>
+            </SheetContent>
+          </Sheet>
+        </>
       )}
       {isMobile && (
         <>
           <BarraMovilPos total={total} numItems={carrito.length}
-            onAbrir={() => setDrawerAbierto(true)} />
-          <DrawerCarrito abierto={drawerAbierto} onCerrar={() => setDrawerAbierto(false)}>
-            {panelCarrito}
+            onAbrir={() => setCarritoAbierto(true)} />
+          <DrawerCarrito abierto={carritoAbierto} onCerrar={() => setCarritoAbierto(false)}>
+            {seccionLineas}
+            {seccionCheckout}
           </DrawerCarrito>
         </>
       )}
@@ -622,24 +593,9 @@ export default function TabVentasRapidas() {
         abierto={ventaPendiente != null}
         onCancelar={() => setVentaPendiente(null)}
         onCajaAbierta={async () => {
-          refrescarCaja()
           if (ventaPendiente) await enviarVenta(ventaPendiente.payload, ventaPendiente.key)
         }}
       />
-      {features.includes('caja') && (
-        <ModalGastoRapido abierto={gastoAbierto} onCerrar={() => setGastoAbierto(false)} />
-      )}
-      <Dialog open={miscAbierta} onOpenChange={(o) => { if (!o) setMiscAbierta(false) }}>
-        <DialogContent aria-describedby="misc-desc">
-          <DialogHeader>
-            <DialogTitle>Venta miscelánea</DialogTitle>
-            <DialogDescription id="misc-desc">
-              Algo fuera del catálogo: descripción y precio a mano. No mueve inventario.
-            </DialogDescription>
-          </DialogHeader>
-          <VariaForm onAdd={(v) => { agregarVaria(v); setMiscAbierta(false) }} />
-        </DialogContent>
-      </Dialog>
       <ModalCantidad prod={modalProd} onCerrar={() => setModalProd(null)} onConfirmar={agregarDesdeModal} />
     </div>
   )

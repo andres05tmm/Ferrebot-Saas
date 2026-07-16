@@ -17,7 +17,11 @@ import { filtrarSubcat, ordenarProductos, subcatsDe } from './subcategorias.js'
 
 const CAP_SECCION = 12
 const COLS_KEY = 'pos_cols_v1'
-const COLS_CLS = { 4: 'lg:grid-cols-4', 5: 'lg:grid-cols-5', 6: 'lg:grid-cols-6' }
+// Con la grilla a ancho completo (el carrito ya no es columna fija) caben hasta 8 columnas.
+const COLS_CLS = {
+  4: 'lg:grid-cols-4', 5: 'lg:grid-cols-5', 6: 'lg:grid-cols-6',
+  7: 'lg:grid-cols-7', 8: 'lg:grid-cols-8',
+}
 
 const CardProducto = memo(function CardProducto({ p, enCarrito, esFav, resaltado, onTap, onFav }) {
   const { Icono, color } = iconoCategoria(p.categoria)
@@ -107,7 +111,8 @@ export default function GrillaCatalogo({
   chip, setChip,        // chip activo: 'favs' | 'top' | 'todo' | <categoría>
   sel,                  // índice resaltado por teclado (solo aplica buscando)
   onTap,
-  slotBusqueda,         // el buscador + extras del tab, entre los chips y la grilla (orden del viejo)
+  slotBusqueda,         // SOLO el input de búsqueda: va PRIMERO en la barra sticky
+  slotExtras,           // más vendidos / hints del tab: debajo de la barra, scrollea con el contenido
 }) {
   const [cols, setCols] = useState(() => {
     const c = Number(leerLS(COLS_KEY, [6])[0])
@@ -171,56 +176,63 @@ export default function GrillaCatalogo({
 
   return (
     <div>
-      {!buscando && (
-        <div className="flex items-center gap-2 mb-3">
-          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 -mx-1 px-1 flex-1" role="group" aria-label="Filtros del catálogo">
-            <Chip activo={chip === 'todo'} onClick={() => setChip('todo')}>
-              <LayoutGrid className="size-3.5" /> Todos
-            </Chip>
-            <Chip activo={chip === 'favs'} onClick={() => setChip('favs')}>
-              <Star className="size-3.5" /> Favoritos
-            </Chip>
-            <Chip activo={chip === 'top'} onClick={() => setChip('top')}>
-              <Trophy className="size-3.5" /> Top productos
-            </Chip>
-            {categorias.map(c => {
-              const { Icono, color } = iconoCategoria(c)
-              return (
-                <Chip key={c} activo={chip === c} onClick={() => setChip(c)}>
-                  <Icono className={`size-3.5 ${color}`} /> {etiquetaCategoria(c)}
-                </Chip>
-              )
-            })}
+      {/* Barra sticky: búsqueda PRIMERO (el camino más rápido), luego filtros. Queda pegada bajo el
+          header de la app (h-14) al scrollear el catálogo — con 600+ productos los filtros nunca se
+          pierden. Los -mx compensan el padding del <main> para que el fondo cubra el ancho completo. */}
+      <div className="sticky top-14 z-20 bg-background -mx-4 md:-mx-6 px-4 md:px-6 pt-1 pb-2 border-b border-border-subtle space-y-2.5">
+        {slotBusqueda}
+
+        {!buscando && (
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 -mx-1 px-1 flex-1" role="group" aria-label="Filtros del catálogo">
+              <Chip activo={chip === 'todo'} onClick={() => setChip('todo')}>
+                <LayoutGrid className="size-3.5" /> Todos
+              </Chip>
+              <Chip activo={chip === 'favs'} onClick={() => setChip('favs')}>
+                <Star className="size-3.5" /> Favoritos
+              </Chip>
+              <Chip activo={chip === 'top'} onClick={() => setChip('top')}>
+                <Trophy className="size-3.5" /> Top productos
+              </Chip>
+              {categorias.map(c => {
+                const { Icono, color } = iconoCategoria(c)
+                return (
+                  <Chip key={c} activo={chip === c} onClick={() => setChip(c)}>
+                    <Icono className={`size-3.5 ${color}`} /> {etiquetaCategoria(c)}
+                  </Chip>
+                )
+              })}
+            </div>
+            <div className="hidden lg:flex items-center gap-1 shrink-0" role="group" aria-label="Columnas de la grilla">
+              <span className="text-caption text-muted-foreground mr-0.5">Col:</span>
+              {Object.keys(COLS_CLS).map(Number).map(n => (
+                <button key={n} onClick={() => { setCols(n); guardarLS(COLS_KEY, [n]) }}
+                  aria-label={`${n} columnas`} aria-pressed={cols === n}
+                  className={`size-7 grid place-items-center rounded-md border text-caption tabular transition-colors ${
+                    cols === n ? 'border-primary bg-primary/10 text-primary font-semibold'
+                      : 'border-border text-muted-foreground hover:bg-surface-2'}`}>
+                  {n}
+                </button>
+              ))}
+            </div>
           </div>
-          <div className="hidden lg:flex items-center gap-1 shrink-0" role="group" aria-label="Columnas de la grilla">
-            <span className="text-caption text-muted-foreground mr-0.5">Col:</span>
-            {[4, 5, 6].map(n => (
-              <button key={n} onClick={() => { setCols(n); guardarLS(COLS_KEY, [n]) }}
-                aria-label={`${n} columnas`} aria-pressed={cols === n}
-                className={`size-7 grid place-items-center rounded-md border text-caption tabular transition-colors ${
-                  cols === n ? 'border-primary bg-primary/10 text-primary font-semibold'
-                    : 'border-border text-muted-foreground hover:bg-surface-2'}`}>
-                {n}
-              </button>
+        )}
+
+        {/* Segunda fila: subcategorías de la categoría elegida (réplica del viejo). */}
+        {!buscando && subs.length > 0 && (
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 -mx-1 px-1" role="group"
+            aria-label={`Subcategorías de ${etiquetaCategoria(chip)}`}>
+            <Chip activo={subcat == null} onClick={() => setSubcat(null)}>Todas</Chip>
+            {subs.map(s => (
+              <Chip key={s.key} activo={subcat === s.key} onClick={() => setSubcat(s.key)}>
+                <s.Icono className="size-3.5" /> {s.label}
+              </Chip>
             ))}
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
-      {/* Segunda fila: subcategorías de la categoría elegida (réplica del viejo). */}
-      {!buscando && subs.length > 0 && (
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 -mx-1 px-1 mb-3" role="group"
-          aria-label={`Subcategorías de ${etiquetaCategoria(chip)}`}>
-          <Chip activo={subcat == null} onClick={() => setSubcat(null)}>Todas</Chip>
-          {subs.map(s => (
-            <Chip key={s.key} activo={subcat === s.key} onClick={() => setSubcat(s.key)}>
-              <s.Icono className="size-3.5" /> {s.label}
-            </Chip>
-          ))}
-        </div>
-      )}
-
-      {slotBusqueda}
+      {slotExtras}
 
       {buscando && fuente === 'servidor' && productos.length > 0 && (
         <p className="text-caption text-info mt-2">búsqueda inteligente (alias y parecidos)</p>

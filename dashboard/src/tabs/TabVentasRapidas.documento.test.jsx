@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 // Tenant con capacidad fiscal completa (POS + FE) → se muestra el selector de documento.
@@ -39,6 +39,18 @@ async function agregarMartillo() {
   fireEvent.click(await screen.findByText('Martillo'))
 }
 
+// El carrito (con el selector de documento) vive en un Sheet: abrirlo con el pill flotante.
+async function abrirCarrito() {
+  fireEvent.click(screen.getByLabelText('Abrir carrito'))
+  await screen.findByText(/Registrar venta/)
+}
+
+// Venta OK: el Sheet cierra y el pill vuelve a su estado vacío.
+async function carritoLimpio() {
+  await waitFor(() =>
+    expect(screen.getByLabelText('Abrir carrito')).toHaveTextContent(/^Carrito$/))
+}
+
 function renderConAutoFacturar(facturarEnVenta) {
   return render(
     <PreferenciasProvider facturarEnVenta={facturarEnVenta}>
@@ -54,11 +66,12 @@ describe('TabVentasRapidas — documento con facturar_en_venta=false', () => {
   it('ofrece "Sin factura" y la venta NO manda documento por defecto', async () => {
     const fetchMock = instalarFetch()
     renderConAutoFacturar(false)
+    await agregarMartillo()
+    await abrirCarrito()
     // La opción "Sin factura" existe (default).
     expect(screen.getByLabelText('Documento Sin factura')).toBeInTheDocument()
-    await agregarMartillo()
     fireEvent.click(screen.getByText(/Registrar venta/))
-    await screen.findByText(/Busca o escanea/)
+    await carritoLimpio()
     expect(ventaBody(fetchMock).documento).toBeUndefined()   // venta interna: sin intención fiscal
   })
 
@@ -66,9 +79,10 @@ describe('TabVentasRapidas — documento con facturar_en_venta=false', () => {
     const fetchMock = instalarFetch()
     renderConAutoFacturar(false)
     await agregarMartillo()
+    await abrirCarrito()
     fireEvent.click(screen.getByLabelText('Documento POS'))    // opt-in explícito
     fireEvent.click(screen.getByText(/Registrar venta/))
-    await screen.findByText(/Busca o escanea/)
+    await carritoLimpio()
     expect(ventaBody(fetchMock).documento).toBe('pos')
   })
 })
@@ -77,10 +91,11 @@ describe('TabVentasRapidas — documento con facturar_en_venta=true (histórico)
   it('sin opción "Sin factura" y la venta manda documento="pos" por defecto', async () => {
     const fetchMock = instalarFetch()
     renderConAutoFacturar(true)
-    expect(screen.queryByLabelText('Documento Sin factura')).toBeNull()
     await agregarMartillo()
+    await abrirCarrito()
+    expect(screen.queryByLabelText('Documento Sin factura')).toBeNull()
     fireEvent.click(screen.getByText(/Registrar venta/))
-    await screen.findByText(/Busca o escanea/)
+    await carritoLimpio()
     expect(ventaBody(fetchMock).documento).toBe('pos')       // auto-factura por defecto
   })
 })

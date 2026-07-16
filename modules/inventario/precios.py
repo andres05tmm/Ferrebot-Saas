@@ -24,20 +24,28 @@ _TOLERANCIA_FRACCION = Decimal("0.01")
 
 # Productos por sub-unidad: `unidad_medida` (DATA del catálogo) → unidades por paquete. El
 # `precio_venta` de estos productos es el precio del PAQUETE COMPLETO y la cantidad de la venta viene
-# expresada en la sub-unidad (gramos, centímetros), no en paquetes. Así el menudeo cobra exacto:
+# expresada en la sub-unidad (gramos, centímetros, mililitros), no en paquetes. Así el menudeo cobra
+# exacto:
 #   GRM/Gramos: puntillas — la caja trae 500 gramos; `precio_venta` = precio de la caja (puntorojo).
 #   Cms:        lija esmeril — se cobra por cm; `precio_venta` está expresado por 100 cm.
-# El 500 está portado de `bot-ventas-ferreteria/bypass.py` (`_PESO_CAJA_GR`); el 100 (cm) es la
-# convención del negocio confirmada por el owner. La señal por-producto la da `unidad_medida` (DATA);
-# estas son convenciones del oficio ferretero (caja de puntilla ≈ 500 g, lija esmeril a $/100 cm).
-# Normalización lo case-insensitiviza. CAVEAT de escalabilidad: el supuesto "GRM/Gramos→500, Cms→100"
-# asume que `precio_venta` de esos productos es del PAQUETE, no por sub-unidad. Al onboardear otro
-# tenant ferretero hay que validar que cumple (un producto ya cobrado por-gramo con unidad "gramos"
-# se sub-registraría 500×). Si algún tenant difiere, migrar este mapa a config por-empresa.
+#   MLT/ML:     tintillas — el tarro trae 1000 ml (1 L); `precio_venta` = precio del tarro completo.
+# El 500 está portado de `bot-ventas-ferreteria/bypass.py` (`_PESO_CAJA_GR`); el 100 (cm) y el 1000
+# (ml, ported de `ModalMlt`) son convenciones del negocio confirmadas por el owner. La señal
+# por-producto la da `unidad_medida` (DATA); son convenciones del oficio ferretero (caja de puntilla
+# ≈ 500 g, lija esmeril a $/100 cm, tarro de tintilla ≈ 1 L). Normalización lo case-insensitiviza.
+# NOTA kg: los productos por kilo NO van aquí — su `precio_venta` es POR KILO, así que la rama
+# simple (precio_venta*cantidad) ya cobra bien, y el ½ kg "bonito" sale de una fila `1/2`.
+# CAVEAT de escalabilidad: el supuesto "GRM/Gramos→500, Cms→100, MLT/ML→1000" asume que `precio_venta`
+# de esos productos es del PAQUETE, no por sub-unidad. Al onboardear otro tenant ferretero hay que
+# validar que cumple (un producto ya cobrado por-gramo con unidad "gramos" se sub-registraría 500×).
+# Si algún tenant difiere, migrar este mapa a config por-empresa.
 _UNIDADES_POR_PAQUETE: dict[str, Decimal] = {
     "grm": Decimal("500"),
     "gramos": Decimal("500"),
     "cms": Decimal("100"),
+    "mlt": Decimal("1000"),
+    "ml": Decimal("1000"),
+    "mililitros": Decimal("1000"),
 }
 
 

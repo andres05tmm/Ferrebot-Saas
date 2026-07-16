@@ -2,7 +2,9 @@
 from datetime import datetime
 from decimal import Decimal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator
+
+from modules.inventario.precios import unidades_por_paquete
 
 
 class FraccionCrear(BaseModel):
@@ -56,6 +58,17 @@ class ProductoActualizar(_ProductoBase):
     """Edición de producto. No toca el inventario (`stock_actual`/`stock_minimo`); reemplaza fracciones."""
 
 
+class FraccionLeer(BaseModel):
+    """Una fila de productos_fracciones expuesta al POS (para previsualizar el precio de la fracción
+    en el modal de venta: p. ej. 3/4 de galón = $50.000, ½ kg = $7.000)."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    fraccion: str
+    decimal: Decimal | None
+    precio_total: Decimal
+
+
 class ProductoLeer(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -75,6 +88,15 @@ class ProductoLeer(BaseModel):
     iva: int
     permite_fraccion: bool
     activo: bool
+    # El POS los usa para armar el modal de venta por fracción/sub-unidad sin round-trips extra:
+    # `fracciones` da los precios "bonitos" (pintura por galón, ½ kg); `unidades_por_paquete` da el
+    # tamaño de paquete del granel (500 g / 100 cm / 1000 ml) manteniendo el divisor en un solo lugar.
+    fracciones: list[FraccionLeer] = Field(default_factory=list)
+
+    @computed_field
+    @property
+    def unidades_por_paquete(self) -> Decimal | None:
+        return unidades_por_paquete(self.unidad_medida)
 
 
 class PrecioLeer(BaseModel):
@@ -82,7 +104,7 @@ class PrecioLeer(BaseModel):
     cantidad: Decimal
     precio_unitario: Decimal
     total: Decimal
-    regla: str  # escalonado | fraccion | simple
+    regla: str  # escalonado | fraccion | subunidad | simple
 
 
 class StockLeer(BaseModel):

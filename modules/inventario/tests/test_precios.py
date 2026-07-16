@@ -107,7 +107,8 @@ def test_umbral_incompleto_no_activa_escalonado():
 @pytest.mark.parametrize("unidad,esperado", [
     ("GRM", Decimal("500")), ("grm", Decimal("500")), ("Gramos", Decimal("500")),
     ("Cms", Decimal("100")), ("CMS", Decimal("100")),
-    ("Unidad", None), ("Galón", None), ("", None), (None, None),
+    ("MLT", Decimal("1000")), ("ml", Decimal("1000")), ("Mililitros", Decimal("1000")),
+    ("Unidad", None), ("Galón", None), ("kg", None), ("", None), (None, None),
 ])
 def test_unidades_por_paquete(unidad, esperado):
     assert unidades_por_paquete(unidad) == esperado
@@ -138,10 +139,37 @@ def test_granel_cms_cobra_por_centimetro():
     assert obtener_precio_para_cantidad(esquema, Decimal("11"))[0] == Decimal("2420.00")
 
 
+def test_granel_ml_cobra_por_mililitro():
+    # Tintilla: el tarro trae 1000 ml (1 L) y precio_venta es el precio del tarro. $26/ml.
+    esquema = EsquemaPrecio(precio_venta=Decimal("26000"), unidad_medida="MLT")
+    total, pu = obtener_precio_para_cantidad(esquema, Decimal("1000"))
+    assert total == Decimal("26000.00")           # tarro completo
+    assert pu == Decimal("26")                     # 26000 / 1000 = $26 por ml
+    assert obtener_precio_para_cantidad(esquema, Decimal("250"))[0] == Decimal("6500.00")   # ¼ tarro
+    assert regla_para_cantidad(esquema, Decimal("250")) == "subunidad"
+
+
 def test_granel_etiqueta_regla():
     assert regla_para_cantidad(EsquemaPrecio(precio_venta=Decimal("7500"), unidad_medida="GRM"),
                                Decimal("500")) == "subunidad"
     assert regla_para_cantidad(EsquemaPrecio(precio_venta=Decimal("7500")), Decimal("3")) == "simple"
+
+
+def test_esquema_de_lleva_unidad_medida():
+    # Regresión: esquema_de omitía unidad_medida → el esquema quedaba en "Unidad" y GET /productos/{id}/
+    # precio (que el POS consulta por línea) cobraba la sub-unidad como precio_venta*cantidad. La lija de
+    # 250 cm de un pliego de $22.000 (=$220/cm) debe dar $55.000, no $5.5M.
+    from modules.inventario.models import Producto
+    from modules.inventario.service import esquema_de
+
+    prod = Producto(
+        nombre="Lija esmeril", unidad_medida="Cms", precio_venta=Decimal("22000"),
+        iva=19, permite_fraccion=False, activo=True, fracciones=[],
+    )
+    esquema = esquema_de(prod)
+    assert esquema.unidad_medida == "Cms"
+    total, pu = obtener_precio_para_cantidad(esquema, Decimal("250"))
+    assert total == Decimal("55000.00")            # 22000 * 250 / 100
 
 
 def test_escalonado_tiene_prioridad_sobre_subunidad():

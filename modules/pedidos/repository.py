@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.events import publish
 from modules.inventario.busqueda import BuscadorProductos, ResultadoBusqueda
 from modules.inventario.repository import SqlInventarioRepository
+from modules.pagos.models import Cobro
 from modules.pedidos.models import Pedido, PedidoConfig, PedidoItem, ZonaDomicilio
 from modules.pedidos.schemas import PedidoConfigActualizar, ZonaCrear
 
@@ -189,8 +190,33 @@ class SqlPedidosRepository:
         return pedido
 
     async def listar(self, *, estados: list[str] | None = None, limite: int = 200) -> list[Pedido]:
-        """Pedidos para el kanban (más recientes primero), opcionalmente filtrados por estado."""
+        """Pedidos para el kanban (más recientes primero), opcionalmente filtrados por estado.
+
+        Anota en cada pedido el atributo transitorio `pagado` (bool) según exista un cobro
+        `pagado` por (origen="pedido", origen_id=pedido.id) — la insignia "Pagado ✓" del kanban.
+        """
         consulta = select(Pedido).order_by(Pedido.creado_en.desc()).limit(limite)
         if estados:
             consulta = consulta.where(Pedido.estado.in_(estados))
-        return list((await self._s.execute(consulta)).scalars())
+        pedidos = list((await self._s.execute(consulta)).scalars())
+        await self._anotar_pagados(pedidos)
+        return pedidos
+
+    async def _anotar_pagados(self, pedidos: list[Pedido]) -> None:
+        """Marca `pedido.pagado` en lote: UNA consulta a `cobros` por el lote entero (sin N+1).
+
+        La tabla `cobros` vive en la misma base del tenant; se lee por la capa de repositorio.
+        """
+        ids = [p.id for p in pedidos]
+        pagados: set[int] = set()
+        if ids:
+            filas = await self._s.execute(
+                select(Cobro.origen_id).where(
+                    Cobro.origen == "pedido",
+                    Cobro.estado == "pagado",
+                    Cobro.origen_id.in_(ids),
+                )
+            )
+            pagados = set(filas.scalars().all())
+        for pedido in pedidos:
+            pedido.pagado = pedido.id in pagados

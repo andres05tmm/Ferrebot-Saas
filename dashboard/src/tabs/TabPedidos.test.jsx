@@ -15,12 +15,12 @@ import { USER_KEY } from '@/lib/api'
 const PEDIDOS = [
   { id: 1, cliente_nombre: 'Ana', cliente_telefono: '3001112233', direccion: 'Cra 1 # 2-3',
     zona_id: null, costo_domicilio: '3000.00', metodo_pago: 'efectivo', estado: 'confirmado',
-    subtotal: '36000.00', total: '39000.00', notas: 'sin cebolla', origen: 'whatsapp',
+    subtotal: '36000.00', total: '39000.00', notas: 'sin cebolla', origen: 'whatsapp', pagado: true,
     creado_en: '2026-06-11T17:00:00+00:00', actualizado_en: '2026-06-11T17:00:00+00:00',
     items: [{ id: 1, producto_id: 9, nombre: 'Hamburguesa', cantidad: '2', precio_unitario: '18000.00', subtotal: '36000.00' }] },
   { id: 2, cliente_nombre: null, cliente_telefono: '3009998877', direccion: 'Cl 9',
     zona_id: 1, costo_domicilio: '5000.00', metodo_pago: 'transferencia', estado: 'en_camino',
-    subtotal: '20000.00', total: '25000.00', notas: null, origen: 'whatsapp',
+    subtotal: '20000.00', total: '25000.00', notas: null, origen: 'whatsapp', pagado: false,
     creado_en: '2026-06-11T16:30:00+00:00', actualizado_en: '2026-06-11T17:10:00+00:00',
     items: [{ id: 2, producto_id: 7, nombre: 'Pizza', cantidad: '1', precio_unitario: '20000.00', subtotal: '20000.00' }] },
 ]
@@ -95,10 +95,32 @@ describe('TabPedidos', () => {
     render(<MemoryRouter><TabPedidos /></MemoryRouter>)
     await screen.findByText('#1 · Ana')
 
-    expect(rtEventos).toEqual(['pedido_confirmado', 'pedido_estado'])
+    expect(rtEventos).toEqual(['pedido_confirmado', 'pedido_estado', 'pedido_pagado'])
     const calls = () => fetchMock.mock.calls.filter(c => /\/pedidos$/.test(String(c[0]))).length
     const antes = calls()
     await act(async () => { rtHandler('pedido_confirmado', {}) })
     expect(calls()).toBeGreaterThan(antes)
+  })
+
+  it('muestra la insignia "Pagado" solo en el pedido con cobro pagado', async () => {
+    instalarFetch()
+    render(<MemoryRouter><TabPedidos /></MemoryRouter>)
+    await screen.findByText('#1 · Ana')
+
+    // #1 viene pagado en el listado; #2 no.
+    expect(screen.getAllByText('Pagado')).toHaveLength(1)
+  })
+
+  it('al llegar el SSE pedido_pagado la tarjeta se marca pagada sin recargar', async () => {
+    instalarFetch()
+    render(<MemoryRouter><TabPedidos /></MemoryRouter>)
+    await screen.findByText('#1 · Ana')
+    expect(screen.getAllByText('Pagado')).toHaveLength(1)   // solo #1
+
+    // El pedido #2 se paga en vivo: la cascada del puente emite pedido_pagado.
+    await act(async () => {
+      rtHandler('pedido_pagado', { pedido_id: 2, cobro_id: 5, monto: '25000.00' })
+    })
+    expect(screen.getAllByText('Pagado')).toHaveLength(2)   // #1 y ahora #2
   })
 })

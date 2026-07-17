@@ -149,17 +149,35 @@ class PagosService:
     async def listar(self, *, estados: list[str] | None = None) -> list[Cobro]:
         return await self._repo.listar(estados=estados)
 
-    async def marcar_pagado_manual(self, cobro_id: int) -> Cobro:
+    async def marcar_pagado_manual(
+        self,
+        cobro_id: int,
+        *,
+        notificar_cliente=None,
+        notificar_negocio=None,
+    ) -> Cobro:
         """El negocio vio la plata (transferencia directa/efectivo): cierra el cobro a mano.
 
         Solo desde `pendiente`: pagar un cancelado/vencido (o re-pagar) re-emitiría `cobro_pagado`
-        y los consumidores lo tratarían como un pago nuevo."""
+        y los consumidores lo tratarían como un pago nuevo. Si el cobro es de un PEDIDO dispara la
+        MISMA cascada que el conciliador automático (SSE `pedido_pagado` + avisos): así el kanban se
+        actualiza igual sea el pago detectado solo o cerrado a mano. Los callbacks de notificación son
+        opcionales (el dashboard cierra sin transporte; el worker sí puede pasarlos)."""
         cobro = await self._repo.cobro_por_id(cobro_id)
         if cobro is None:
             raise CobroInexistente(str(cobro_id))
         if cobro.estado != _ESTADO_MUTABLE:
             raise TransicionInvalida(cobro.id, cobro.estado, "pagado")
-        return await self._repo.marcar(cobro, "pagado")
+        cobro = await self._repo.marcar(cobro, "pagado")
+        if cobro.origen == "pedido":
+            # Import perezoso: evita el ciclo service ↔ conciliador (el conciliador usa el repo).
+            from modules.pagos.conciliador_transferencias import cascada_pedido_pagado
+
+            await cascada_pedido_pagado(
+                self._repo.session, cobro,
+                notificar_cliente=notificar_cliente, notificar_negocio=notificar_negocio,
+            )
+        return cobro
 
     async def cancelar(self, cobro_id: int) -> Cobro:
         cobro = await self._repo.cobro_por_id(cobro_id)

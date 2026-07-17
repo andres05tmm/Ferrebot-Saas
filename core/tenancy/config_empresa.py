@@ -25,6 +25,26 @@ async def cargar_rubro(session: AsyncSession, empresa_id: int) -> str | None:
     return valor or None
 
 
+async def cargar_datos_pago(session: AsyncSession, empresa_id: int) -> tuple[str | None, str | None]:
+    """Datos de la cuenta de transferencia del negocio → `(titular, numero)` (config_empresa).
+
+    Claves `pago_transferencia_titular` / `pago_transferencia_numero` (NO secretas: es lo que el
+    negocio le dicta al cliente para que transfiera). Ausentes → None; el agente informa el total sin
+    número de cuenta (degradación segura, nunca inventa datos de pago).
+    """
+    filas = (
+        await session.execute(
+            text(
+                "SELECT clave, valor FROM config_empresa WHERE empresa_id = :e "
+                "AND clave IN ('pago_transferencia_titular', 'pago_transferencia_numero')"
+            ),
+            {"e": empresa_id},
+        )
+    ).all()
+    valores = {clave: (valor or "").strip() or None for clave, valor in filas}
+    return valores.get("pago_transferencia_titular"), valores.get("pago_transferencia_numero")
+
+
 async def cargar_auto_facturar_venta(session: AsyncSession, empresa_id: int) -> bool:
     """¿La venta auto-emite documento fiscal (POS/FE) al registrarse? (`config_empresa.facturar_en_venta`).
 

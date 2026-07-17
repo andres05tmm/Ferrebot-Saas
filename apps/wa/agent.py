@@ -216,16 +216,21 @@ def _ancla_fecha() -> str:
     )
 
 
-def construir_system(persona: str | None, capacidades: frozenset[str] | None = None) -> str:
+def construir_system(
+    persona: str | None, capacidades: frozenset[str] | None = None, *, negocio: str | None = None
+) -> str:
     """System prompt del asistente: intro + secciones por pack activo + ancla de fecha + persona.
 
     `capacidades=None` (llamadas legadas/tests) compone como si la empresa tuviera agenda + FAQ
     (el comportamiento histórico). En runtime el agente pasa las capacidades reales del tenant: una
     empresa SIN `pack_agenda` (p. ej. ferretería con solo cobranza) no se presenta como agente de citas.
+    `negocio` (nombre comercial del tenant) ancla la identidad aunque no haya `persona` configurada.
     """
     if capacidades is None:
         capacidades = frozenset({"pack_agenda", "pack_faq"})
     partes = [_INTRO_AGENDA if "pack_agenda" in capacidades else _INTRO_GENERICA]
+    if negocio:
+        partes.insert(0, f"Eres el asistente virtual de {negocio}.")
     if "pack_reservas" in capacidades:
         partes.append(_SECCION_RESERVAS)
     if "pack_pedidos" in capacidades:
@@ -582,7 +587,9 @@ class AgenteWa:
                     )
                     texto = await correr_bucle(
                         proveedor=proveedor,
-                        system=construir_system(cfg.persona if cfg else None, capacidades),
+                        system=construir_system(
+                            cfg.persona if cfg else None, capacidades, negocio=tenant.nombre,
+                        ),
                         tools=exponer_runtime(ctx),       # agenda (gated por flag) + handoff (núcleo)
                         ctx=ctx, deps=deps, historial=historial, texto=mensaje.texto,
                     )

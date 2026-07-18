@@ -177,6 +177,40 @@ async def test_confirmar_whatsapp_defaultea_contacto_al_propio_numero(tenant):
         assert pedido.telefono_contacto == TEL_A   # su propio número: no hay que pedirlo
 
 
+async def test_armar_tras_confirmar_no_duplica_el_pedido(tenant):
+    """Guardarraíl anti-duplicado: 'ya pagué' tras confirmar NO debe crear un pedido gemelo.
+    Solo `pedido_adicional=true` (intención explícita de OTRA comida) permite armar de nuevo."""
+    async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
+        await _seed_producto(s, nombre="Bandeja", precio="23000")
+        await _abrir_cocina_todo_el_dia(s)
+        deps = _deps(s)
+        await ejecutar(
+            _call("armar_pedido", items=[{"producto": "Bandeja", "cantidad": 1}]), _ctx(), deps
+        )
+        ok = await ejecutar(
+            _call("confirmar_pedido", direccion="Cra 1 # 2-3", metodo_pago="transferencia"),
+            _ctx(), deps,
+        )
+        assert isinstance(ok, Resultado)
+
+        # El modelo intenta re-armar (malinterpretó "ya hice la transferencia") → bloqueado.
+        dup = await ejecutar(
+            _call("armar_pedido", items=[{"producto": "Bandeja", "cantidad": 1}]), _ctx(), deps
+        )
+        assert isinstance(dup, ErrorTool) and dup.error == "pedido_ya_confirmado"
+        assert dup.recuperable
+        n = (await s.execute(text("SELECT COUNT(*) FROM pedidos"))).scalar()
+        assert n == 1                               # sigue habiendo UN solo pedido
+
+        # Intención explícita de un pedido ADICIONAL → sí se permite.
+        extra = await ejecutar(
+            _call("armar_pedido", items=[{"producto": "Bandeja", "cantidad": 2}],
+                  pedido_adicional=True),
+            _ctx(), deps,
+        )
+        assert isinstance(extra, Resultado)
+
+
 def test_catalogo_gateado_por_flag():
     assert exponer_catalogo(_ctx(con_flag=False)) == []
     nombres = [spec.name for spec in exponer_catalogo(_ctx())]

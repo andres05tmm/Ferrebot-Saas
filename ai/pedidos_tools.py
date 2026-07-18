@@ -12,6 +12,7 @@ herramienta devuelve sugerencias o un error recuperable. Se exponen solo con el 
 """
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from datetime import timedelta
 from decimal import Decimal
 
 from pydantic import BaseModel, Field, ValidationError
@@ -140,6 +141,9 @@ class ItemArgs(BaseModel):
 class ArmarPedidoArgs(BaseModel):
     items: list[ItemArgs] = Field(min_length=1, max_length=30)
     notas: str = Field(default="", max_length=300)   # "sin cebolla", etc.
+    # True SOLO si el cliente pide EXPLÍCITAMENTE otro pedido aparte del que acaba de confirmar
+    # (guardarraíl anti-duplicado: "ya pagué"/"ya la hice" NO es un pedido nuevo).
+    pedido_adicional: bool = False
 
 
 class ConfirmarPedidoArgs(BaseModel):
@@ -174,12 +178,33 @@ async def _ver_menu(args: VerMenuArgs, ctx: Contexto, deps: PedidosDeps) -> Resu
     return Resultado(data={"menu": data}, resumen="Disponible: " + "; ".join(partes) + ".")
 
 
+# Ventana del guardarraíl anti-duplicado: un pedido confirmado hace menos de esto bloquea armar
+# otro salvo intención EXPLÍCITA ("ya pagué" tras confirmar NO debe crear un pedido gemelo).
+_VENTANA_ANTIDUP = timedelta(minutes=15)
+
+
 async def _armar_pedido(
     args: ArmarPedidoArgs, ctx: Contexto, deps: PedidosDeps
 ) -> Resultado | ErrorTool:
     telefono = _telefono(ctx)
     if telefono is None:
         return _SIN_TELEFONO
+    if not args.pedido_adicional:
+        ultimo = await deps.pedidos.estado_de(telefono)
+        if (
+            ultimo is not None
+            and ultimo.estado in ("confirmado", "en_preparacion")
+            and (ultimo.actualizado_en or ultimo.creado_en) >= now_co() - _VENTANA_ANTIDUP
+        ):
+            return ErrorTool(
+                "pedido_ya_confirmado",
+                f"El cliente YA tiene el pedido #{ultimo.id} confirmado hace un momento por "
+                f"{_pesos(ultimo.total)}. NO crees otro pedido: si dice que ya pagó/transfirió, "
+                "responde que el sistema verifica el pago automáticamente y le avisamos; si "
+                "pregunta por su pedido usa estado_mi_pedido. SOLO si pide EXPLÍCITAMENTE otra "
+                "comida adicional, repite armar_pedido con pedido_adicional=true.",
+                recuperable=True,
+            )
     items = [ItemPedido(producto=i.producto, cantidad=i.cantidad) for i in args.items]
     try:
         res = await deps.pedidos.armar_pedido(

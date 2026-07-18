@@ -325,8 +325,9 @@ Conversaciones. Suites completas verdes (pytest exit 0 + Vitest 494/494). Pedido
 
 ### 10.1 Único paso humano previo (Andrés, ANTES de la reunión)
 
-1. Crear el bot en **BotFather** (Telegram): `/newbot` → nombre "Sirius" → username `@SiriusBot`
-   (o el que esté libre). Guardar el **token**.
+1. ~~Crear el bot en BotFather~~ **HECHO (17-jul): @Siriussdemo_bot**, token guardado cifrado en
+   el control DB (`tg_publico_bot_token`) y webhook registrado. Si el túnel cambia de URL,
+   re-correr `set_tg_publico` con el MISMO token (BotFather → /mybots → API Token si se pierde).
 
 ### 10.2 Arranque del stack (4 terminales, ~3 min)
 

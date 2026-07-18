@@ -69,6 +69,26 @@ describe('gating del Sidebar', () => {
     expect(screen.getByText('Resultados financieros')).toBeInTheDocument()
   })
 
+  it('restaurante (pack_pedidos): opera con Pedidos/Conversaciones/Conocimiento; sin Clientes/Cobros/Resultados', () => {
+    renderSidebar(['pack_pedidos', 'pagos_online', 'canal_whatsapp', 'pack_faq'])
+    // El restaurante opera con estas: comandera + agente + conocimiento.
+    expect(screen.getByText('Pedidos')).toBeInTheDocument()
+    expect(screen.getByText('Conversaciones')).toBeInTheDocument()
+    expect(screen.getByText('Conocimiento')).toBeInTheDocument()
+    // Suprimidos del nav (solo visibilidad): cobros/clientes/P&L no aportan aquí. `pagos_online` sigue
+    // activa (el flujo de pagos la usa) pero /cobros no se muestra.
+    expect(screen.queryByText('Clientes')).toBeNull()
+    expect(screen.queryByText('Cobros')).toBeNull()
+    expect(screen.queryByText('Resultados financieros')).toBeNull()
+  })
+
+  it('un vertical de agenda (barbería: pack_agenda+ventas+caja) NO pierde Clientes/Cobros/Resultados', () => {
+    renderSidebar(['pack_agenda', 'ventas', 'caja', 'pagos_online'])
+    expect(screen.getByText('Clientes')).toBeInTheDocument()
+    expect(screen.getByText('Cobros')).toBeInTheDocument()
+    expect(screen.getByText('Resultados financieros')).toBeInTheDocument()
+  })
+
   it('oculta los tabs fiscales cuando su feature no está activa', () => {
     renderSidebar(['pos', 'clientes'])
     expect(screen.queryByText('Facturación')).toBeNull()

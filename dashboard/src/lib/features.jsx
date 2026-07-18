@@ -55,6 +55,13 @@ const FEATURES_CONSTRUCCION = ['construccion', 'obras']
 // gastos: esos son operación compartida (una obra maneja caja, materiales, compras y gastos).
 const RUTAS_RETAIL_PURO = new Set(['/hoy', '/ventas', '/devoluciones', '/top-productos', '/kardex'])
 
+// Vertical RESTAURANTE (atención a cliente con `pack_pedidos`): el dashboard se centra en la comandera.
+// El restaurante demo opera con Pedidos, Conversaciones, Conocimiento e Historial; cobros/clientes/P&L
+// no aportan en ese contexto y confunden al prospecto, así que se SUPRIMEN DEL NAV. Es solo visibilidad:
+// las features del tenant (incluida `pagos_online`, que usa el flujo de pagos) y el gating del router
+// backend no cambian — las rutas siguen montadas y accesibles por URL directa.
+const RUTAS_OCULTAS_RESTAURANTE = new Set(['/resultados', '/clientes', '/cobros'])
+
 // Rutas RETAIL/CONTABLES. Cada una se gatea por su feature FINA (ADR 0021) con la regla de supresión
 // de familia (ver isRouteEnabled). `/historial` NO está aquí: es transversal a las dos familias
 // (ventas en POS, pedidos/citas/reservas en servicios) y lleva su propia condición en isRouteEnabled.
@@ -172,6 +179,9 @@ export function isRouteEnabled(path, features = []) {
   // Familia construcción: suprime el RETAIL PURO (cockpit `/hoy` + venta de mostrador). Una constructora
   // arrastra `pos` por `inventario`, pero no vende tickets: conserva caja/inventario/compras/gastos.
   if (esConstruccion(feats) && RUTAS_RETAIL_PURO.has(path)) return false
+  // Vertical restaurante (`pack_pedidos`): oculta cobros/clientes/P&L del nav (ver RUTAS_OCULTAS_RESTAURANTE).
+  // Solo visibilidad — no toca features ni el router. `pack_pedidos` ya implica atención a cliente.
+  if (feats.includes('pack_pedidos') && RUTAS_OCULTAS_RESTAURANTE.has(path)) return false
   // `/panel` (cockpit del dueño, F3): portada EXCLUSIVA de la familia construcción. Aunque cuelga de
   // `obras`, se restringe por FAMILIA para que ningún otro vertical la vea (portadas top mutuamente
   // excluyentes). El RBAC admin-only lo aplican el guard del panel y resolveHomePath(rol), no el nav.

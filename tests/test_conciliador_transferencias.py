@@ -232,7 +232,8 @@ async def test_confirmar_pedido_transferencia_crea_cobro_manual_y_muestra_datos(
             ctx, deps)
         r = await pedidos_ejecutar(
             ToolCall(id="t", name="confirmar_pedido",
-                     arguments={"direccion": "Cll 1 # 2-3", "metodo_pago": "transferencia"}),
+                     arguments={"direccion": "Cll 1 # 2-3", "metodo_pago": "transferencia",
+                                "nombre": "Cliente Demo", "telefono_contacto": "3001234567"}),
             ctx, deps)
         await s.commit()
 

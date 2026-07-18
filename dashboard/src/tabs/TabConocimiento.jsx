@@ -7,10 +7,11 @@
  */
 import { useState } from 'react'
 import { toast } from 'sonner'
-import { Trash2, Power, BookText } from 'lucide-react'
+import { Trash2, Power, BookText, ClipboardList } from 'lucide-react'
 import { api } from '@/lib/api'
 import { useFetch } from '@/components/shared.jsx'
 import { useAuth } from '@/hooks/useAuth.js'
+import { useFeatures } from '@/lib/features.jsx'
 import { Card } from '@/components/ui/card.jsx'
 import { Input } from '@/components/ui/input.jsx'
 import { Button } from '@/components/ui/button.jsx'
@@ -31,9 +32,64 @@ async function enviar(path, method, body, okMsg, after) {
   return false
 }
 
+// Reglas de pedidos (movidas desde TabPedidos): abre/cierra la cocina, pedido mínimo, tiempo estimado
+// y domicilio default. Config admin-only (403 para staff) contra /pedidos/config; solo se monta con la
+// feature `pack_pedidos` (restaurante) y rol admin. Las zonas de domicilio quedaron fuera de la UI.
+function SeccionReglasPedidos() {
+  const configQ = useFetch('/pedidos/config')
+  const [f, setF] = useState(null)
+  if (configQ.data && !f) setF(configQ.data)
+  if (!f) return null
+  const set = (k) => (e) => setF(prev => ({ ...prev, [k]: e.target.value }))
+
+  async function guardar() {
+    const body = {
+      activo: !!f.activo,
+      hora_apertura: f.hora_apertura,
+      hora_cierre: f.hora_cierre,
+      minimo_pedido: String(f.minimo_pedido ?? '0'),
+      tiempo_estimado_min: Number(f.tiempo_estimado_min) || 45,
+      costo_domicilio_default: String(f.costo_domicilio_default ?? '0'),
+    }
+    await enviar('/pedidos/config', 'PUT', body, 'Reglas guardadas', configQ.refetch)
+  }
+
+  const campo = (label, k, type = 'number') => (
+    <label className="flex flex-col gap-1">
+      <span className="text-[11px] uppercase tracking-wider text-muted-foreground">{label}</span>
+      <Input type={type} value={f[k] ?? ''} onChange={set(k)} aria-label={label} className="h-9" />
+    </label>
+  )
+
+  return (
+    <Card className="p-3.5">
+      <h3 className="text-sm font-semibold mb-3 inline-flex items-center gap-1.5">
+        <ClipboardList className="size-4 text-primary" /> Reglas de pedidos
+      </h3>
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-2.5">
+        {campo('Abre (hora)', 'hora_apertura', 'time')}
+        {campo('Cierra (hora)', 'hora_cierre', 'time')}
+        {campo('Pedido mínimo ($)', 'minimo_pedido')}
+        {campo('Tiempo estimado (min)', 'tiempo_estimado_min')}
+        {campo('Domicilio default ($)', 'costo_domicilio_default')}
+        <label className="inline-flex items-center gap-2 text-sm self-end pb-2">
+          <input type="checkbox" checked={!!f.activo} aria-label="Pedidos activos"
+            onChange={e => setF(prev => ({ ...prev, activo: e.target.checked }))} />
+          Recibiendo pedidos
+        </label>
+      </div>
+      <div className="mt-3 flex justify-end">
+        <Button onClick={guardar}>Guardar reglas</Button>
+      </div>
+    </Card>
+  )
+}
+
 export default function TabConocimiento() {
   const { isAdmin } = useAuth()
   const admin = isAdmin()
+  const feats = useFeatures()
+  const mostrarReglas = admin && feats.includes('pack_pedidos')
   // Admin ve también las inactivas (para reactivarlas); el staff solo las activas.
   const q = useFetch(`/faq/conocimiento${admin ? '?incluir_inactivas=true' : ''}`, [admin])
   const entradas = arr(q.data)
@@ -65,6 +121,7 @@ export default function TabConocimiento() {
   }
 
   return (
+    <div className="space-y-3">
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
       <Card className="p-3">
         <h2 className="text-sm font-semibold mb-2 inline-flex items-center gap-1.5">
@@ -137,6 +194,8 @@ export default function TabConocimiento() {
           Solo un administrador puede editar el conocimiento del negocio.
         </Card>
       )}
+    </div>
+      {mostrarReglas && <SeccionReglasPedidos />}
     </div>
   )
 }

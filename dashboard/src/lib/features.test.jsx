@@ -143,7 +143,11 @@ describe('dos familias de dashboard (ADR 0018)', () => {
     }
     expect(isRouteEnabled('/pedidos', RESTAURANTE)).toBe(true)
     expect(isRouteEnabled('/conocimiento', RESTAURANTE)).toBe(true)
-    expect(isRouteEnabled('/clientes', RESTAURANTE)).toBe(true)
+    // El restaurante opera con Pedidos/Conversaciones/Conocimiento/Historial: cobros/clientes/P&L se
+    // suprimen del nav (solo visibilidad; `pagos_online` y el router backend no cambian).
+    expect(isRouteEnabled('/clientes', RESTAURANTE)).toBe(false)
+    expect(isRouteEnabled('/cobros', RESTAURANTE)).toBe(false)
+    expect(isRouteEnabled('/resultados', RESTAURANTE)).toBe(false)
   })
 
   it('barbería (pack_agenda): home /inicio, ve /agenda, NO ve retail', () => {
@@ -161,11 +165,15 @@ describe('dos familias de dashboard (ADR 0018)', () => {
     }
   })
 
-  it('el núcleo (/clientes, /resultados) es visible en TODA familia', () => {
-    for (const features of [FERRETERIA, RESTAURANTE, BARBERIA, HOTEL, []]) {
+  it('el núcleo (/clientes, /resultados) es visible en toda familia SALVO restaurante (foco comandera)', () => {
+    for (const features of [FERRETERIA, BARBERIA, HOTEL, []]) {
       for (const ruta of NUCLEO) {
         expect(isRouteEnabled(ruta, features)).toBe(true)
       }
+    }
+    // El restaurante (pack_pedidos) los suprime del nav; solo visibilidad, no toca features/router.
+    for (const ruta of NUCLEO) {
+      expect(isRouteEnabled(ruta, RESTAURANTE)).toBe(false)
     }
   })
 

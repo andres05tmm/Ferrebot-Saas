@@ -60,6 +60,15 @@ def _resumen_pedido(pedido) -> str:
     return f"{lineas}. Subtotal: {_pesos(pedido.subtotal)}."
 
 
+def _solo_telefono(crudo: str) -> str | None:
+    """Normaliza el teléfono de contacto a dígitos (+ opcional). None si no parece un teléfono."""
+    limpio = "".join(c for c in crudo if c.isdigit() or c == "+")
+    digitos = limpio.lstrip("+")
+    if not (7 <= len(digitos) <= 15):
+        return None
+    return limpio
+
+
 def _data_pedido(pedido) -> dict:
     return {
         "pedido_id": pedido.id, "estado": pedido.estado,
@@ -138,6 +147,9 @@ class ConfirmarPedidoArgs(BaseModel):
     barrio: str = Field(default="", max_length=80)
     metodo_pago: str = Field(min_length=1, max_length=40)   # efectivo | transferencia | datáfono…
     nombre: str = Field(default="", max_length=80)
+    # Teléfono REAL para que el domiciliario coordine la entrega. En canales con identidad opaca
+    # (Telegram: "tg:{chat_id}") es OBLIGATORIO pedirlo; en WhatsApp el default es el del cliente.
+    telefono_contacto: str = Field(default="", max_length=30)
 
 
 class EstadoMiPedidoArgs(BaseModel):
@@ -210,10 +222,25 @@ async def _confirmar_pedido(
     telefono = _telefono(ctx)
     if telefono is None:
         return _SIN_TELEFONO
+    # Domicilio necesita a quién entregarle: nombre + teléfono REAL. En canales de identidad
+    # opaca (Telegram, "tg:...") el teléfono no se puede inferir → se exige antes de confirmar.
+    # En WhatsApp el propio número del cliente es el default natural.
+    contacto = _solo_telefono(args.telefono_contacto)
+    if telefono.startswith("tg:"):
+        if not args.nombre.strip() or not contacto:
+            return ErrorTool(
+                "faltan_datos_entrega",
+                "Para el domicilio necesitas el NOMBRE del cliente y un TELÉFONO de contacto real "
+                "(el domiciliario lo llama al entregar). Pídelos con amabilidad y vuelve a confirmar.",
+                recuperable=True,
+            )
+    elif not contacto:
+        contacto = telefono
     try:
         pedido, estimado = await deps.pedidos.confirmar_pedido(
             telefono, direccion=args.direccion, barrio=args.barrio,
             metodo_pago=args.metodo_pago, nombre=args.nombre or None,
+            telefono_contacto=contacto,
         )
     except SinBorrador:
         return ErrorTool(
@@ -228,7 +255,8 @@ async def _confirmar_pedido(
         )
     resumen = (
         f"¡Pedido #{pedido.id} confirmado! ✅ Total {_pesos(pedido.total)} "
-        f"(domicilio {_pesos(pedido.costo_domicilio)}). Tiempo estimado ~{estimado} min."
+        f"(domicilio {_pesos(pedido.costo_domicilio)}). Tiempo estimado ~{estimado} min. "
+        f"🛵 El domiciliario se comunicará al {contacto} para coordinar la entrega."
     )
     data = _data_pedido(pedido) | {"tiempo_estimado_min": estimado}
     # Frente de pagos (ADR 0013): se crea la solicitud de cobro del pedido (idempotente por origen)
@@ -315,8 +343,10 @@ CATALOGO_PEDIDOS: tuple[PedidosTool, ...] = (
     PedidosTool(
         nombre="confirmar_pedido",
         descripcion=(
-            "Confirma el pedido armado con la dirección de entrega, el barrio (calcula el costo del "
-            "domicilio) y el método de pago. Solo confirma cuando el cliente haya dado esos datos."
+            "Confirma el pedido armado con la dirección EXACTA de entrega, el barrio (calcula el "
+            "costo del domicilio), el método de pago, el NOMBRE del cliente y su TELÉFONO de "
+            "contacto (el domiciliario lo llama al entregar). Solo confirma cuando el cliente haya "
+            "dado todos esos datos; si falta el nombre o el teléfono, pídelos primero."
         ),
         args_model=ConfirmarPedidoArgs, handler=_confirmar_pedido,
     ),

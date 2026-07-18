@@ -57,6 +57,7 @@ class PedidoLeer(BaseModel):
     id: int
     cliente_nombre: str | None
     cliente_telefono: str
+    telefono_contacto: str | None = None
     direccion: str | None
     zona_id: int | None
     costo_domicilio: Decimal

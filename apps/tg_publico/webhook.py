@@ -8,7 +8,7 @@ fail-closed en tiempo constante). Orden NO negociable (security.md / tenancy.md 
      (Espeja apps/wa: número no mapeado/inactivo → 200, no 404/403.)
   2. Validar el `X-Telegram-Bot-Api-Secret-Token` en TIEMPO CONSTANTE, fail-closed, ANTES de tocar la
      base del tenant → 403. Empresa sin secret o header ausente/distinto → 403.
-  3. Parsear el update; solo mensaje de TEXTO en chat PRIVADO. Cualquier otra cosa se ignora (200).
+  3. Parsear el update; TEXTO o FOTO (comprobante) en chat PRIVADO. Cualquier otra cosa se ignora (200).
   4. Dedup por `(tenant, update_id)` en Redis: un reintento del webhook no se procesa dos veces (200).
   5. `Contexto` público (`cliente_telefono = "tg:{chat_id}"`, SIEMPRE del payload — jamás del modelo)
      y encolar el turno en ARQ (job `atender_mensaje_tg`).
@@ -32,11 +32,28 @@ from core.logging import get_logger, request_id_var, tenant_id_var
 log = get_logger("tg_publico.webhook")
 
 
-def parsear_update_tg(payload: dict) -> UpdateTgPublico | None:
-    """Extrae lo mínimo de un update. None si no es un mensaje de TEXTO en chat PRIVADO.
+def _foto_mas_grande(fotos: list) -> str | None:
+    """De la lista de tamaños de `message.photo`, el `file_id` del MÁS grande (mayor `file_size`,
+    o mayor área si falta el tamaño). None si ninguno trae `file_id`."""
+    mejor: str | None = None
+    mejor_peso = -1
+    for f in fotos:
+        if not isinstance(f, dict) or not f.get("file_id"):
+            continue
+        peso = f.get("file_size") or (f.get("width", 0) * f.get("height", 0))
+        if peso >= mejor_peso:
+            mejor_peso = peso
+            mejor = f["file_id"]
+    return mejor
 
-    El canal público solo atiende texto en privado: grupos/canales, ediciones, callbacks, fotos, voz,
-    etc. se ignoran (200). Un update sin `update_id`, sin `chat.id` o con texto vacío no es procesable.
+
+def parsear_update_tg(payload: dict) -> UpdateTgPublico | None:
+    """Extrae lo mínimo de un update. None si no es TEXTO ni FOTO en chat PRIVADO.
+
+    El canal público atiende texto y FOTOS (comprobantes de pago) en privado: grupos/canales,
+    ediciones, callbacks, voz, etc. se ignoran (200). Un update sin `update_id` o sin `chat.id` no es
+    procesable; el texto sin foto debe ser no vacío. Una foto lleva su `file_id` (tamaño más grande) y
+    el caption como `texto` (o "" si no hay).
     """
     mensaje = payload.get("message")
     if not isinstance(mensaje, dict):
@@ -46,8 +63,20 @@ def parsear_update_tg(payload: dict) -> UpdateTgPublico | None:
         return None
     update_id = payload.get("update_id")
     chat_id = chat.get("id")
+    if update_id is None or chat_id is None:
+        return None
+    foto = mensaje.get("photo")
+    if isinstance(foto, list) and foto:
+        file_id = _foto_mas_grande(foto)
+        if file_id is None:
+            return None
+        caption = mensaje.get("caption")
+        texto = caption if isinstance(caption, str) else ""
+        return UpdateTgPublico(
+            update_id=int(update_id), chat_id=int(chat_id), texto=texto, foto_file_id=file_id
+        )
     texto = mensaje.get("text")
-    if update_id is None or chat_id is None or not isinstance(texto, str) or not texto:
+    if not isinstance(texto, str) or not texto:
         return None
     return UpdateTgPublico(update_id=int(update_id), chat_id=int(chat_id), texto=texto)
 
@@ -90,7 +119,7 @@ async def manejar_update_tg(
             log.warning("tg_publico_secret_invalido", slug=slug)
             return ResultadoTg(AccionTg.SECRET_INVALIDO, 403)
 
-        # 3. Parsear (solo texto en privado); ignorar lo demás.
+        # 3. Parsear (texto o foto en privado); ignorar lo demás.
         update = parsear_update_tg(payload)
         if update is None:
             log.info("tg_publico_update_ignorado")

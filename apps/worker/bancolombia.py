@@ -139,6 +139,42 @@ async def procesar_gmail_push(ctx: dict, empresa_id: int, history_id: str | None
     return f"insertados={ins}"
 
 
+async def poll_gmail_bancolombia(ctx: dict) -> str:
+    """Cron por MINUTO: ingesta por POLLING para cuentas Gmail SIN Pub/Sub (demo Siriuss).
+
+    El buzón puede tener su watch Pub/Sub apuntando a OTRO sistema (el legado de Punto Rojo, en
+    producción): este poll solo LEE el historial con su propio refresh token — jamás llama
+    `watch`, así que no desplaza el push del otro sistema. Reusa `procesar_gmail_push` completo
+    (parser, idempotencia por gmail_message_id, conciliador de pedidos, SSE, notificaciones).
+    Primera corrida de una cuenta (sin `last_history_id`): siembra la línea base con el
+    historyId del perfil y sale — desde ahí solo se procesan correos NUEVOS.
+    """
+    async with control_session() as cs:
+        cuentas = await RegistroGmail(cs).cuentas_activas()
+
+    polleadas = 0
+    for cuenta in cuentas:
+        if cuenta.pubsub_topic:
+            continue    # tiene push: su ingesta llega por webhook, no por poll
+        try:
+            if not cuenta.last_history_id:
+                async with control_session() as cs:
+                    cliente = await _construir_cliente(cs, cuenta.empresa_id, cuenta)
+                    if cliente is None:
+                        continue
+                    base = await cliente.perfil_history_id()
+                    if base:
+                        await RegistroGmail(cs).guardar_history(cuenta.empresa_id, base)
+                        await _persistir_rotacion(cs, cuenta.empresa_id, cliente)
+                log.info("gmail_poll_baseline", empresa_id=cuenta.empresa_id)
+                continue
+            await procesar_gmail_push(ctx, cuenta.empresa_id, None)
+            polleadas += 1
+        except Exception:  # noqa: BLE001 — un buzón no debe tumbar el barrido
+            log.exception("gmail_poll_error", empresa_id=cuenta.empresa_id)
+    return f"polleadas={polleadas}"
+
+
 async def renovar_watch_gmail(ctx: dict) -> str:
     """Cron diario: renueva el Gmail watch de cada cuenta activa cuyo watch expire dentro de 48h.
 

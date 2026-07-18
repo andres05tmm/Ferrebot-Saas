@@ -18,7 +18,7 @@ from apps.tg_publico.jobs import atender_mensaje_tg
 from apps.tg_publico.wiring import construir_agente_tg
 from apps.wa.agent import AgenteWa, MemoriaWa
 from apps.wa.kapso import KapsoSender
-from apps.worker.bancolombia import procesar_gmail_push, renovar_watch_gmail
+from apps.worker.bancolombia import poll_gmail_bancolombia, procesar_gmail_push, renovar_watch_gmail
 from apps.worker.jobs import (
     _encolar_descarga,
     atender_mensaje_wa,
@@ -770,6 +770,9 @@ class WorkerSettings:
         # Watch de Gmail (ingesta Bancolombia): el watch caduca a los 7 días. Renovación diaria
         # anticipada (renueva si expira dentro de 48h) — auto-repara fallos aislados. 08:30 UTC.
         cron(renovar_watch_gmail, hour={8}, minute={30}, run_at_startup=False),
+        # Poll Gmail (cuentas SIN Pub/Sub, demo Siriuss): cada minuto lee el delta del buzón sin
+        # tocar el watch (que puede pertenecer al sistema legado de Punto Rojo).
+        cron(poll_gmail_bancolombia, minute=set(range(60)), run_at_startup=True),
     ]
     redis_settings = RedisSettings.from_dsn(get_settings().redis_url)
     max_tries = MAX_INTENTOS + 1

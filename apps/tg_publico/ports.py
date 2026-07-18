@@ -19,11 +19,16 @@ from core.tenancy.context import ResolvedTenant
 
 @dataclass(frozen=True, slots=True)
 class UpdateTgPublico:
-    """Update de Telegram parseado a lo mínimo del canal (mensaje de texto en chat privado)."""
+    """Update de Telegram parseado a lo mínimo del canal (texto o FOTO en chat privado).
+
+    Una FOTO (comprobante de pago del cliente) llega con `foto_file_id` (el file_id del tamaño más
+    grande) y `texto` = caption (o "" si no hay). Un mensaje de texto trae `foto_file_id = None`.
+    """
 
     update_id: int           # nivel superior del update — base del dedup (reintentos del webhook)
     chat_id: int             # message.chat.id — identidad del cliente ("tg:{chat_id}") y destino saliente
-    texto: str               # message.text
+    texto: str               # message.text (texto) o el caption de la foto ("" si no hay)
+    foto_file_id: str | None = None   # file_id de la foto más grande; None si es un mensaje de texto
 
 
 class TgTenantResolver(Protocol):

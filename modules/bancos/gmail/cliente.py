@@ -85,6 +85,15 @@ class GmailCliente:
     async def _auth(self) -> dict[str, str]:
         return {"Authorization": f"Bearer {await self.access_token()}"}
 
+    async def perfil_history_id(self) -> str | None:
+        """`historyId` actual del buzón (users.getProfile) — línea base para la ingesta por polling."""
+        resp = await self._pedido(
+            "GET", f"{_API_BASE}/users/{self._usuario}/profile", headers=await self._auth(),
+        )
+        resp.raise_for_status()
+        hid = resp.json().get("historyId")
+        return str(hid) if hid else None
+
     async def ids_desde_history(self, history_id: str) -> list[str]:
         """IDs de mensajes agregados al INBOX desde `history_id` (history.list). [] si expiró (404)."""
         resp = await self._pedido(

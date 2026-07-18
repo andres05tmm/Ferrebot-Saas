@@ -61,6 +61,22 @@ async def cargar_menu_foto_path(session: AsyncSession, empresa_id: int) -> str |
     return valor or None
 
 
+async def cargar_pago_qr_path(session: AsyncSession, empresa_id: int) -> str | None:
+    """URL (o ruta) de la imagen del QR de pago (Bre-B) — `config_empresa.pago_qr_path`.
+
+    El canal la manda al chat cuando el agente confirma un pedido con transferencia (el cliente
+    escanea y paga). Ausente → None: el bot solo dicta la cuenta en texto.
+    """
+    valor = (
+        await session.execute(
+            text("SELECT valor FROM config_empresa WHERE empresa_id = :e AND clave = 'pago_qr_path'"),
+            {"e": empresa_id},
+        )
+    ).scalar_one_or_none()
+    valor = (valor or "").strip()
+    return valor or None
+
+
 async def cargar_auto_facturar_venta(session: AsyncSession, empresa_id: int) -> bool:
     """¿La venta auto-emite documento fiscal (POS/FE) al registrarse? (`config_empresa.facturar_en_venta`).
 

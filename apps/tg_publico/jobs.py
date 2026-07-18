@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import base64
 import re
+from datetime import timedelta
 from pathlib import Path
 
 from ai.vision.recibo import ReciboExtraido, extraer_recibo
@@ -32,12 +33,14 @@ from apps.tg_publico.repos import SecretosTgPublico
 from apps.tg_publico.sender import TelegramPublicoSender
 from apps.wa.kapso import MensajeWa
 from core.config import get_settings
+from core.config.timezone import now_co
 from core.db.session import control_session, tenant_session
 from core.llm.base import ImageBlock
 from core.logging import get_logger
-from core.tenancy.config_empresa import cargar_menu_foto_path
+from core.tenancy.config_empresa import cargar_menu_foto_path, cargar_pago_qr_path
 from core.tenancy.context import ResolvedTenant
 from modules.conversaciones.repository import SqlConversacionRepository
+from modules.pagos.repository import SqlPagosRepository
 
 log = get_logger("tg_publico.jobs")
 
@@ -114,11 +117,45 @@ async def atender_mensaje_tg(
     redis = ctx.get("redis")
     if redis is None:
         await ctx["tg_agente"].atender(mensaje, tenant)
-        return "atendido"
-    lock = redis.lock(f"tg:conv:lock:{tenant_id}:{telefono}", timeout=180, blocking_timeout=120)
-    async with lock:
-        await ctx["tg_agente"].atender(mensaje, tenant)
+    else:
+        lock = redis.lock(f"tg:conv:lock:{tenant_id}:{telefono}", timeout=180, blocking_timeout=120)
+        async with lock:
+            await ctx["tg_agente"].atender(mensaje, tenant)
+    # Si ESTE turno confirmó un pedido con transferencia (cobro pendiente recién creado), se manda
+    # el QR de pago (Bre-B) al chat — el cliente escanea en vez de digitar la cuenta. Best-effort.
+    try:
+        await _enviar_qr_pago(tenant, telefono, chat_id)
+    except Exception:  # noqa: BLE001 — el QR es cortesía; nunca tumba el turno
+        log.warning("tg_qr_pago_error", tenant_id=tenant_id, exc_info=True)
     return "atendido"
+
+
+# Ventana de "cobro recién creado": si el cobro pendiente del cliente nació hace menos de esto,
+# lo creó el turno que acaba de correr (un "¿cómo va mi pedido?" posterior no re-manda el QR).
+_VENTANA_QR = timedelta(seconds=90)
+
+
+async def _enviar_qr_pago(tenant: ResolvedTenant, telefono: str, chat_id: int) -> bool:
+    """Manda el QR de pago si el turno dejó un cobro de pedido pendiente RECIÉN creado. True si salió."""
+    async with control_session() as cs:
+        qr = await cargar_pago_qr_path(cs, tenant.id)
+        token = await SecretosTgPublico(cs, get_settings().secrets_master_key).bot_token(tenant.id)
+    if not qr or not token:
+        return False
+    recientes = []
+    async for session in tenant_session(tenant):
+        repo = SqlPagosRepository(session)
+        recientes = await repo.cobros_pedido_pendientes_de_cliente(
+            telefono, desde=now_co() - _VENTANA_QR
+        )
+    if not recientes:
+        return False
+    await tg_sender.enviar_foto(
+        token, chat_id, qr,
+        caption="📲 Escanea el QR y paga con Bre-B el total EXACTO de tu pedido.",
+    )
+    log.info("tg_qr_pago_enviado", tenant_id=tenant.id)
+    return True
 
 
 # ── Camino FOTO: comprobante de pago del cliente ──────────────────────────────

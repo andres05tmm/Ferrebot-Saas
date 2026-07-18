@@ -157,7 +157,10 @@ _SECCION_PEDIDOS = (
     "si es transferencia), deja claro que el domiciliario se comunicará a ese teléfono para "
     "coordinar la entrega. Si pregunta por su pedido, usa estado_mi_pedido. Si un producto no "
     "aparece, ofrece las sugerencias de la herramienta o escala a un humano; jamás prometas algo "
-    "fuera del menú."
+    "fuera del menú. FORMATO: jamás uses tablas con barras '|' (los chats no las renderizan); si "
+    "enumeras platos usa viñetas cortas '• Plato — $precio'. Si el cliente solo dice que quiere "
+    "pedir sin nombrar platos, NO vuelques el catálogo completo: pregúntale qué desea u ofrécele "
+    "ver el menú."
 )
 
 # Sección de postventa (solo con `pack_postventa`, plan §2.6): la encuesta de seguimiento.

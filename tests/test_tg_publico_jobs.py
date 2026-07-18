@@ -204,6 +204,27 @@ async def test_sender_traduce_to_y_phone_number_id():
     assert creados[0].enviados == [(CHAT_ID, "listo", "HTML")]
 
 
+def test_sin_tablas_convierte_a_vinetas():
+    from apps.tg_publico.sender import sin_tablas
+
+    tabla = "Aquí está el menú:\n\n| Plato | Precio |\n|-------|--------|\n| Carne asada | $19.000 |\n| Sopa de hueso | $14.000 |\n\n¿Qué te gustaría?"
+    assert sin_tablas(tabla) == (
+        "Aquí está el menú:\n\n• Plato — Precio\n• Carne asada — $19.000\n"
+        "• Sopa de hueso — $14.000\n\n¿Qué te gustaría?"
+    )
+    assert sin_tablas("texto normal sin tablas") == "texto normal sin tablas"
+
+
+def test_re_menu_atrapa_intencion_de_pedir_pero_no_estado():
+    from apps.tg_publico.jobs import _RE_MENU
+
+    assert _RE_MENU.search("Hola quiero hacer un pedido")
+    assert _RE_MENU.search("quiero pedir algo")
+    assert _RE_MENU.search("me pasas el menú?")
+    assert not _RE_MENU.search("cómo va mi pedido?")
+    assert not _RE_MENU.search("quiero saber el estado de mi pedido")
+
+
 def test_telegramify_negrita_y_escape():
     from apps.tg_publico.sender import telegramify
 

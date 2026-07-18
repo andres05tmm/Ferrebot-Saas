@@ -65,6 +65,27 @@ class TokenTgFaltante(RuntimeError):
 # `*negrita*` de una sola línea (formato WhatsApp que produce `whatsappify`) → <b> de Telegram.
 _RE_NEGRITA = re.compile(r"\*([^*\n]+)\*")
 
+# Fila de tabla Markdown (`| a | b |`) y fila separadora (`|---|---|`): los chats no renderizan
+# tablas — se convierten a viñetas ANTES de enviar, pase lo que pase con el prompt.
+_RE_FILA_TABLA = re.compile(r"^\s*\|(.+)\|\s*$")
+_RE_FILA_SEPARADORA = re.compile(r"^\s*\|[\s\-:|]+\|\s*$")
+
+
+def sin_tablas(texto: str) -> str:
+    """Tablas Markdown → viñetas legibles (`• a — b`). Texto sin tablas pasa intacto."""
+    lineas = []
+    for linea in texto.splitlines():
+        if _RE_FILA_SEPARADORA.match(linea):
+            continue
+        m = _RE_FILA_TABLA.match(linea)
+        if m:
+            celdas = [c.strip() for c in m.group(1).split("|") if c.strip()]
+            if celdas:
+                lineas.append("• " + " — ".join(celdas))
+            continue
+        lineas.append(linea)
+    return "\n".join(lineas)
+
 
 def telegramify(texto: str) -> str:
     """Texto estilo WhatsApp (`*negrita*`, salida de `whatsappify`) → HTML de Telegram.
@@ -116,8 +137,9 @@ class TelegramPublicoSender:
         tenant_id = int(phone_number_id)
         chat_id = int(to.removeprefix("tg:"))
         notificador = await self._notificador(tenant_id)
+        plano = sin_tablas(texto)
         try:
-            await notificador.responder(chat_id, telegramify(texto), parse_mode="HTML")
+            await notificador.responder(chat_id, telegramify(plano), parse_mode="HTML")
         except TelegramError:
             log.warning("tg_html_rechazado_fallback_plano", tenant_id=tenant_id)
-            await notificador.responder(chat_id, texto)
+            await notificador.responder(chat_id, plano)

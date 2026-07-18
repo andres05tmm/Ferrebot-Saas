@@ -56,7 +56,11 @@ _MSG_ILEGIBLE = (
 # (config_empresa.menu_foto_path) sale bien, se responde CORTO y NO corre el agente (la imagen ES
 # el menú; el listado de texto sobraba). Si no hay foto/token o el envío falla, el turno del
 # agente corre normal y el menú sale en texto (fallback).
-_RE_MENU = re.compile(r"men[uú]|carta|almuerzo", re.IGNORECASE)
+# También dispara con la intención de pedir ("quiero hacer un pedido"): la foto ES la mejor
+# respuesta. OJO: no debe atrapar "mi pedido"/"cómo va" (consultas de estado → agente).
+_RE_MENU = re.compile(
+    r"men[uú]|carta|almuerzo|hacer (un |el )?pedido|quiero (pedir|ordenar)", re.IGNORECASE
+)
 _MSG_MENU = "¡Claro! 😊 Aquí está el menú de hoy 👆 Dime qué te provoca y te armo el pedido."
 
 

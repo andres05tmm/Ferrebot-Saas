@@ -164,6 +164,7 @@ class SqlPedidosRepository:
     async def confirmar(
         self, pedido: Pedido, *, direccion: str, zona_id: int | None,
         costo_domicilio: Decimal, metodo_pago: str, nombre: str | None,
+        telefono_contacto: str | None = None,
     ) -> Pedido:
         pedido.direccion = direccion
         pedido.zona_id = zona_id
@@ -171,6 +172,8 @@ class SqlPedidosRepository:
         pedido.metodo_pago = metodo_pago
         if nombre:
             pedido.cliente_nombre = nombre
+        if telefono_contacto:
+            pedido.telefono_contacto = telefono_contacto
         pedido.total = pedido.subtotal + costo_domicilio
         pedido.estado = "confirmado"
         await self._s.flush()

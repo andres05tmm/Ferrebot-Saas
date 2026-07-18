@@ -119,6 +119,7 @@ class PedidosService:
         barrio: str = "",
         metodo_pago: str,
         nombre: str | None = None,
+        telefono_contacto: str | None = None,
     ) -> tuple[Pedido, int]:
         """Confirma el borrador del que escribe: mínimo de pedido + tarifa por zona (o default).
 
@@ -135,6 +136,7 @@ class PedidosService:
         pedido = await self._repo.confirmar(
             pedido, direccion=direccion, zona_id=zona.id if zona else None,
             costo_domicilio=costo, metodo_pago=metodo_pago, nombre=nombre,
+            telefono_contacto=telefono_contacto,
         )
         return pedido, config.tiempo_estimado_min
 

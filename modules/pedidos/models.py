@@ -60,6 +60,9 @@ class Pedido(TenantBase):
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     cliente_nombre: Mapped[str | None] = mapped_column(Text)
     cliente_telefono: Mapped[str] = mapped_column(Text, nullable=False)
+    # Teléfono REAL de contacto para el domicilio (lo da el cliente al confirmar). Distinto de
+    # `cliente_telefono`: en Telegram la identidad es "tg:{chat_id}" y no sirve para llamar.
+    telefono_contacto: Mapped[str | None] = mapped_column(Text)
     direccion: Mapped[str | None] = mapped_column(Text)
     zona_id: Mapped[int | None] = mapped_column(BigInteger)
     costo_domicilio: Mapped[Decimal] = mapped_column(MONEY, nullable=False, default=Decimal("0"))

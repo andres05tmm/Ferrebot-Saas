@@ -127,6 +127,56 @@ async def test_confirmar_sin_borrador_y_stock(tenant):
         assert isinstance(stock, ErrorTool) and stock.error == "stock_insuficiente"
 
 
+async def test_confirmar_telegram_exige_nombre_y_telefono(tenant):
+    """Identidad opaca (tg:...): sin nombre+teléfono reales NO se confirma (el domiciliario debe
+    poder llamar); con ellos se confirma y quedan persistidos en el pedido."""
+    tg = "tg:987654"
+    async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
+        await _seed_producto(s, nombre="Almuerzo", precio="19000")
+        await _abrir_cocina_todo_el_dia(s)
+        deps = _deps(s)
+        await ejecutar(
+            _call("armar_pedido", items=[{"producto": "Almuerzo", "cantidad": 1}]), _ctx(tg), deps
+        )
+
+        falta = await ejecutar(
+            _call("confirmar_pedido", direccion="Calle 27 #24-15", metodo_pago="efectivo"),
+            _ctx(tg), deps,
+        )
+        assert isinstance(falta, ErrorTool) and falta.error == "faltan_datos_entrega"
+        assert falta.recuperable
+
+        ok = await ejecutar(
+            _call(
+                "confirmar_pedido", direccion="Calle 27 #24-15", metodo_pago="efectivo",
+                nombre="Laura Pérez", telefono_contacto="300 123 4567",
+            ),
+            _ctx(tg), deps,
+        )
+        assert isinstance(ok, Resultado)
+        assert "domiciliario" in ok.resumen
+        pedido = await SqlPedidosRepository(s).ultimo_de(tg)
+        assert pedido.cliente_nombre == "Laura Pérez"
+        assert pedido.telefono_contacto == "3001234567"   # normalizado a dígitos
+
+
+async def test_confirmar_whatsapp_defaultea_contacto_al_propio_numero(tenant):
+    async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
+        await _seed_producto(s, nombre="Combo", precio="20000")
+        await _abrir_cocina_todo_el_dia(s)
+        deps = _deps(s)
+        await ejecutar(
+            _call("armar_pedido", items=[{"producto": "Combo", "cantidad": 1}]), _ctx(), deps
+        )
+        ok = await ejecutar(
+            _call("confirmar_pedido", direccion="Cra 9 #10-11", metodo_pago="efectivo"),
+            _ctx(), deps,
+        )
+        assert isinstance(ok, Resultado)
+        pedido = await SqlPedidosRepository(s).ultimo_de(TEL_A)
+        assert pedido.telefono_contacto == TEL_A   # su propio número: no hay que pedirlo
+
+
 def test_catalogo_gateado_por_flag():
     assert exponer_catalogo(_ctx(con_flag=False)) == []
     nombres = [spec.name for spec in exponer_catalogo(_ctx())]

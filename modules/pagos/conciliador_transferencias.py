@@ -59,7 +59,8 @@ async def cascada_pedido_pagado(
         try:
             await notificar_cliente(
                 cobro.cliente_telefono,
-                f"¡Pago recibido! 🎉 Tu pedido #{n} entró a cocina.",
+                f"¡Pago recibido! 🎉 Tu pedido #{n} entró a cocina. "
+                "🛵 El domiciliario se comunicará contigo para coordinar la entrega.",
             )
         except Exception:  # noqa: BLE001 — el aviso no es transaccional con el pago
             log.warning("conciliador_notificar_cliente_fallo", cobro_id=cobro.id, exc_info=True)

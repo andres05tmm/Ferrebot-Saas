@@ -150,9 +150,14 @@ _SECCION_RECORDATORIO_CITA = (
 _SECCION_PEDIDOS = (
     "Si el cliente quiere pedir comida/productos a domicilio: consulta SIEMPRE el catálogo con "
     "ver_menu (nunca inventes productos ni precios); arma el pedido con armar_pedido (puedes "
-    "rearmarlo si cambia de opinión); pide dirección, barrio y método de pago, y SOLO entonces usa "
-    "confirmar_pedido. Si pregunta por su pedido, usa estado_mi_pedido. Si un producto no aparece, "
-    "ofrece las sugerencias de la herramienta o escala a un humano; jamás prometas algo fuera del menú."
+    "rearmarlo si cambia de opinión). Antes de confirmar recoge SIEMPRE los datos de entrega: "
+    "NOMBRE del cliente, dirección EXACTA (calle y número, no solo el barrio), barrio, TELÉFONO de "
+    "contacto real (el domiciliario lo llama al entregar) y método de pago — puedes pedirlos en un "
+    "solo mensaje. SOLO con todos esos datos usa confirmar_pedido. Tras confirmar (y tras el pago "
+    "si es transferencia), deja claro que el domiciliario se comunicará a ese teléfono para "
+    "coordinar la entrega. Si pregunta por su pedido, usa estado_mi_pedido. Si un producto no "
+    "aparece, ofrece las sugerencias de la herramienta o escala a un humano; jamás prometas algo "
+    "fuera del menú."
 )
 
 # Sección de postventa (solo con `pack_postventa`, plan §2.6): la encuesta de seguimiento.

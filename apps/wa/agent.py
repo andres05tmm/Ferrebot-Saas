@@ -160,7 +160,10 @@ _SECCION_PEDIDOS = (
     "fuera del menú. FORMATO: jamás uses tablas con barras '|' (los chats no las renderizan); si "
     "enumeras platos usa viñetas cortas '• Plato — $precio'. Si el cliente solo dice que quiere "
     "pedir sin nombrar platos, NO vuelques el catálogo completo: pregúntale qué desea u ofrécele "
-    "ver el menú."
+    "ver el menú. PAGOS: cuando el cliente diga que YA pagó/transfirió, JAMÁS armes ni confirmes "
+    "otro pedido — el sistema detecta el pago solo; responde que estamos verificando y que le "
+    "avisamos apenas entre. Un pedido 'confirmado' AÚN NO está en cocina: entra a cocina cuando "
+    "el pago se confirma — no digas que la cocina ya lo tiene."
 )
 
 # Sección de postventa (solo con `pack_postventa`, plan §2.6): la encuesta de seguimiento.

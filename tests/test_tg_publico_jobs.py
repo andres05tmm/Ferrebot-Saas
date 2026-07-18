@@ -19,7 +19,11 @@ def _tenant(id: int = 7) -> ResolvedTenant:
                           db_name="d", connection_url="postgresql://x/y")
 
 
-async def test_job_atiende_via_agente_con_identidad_del_payload():
+
+async def _sin_qr(tenant, telefono, chat_id):
+    return False
+
+async def test_job_atiende_via_agente_con_identidad_del_payload(monkeypatch):
     atendidos = []
     tenant = _tenant(7)
 
@@ -30,6 +34,8 @@ async def test_job_atiende_via_agente_con_identidad_del_payload():
     async def _resolver(tid):
         return tenant if tid == 7 else None
 
+    import apps.tg_publico.jobs as jobs
+    monkeypatch.setattr(jobs, "_enviar_qr_pago", _sin_qr)
     ctx = {"resolver_tenant": _resolver, "tg_agente": _FakeAgente()}
     res = await atender_mensaje_tg(ctx, 7, CHAT_ID, "quiero una carne asada", 42)
     assert res == "atendido"
@@ -63,6 +69,7 @@ async def test_job_menu_con_foto_responde_corto_sin_agente(monkeypatch):
     async def _fake_persistir(tnt, telefono, entrante, saliente):
         pass
 
+    monkeypatch.setattr(jobs, "_enviar_qr_pago", _sin_qr)
     monkeypatch.setattr(jobs, "_enviar_foto_menu", _fake_foto)
     monkeypatch.setattr(jobs, "_responder", _fake_responder)
     monkeypatch.setattr(jobs, "_persistir_intercambio", _fake_persistir)
@@ -93,6 +100,7 @@ async def test_job_menu_sin_foto_cae_al_agente(monkeypatch):
     async def _sin_foto(tenant_id, chat_id):
         return False    # tenant sin menu_foto_path configurada
 
+    monkeypatch.setattr(jobs, "_enviar_qr_pago", _sin_qr)
     monkeypatch.setattr(jobs, "_enviar_foto_menu", _sin_foto)
     ctx = {"resolver_tenant": _resolver, "tg_agente": _FakeAgente()}
     res = await atender_mensaje_tg(ctx, 7, CHAT_ID, "muéstrame el menú", 3)
@@ -116,11 +124,44 @@ async def test_job_foto_fallida_no_tumba_el_turno(monkeypatch):
     async def _boom(tenant_id, chat_id):
         raise RuntimeError("telegram caído")
 
+    monkeypatch.setattr(jobs, "_enviar_qr_pago", _sin_qr)
     monkeypatch.setattr(jobs, "_enviar_foto_menu", _boom)
     ctx = {"resolver_tenant": _resolver, "tg_agente": _FakeAgente()}
     res = await atender_mensaje_tg(ctx, 7, CHAT_ID, "muéstrame la carta", 3)
     assert res == "atendido"                    # la foto es cortesía: el turno sigue
     assert atendidos == ["muéstrame la carta"]
+
+
+async def test_job_manda_qr_tras_el_turno_y_un_fallo_no_lo_tumba(monkeypatch):
+    import apps.tg_publico.jobs as jobs
+
+    tenant = _tenant(7)
+    qr_llamadas, atendidos = [], []
+
+    class _FakeAgente:
+        async def atender(self, mensaje, tnt):
+            atendidos.append(mensaje.texto)
+
+    async def _resolver(tid):
+        return tenant
+
+    async def _fake_qr(tnt, telefono, chat_id):
+        qr_llamadas.append((tnt.id, telefono, chat_id))
+        return True
+
+    monkeypatch.setattr(jobs, "_enviar_qr_pago", _fake_qr)
+    ctx = {"resolver_tenant": _resolver, "tg_agente": _FakeAgente()}
+    res = await atender_mensaje_tg(ctx, 7, CHAT_ID, "confirma mi pedido porfa", 5)
+    assert res == "atendido"
+    assert qr_llamadas == [(7, TEL, CHAT_ID)]   # el hook corre DESPUÉS del turno del agente
+
+    async def _qr_boom(tnt, telefono, chat_id):
+        raise RuntimeError("qr caído")
+
+    monkeypatch.setattr(jobs, "_enviar_qr_pago", _qr_boom)
+    res = await atender_mensaje_tg(ctx, 7, CHAT_ID, "otro mensaje", 6)
+    assert res == "atendido"                    # el QR es cortesía: nunca tumba el turno
+    assert atendidos == ["confirma mi pedido porfa", "otro mensaje"]
 
 
 async def test_job_sin_tenant_no_atiende():

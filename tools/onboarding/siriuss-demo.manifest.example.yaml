@@ -39,6 +39,7 @@ branding:
   preset: "brasa"              # preset cálido del vertical restaurante
   nombre_comercial: "SIRIUSS"
   color_primario: "#F08A21"    # naranja del volante oficial (estética del menú del día)
+  logo_url: "/logos/siriuss.svg" # recreación vectorial del logo del volante (dashboard/public/logos)
 
 secretos: {}
 config: {}

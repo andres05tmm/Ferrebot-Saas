@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="SIRIUSS Comida Ejecutiva">
+  <!-- Recreación vectorial del logo del volante oficial de SIRIUSS (gorro + nombre + cubiertos). -->
+  <defs>
+    <linearGradient id="naranja" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#F49A3C"/>
+      <stop offset="1" stop-color="#E87613"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Medallón blanco -->
+  <circle cx="256" cy="256" r="248" fill="#FFFFFF"/>
+  <circle cx="256" cy="256" r="243" fill="none" stroke="#F0E7DC" stroke-width="4"/>
+
+  <!-- Gorro de chef (línea naranja) -->
+  <g fill="none" stroke="url(#naranja)" stroke-width="13" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M 197 198 v -22 c -26 2 -46 -18 -42 -42 c 4 -22 25 -35 46 -30 c 6 -24 30 -40 55 -40 s 49 16 55 40 c 21 -5 42 8 46 30 c 4 24 -16 44 -42 42 v 22"/>
+    <path d="M 194 204 l 124 -12 l 3 30 l -124 12 z"/>
+    <path d="M 232 209 l 2 20 M 262 206 l 2 20"/>
+  </g>
+
+  <!-- Nombre -->
+  <text x="256" y="334" text-anchor="middle" font-family="'Arial Black', 'Segoe UI', Arial, sans-serif" font-weight="900" font-size="76" letter-spacing="3" fill="url(#naranja)">SIRIUSS</text>
+  <text x="256" y="376" text-anchor="middle" font-family="'Segoe UI', Arial, sans-serif" font-weight="600" font-size="23" letter-spacing="7" fill="#55504A">COMIDA EJECUTIVA</text>
+
+</svg>

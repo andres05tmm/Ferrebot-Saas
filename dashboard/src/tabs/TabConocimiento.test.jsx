@@ -4,9 +4,12 @@ import { MemoryRouter } from 'react-router-dom'
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 
-import { isRouteEnabled } from '@/lib/features.jsx'
+import { isRouteEnabled, FeaturesProvider } from '@/lib/features.jsx'
 import { USER_KEY } from '@/lib/api'
 import TabConocimiento from './TabConocimiento.jsx'
+
+const CONFIG_PEDIDOS = { activo: true, hora_apertura: '08:00:00', hora_cierre: '21:00:00',
+  minimo_pedido: '0.00', tiempo_estimado_min: 45, costo_domicilio_default: '3000.00' }
 
 function jsonResp(data, status = 200) { return { ok: status < 400, status, json: async () => data } }
 
@@ -23,15 +26,20 @@ function instalarFetch({ entradas } = {}) {
     if (u.includes('/faq/conocimiento') && m === 'POST') return Promise.resolve(jsonResp({ id: 9 }, 201))
     if (/\/faq\/conocimiento\/\d+/.test(u) && m === 'PUT') return Promise.resolve(jsonResp({ id: 1 }, 200))
     if (u.includes('/faq/conocimiento')) return Promise.resolve(jsonResp(entradas ?? [ENTRADA]))
+    if (u.includes('/pedidos/config')) return Promise.resolve(jsonResp(CONFIG_PEDIDOS))
     return Promise.resolve(jsonResp([]))
   })
   vi.stubGlobal('fetch', fetchMock)
   return { calls }
 }
 
-function renderTab({ admin = true } = {}) {
+function renderTab({ admin = true, features = [] } = {}) {
   if (admin) localStorage.setItem(USER_KEY, JSON.stringify({ rol: 'admin' }))
-  return render(<MemoryRouter><TabConocimiento /></MemoryRouter>)
+  return render(
+    <MemoryRouter>
+      <FeaturesProvider features={features}><TabConocimiento /></FeaturesProvider>
+    </MemoryRouter>,
+  )
 }
 
 beforeEach(() => { localStorage.clear() })
@@ -79,6 +87,21 @@ describe('TabConocimiento', () => {
       expect(call).toBeTruthy()
       expect(JSON.parse(call[2]).contenido).toBe('Lunes a sábado')
     })
+  })
+
+  it('restaurante (admin + pack_pedidos): pinta el form de Reglas de pedidos', async () => {
+    instalarFetch()
+    renderTab({ features: ['pack_pedidos'] })
+    expect(await screen.findByText('Reglas de pedidos')).toBeInTheDocument()
+    expect(screen.getByLabelText('Tiempo estimado (min)')).toHaveValue(45)
+    expect(screen.getByLabelText('Pedidos activos')).toBeInTheDocument()
+  })
+
+  it('sin pack_pedidos NO aparece el panel de Reglas de pedidos', async () => {
+    instalarFetch()
+    renderTab()  // sin features
+    await screen.findByText('Horarios')
+    expect(screen.queryByText('Reglas de pedidos')).toBeNull()
   })
 
   it('staff (no admin) ve la lista pero no el formulario de edición', async () => {

@@ -56,8 +56,11 @@ describe('TabPedidos', () => {
     render(<MemoryRouter><TabPedidos /></MemoryRouter>)
 
     expect(await screen.findByText('#1 · Ana')).toBeInTheDocument()
-    expect(screen.getByText('Confirmados (1)')).toBeInTheDocument()
+    // Encabezados renombrados al lenguaje del flujo (confirmado → "Pendientes").
+    expect(screen.getByText('Pendientes (1)')).toBeInTheDocument()
+    expect(screen.getByText('En preparación (0)')).toBeInTheDocument()
     expect(screen.getByText('En camino (1)')).toBeInTheDocument()
+    expect(screen.getByText('Entregados (0)')).toBeInTheDocument()
     expect(screen.getByText('2× Hamburguesa')).toBeInTheDocument()
     expect(screen.getByText('$39.000')).toBeInTheDocument()
     expect(screen.getByText('“sin cebolla”')).toBeInTheDocument()
@@ -76,18 +79,16 @@ describe('TabPedidos', () => {
     expect(JSON.parse(llamada[1].body)).toEqual({ estado: 'en_preparacion' })
   })
 
-  it('sin rol admin no consulta config; con admin pinta reglas y zonas', async () => {
+  it('el tab es solo el kanban: no consulta config/zonas ni pinta esos paneles, ni siquiera con admin', async () => {
+    comoAdmin()
     const fetchMock = instalarFetch()
     render(<MemoryRouter><TabPedidos /></MemoryRouter>)
     await screen.findByText('#1 · Ana')
-    expect(fetchMock.mock.calls.filter(c => String(c[0]).includes('/config'))).toHaveLength(0)
-    cleanup()
-
-    comoAdmin(); instalarFetch()
-    render(<MemoryRouter><TabPedidos /></MemoryRouter>)
-    expect(await screen.findByText('Reglas de pedidos')).toBeInTheDocument()
-    expect(screen.getByText('Bocagrande')).toBeInTheDocument()
-    expect(screen.getByLabelText('Tiempo estimado (min)')).toHaveValue(45)
+    // Reglas y zonas se movieron/salieron del tab: no hay fetch a esos endpoints ni sus paneles.
+    expect(fetchMock.mock.calls.filter(c => String(c[0]).includes('/pedidos/config'))).toHaveLength(0)
+    expect(fetchMock.mock.calls.filter(c => String(c[0]).includes('/pedidos/zonas'))).toHaveLength(0)
+    expect(screen.queryByText('Reglas de pedidos')).toBeNull()
+    expect(screen.queryByText('Zonas de domicilio')).toBeNull()
   })
 
   it('se suscribe a los eventos del pack y un evento refresca el kanban', async () => {

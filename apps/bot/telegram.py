@@ -47,9 +47,14 @@ class TelegramNotificador:
         self._bot_token = bot_token
         self._client = client
 
-    async def responder(self, chat_id: int, texto: str, *, teclado: Teclado | None = None) -> None:
+    async def responder(
+        self, chat_id: int, texto: str, *, teclado: Teclado | None = None,
+        parse_mode: str | None = None,
+    ) -> None:
         client = self._client or _cliente_telegram(self._bot_token)
         payload: dict[str, Any] = {"chat_id": chat_id, "text": texto}
+        if parse_mode is not None:
+            payload["parse_mode"] = parse_mode
         if teclado is not None:
             payload["reply_markup"] = _inline_keyboard(teclado)
         raw = await client.call("sendMessage", payload)

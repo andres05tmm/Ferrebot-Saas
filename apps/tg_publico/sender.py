@@ -15,6 +15,8 @@ un fallo de red no tumban el job (solo se registra).
 from __future__ import annotations
 
 import asyncio
+import html
+import re
 from collections.abc import Awaitable, Callable
 from pathlib import Path
 
@@ -60,6 +62,20 @@ class TokenTgFaltante(RuntimeError):
     """El tenant no tiene `tg_publico_bot_token` configurado: no se puede enviar por Telegram."""
 
 
+# `*negrita*` de una sola línea (formato WhatsApp que produce `whatsappify`) → <b> de Telegram.
+_RE_NEGRITA = re.compile(r"\*([^*\n]+)\*")
+
+
+def telegramify(texto: str) -> str:
+    """Texto estilo WhatsApp (`*negrita*`, salida de `whatsappify`) → HTML de Telegram.
+
+    Telegram sin `parse_mode` muestra los asteriscos LITERALES; con `parse_mode=HTML` y el texto
+    escapado la conversión es determinista (no hay entidades Markdown a medio balancear que hagan
+    fallar `sendMessage`). Solo negrita: es lo único que `whatsappify` deja marcado.
+    """
+    return _RE_NEGRITA.sub(r"<b>\1</b>", html.escape(texto, quote=False))
+
+
 class TelegramPublicoSender:
     """Envío saliente por la Bot API de Telegram con el token cifrado por tenant (interfaz `KapsoSender`)."""
 
@@ -92,8 +108,16 @@ class TelegramPublicoSender:
             return notificador
 
     async def enviar_texto(self, *, phone_number_id: str, to: str, texto: str) -> None:
-        """Envía un mensaje de texto por Telegram. `phone_number_id`=tenant_id, `to`="tg:{chat_id}"."""
+        """Envía un mensaje de texto por Telegram. `phone_number_id`=tenant_id, `to`="tg:{chat_id}".
+
+        Negrita real vía HTML (`telegramify`); si Telegram rechaza el formato por cualquier borde,
+        se reintenta EN PLANO — el mensaje siempre sale.
+        """
         tenant_id = int(phone_number_id)
         chat_id = int(to.removeprefix("tg:"))
         notificador = await self._notificador(tenant_id)
-        await notificador.responder(chat_id, texto)
+        try:
+            await notificador.responder(chat_id, telegramify(texto), parse_mode="HTML")
+        except TelegramError:
+            log.warning("tg_html_rechazado_fallback_plano", tenant_id=tenant_id)
+            await notificador.responder(chat_id, texto)

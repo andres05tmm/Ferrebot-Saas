@@ -398,6 +398,34 @@ entró a cocina." Con 0 o ≥2 candidatos NO toca nada: cerrar a mano en Cobros 
 - **Aislamiento:** todo corre en la DB `ferrebot_sirius` local (empresa_id=8); nada toca prod ni
   a Punto Rojo.
 
+### 10.0 ⭐ ACTUALIZACIÓN FINAL (17-jul ~10 pm) — LA DEMO CORRE EN PRODUCCIÓN
+
+El PR #113 se mergeó a main (squash `9ffda11`, CI verde) y el tenant **`siriuss`** quedó
+provisionado EN PRODUCCIÓN (empresa_id=8 en prod, DB propia). **Ya no se necesita túnel, ngrok,
+ni stack local**: bot y dashboard corren sobre Railway.
+
+- **Dashboard:** https://siriuss.melquiadez.com/pedidos — login **admin@siriuss.com /
+  siriussdemo** (verificado: login 200 + kanban con platos del volante y barrios).
+- **Bot:** @Siriussdemo_bot con webhook en `https://siriuss.melquiadez.com/tg-publico/siriuss`
+  (verificado con getWebhookInfo: sin errores). La foto del volante se sirve de
+  `https://siriuss.melquiadez.com/siriuss-menu.jpg` (config `menu_foto_path`).
+- **Plan B de pago (en la reunión):**
+  ```bash
+  railway ssh "python -m tools.demo_transferencia siriuss <TOTAL-EXACTO>"
+  # mismo monto dos veces en el día: agregar --ref 2
+  ```
+- **Re-preparar la demo antes de la reunión** (kanban fresco, idempotente):
+  ```bash
+  railway ssh "python -m tools.preparar_demo_sirius siriuss"
+  ```
+- Config ya seteada en prod: `pago_transferencia_titular/numero`, `menu_foto_path`, horario
+  ampliado 07:00–21:00, stock 50, clave del admin.
+- **El stack local (tenant `sirius`, §10.2–10.5) queda como PLAN C**: si prod fallara en vivo,
+  re-registrar el webhook al túnel (`ngrok http 8000` + `set_tg_publico sirius <token> <url>`)
+  y abrir localhost:5173.
+- Pendiente de verificación humana: un mensaje real a @Siriussdemo_bot (el webhook y la ruta
+  están verdes; falta el round-trip completo desde un celular).
+
 ### 10.7 Actualización (17-jul noche) — volante REAL del restaurante
 
 El restaurante pasó su volante oficial del día ("BUEN DÍA! — **SIRIUSS** COMIDA EJECUTIVA"):

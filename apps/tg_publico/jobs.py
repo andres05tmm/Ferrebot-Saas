@@ -42,7 +42,8 @@ async def _enviar_foto_menu(tenant_id: int, chat_id: int) -> bool:
     async with control_session() as cs:
         foto = await cargar_menu_foto_path(cs, tenant_id)
         token = await SecretosTgPublico(cs, get_settings().secrets_master_key).bot_token(tenant_id)
-    if not foto or not token or not Path(foto).is_file():
+    es_url = bool(foto) and foto.startswith(("http://", "https://"))
+    if not foto or not token or (not es_url and not Path(foto).is_file()):
         return False
     await tg_sender.enviar_foto(token, chat_id, foto)
     log.info("tg_menu_foto_enviada", tenant_id=tenant_id)

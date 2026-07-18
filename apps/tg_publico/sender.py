@@ -26,8 +26,8 @@ from core.logging import get_logger
 log = get_logger("tg_publico.sender")
 
 
-async def enviar_foto(token: str, chat_id: int, foto_path: str, *, caption: str | None = None) -> None:
-    """`sendPhoto` con un archivo local (multipart; el JSON `call` del cliente no sirve para binarios).
+async def enviar_foto(token: str, chat_id: int, foto: str, *, caption: str | None = None) -> None:
+    """`sendPhoto` con una URL pública (Telegram la descarga) o un archivo local (multipart).
 
     Errores redactados como en `apps.bot.telegram`: la URL de httpx lleva el token → `from None`.
     """
@@ -36,13 +36,19 @@ async def enviar_foto(token: str, chat_id: int, foto_path: str, *, caption: str 
     datos: dict[str, object] = {"chat_id": chat_id}
     if caption:
         datos["caption"] = caption
-    contenido = Path(foto_path).read_bytes()
+    es_url = foto.startswith(("http://", "https://"))
     try:
         async with httpx.AsyncClient(timeout=30.0) as cliente:
-            resp = await cliente.post(
-                f"https://api.telegram.org/bot{token}/sendPhoto",
-                data=datos, files={"photo": (Path(foto_path).name, contenido)},
-            )
+            if es_url:
+                resp = await cliente.post(
+                    f"https://api.telegram.org/bot{token}/sendPhoto",
+                    json={**datos, "photo": foto},
+                )
+            else:
+                resp = await cliente.post(
+                    f"https://api.telegram.org/bot{token}/sendPhoto",
+                    data=datos, files={"photo": (Path(foto).name, Path(foto).read_bytes())},
+                )
     except httpx.HTTPError as exc:
         raise TelegramHTTPError(f"sendPhoto: {type(exc).__name__}") from None
     data = resp.json()

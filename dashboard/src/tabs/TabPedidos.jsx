@@ -47,12 +47,24 @@ function horaCorta(iso) {
   })
 }
 
-function TarjetaPedido({ p, col, onAvanzar, onCancelar }) {
+function InsigniaPagado() {
+  // Chip verde consistente con los chips del tab; se muestra cuando el cobro del pedido está pagado.
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
+      <CheckCircle2 className="size-3" /> Pagado
+    </span>
+  )
+}
+
+function TarjetaPedido({ p, col, pagado, onAvanzar, onCancelar }) {
   return (
     <Card className="p-2.5 space-y-1.5">
       <div className="flex items-center justify-between gap-2">
         <span className="font-semibold text-[13px]">#{p.id} · {p.cliente_nombre || p.cliente_telefono}</span>
-        <span className="text-[11px] text-muted-foreground tabular-nums">{horaCorta(p.creado_en)}</span>
+        <span className="inline-flex items-center gap-1.5">
+          {pagado && <InsigniaPagado />}
+          <span className="text-[11px] text-muted-foreground tabular-nums">{horaCorta(p.creado_en)}</span>
+        </span>
       </div>
       <ul className="text-[12px] text-muted-foreground space-y-0.5">
         {p.items.map(i => (
@@ -186,8 +198,16 @@ export default function TabPedidos() {
   const { isAdmin } = useAuth()
   const admin = isAdmin()
   const pedidosQ = useFetch('/pedidos')
+  // Pedidos marcados pagados en vivo por el SSE `pedido_pagado`: la insignia aparece al instante,
+  // sin esperar el round-trip del refetch (el efecto "wow" del pago detectado en la demo).
+  const [pagadosLive, setPagadosLive] = useState(() => new Set())
 
-  useRealtimeEvent(['pedido_confirmado', 'pedido_estado'], () => pedidosQ.refetch())
+  useRealtimeEvent(['pedido_confirmado', 'pedido_estado', 'pedido_pagado'], (tipo, data) => {
+    if (tipo === 'pedido_pagado' && data?.pedido_id != null) {
+      setPagadosLive(prev => new Set(prev).add(Number(data.pedido_id)))
+    }
+    pedidosQ.refetch()
+  })
 
   const pedidos = arr(pedidosQ.data)
   const onAvanzar = (p, nuevo) =>
@@ -214,7 +234,9 @@ export default function TabPedidos() {
                 <Card className="p-3 text-center text-[12px] text-muted-foreground">—</Card>
               ) : (
                 enColumna.map(p => (
-                  <TarjetaPedido key={p.id} p={p} col={col} onAvanzar={onAvanzar} onCancelar={onCancelar} />
+                  <TarjetaPedido key={p.id} p={p} col={col}
+                    pagado={p.pagado || pagadosLive.has(p.id)}
+                    onAvanzar={onAvanzar} onCancelar={onCancelar} />
                 ))
               )}
             </div>

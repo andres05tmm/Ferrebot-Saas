@@ -62,6 +62,18 @@ async def _seed_pedido_confirmado(tenant) -> int:
     return pedido_id
 
 
+async def _seed_cobro(tenant, pedido_id: int, *, estado: str, monto: str = "39000") -> None:
+    async with AsyncSession(tenant.engine) as s:
+        await s.execute(
+            text(
+                "INSERT INTO cobros (referencia, origen, origen_id, monto, estado, proveedor) "
+                "VALUES (:ref, 'pedido', :oid, :m, :estado, 'manual')"
+            ),
+            {"ref": f"cob-{pedido_id}-{estado}", "oid": pedido_id, "m": monto, "estado": estado},
+        )
+        await s.commit()
+
+
 async def test_sin_flag_pack_pedidos_da_404(tenant):
     app = _app(tenant, capacidades=frozenset())
     async with _cliente(app) as c:
@@ -86,6 +98,23 @@ async def test_kanban_staff_lista_y_avanza(tenant):
         assert (
             await c.put("/api/v1/pedidos/99999/estado", json={"estado": "cancelado"})
         ).status_code == 404
+
+
+async def test_listado_marca_pagado_segun_el_cobro(tenant):
+    # Tres pedidos confirmados: uno con cobro pagado, uno con cobro pendiente, uno sin cobro.
+    pagado_id = await _seed_pedido_confirmado(tenant)
+    await _seed_cobro(tenant, pagado_id, estado="pagado")
+    pendiente_id = await _seed_pedido_confirmado(tenant)
+    await _seed_cobro(tenant, pendiente_id, estado="pendiente")
+    sin_cobro_id = await _seed_pedido_confirmado(tenant)
+
+    async with _cliente(_app(tenant, rol="vendedor")) as c:
+        r = await c.get("/api/v1/pedidos?estado=confirmado")
+        assert r.status_code == 200
+        por_id = {p["id"]: p for p in r.json()}
+        assert por_id[pagado_id]["pagado"] is True          # cobro pagado → insignia
+        assert por_id[pendiente_id]["pagado"] is False       # cobro pendiente no cuenta
+        assert por_id[sin_cobro_id]["pagado"] is False       # sin cobro, sin insignia
 
 
 async def test_config_y_zonas_son_de_admin(tenant):

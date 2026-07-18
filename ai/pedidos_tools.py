@@ -19,7 +19,10 @@ from pydantic import BaseModel, Field, ValidationError
 from ai.envelope import Contexto, ErrorTool, Resultado
 from core.config.timezone import now_co
 from core.llm.base import ToolCall, ToolSpec
+from core.logging import get_logger
 from modules.pagos.service import PagosService
+
+log = get_logger("ai.pedidos_tools")
 from modules.pedidos.errors import (
     CocinaCerrada,
     PedidoMuyChico,
@@ -72,6 +75,38 @@ def _data_pedido(pedido) -> dict:
 _SIN_TELEFONO = ErrorTool(
     "contexto_invalido", "Falta el teléfono del cliente en el contexto del canal."
 )
+
+
+def _es_transferencia(metodo_pago: str) -> bool:
+    """¿El método de pago elegido es una transferencia (Bancolombia/Nequi)? Match laxo por texto."""
+    m = (metodo_pago or "").strip().lower()
+    return "transfer" in m or "nequi" in m or "bancolombia" in m
+
+
+async def _leer_datos_pago(tenant_id: int) -> tuple[str | None, str | None]:
+    """`(titular, numero)` de la cuenta de transferencia del negocio (config_empresa, control DB).
+
+    Aislado en una función para (a) reusar el read de `core.tenancy.config_empresa` y (b) ser
+    monkeypatcheable en tests sin control DB. Degrada a (None, None) ante cualquier fallo: el agente
+    informa el total igual (nunca inventa un número de cuenta)."""
+    from core.db.session import control_session
+    from core.tenancy.config_empresa import cargar_datos_pago
+
+    try:
+        async with control_session() as cs:
+            return await cargar_datos_pago(cs, tenant_id)
+    except Exception:  # noqa: BLE001 — sin datos de pago el flujo sigue (solo total)
+        log.warning("pedidos_datos_pago_fallo", tenant_id=tenant_id, exc_info=True)
+        return None, None
+
+
+def _instruccion_transferencia(total, titular: str | None, numero: str | None) -> str:
+    """Texto con el TOTAL exacto a transferir + los datos de pago del negocio (o solo el total)."""
+    base = f" Para confirmar el pago, transfiere EXACTAMENTE {_pesos(total)}"
+    if numero:
+        destino = f" a {numero}" + (f" ({titular})" if titular else "")
+        return base + destino + " y te aviso apenas entre el pago. 🙌"
+    return base + " y envíame el comprobante; te aviso apenas entre el pago. 🙌"
 
 _ESTADOS_LEGIBLES = {
     "recibido": "en armado (aún sin confirmar)",
@@ -196,9 +231,12 @@ async def _confirmar_pedido(
         f"(domicilio {_pesos(pedido.costo_domicilio)}). Tiempo estimado ~{estimado} min."
     )
     data = _data_pedido(pedido) | {"tiempo_estimado_min": estimado}
-    # Frente de pagos (ADR 0013): con la capacidad y el servicio inyectado, se crea la solicitud de
-    # cobro del pedido (idempotente por origen). Con PSP trae link real → se le manda al cliente.
-    if deps.pagos is not None and ctx.tiene_capacidad("pagos_online"):
+    # Frente de pagos (ADR 0013): se crea la solicitud de cobro del pedido (idempotente por origen)
+    #   - con `pagos_online`: con PSP trae link real → se le manda al cliente.
+    #   - con método de pago TRANSFERENCIA: cobro en modo manual (sin link) para que el conciliador de
+    #     transferencias pueda casarlo por monto; se le informa el total exacto + datos de la cuenta.
+    es_transferencia = _es_transferencia(args.metodo_pago)
+    if deps.pagos is not None and (ctx.tiene_capacidad("pagos_online") or es_transferencia):
         cobro = await deps.pagos.crear_cobro(
             origen="pedido", origen_id=pedido.id, monto=pedido.total,
             descripcion=f"Pedido #{pedido.id}", cliente_telefono=telefono,
@@ -206,6 +244,9 @@ async def _confirmar_pedido(
         data["cobro"] = {"cobro_id": cobro.id, "url": cobro.url, "estado": cobro.estado}
         if cobro.url:
             resumen += f" Puede pagar de una vez aquí: {cobro.url}"
+        elif es_transferencia:
+            titular, numero = await _leer_datos_pago(ctx.tenant_id)
+            resumen += _instruccion_transferencia(pedido.total, titular, numero)
     return Resultado(
         data=data,
         resumen=resumen,

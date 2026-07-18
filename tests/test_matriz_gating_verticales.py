@@ -33,6 +33,11 @@ MATRIZ: dict[str, tuple[set[str], set[str]]] = {
     # Retail/POS: todo el retail, nada de obra ni agenda.
     "ferreteria-demo": ({"ventas", "caja", "inventario"}, _CONSTRUCCION | {"pack_agenda"}),
     "restaurante-demo": ({"ventas", "caja", "inventario", "pack_pedidos"}, _CONSTRUCCION | {"pack_agenda"}),
+    # Siriuss (demo restaurante real, plan-demo-sirius): restaurante + pagos_online en modo manual.
+    "siriuss-demo": (
+        {"ventas", "caja", "inventario", "pack_pedidos", "pagos_online"},
+        _CONSTRUCCION | {"pack_agenda"},
+    ),
     # Construcción (PIM): obra + retail explícito (compras a obra), sin agenda.
     "construcciones-pim": (
         {"obras", "maquinaria", "ventas", "caja", "inventario"},

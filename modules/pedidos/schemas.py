@@ -69,6 +69,9 @@ class PedidoLeer(BaseModel):
     creado_en: datetime
     actualizado_en: datetime
     items: list[PedidoItemLeer]
+    # ¿Tiene un cobro `pagado` por (origen="pedido", origen_id=id)? Lo anota el repositorio al
+    # listar (atributo transitorio); en respuestas de un solo pedido cae al default seguro.
+    pagado: bool = False
 
 
 class CambioEstado(BaseModel):

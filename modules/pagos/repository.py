@@ -1,4 +1,7 @@
 """Repositorio de cobros: único lugar con SQL del frente de pagos (regla #2)."""
+from datetime import datetime
+from decimal import Decimal
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -9,6 +12,32 @@ from modules.pagos.models import Cobro
 class SqlPagosRepository:
     def __init__(self, session: AsyncSession) -> None:
         self._s = session
+
+    @property
+    def session(self) -> AsyncSession:
+        """La sesión del tenant (para emitir eventos de la cascada compartida desde el servicio)."""
+        return self._s
+
+    async def cobros_pedido_pendientes_por_monto(
+        self, monto: Decimal, *, desde: datetime
+    ) -> list[Cobro]:
+        """Cobros `pendiente` de origen `pedido` con monto EXACTO, creados desde `desde` (ventana).
+
+        Es la consulta del conciliador de transferencias: casa una transferencia entrante contra el
+        cobro del pedido por monto exacto dentro de la ventana temporal. La regla del candidato único
+        la aplica el conciliador (aquí solo se listan)."""
+        return list(
+            (
+                await self._s.execute(
+                    select(Cobro).where(
+                        Cobro.origen == "pedido",
+                        Cobro.estado == "pendiente",
+                        Cobro.monto == monto,
+                        Cobro.creado_en >= desde,
+                    )
+                )
+            ).scalars()
+        )
 
     async def cobro_por_referencia(self, referencia: str) -> Cobro | None:
         return (

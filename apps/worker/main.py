@@ -14,6 +14,8 @@ from datetime import timedelta
 from arq.connections import RedisSettings
 from arq.cron import cron
 
+from apps.tg_publico.jobs import atender_mensaje_tg
+from apps.tg_publico.wiring import construir_agente_tg
 from apps.wa.agent import AgenteWa, MemoriaWa
 from apps.wa.kapso import KapsoSender
 from apps.worker.bancolombia import procesar_gmail_push, renovar_watch_gmail
@@ -248,6 +250,8 @@ async def on_startup(ctx: dict) -> None:
     # Canal WhatsApp: resolución de tenant por id + el agente de agenda (bucle LLM + herramientas).
     ctx["resolver_tenant"] = resolver_tenant
     ctx["wa_agente"] = _construir_agente(settings)
+    # Canal Telegram público (demo Sirius): mismo cerebro, sender Bot API por tenant.
+    ctx["tg_agente"] = construir_agente_tg(settings)
 
 
 def _hacer_enviar_recordatorio(sender: KapsoSender, settings, phone_number_id: str):
@@ -732,7 +736,7 @@ class WorkerSettings:
 
     functions = [
         emitir_documento, descargar_documento, procesar_webhook_matias,
-        atender_mensaje_wa, provisionar_tenant, procesar_gmail_push,
+        atender_mensaje_wa, atender_mensaje_tg, provisionar_tenant, procesar_gmail_push,
     ]
     cron_jobs = [
         # Cron anti-no-show: cada 15 min barre todos los tenants (recordatorios + corte de riesgo).

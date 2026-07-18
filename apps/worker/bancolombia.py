@@ -10,6 +10,7 @@ from sqlalchemy import text
 
 from apps.bot.repos import ControlSecretosBot
 from apps.bot.telegram import TelegramNotificador
+from apps.tg_publico.repos import SecretosTgPublico
 from core.config import get_settings
 from core.db.session import control_session, tenant_session
 from core.events.publisher import publish
@@ -21,6 +22,7 @@ from modules.bancos.gmail.ingesta import procesar_push
 from modules.bancos.gmail.registro import RegistroGmail
 from modules.bancos.gmail.secretos import guardar_refresh_token, leer_refresh_token
 from modules.bancos.repository import SqlBancosRepository
+from modules.pagos.conciliador_transferencias import conciliar_transferencia
 
 log = get_logger("worker.bancolombia")
 
@@ -90,20 +92,36 @@ async def procesar_gmail_push(ctx: dict, empresa_id: int, history_id: str | None
     async with control_session() as cs:
         bot_token = await ControlSecretosBot(cs, get_settings().secrets_master_key).bot_token(empresa_id)
         chat = await _config_valor(cs, empresa_id, "telegram_notify_chat_id")
+        # Token del canal público (demo Sirius): para confirmarle el pago al cliente `tg:{chat_id}`.
+        tg_token = await SecretosTgPublico(cs, get_settings().secrets_master_key).bot_token(empresa_id)
 
     async def notificar(texto: str) -> None:
         if bot_token and chat:
             await TelegramNotificador(bot_token=bot_token).responder(int(chat), texto)
+
+    async def notificar_cliente(telefono: str, texto: str) -> None:
+        # Canal Telegram público: teléfono opaco "tg:{chat_id}". WhatsApp (Kapso) queda para prod.
+        if telefono.startswith("tg:") and tg_token:
+            await TelegramNotificador(bot_token=tg_token).responder(int(telefono[3:]), texto)
 
     resultado = None
     try:
         async for s in tenant_session(tenant):     # commitea al cerrar el generador
             async def publicar(data: dict, _s=s) -> None:
                 await publish(_s, "transferencia_recibida", data)
+
+            async def al_insertar(mov, _s=s) -> None:
+                # Puente transferencia → cobro → pedido pagado (plan demo Sirius §4): solo con
+                # candidato único marca pagado, emite SSE `pedido_pagado` y notifica cliente/negocio.
+                await conciliar_transferencia(
+                    _s, monto=mov.monto,
+                    notificar_cliente=notificar_cliente, notificar_negocio=notificar,
+                )
             resultado = await procesar_push(
                 cliente=cliente, repo=SqlBancosRepository(s),
                 last_history_id=cuenta.last_history_id,
-                notificar=notificar, publicar=publicar, history_id_push=history_id,
+                notificar=notificar, publicar=publicar, al_insertar=al_insertar,
+                history_id_push=history_id,
             )
     except RefreshTokenInvalido:
         async with control_session() as cs:

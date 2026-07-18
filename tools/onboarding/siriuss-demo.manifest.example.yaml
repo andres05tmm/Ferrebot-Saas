@@ -1,0 +1,111 @@
+# Manifiesto de tenant DEMO — restaurante "SIRIUSS" (Cartagena). Ver ADR 0007/0011 y docs/plan-demo-sirius.md.
+# Provisionar:  python -m tools.provision_from_manifest --from tools/onboarding/sirius.yaml
+# Validar:      python -m tools.provision_from_manifest --from tools/onboarding/sirius.yaml --check
+#
+# ORIGEN DEL MENÚ: volante oficial del día ("BUEN DÍA! — SIRIUSS COMIDA EJECUTIVA", WhatsApp
+# 17-jul-2026, entregado por el restaurante). PRECIOS REALES del volante (reemplazan los estimados
+# de las fotos del POS del 16-jul). El menú ROTA POR DÍA: el catálogo refleja el volante del día;
+# la rotación se explica vía FAQ (menú-por-día queda como mejora del pack).
+# Los acompañantes (arroz blanco o coco, tajadas, lentejas, ensalada de payaso) van INCLUIDOS en
+# el plato fuerte → no son productos, se informan vía FAQ.
+# Nota del volante: Bocagrande paga $1.000 ADICIONAL POR PLATO (se aproxima con la tarifa de zona
+# más alta + FAQ; el recargo por-plato no existe en el pack — mejora futura).
+# IVA 0: comida preparada tributa impoconsumo 8% (fuera del campo iva) — igual que restaurante-demo.
+version: 1
+
+identidad:
+  slug: siriuss
+  nombre: "Siriuss"
+  nit: "901500500-5"          # ficticio de demo (901300300-3 chocaba con hotel-demo) — reemplazar por el NIT real al convertir en cliente
+  rubro: "restaurante"
+
+admin:
+  nombre: "Admin Siriuss"
+  email: "admin@siriuss.com"
+
+identidades:
+  - email: "demo+siriuss@melquiadez.com"
+    nombre: "Visitante Demo"
+    rol: "vendedor"
+
+plan:
+  nombre: "Demo Siriuss"        # nombre propio: los planes se comparten por NOMBRE
+  # pagos_online en modo MANUAL (sin PSP): habilita el cobro por transferencia al confirmar
+  # el pedido y el TabCobros — sin él, el agente no inyecta PagosService (gate en AgenteWa._pagos).
+  features: ["pos", "pack_pedidos", "pack_faq", "canal_whatsapp", "pagos_online"]
+features_override: {}
+
+branding:
+  preset: "brasa"              # preset cálido del vertical restaurante
+  nombre_comercial: "SIRIUSS"
+  color_primario: "#F08A21"    # naranja del volante oficial (estética del menú del día)
+
+secretos: {}
+config: {}
+
+packs:
+  pos:
+    productos:
+      # --- Sopa (del volante) -----------------------------------------------------------------
+      - { nombre: "Sopa de hueso",        categoria: "Sopas",         unidad_medida: "porción", precio_venta: 14000, iva: 0 }
+      # --- Platos fuertes $19.000 (volante del día; incluyen acompañantes, ver FAQ) ------------
+      - { nombre: "Carne asada",          categoria: "Platos fuertes", unidad_medida: "plato", precio_venta: 19000, iva: 0 }
+      - { nombre: "Cerdo asado",          categoria: "Platos fuertes", unidad_medida: "plato", precio_venta: 19000, iva: 0 }
+      - { nombre: "Carne en bistec",      categoria: "Platos fuertes", unidad_medida: "plato", precio_venta: 19000, iva: 0 }
+      - { nombre: "Cerdo en bistec",      categoria: "Platos fuertes", unidad_medida: "plato", precio_venta: 19000, iva: 0 }
+      - { nombre: "Pollo frito",          categoria: "Platos fuertes", unidad_medida: "plato", precio_venta: 19000, iva: 0 }
+      - { nombre: "Albóndigas",           categoria: "Platos fuertes", unidad_medida: "plato", precio_venta: 19000, iva: 0 }
+      - { nombre: "Lengua en salsa",      categoria: "Platos fuertes", unidad_medida: "plato", precio_venta: 19000, iva: 0 }
+      - { nombre: "Sobrebarriga criolla", categoria: "Platos fuertes", unidad_medida: "plato", precio_venta: 19000, iva: 0 }
+      - { nombre: "Pechuga asada",        categoria: "Platos fuertes", unidad_medida: "plato", precio_venta: 19000, iva: 0 }
+      - { nombre: "Salpicón de jurel",    categoria: "Platos fuertes", unidad_medida: "plato", precio_venta: 19000, iva: 0 }
+      # --- Menú especial (combo del volante) ---------------------------------------------------
+      - { nombre: "Menú especial",        categoria: "Especiales",    unidad_medida: "plato", precio_venta: 21000, iva: 0 }  # arroz de pollo + papitas a la francesa + ensalada de aguacate + caldo
+
+    aliases:
+      # Cómo pide la gente (y los botones del POS del 16-jul que siguen aplicando).
+      - { termino: "c. asada",     reemplazo: "Carne asada",          producto: "Carne asada" }
+      - { termino: "bistec",       reemplazo: "Carne en bistec",      producto: "Carne en bistec" }
+      - { termino: "carne bistec", reemplazo: "Carne en bistec",      producto: "Carne en bistec" }
+      - { termino: "cd. asado",    reemplazo: "Cerdo asado",          producto: "Cerdo asado" }
+      - { termino: "cd. bistec",   reemplazo: "Cerdo en bistec",      producto: "Cerdo en bistec" }
+      - { termino: "cerdo bistec", reemplazo: "Cerdo en bistec",      producto: "Cerdo en bistec" }
+      - { termino: "pechuga",      reemplazo: "Pechuga asada",        producto: "Pechuga asada" }
+      - { termino: "lengua",       reemplazo: "Lengua en salsa",      producto: "Lengua en salsa" }
+      - { termino: "sobrebarriga", reemplazo: "Sobrebarriga criolla", producto: "Sobrebarriga criolla" }
+      - { termino: "salpicon",     reemplazo: "Salpicón de jurel",    producto: "Salpicón de jurel" }
+      - { termino: "jurel",        reemplazo: "Salpicón de jurel",    producto: "Salpicón de jurel" }
+      - { termino: "sopa",         reemplazo: "Sopa de hueso",        producto: "Sopa de hueso" }
+      - { termino: "especial",     reemplazo: "Menú especial",        producto: "Menú especial" }
+      - { termino: "arroz de pollo", reemplazo: "Menú especial",      producto: "Menú especial" }
+
+  # Operación del pack pedidos — horario/mínimo/tiempos son supuestos de demo (confirmar con Siriuss).
+  pedidos:
+    config:
+      activo: true
+      hora_apertura: "11:00"
+      hora_cierre: "15:30"          # restaurante de almuerzos — ESTIMADO
+      minimo_pedido: 15000
+      tiempo_estimado_min: 35
+      costo_domicilio_default: 4000
+    zonas:
+      - { nombre: "Centro",         tarifa: 3000 }
+      - { nombre: "Getsemaní",      tarifa: 3000 }
+      - { nombre: "Manga",          tarifa: 4000 }
+      - { nombre: "Pie de la Popa", tarifa: 4000 }
+      - { nombre: "Bocagrande",     tarifa: 6000 }   # + $1.000 adicional POR PLATO según el volante (ver FAQ)
+      - { nombre: "Crespo",         tarifa: 7000 }
+
+  faq:
+    entradas:
+      - { titulo: "¿Horario?", contenido: "Almuerzos de 11:00 a 3:30 de la tarde, de lunes a sábado. Domicilios hasta las 3:00.", orden: 1 }
+      - { titulo: "¿Cómo funciona el menú?", contenido: "El menú rota por día (el de hoy es el del volante). Los platos fuertes valen $19.000 e INCLUYEN acompañantes: arroz blanco o de coco, tajadas, lentejas y ensalada de payaso. También hay sopa de hueso ($14.000) y el Menú especial ($21.000: arroz de pollo, papitas a la francesa, ensalada de aguacate y caldo).", orden: 2 }
+      - { titulo: "¿Hacen domicilios?", contenido: "Sí. Pedido mínimo $15.000. El domicilio va de $3.000 a $7.000 según el barrio. Para Bocagrande recuerda que son $1.000 adicionales por plato.", orden: 3 }
+      - { titulo: "Formas de pago", contenido: "Efectivo contra entrega o transferencia (Bancolombia / Nequi). Si pagas por transferencia, envía el comprobante enseguida: el sistema confirma tu pago automáticamente y tu pedido entra directo a cocina.", orden: 4 }
+      - { titulo: "¿Cuánto se demora?", contenido: "En promedio 35 minutos según la zona y la hora pico del almuerzo.", orden: 5 }
+
+canal:
+  whatsapp:
+    phone_number_id: "demo-siriuss-0001"   # placeholder demo; en producción va el número real (Kapso)
+    numero: null
+    waba_id: null

@@ -8,12 +8,16 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from decimal import Decimal
+from typing import TYPE_CHECKING
 
 from core.config.timezone import COLOMBIA_TZ, now_co, today_co
 from core.logging import get_logger
 from modules.bancos.gmail import parser
 from modules.bancos.gmail.cliente import GmailCliente
 from modules.bancos.repository import SqlBancosRepository
+
+if TYPE_CHECKING:
+    from modules.bancos.models import BancolombiaTransferencia
 
 log = get_logger("bancos.gmail.ingesta")
 
@@ -42,6 +46,7 @@ async def procesar_push(
     last_history_id: str | None,
     notificar: Callable[[str], Awaitable[None]],
     publicar: Callable[[dict], Awaitable[None]] | None = None,
+    al_insertar: Callable[[BancolombiaTransferencia], Awaitable[None]] | None = None,
     history_id_push: str | None = None,
 ) -> ResultadoIngesta:
     """Procesa los mensajes nuevos desde `last_history_id`. Idempotente por `gmail_message_id`.
@@ -49,6 +54,10 @@ async def procesar_push(
     Sin `last_history_id` (primer push tras activar el watch) no hay rango que releer: se adopta el
     `history_id_push` como punto de partida y se sale (los siguientes push ya traen delta). El envío a
     Telegram y el SSE ocurren SOLO para filas realmente insertadas (repetidos no re-notifican).
+
+    `al_insertar` (opcional, retrocompatible) se llama con cada transferencia NUEVA insertada (nunca
+    con duplicados): es el enganche del conciliador de transferencias (puente pago→pedido). Como el
+    SSE, un fallo del hook no tumba la ingesta.
     """
     resultado = ResultadoIngesta(nuevo_history_id=last_history_id)
     if not last_history_id:
@@ -98,6 +107,11 @@ async def procesar_push(
                 })
             except Exception:
                 log.warning("gmail_ingesta_sse_fallo", gmail_message_id=mid, exc_info=True)
+        if al_insertar is not None:
+            try:
+                await al_insertar(mov)
+            except Exception:
+                log.warning("gmail_ingesta_conciliador_fallo", gmail_message_id=mid, exc_info=True)
 
     # Avanzar el puntero al history del push (o dejar el previo si el push no lo trajo).
     resultado.nuevo_history_id = history_id_push or last_history_id

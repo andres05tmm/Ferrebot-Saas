@@ -396,3 +396,25 @@ entró a cocina." Con 0 o ≥2 candidatos NO toca nada: cerrar a mano en Cobros 
   quiere conservar. Los PRECIOS siguen siendo estimados (§2.4): corregirlos cuando Sirius los dé.
 - **Aislamiento:** todo corre en la DB `ferrebot_sirius` local (empresa_id=8); nada toca prod ni
   a Punto Rojo.
+
+### 10.7 Actualización (17-jul noche) — volante REAL del restaurante
+
+El restaurante pasó su volante oficial del día ("BUEN DÍA! — **SIRIUSS** COMIDA EJECUTIVA"):
+
+- **Nombre real: SIRIUSS** (doble S) — actualizado en identidad, branding y el prompt del bot.
+- **Catálogo = volante, precios REALES** (ya no estimados): sopa de hueso $14.000; 10 platos
+  fuertes a $19.000 (carne asada, cerdo asado, carne/cerdo en bistec, pollo frito, albóndigas,
+  lengua en salsa, sobrebarriga criolla, pechuga asada, salpicón de jurel); Menú especial $21.000.
+  Los acompañantes (arroz blanco o de coco, tajadas, lentejas, ensalada de payaso) van INCLUIDOS
+  → FAQ. Bocagrande +$1.000 por plato → FAQ (el recargo por-plato no existe en el pack; mejora
+  futura). Los platos del POS del 16-jul que no están en el volante quedaron INACTIVOS (rotación).
+- **Branding**: `color_primario #F08A21` (naranja del volante) sobre el preset brasa.
+- **FOTO del menú por Telegram**: si el cliente pide el menú (regex menú/carta/almuerzo), el bot
+  manda la IMAGEN del volante antes de la respuesta del agente. La foto vive en
+  `tools/onboarding/sirius-menu.jpg` (gitignored, como el manifiesto) y se configura con:
+  `python -m tools.set_config sirius menu_foto_path "<ruta absoluta al jpg>"` (ya seteado en esta
+  máquina). Volante nuevo cada día = reemplazar el jpg (misma ruta, cero config). Best-effort: sin
+  foto/token o con red caída, el turno sigue con el menú de texto.
+- Kanban resembrado con platos del volante y barrios; el ensayo previo (#9/#10) quedó archivado
+  por la resiembra. **Totales de referencia para el plan B**: plato fuerte $19.000 + domicilio
+  Manga $4.000 = **$23.000**; especial $21.000 + Getsemaní $3.000 = **$24.000**.

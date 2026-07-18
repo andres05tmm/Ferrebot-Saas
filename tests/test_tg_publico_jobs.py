@@ -40,6 +40,55 @@ async def test_job_atiende_via_agente_con_identidad_del_payload():
     assert mensaje.texto == "quiero una carne asada"
 
 
+async def test_job_manda_foto_del_menu_solo_cuando_la_piden(monkeypatch):
+    import apps.tg_publico.jobs as jobs
+
+    tenant = _tenant(7)
+    fotos, atendidos = [], []
+
+    class _FakeAgente:
+        async def atender(self, mensaje, tnt):
+            atendidos.append(mensaje.texto)
+
+    async def _resolver(tid):
+        return tenant
+
+    async def _fake_foto(tenant_id, chat_id):
+        fotos.append((tenant_id, chat_id))
+        return True
+
+    monkeypatch.setattr(jobs, "_enviar_foto_menu", _fake_foto)
+    ctx = {"resolver_tenant": _resolver, "tg_agente": _FakeAgente()}
+    await atender_mensaje_tg(ctx, 7, CHAT_ID, "me pasas el menú porfa?", 1)
+    assert fotos == [(7, CHAT_ID)]              # pidió menú → foto
+    await atender_mensaje_tg(ctx, 7, CHAT_ID, "quiero una carne asada", 2)
+    assert fotos == [(7, CHAT_ID)]              # no pidió menú → sin foto nueva
+    assert atendidos == ["me pasas el menú porfa?", "quiero una carne asada"]  # el agente corre siempre
+
+
+async def test_job_foto_fallida_no_tumba_el_turno(monkeypatch):
+    import apps.tg_publico.jobs as jobs
+
+    tenant = _tenant(7)
+    atendidos = []
+
+    class _FakeAgente:
+        async def atender(self, mensaje, tnt):
+            atendidos.append(mensaje.texto)
+
+    async def _resolver(tid):
+        return tenant
+
+    async def _boom(tenant_id, chat_id):
+        raise RuntimeError("telegram caído")
+
+    monkeypatch.setattr(jobs, "_enviar_foto_menu", _boom)
+    ctx = {"resolver_tenant": _resolver, "tg_agente": _FakeAgente()}
+    res = await atender_mensaje_tg(ctx, 7, CHAT_ID, "muéstrame la carta", 3)
+    assert res == "atendido"                    # la foto es cortesía: el turno sigue
+    assert atendidos == ["muéstrame la carta"]
+
+
 async def test_job_sin_tenant_no_atiende():
     async def _resolver(tid):
         return None

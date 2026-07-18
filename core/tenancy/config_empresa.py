@@ -45,6 +45,22 @@ async def cargar_datos_pago(session: AsyncSession, empresa_id: int) -> tuple[str
     return valores.get("pago_transferencia_titular"), valores.get("pago_transferencia_numero")
 
 
+async def cargar_menu_foto_path(session: AsyncSession, empresa_id: int) -> str | None:
+    """Ruta local (o URL) de la FOTO del menú del día (`config_empresa.menu_foto_path`).
+
+    La setea el negocio con `tools.set_config`; el canal público la manda cuando el cliente pide
+    el menú (más práctico que el texto). Ausente → None: no se manda foto, solo el menú de texto.
+    """
+    valor = (
+        await session.execute(
+            text("SELECT valor FROM config_empresa WHERE empresa_id = :e AND clave = 'menu_foto_path'"),
+            {"e": empresa_id},
+        )
+    ).scalar_one_or_none()
+    valor = (valor or "").strip()
+    return valor or None
+
+
 async def cargar_auto_facturar_venta(session: AsyncSession, empresa_id: int) -> bool:
     """¿La venta auto-emite documento fiscal (POS/FE) al registrarse? (`config_empresa.facturar_en_venta`).
 

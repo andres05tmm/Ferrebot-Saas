@@ -16,13 +16,38 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Awaitable, Callable
+from pathlib import Path
 
-from apps.bot.telegram import TelegramNotificador
+from apps.bot.telegram import TelegramError, TelegramHTTPError, TelegramNotificador
 from apps.tg_publico.repos import SecretosTgPublico
 from core.db.session import control_session
 from core.logging import get_logger
 
 log = get_logger("tg_publico.sender")
+
+
+async def enviar_foto(token: str, chat_id: int, foto_path: str, *, caption: str | None = None) -> None:
+    """`sendPhoto` con un archivo local (multipart; el JSON `call` del cliente no sirve para binarios).
+
+    Errores redactados como en `apps.bot.telegram`: la URL de httpx lleva el token → `from None`.
+    """
+    import httpx
+
+    datos: dict[str, object] = {"chat_id": chat_id}
+    if caption:
+        datos["caption"] = caption
+    contenido = Path(foto_path).read_bytes()
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as cliente:
+            resp = await cliente.post(
+                f"https://api.telegram.org/bot{token}/sendPhoto",
+                data=datos, files={"photo": (Path(foto_path).name, contenido)},
+            )
+    except httpx.HTTPError as exc:
+        raise TelegramHTTPError(f"sendPhoto: {type(exc).__name__}") from None
+    data = resp.json()
+    if not data.get("ok"):
+        raise TelegramError(data.get("description") or "sendPhoto falló")
 
 
 class TokenTgFaltante(RuntimeError):

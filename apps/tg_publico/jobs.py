@@ -18,10 +18,35 @@ El handoff (si `esta_en_humano(telefono)`: no correr el agente, solo persistir e
 """
 from __future__ import annotations
 
+import re
+from pathlib import Path
+
+from apps.tg_publico import sender as tg_sender
+from apps.tg_publico.repos import SecretosTgPublico
 from apps.wa.kapso import MensajeWa
+from core.config import get_settings
+from core.db.session import control_session
 from core.logging import get_logger
+from core.tenancy.config_empresa import cargar_menu_foto_path
 
 log = get_logger("tg_publico.jobs")
+
+# Bypass de la FOTO del menú: si el cliente pide el menú, se manda la imagen configurada
+# (config_empresa.menu_foto_path) ANTES del turno del agente — el texto del agente confirma
+# precios/totales igual. Best-effort: sin foto/token, o con fallo de red, el turno sigue normal.
+_RE_MENU = re.compile(r"men[uú]|carta|almuerzo", re.IGNORECASE)
+
+
+async def _enviar_foto_menu(tenant_id: int, chat_id: int) -> bool:
+    """Manda la foto del menú si el tenant la tiene configurada. True si se envió."""
+    async with control_session() as cs:
+        foto = await cargar_menu_foto_path(cs, tenant_id)
+        token = await SecretosTgPublico(cs, get_settings().secrets_master_key).bot_token(tenant_id)
+    if not foto or not token or not Path(foto).is_file():
+        return False
+    await tg_sender.enviar_foto(token, chat_id, foto)
+    log.info("tg_menu_foto_enviada", tenant_id=tenant_id)
+    return True
 
 
 async def atender_mensaje_tg(
@@ -33,6 +58,11 @@ async def atender_mensaje_tg(
         log.warning("tg_publico_job_sin_tenant", tenant_id=tenant_id)
         return "sin_tenant"
     telefono = f"tg:{chat_id}"
+    if _RE_MENU.search(texto):
+        try:
+            await _enviar_foto_menu(tenant.id, chat_id)
+        except Exception:  # noqa: BLE001 — la foto es cortesía; nunca tumba el turno
+            log.warning("tg_menu_foto_error", tenant_id=tenant_id, exc_info=True)
     # `phone_number_id` transporta el tenant_id (el sender de Telegram lo usa para resolver el token
     # por tenant); `message_id` no lo usa el agente — el dedup ya ocurrió en el webhook por update_id.
     mensaje = MensajeWa(

@@ -426,6 +426,26 @@ ni stack local**: bot y dashboard corren sobre Railway.
 - Pendiente de verificación humana: un mensaje real a @Siriussdemo_bot (el webhook y la ruta
   están verdes; falta el round-trip completo desde un celular).
 
+### 10.0-bis PAGO REAL + COMPROBANTE DEL CLIENTE (PR #115, en prod)
+
+- **Detección de pago REAL activa**: el buzón `ferreteriapuntorojo17@gmail.com` (el mismo de las
+  alertas Bancolombia de Punto Rojo) quedó registrado para `siriuss` en modo **POLL** (cada
+  minuto, sin tocar el watch Pub/Sub del sistema legado, que sigue intacto). Transferencia real a
+  la cuenta de Punto Rojo → correo de Bancolombia → poll ≤1 min → conciliador (monto exacto, 6h,
+  candidato único) → pedido PAGADO + kanban + aviso Telegram al cliente. Verificado en logs:
+  `gmail_poll_baseline empresa_id=8`, cero errores.
+- **⚠️ Para el pago real en la reunión**: poner la CUENTA REAL (la de Punto Rojo, adonde llega el
+  correo) en lo que el bot dicta: `railway ssh "python -m tools.set_config siriuss
+  pago_transferencia_numero '<cuenta real Bancolombia>'"` (hoy hay un placeholder). El monto
+  transferido debe ser EXACTO al total del pedido.
+- **Comprobante del cliente**: si el cliente manda la FOTO del comprobante (cualquier banco/
+  billetera colombiana), el bot la lee con visión, la asocia a su cobro pendiente y responde el
+  estado. La foto JAMÁS marca pagado (falsificable): asocia y sirve de DESEMPATE cuando dos
+  pedidos comparten monto (paga solo el candidato con comprobante si es exactamente uno). Tabla
+  `comprobantes_pago` (migración 0057, aplicada a todos los tenants por el preDeploy).
+- El plan B (`railway ssh "python -m tools.demo_transferencia siriuss <monto>"`) sigue siendo el
+  respaldo si el correo real tarda en plena reunión.
+
 ### 10.7 Actualización (17-jul noche) — volante REAL del restaurante
 
 El restaurante pasó su volante oficial del día ("BUEN DÍA! — **SIRIUSS** COMIDA EJECUTIVA"):

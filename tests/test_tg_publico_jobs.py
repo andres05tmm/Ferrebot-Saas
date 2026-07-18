@@ -99,12 +99,17 @@ async def test_job_sin_tenant_no_atiende():
 
 # --- sender -----------------------------------------------------------------
 class _FakeNotificador:
-    def __init__(self, *, bot_token):
+    def __init__(self, *, bot_token, rechaza_html=False):
         self.bot_token = bot_token
         self.enviados = []
+        self._rechaza_html = rechaza_html
 
-    async def responder(self, chat_id, texto, *, teclado=None):
-        self.enviados.append((chat_id, texto))
+    async def responder(self, chat_id, texto, *, teclado=None, parse_mode=None):
+        from apps.bot.telegram import TelegramError
+
+        if self._rechaza_html and parse_mode == "HTML":
+            raise TelegramError("can't parse entities")
+        self.enviados.append((chat_id, texto, parse_mode))
 
 
 async def test_sender_traduce_to_y_phone_number_id():
@@ -121,7 +126,28 @@ async def test_sender_traduce_to_y_phone_number_id():
     sender = TelegramPublicoSender("master", resolver_token=resolver_token, notificador_factory=factory)
     await sender.enviar_texto(phone_number_id="7", to=TEL, texto="listo")
     assert creados[0].bot_token == "token-7"
-    assert creados[0].enviados == [(CHAT_ID, "listo")]
+    assert creados[0].enviados == [(CHAT_ID, "listo", "HTML")]
+
+
+def test_telegramify_negrita_y_escape():
+    from apps.tg_publico.sender import telegramify
+
+    assert telegramify("Bienvenido a *Siriuss*") == "Bienvenido a <b>Siriuss</b>"
+    assert telegramify("total *$30.000* <ya>") == "total <b>$30.000</b> &lt;ya&gt;"
+    # Un asterisco suelto o multilínea no se toca (nada de entidades a medio balancear).
+    assert telegramify("2 * 3 = 6") == "2 * 3 = 6"
+
+
+async def test_sender_html_rechazado_cae_a_plano():
+    n = _FakeNotificador(bot_token="tok", rechaza_html=True)
+
+    async def resolver_token(tenant_id):
+        return "tok"
+
+    sender = TelegramPublicoSender("master", resolver_token=resolver_token,
+                                   notificador_factory=lambda *, bot_token: n)
+    await sender.enviar_texto(phone_number_id="7", to=TEL, texto="*hola*")
+    assert n.enviados == [(CHAT_ID, "*hola*", None)]   # fallback: el texto original, en plano
 
 
 async def test_sender_cachea_notificador_por_tenant():

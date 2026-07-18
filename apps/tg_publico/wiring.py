@@ -16,7 +16,7 @@ from apps.tg_publico.sender import TelegramPublicoSender
 from apps.wa.agent import AgenteWa, MemoriaWa
 from core.config import get_settings
 from core.db.session import control_session, tenant_session
-from core.llm.factory import PlataformaLLM, Turno, get_llm_con_fallback
+from core.llm.factory import LLMResuelto, PlataformaLLM, Turno, get_llm_con_fallback
 from core.llm.gobierno import Gobierno, PoliticaGobierno, RedisGobierno
 from core.llm.stores import ControlLLMConfigStore, ControlLLMKeyStore
 from core.logging import get_logger
@@ -84,9 +84,11 @@ class ProcesadorTgAgente:
         self._encolar = encolar  # Callable[..., Awaitable] (arq_pool.enqueue_job)
 
     async def __call__(self, update: UpdateTgPublico, ctx: Contexto) -> None:
-        await self._encolar(
-            JOB_AGENTE, ctx.tenant_id, update.chat_id, update.texto, update.update_id
-        )
+        args = [JOB_AGENTE, ctx.tenant_id, update.chat_id, update.texto, update.update_id]
+        # Una FOTO agrega el file_id al final (param opcional del job); el texto queda como estaba.
+        if update.foto_file_id is not None:
+            args.append(update.foto_file_id)
+        await self._encolar(*args)
 
 
 def construir_tg_deps(arq_pool: Any) -> TgPublicoDeps:
@@ -162,6 +164,23 @@ def construir_agente_tg(settings) -> AgenteWa:
         gcal=calendar_client_por_defecto(),
         resolver_psp=resolver_psp,
         gobierno=gobierno,
+    )
+
+
+async def resolver_vision_tg(tenant_id: int) -> LLMResuelto:
+    """(Proveedor + modelo) con VISIÓN del tenant para `extraer_recibo` del comprobante del cliente.
+
+    Espeja `apps.bot.wiring.resolver_vision` del Bot PIM: turno ORQUESTADOR (el modelo capaz, con
+    visión), mismo factory por empresa + resiliencia (retry/respaldo, ADR 0023) que usa el `AgenteWa`.
+    Abre sesiones de control frescas por llamada (los stores del factory lo hacen internamente).
+    """
+    s = get_settings()
+    return await get_llm_con_fallback(
+        tenant_id,
+        turno=Turno.ORQUESTADOR,
+        config_store=_ConfigControl(),
+        key_store=_KeyControl(s.secrets_master_key),
+        plataforma=PlataformaLLM.desde_settings(s),
     )
 
 

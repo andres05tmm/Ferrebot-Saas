@@ -42,17 +42,19 @@ MODELO_VISION_POR_DEFECTO = "claude-sonnet-4-6"
 
 # --- prompts ----------------------------------------------------------------
 _SYSTEM = (
-    "Eres un extractor de datos de comprobantes de pago del banco colombiano Bancolombia "
-    "(transferencias, pagos QR, PSE, consignaciones y envíos a Nequi). Devuelves EXCLUSIVAMENTE "
-    "un objeto JSON válido, sin texto adicional, sin explicaciones y sin bloques de código markdown."
+    "Eres un extractor de datos de comprobantes de pago de bancos y billeteras colombianas "
+    "(Bancolombia, Nequi, Daviplata, BBVA, Davivienda, PSE…): transferencias, pagos QR, PSE, "
+    "consignaciones y envíos entre billeteras. Devuelves EXCLUSIVAMENTE un objeto JSON válido, "
+    "sin texto adicional, sin explicaciones y sin bloques de código markdown."
 )
 
 # Contrato del prompt (documentado para la Fase 6): `valor` es un NÚMERO PLANO en pesos, sin
 # separador de miles ni símbolo de moneda (p. ej. 1150000 o 1150000.50). `fecha` en ISO YYYY-MM-DD.
 # `confianza` es la autoestimación del modelo en [0, 1]. El parser de abajo es, además, tolerante a
 # que el modelo desobedezca y mande formato colombiano ("1.150.000,00", "$150.000").
-_PROMPT = """La imagen es un comprobante de una transacción de Bancolombia. Extrae los datos y \
-responde ÚNICAMENTE con un objeto JSON (sin ``` y sin texto alrededor) con EXACTAMENTE estas claves:
+_PROMPT = """La imagen es un comprobante de pago de un banco o billetera colombiana (Bancolombia, \
+Nequi, Daviplata, BBVA, Davivienda, PSE…). Extrae los datos y responde ÚNICAMENTE con un objeto JSON \
+(sin ``` y sin texto alrededor) con EXACTAMENTE estas claves:
 
 {
   "fecha": "YYYY-MM-DD" | null,

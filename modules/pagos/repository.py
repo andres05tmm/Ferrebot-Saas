@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.events import publish
-from modules.pagos.models import Cobro
+from modules.pagos.models import Cobro, Comprobante
 
 
 class SqlPagosRepository:
@@ -38,6 +38,47 @@ class SqlPagosRepository:
                 )
             ).scalars()
         )
+
+    async def cobros_pedido_pendientes_de_cliente(
+        self, cliente_telefono: str, *, desde: datetime
+    ) -> list[Cobro]:
+        """Cobros `pendiente` de origen `pedido` de ESE cliente, creados desde `desde` (ventana).
+
+        Es la consulta del registro de comprobantes: casar la foto del cliente contra SUS pedidos
+        pendientes (el desempate por monto lo hace `comprobantes.registrar_comprobante`)."""
+        return list(
+            (
+                await self._s.execute(
+                    select(Cobro).where(
+                        Cobro.origen == "pedido",
+                        Cobro.estado == "pendiente",
+                        Cobro.cliente_telefono == cliente_telefono,
+                        Cobro.creado_en >= desde,
+                    )
+                )
+            ).scalars()
+        )
+
+    async def crear_comprobante(self, comprobante: Comprobante) -> Comprobante:
+        """Inserta la fila de auditoría del comprobante (siempre se guarda, casó o no)."""
+        self._s.add(comprobante)
+        await self._s.flush()
+        return comprobante
+
+    async def cobro_ids_con_comprobante(self, cobro_ids: list[int]) -> set[int]:
+        """De `cobro_ids`, cuáles tienen ≥1 comprobante asociado. Una sola consulta (sin N+1).
+
+        El desempate del conciliador: entre varios candidatos por monto, el que tiene comprobante."""
+        if not cobro_ids:
+            return set()
+        filas = (
+            await self._s.execute(
+                select(Comprobante.cobro_id)
+                .where(Comprobante.cobro_id.in_(cobro_ids))
+                .distinct()
+            )
+        ).scalars()
+        return {cid for cid in filas if cid is not None}
 
     async def cobro_por_referencia(self, referencia: str) -> Cobro | None:
         return (

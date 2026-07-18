@@ -70,6 +70,25 @@ async def cascada_pedido_pagado(
             log.warning("conciliador_notificar_negocio_fallo", cobro_id=cobro.id, exc_info=True)
 
 
+async def _desempatar_por_comprobante(
+    repo: SqlPagosRepository, candidatos: list[Cobro], monto: Decimal
+) -> Cobro | None:
+    """Entre ≥2 candidatos por monto, gana el ÚNICO con comprobante asociado; si no, None (no-op).
+
+    El comprobante (foto que mandó el cliente) rompe el empate: 0 o >1 con comprobante sigue siendo
+    ambiguo y queda para el cierre manual."""
+    con_comprobante = await repo.cobro_ids_con_comprobante([c.id for c in candidatos])
+    conflictantes = [c for c in candidatos if c.id in con_comprobante]
+    if len(conflictantes) == 1:
+        cobro = conflictantes[0]
+        log.info("conciliador_transferencia_desempate_comprobante",
+                 candidatos=len(candidatos), cobro_id=cobro.id, monto=str(monto))
+        return cobro
+    log.info("conciliador_transferencia_sin_match", candidatos=len(candidatos),
+             con_comprobante=len(conflictantes), monto=str(monto))
+    return None
+
+
 async def conciliar_transferencia(
     session: AsyncSession,
     *,
@@ -80,17 +99,25 @@ async def conciliar_transferencia(
 ) -> Cobro | None:
     """Casa UNA transferencia entrante (por `monto`) contra los cobros de pedido pendientes.
 
-    REGLA DURA (ADR 0028): solo con EXACTAMENTE UN candidato en la ventana se marca `pagado` y se
-    dispara la cascada. Con 0 o ≥2 candidatos devuelve None sin tocar nada (ambigüedad → cierre
-    manual). Devuelve el cobro marcado, o None."""
+    REGLA DURA (ADR 0028): con EXACTAMENTE UN candidato en la ventana se marca `pagado` y se
+    dispara la cascada. Con ≥2 candidatos por monto, DESEMPATE por comprobante: si EXACTAMENTE UNO
+    de ellos tiene un comprobante asociado (foto que mandó el cliente), ese gana. Con 0 candidatos,
+    o ≥2 sin desempate (0 o >1 con comprobante), devuelve None sin tocar nada (→ cierre manual).
+    Devuelve el cobro marcado, o None."""
     repo = SqlPagosRepository(session)
     desde = now_co() - VENTANA
     candidatos = await repo.cobros_pedido_pendientes_por_monto(monto, desde=desde)
-    if len(candidatos) != 1:
-        log.info("conciliador_transferencia_sin_match_unico",
-                 candidatos=len(candidatos), monto=str(monto))
+
+    if len(candidatos) == 1:
+        cobro = candidatos[0]
+    elif len(candidatos) >= 2:
+        cobro = await _desempatar_por_comprobante(repo, candidatos, monto)
+        if cobro is None:
+            return None
+    else:
+        log.info("conciliador_transferencia_sin_match", candidatos=0, monto=str(monto))
         return None
-    cobro = candidatos[0]
+
     await repo.marcar(cobro, "pagado")
     await cascada_pedido_pagado(
         session, cobro,

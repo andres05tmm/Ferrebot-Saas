@@ -40,11 +40,11 @@ async def test_job_atiende_via_agente_con_identidad_del_payload():
     assert mensaje.texto == "quiero una carne asada"
 
 
-async def test_job_manda_foto_del_menu_solo_cuando_la_piden(monkeypatch):
+async def test_job_menu_con_foto_responde_corto_sin_agente(monkeypatch):
     import apps.tg_publico.jobs as jobs
 
     tenant = _tenant(7)
-    fotos, atendidos = [], []
+    fotos, atendidos, respuestas = [], [], []
 
     class _FakeAgente:
         async def atender(self, mensaje, tnt):
@@ -57,13 +57,47 @@ async def test_job_manda_foto_del_menu_solo_cuando_la_piden(monkeypatch):
         fotos.append((tenant_id, chat_id))
         return True
 
+    async def _fake_responder(tenant_id, telefono, texto):
+        respuestas.append(texto)
+
+    async def _fake_persistir(tnt, telefono, entrante, saliente):
+        pass
+
     monkeypatch.setattr(jobs, "_enviar_foto_menu", _fake_foto)
+    monkeypatch.setattr(jobs, "_responder", _fake_responder)
+    monkeypatch.setattr(jobs, "_persistir_intercambio", _fake_persistir)
     ctx = {"resolver_tenant": _resolver, "tg_agente": _FakeAgente()}
-    await atender_mensaje_tg(ctx, 7, CHAT_ID, "me pasas el menú porfa?", 1)
+    res = await atender_mensaje_tg(ctx, 7, CHAT_ID, "me pasas el menú porfa?", 1)
+    assert res == "menu_foto"
     assert fotos == [(7, CHAT_ID)]              # pidió menú → foto
+    assert respuestas == [jobs._MSG_MENU]       # respuesta corta fija
+    assert atendidos == []                      # la imagen ES el menú: el agente NO corre
     await atender_mensaje_tg(ctx, 7, CHAT_ID, "quiero una carne asada", 2)
     assert fotos == [(7, CHAT_ID)]              # no pidió menú → sin foto nueva
-    assert atendidos == ["me pasas el menú porfa?", "quiero una carne asada"]  # el agente corre siempre
+    assert atendidos == ["quiero una carne asada"]   # el agente sí corre para el pedido
+
+
+async def test_job_menu_sin_foto_cae_al_agente(monkeypatch):
+    import apps.tg_publico.jobs as jobs
+
+    tenant = _tenant(7)
+    atendidos = []
+
+    class _FakeAgente:
+        async def atender(self, mensaje, tnt):
+            atendidos.append(mensaje.texto)
+
+    async def _resolver(tid):
+        return tenant
+
+    async def _sin_foto(tenant_id, chat_id):
+        return False    # tenant sin menu_foto_path configurada
+
+    monkeypatch.setattr(jobs, "_enviar_foto_menu", _sin_foto)
+    ctx = {"resolver_tenant": _resolver, "tg_agente": _FakeAgente()}
+    res = await atender_mensaje_tg(ctx, 7, CHAT_ID, "muéstrame el menú", 3)
+    assert res == "atendido"
+    assert atendidos == ["muéstrame el menú"]   # fallback: el menú sale en texto por el agente
 
 
 async def test_job_foto_fallida_no_tumba_el_turno(monkeypatch):

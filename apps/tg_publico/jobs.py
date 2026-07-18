@@ -49,10 +49,12 @@ _MSG_ILEGIBLE = (
     "Recibí tu comprobante 🙏 pero no pude leerlo bien; un asesor lo revisa en un momento"
 )
 
-# Bypass de la FOTO del menú: si el cliente pide el menú, se manda la imagen configurada
-# (config_empresa.menu_foto_path) ANTES del turno del agente — el texto del agente confirma
-# precios/totales igual. Best-effort: sin foto/token, o con fallo de red, el turno sigue normal.
+# Bypass de la FOTO del menú: si el cliente pide el menú y la imagen configurada
+# (config_empresa.menu_foto_path) sale bien, se responde CORTO y NO corre el agente (la imagen ES
+# el menú; el listado de texto sobraba). Si no hay foto/token o el envío falla, el turno del
+# agente corre normal y el menú sale en texto (fallback).
 _RE_MENU = re.compile(r"men[uú]|carta|almuerzo", re.IGNORECASE)
+_MSG_MENU = "¡Claro! 😊 Aquí está el menú de hoy 👆 Dime qué te provoca y te armo el pedido."
 
 
 async def _enviar_foto_menu(tenant_id: int, chat_id: int) -> bool:
@@ -92,8 +94,14 @@ async def atender_mensaje_tg(
         return "comprobante"
     if _RE_MENU.search(texto):
         try:
-            await _enviar_foto_menu(tenant.id, chat_id)
-        except Exception:  # noqa: BLE001 — la foto es cortesía; nunca tumba el turno
+            if await _enviar_foto_menu(tenant.id, chat_id):
+                await _persistir_intercambio(tenant, telefono, texto, _MSG_MENU)
+                try:
+                    await _responder(tenant.id, telefono, _MSG_MENU)
+                except Exception:  # noqa: BLE001 — la foto ya salió; el texto corto es cortesía
+                    log.warning("tg_menu_texto_error", tenant_id=tenant_id, exc_info=True)
+                return "menu_foto"
+        except Exception:  # noqa: BLE001 — la foto es cortesía; el turno del agente sigue normal
             log.warning("tg_menu_foto_error", tenant_id=tenant_id, exc_info=True)
     # `phone_number_id` transporta el tenant_id (el sender de Telegram lo usa para resolver el token
     # por tenant); `message_id` no lo usa el agente — el dedup ya ocurrió en el webhook por update_id.
@@ -119,6 +127,20 @@ async def atender_mensaje_tg(
 # tumba el job. La confirmación de pago es OPERATIVA (no conversación): se responde y se registra el
 # comprobante aunque la conversación esté en manos de un humano. La foto de un comprobante NO dispara
 # el bypass de la foto del menú (ese es solo para texto: aquí ni se evalúa `_RE_MENU`).
+
+
+async def _persistir_intercambio(
+    tenant: ResolvedTenant, telefono: str, entrante: str, saliente: str
+) -> None:
+    """Persiste un par entrante/saliente en el hilo del inbox (best-effort, nunca lanza)."""
+    try:
+        async for session in tenant_session(tenant):
+            repo = SqlConversacionRepository(session)
+            await repo.asegurar(telefono)
+            await repo.agregar_mensaje(telefono, "entrante", "cliente", entrante)
+            await repo.agregar_mensaje(telefono, "saliente", "bot", saliente)
+    except Exception:  # noqa: BLE001 — el inbox es cosmético frente a responderle al cliente
+        log.warning("tg_persist_intercambio_error", tenant_id=tenant.id, exc_info=True)
 
 
 async def _atender_comprobante(

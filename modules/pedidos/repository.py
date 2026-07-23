@@ -6,7 +6,7 @@ reusa el `BuscadorProductos` de inventario (exacta → alias → trigram → fuz
 """
 from decimal import Decimal
 
-from sqlalchemy import select, text
+from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.events import publish
@@ -106,6 +106,41 @@ class SqlPedidosRepository:
     # --- pedidos --------------------------------------------------------------------
     async def pedido_por_id(self, pedido_id: int) -> Pedido | None:
         return await self._s.get(Pedido, pedido_id)
+
+    async def pedido_para_conversion(self, pedido_id: int) -> Pedido | None:
+        """El pedido bajo `FOR UPDATE` (serializa conversiones concurrentes, ADR 0022 D3)."""
+        return (
+            await self._s.execute(
+                select(Pedido).where(Pedido.id == pedido_id).with_for_update()
+            )
+        ).scalar_one_or_none()
+
+    async def producto_activo(self, producto_id: int) -> bool:
+        """¿El producto sigue activo en el catálogo? (decide catálogo vs línea varia al convertir)."""
+        return bool(
+            (
+                await self._s.execute(
+                    text("SELECT activo FROM productos WHERE id = :p"), {"p": producto_id}
+                )
+            ).scalar_one_or_none()
+        )
+
+    async def vincular_venta(self, pedido: Pedido, venta_id: int) -> Pedido:
+        """Vincula la venta (UNIQUE) y cierra el ciclo: el pedido convertido queda `entregado`.
+
+        Misma transacción que la venta (el caller no comitea entre ambas). El paso directo a
+        `entregado` es el evento contable de la conversión, no un arrastre del kanban.
+        """
+        pedido.venta_id = venta_id
+        pedido.convertido_en = func.now()
+        if pedido.estado not in ("entregado", "cancelado"):
+            pedido.estado = "entregado"
+        await self._s.flush()
+        await self._s.refresh(pedido, attribute_names=["actualizado_en", "convertido_en"])
+        await publish(self._s, "pedido_estado", {
+            "pedido_id": pedido.id, "estado": pedido.estado, "venta_id": venta_id,
+        })
+        return pedido
 
     async def pedido_por_key(self, idempotency_key: str) -> Pedido | None:
         return (

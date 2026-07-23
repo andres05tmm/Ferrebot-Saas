@@ -73,6 +73,12 @@ class Pedido(TenantBase):
     notas: Mapped[str | None] = mapped_column(Text)
     origen: Mapped[str] = mapped_column(Text, nullable=False, default="whatsapp")
     idempotency_key: Mapped[str | None] = mapped_column(Text)
+    # Puente pedido → venta (F1 / ADR 0032, patrón ADR 0022 D3): UNIQUE, se escribe en la MISMA
+    # transacción que la venta con el pedido bajo FOR UPDATE. NULL = aún no convertido.
+    venta_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("ventas.id", ondelete="SET NULL"), unique=True
+    )
+    convertido_en: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     creado_en: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

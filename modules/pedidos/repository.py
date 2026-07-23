@@ -14,6 +14,9 @@ from modules.inventario.busqueda import BuscadorProductos, ResultadoBusqueda
 from modules.inventario.repository import SqlInventarioRepository
 from modules.pagos.models import Cobro
 from modules.pedidos.models import (
+    Comanda,
+    ComandaItem,
+    ComandaZona,
     Mesa,
     ModificadorGrupo,
     Pedido,
@@ -27,6 +30,11 @@ from modules.pedidos.schemas import PedidoConfigActualizar, ZonaCrear
 class SqlPedidosRepository:
     def __init__(self, session: AsyncSession) -> None:
         self._s = session
+
+    @property
+    def sesion(self) -> AsyncSession:
+        """La sesión del tenant (la usa el servicio KDS para emitir su evento SSE)."""
+        return self._s
 
     # --- config (una fila, get-or-create con defaults) ------------------------
     async def obtener_config(self) -> PedidoConfig:
@@ -240,6 +248,9 @@ class SqlPedidosRepository:
         await publish(self._s, "pedido_confirmado", {
             "pedido_id": pedido.id, "total": str(pedido.total),
         })
+        # KDS (F4): el pedido confirmado entra a la cocina — comandas por zona. Se generan siempre
+        # (costo marginal nulo); la VISTA es la que está gateada por el flag `kds`.
+        await self.crear_comandas(pedido, list(pedido.items))
         return pedido
 
     async def cambiar_estado(self, pedido: Pedido, nuevo: str) -> Pedido:
@@ -261,6 +272,101 @@ class SqlPedidosRepository:
         pedidos = list((await self._s.execute(consulta)).scalars())
         await self._anotar_pagados(pedidos)
         return pedidos
+
+    # --- comandas KDS (F4 / ADR 0032 D5) ----------------------------------------------
+    async def crear_comandas(self, pedido: Pedido, items: list[PedidoItem]) -> list[Comanda]:
+        """Genera las comandas de estos ítems agrupando por la zona del producto (NULL = cocina).
+
+        Se llama al CONFIRMAR el pedido (todos sus ítems) y por cada RONDA de mesa (los nuevos).
+        El KDS es una vista: el ítem se referencia, no se copia precio.
+        """
+        if not items:
+            return []
+        ids = [i.producto_id for i in items if i.producto_id is not None]
+        zonas: dict[int, int | None] = {}
+        if ids:
+            filas = await self._s.execute(
+                text("SELECT id, zona_comanda_id FROM productos WHERE id = ANY(:ids)"),
+                {"ids": ids},
+            )
+            zonas = {f.id: f.zona_comanda_id for f in filas}
+        por_zona: dict[int | None, list[PedidoItem]] = {}
+        for item in items:
+            zona = zonas.get(item.producto_id) if item.producto_id is not None else None
+            por_zona.setdefault(zona, []).append(item)
+        comandas: list[Comanda] = []
+        for zona_id, grupo in por_zona.items():
+            comanda = Comanda(pedido_id=pedido.id, zona_id=zona_id)
+            comanda.items = [
+                ComandaItem(pedido_item_id=i.id, cantidad=i.cantidad) for i in grupo
+            ]
+            self._s.add(comanda)
+            comandas.append(comanda)
+        await self._s.flush()
+        await publish(self._s, "comanda_nueva", {
+            "pedido_id": pedido.id, "comandas": [c.id for c in comandas],
+        })
+        return comandas
+
+    async def comanda_por_id(self, comanda_id: int) -> Comanda | None:
+        return await self._s.get(Comanda, comanda_id)
+
+    async def avanzar_comanda(self, comanda: Comanda, nuevo: str) -> Comanda:
+        """Aplica la transición (ya validada por el servicio) con su timestamp de auditoría."""
+        comanda.estado = nuevo
+        if nuevo == "en_preparacion":
+            comanda.iniciada_en = func.now()
+        elif nuevo == "listo":
+            comanda.lista_en = func.now()
+        await self._s.flush()
+        await self._s.refresh(comanda, attribute_names=["iniciada_en", "lista_en", "items"])
+        await publish(self._s, "comanda_estado", {
+            "comanda_id": comanda.id, "pedido_id": comanda.pedido_id, "estado": nuevo,
+        })
+        return comanda
+
+    async def listar_comandas(self, *, estados: list[str] | None = None) -> list[Comanda]:
+        consulta = select(Comanda).order_by(Comanda.creada_en)
+        if estados:
+            consulta = consulta.where(Comanda.estado.in_(estados))
+        return list((await self._s.execute(consulta)).scalars())
+
+    async def comandas_de_pedido(self, pedido_id: int) -> list[Comanda]:
+        return list(
+            (
+                await self._s.execute(select(Comanda).where(Comanda.pedido_id == pedido_id))
+            ).scalars()
+        )
+
+    async def pedido_items_por_ids(self, ids: list[int]) -> dict[int, PedidoItem]:
+        """Los ítems de pedido referenciados por las comandas, en UNA consulta (sin N+1)."""
+        if not ids:
+            return {}
+        filas = (
+            await self._s.execute(select(PedidoItem).where(PedidoItem.id.in_(ids)))
+        ).scalars()
+        return {i.id: i for i in filas}
+
+    async def listar_zonas_comanda(self) -> list[ComandaZona]:
+        return list(
+            (
+                await self._s.execute(
+                    select(ComandaZona).where(ComandaZona.activo.is_(True)).order_by(ComandaZona.nombre)
+                )
+            ).scalars()
+        )
+
+    async def crear_zona_comanda(self, nombre: str) -> ComandaZona:
+        zona = ComandaZona(nombre=nombre)
+        self._s.add(zona)
+        await self._s.flush()
+        return zona
+
+    async def rutear_producto(self, producto_id: int, zona_id: int | None) -> None:
+        await self._s.execute(
+            text("UPDATE productos SET zona_comanda_id = :z WHERE id = :p"),
+            {"z": zona_id, "p": producto_id},
+        )
 
     # --- mesas (F3 / ADR 0032 D4) ----------------------------------------------------
     async def mesa_por_id(self, mesa_id: int) -> Mesa | None:
@@ -301,8 +407,11 @@ class SqlPedidosRepository:
     async def agregar_items(self, pedido: Pedido, filas: list[dict]) -> Pedido:
         """APPEND de una ronda a la orden abierta (a diferencia del borrador, que reemplaza)."""
         await self._s.refresh(pedido, attribute_names=["items"])
+        nuevos: list[PedidoItem] = []
         for fila in filas:
-            pedido.items.append(PedidoItem(**fila))
+            item = PedidoItem(**fila)
+            pedido.items.append(item)
+            nuevos.append(item)
         pedido.subtotal = sum((i.subtotal for i in pedido.items), Decimal("0"))
         pedido.total = pedido.subtotal + pedido.costo_domicilio
         await self._s.flush()
@@ -310,6 +419,8 @@ class SqlPedidosRepository:
         await publish(self._s, "mesa_items", {
             "mesa_id": pedido.mesa_id, "pedido_id": pedido.id, "total": str(pedido.total),
         })
+        # KDS (F4): cada RONDA entra a cocina como su(s) comanda(s) por zona.
+        await self.crear_comandas(pedido, nuevos)
         return pedido
 
     async def _anotar_pagados(self, pedidos: list[Pedido]) -> None:

@@ -40,6 +40,7 @@ import TabCartera from './tabs/TabCartera.jsx'
 import TabCuentasPorPagar from './tabs/TabCuentasPorPagar.jsx'
 import TabPedidos from './tabs/TabPedidos.jsx'
 import TabMesas from './tabs/TabMesas.jsx'
+import TabKds from './tabs/TabKds.jsx'
 import TabCobros from './tabs/TabCobros.jsx'
 import TabCotizaciones from './tabs/TabCotizaciones.jsx'
 import TabPostventa from './tabs/TabPostventa.jsx'
@@ -89,6 +90,7 @@ const TABS = {
   '/cuentas-por-pagar': TabCuentasPorPagar,
   '/pedidos': TabPedidos,
   '/mesas': TabMesas,
+  '/kds': TabKds,
   '/cobros': TabCobros,
   '/cotizaciones': TabCotizaciones,
   '/postventa': TabPostventa,

@@ -43,6 +43,8 @@ class Producto(TenantBase):
     iva: Mapped[int] = mapped_column(SmallInteger, nullable=False)
     permite_fraccion: Mapped[bool] = mapped_column(Boolean, nullable=False)
     activo: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    # Zona de comandas KDS (0062, ADR 0032 D5): rutea el producto a parrilla/bar/…; NULL = cocina.
+    zona_comanda_id: Mapped[int | None] = mapped_column(BigInteger)
 
     fracciones: Mapped[list["ProductoFraccion"]] = relationship(
         cascade="all, delete-orphan", lazy="selectin"

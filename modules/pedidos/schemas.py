@@ -116,6 +116,40 @@ class CobrarMesa(BaseModel):
     propina: Decimal | None = Field(default=None, ge=0)
 
 
+class ComandaItemLeer(BaseModel):
+    nombre: str
+    cantidad: Decimal
+    modificadores: list[dict] | None = None
+
+
+class ComandaLeer(BaseModel):
+    id: int
+    pedido_id: int
+    zona_id: int | None
+    zona: str | None = None
+    estado: str
+    creada_en: datetime
+    items: list[ComandaItemLeer]
+
+
+class KdsLeer(BaseModel):
+    zonas: list[dict]
+    comandas: list[ComandaLeer]
+
+
+class ZonaComandaCrear(BaseModel):
+    nombre: str = Field(min_length=1, max_length=80)
+
+
+class RuteoComanda(BaseModel):
+    producto_id: int
+    zona_id: int | None = None
+
+
+class CambioEstadoComanda(BaseModel):
+    estado: str = Field(min_length=1)
+
+
 class ConvertirPayload(BaseModel):
     """Conversión pedido → venta (F1 / ADR 0032). `metodo_pago` explícito gana sobre el del pedido."""
 

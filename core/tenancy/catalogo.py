@@ -27,6 +27,8 @@ OPCIONALES: frozenset[str] = frozenset({
     "conciliacion_bancaria",
     # Pedidos a proveedor con lead time (reforma dashboard F2): la orden antes de la mercancía.
     "pedidos_proveedor",
+    # Pack Restaurante (ADR 0032): mesas/salón con orden abierta, precuenta y cobro con propina.
+    "pack_mesas",
     # Contable C (ADR 0027): retenciones/INC editables por tenant + libros auxiliar/mayor. Opt-in,
     # sin dependencias duras (un negocio puede retener sin FE; los libros derivan de datos existentes).
     "retenciones", "libros_contables",
@@ -134,6 +136,8 @@ DEPENDENCIAS: dict[str, frozenset[str]] = {
     # Pedidos a proveedor (F2): al recibir crea la compra (ENTRADA + costo) — vive sobre la
     # superficie de compras/inventario, igual que pack_pagar.
     "pedidos_proveedor": frozenset({"inventario"}),
+    # Mesas (ADR 0032 D1): el cobro de mesa cierra en una venta del catálogo → `ventas`.
+    "pack_mesas": frozenset({"ventas"}),
 }
 
 

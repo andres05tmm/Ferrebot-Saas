@@ -16,11 +16,13 @@ from core.db.base import TenantBase
 MONEY = Numeric(12, 2)
 
 pedido_estado = PgEnum(
-    "recibido", "confirmado", "en_preparacion", "en_camino", "entregado", "cancelado",
+    "recibido", "confirmado", "en_preparacion", "en_camino", "entregado", "cancelado", "abierto",
     name="pedido_estado", create_type=False,
 )
 
 # Transiciones válidas del ciclo (el dashboard avanza; cancelar solo desde estados no finales).
+# `abierto` es la orden de MESA (F3 / ADR 0032 D4): sale por el cobro (puente F1, no por el kanban)
+# o por cancelación; los flujos de domicilio jamás entran a él.
 TRANSICIONES: dict[str, frozenset[str]] = {
     "recibido": frozenset({"confirmado", "cancelado"}),
     "confirmado": frozenset({"en_preparacion", "cancelado"}),
@@ -28,7 +30,19 @@ TRANSICIONES: dict[str, frozenset[str]] = {
     "en_camino": frozenset({"entregado", "cancelado"}),
     "entregado": frozenset(),
     "cancelado": frozenset(),
+    "abierto": frozenset({"cancelado"}),
 }
+
+
+class Mesa(TenantBase):
+    """Una mesa del salón (F3 / ADR 0032 D4). La orden abierta vive en `pedidos` (origen='mesa')."""
+
+    __tablename__ = "mesas"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    nombre: Mapped[str] = mapped_column(Text, nullable=False)
+    zona: Mapped[str | None] = mapped_column(Text)
+    activo: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
 
 class PedidoConfig(TenantBase):
@@ -79,6 +93,11 @@ class Pedido(TenantBase):
         BigInteger, ForeignKey("ventas.id", ondelete="SET NULL"), unique=True
     )
     convertido_en: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Mesa de la orden (F3): solo pedidos con origen='mesa'. Índice parcial UNIQUE en la migración
+    # 0061 garantiza UNA orden `abierta` por mesa.
+    mesa_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("mesas.id", ondelete="SET NULL")
+    )
     creado_en: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

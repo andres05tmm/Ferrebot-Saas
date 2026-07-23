@@ -90,6 +90,25 @@ class PedidosService:
         if not config.activo or not (config.hora_apertura <= ahora.time() < config.hora_cierre):
             raise CocinaCerrada()
 
+        filas = await self.resolver_items(items)
+
+        pedido = await self._repo.borrador_de(telefono)
+        if pedido is None:
+            pedido = await self._repo.crear_pedido(
+                telefono=telefono, notas=notas, idempotency_key=idempotency_key, origen=origen
+            )
+        elif notas:
+            pedido.notas = notas
+        pedido = await self._repo.reemplazar_items(pedido, filas)
+        return ResultadoArmar(pedido=pedido, replay=False)
+
+    async def resolver_items(self, items: list[ItemPedido]) -> list[dict]:
+        """Resuelve ítems de texto libre contra el catálogo real (buscador de 4 capas) + modificadores.
+
+        Devuelve las filas snapshot ({producto_id, nombre, cantidad, precio_unitario, subtotal,
+        modificadores}). Lo comparten el domicilio (`armar_pedido`) y el salón (`MesasService`):
+        el agente y el mesero jamás inventan productos ni precios.
+        """
         filas: list[dict] = []
         for item in items:
             resultado = await self._repo.buscar_producto(item.producto)
@@ -112,16 +131,7 @@ class PedidosService:
                 "precio_unitario": precio, "subtotal": precio * item.cantidad,
                 "modificadores": snapshot or None,
             })
-
-        pedido = await self._repo.borrador_de(telefono)
-        if pedido is None:
-            pedido = await self._repo.crear_pedido(
-                telefono=telefono, notas=notas, idempotency_key=idempotency_key, origen=origen
-            )
-        elif notas:
-            pedido.notas = notas
-        pedido = await self._repo.reemplazar_items(pedido, filas)
-        return ResultadoArmar(pedido=pedido, replay=False)
+        return filas
 
     async def _resolver_modificadores(
         self, producto_id: int, producto_nombre: str, pedidos: tuple[str, ...]

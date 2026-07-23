@@ -57,6 +57,7 @@ from modules.obra.router import router as obras_router
 from modules.trabajadores.router import router as trabajadores_router
 from modules.pagar.router import router as pagar_router
 from modules.pagos.router import router as pagos_router
+from modules.pedidos.mesas_router import router as mesas_router
 from modules.pedidos.router import router as pedidos_router
 from modules.fiados.router import router as fiados_router
 from modules.inventario.router import router as inventario_router, router_catalogo as catalogo_router
@@ -204,6 +205,7 @@ def create_app(spa_dist: Path | None = None) -> FastAPI:
     app.include_router(faq_router, prefix="/api/v1")
     app.include_router(cobranza_router, prefix="/api/v1")   # página Cartera (ADR 0015)
     app.include_router(pedidos_router, prefix="/api/v1")    # kanban Pedidos (ADR 0016)
+    app.include_router(mesas_router, prefix="/api/v1")      # salón/mesas (ADR 0032 F3)
     app.include_router(cotizaciones_router, prefix="/api/v1")  # cotizaciones WA (ADR 0017)
     app.include_router(pagos_router, prefix="/api/v1")         # cobros (ADR 0013)
     app.include_router(pagar_router, prefix="/api/v1")         # cuentas por pagar (ADR 0019)

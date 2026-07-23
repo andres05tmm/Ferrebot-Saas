@@ -70,7 +70,14 @@ function TarjetaPedido({ p, col, pagado, onAvanzar, onCancelar, onConvertir }) {
       </div>
       <ul className="text-[12px] text-muted-foreground space-y-0.5">
         {p.items.map(i => (
-          <li key={i.id}>{Number(i.cantidad)}× {i.nombre}</li>
+          <li key={i.id}>
+            {Number(i.cantidad)}× {i.nombre}
+            {i.modificadores?.length > 0 && (
+              <span className="block pl-3 text-[11px] italic">
+                {i.modificadores.map(m => m.opcion).join(', ')}
+              </span>
+            )}
+          </li>
         ))}
       </ul>
       {p.direccion && <div className="text-[12px] truncate">{p.direccion}</div>}

@@ -8,7 +8,7 @@ from datetime import datetime, time
 from decimal import Decimal
 
 from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Integer, Numeric, Text, Time, func
-from sqlalchemy.dialects.postgresql import ENUM as PgEnum
+from sqlalchemy.dialects.postgresql import ENUM as PgEnum, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from core.db.base import TenantBase
@@ -101,5 +101,42 @@ class PedidoItem(TenantBase):
     producto_id: Mapped[int | None] = mapped_column(BigInteger)
     nombre: Mapped[str] = mapped_column(Text, nullable=False)
     cantidad: Mapped[Decimal] = mapped_column(Numeric(12, 3), nullable=False)
+    # `precio_unitario` ya incluye los deltas de modificadores (snapshot del total por unidad).
     precio_unitario: Mapped[Decimal] = mapped_column(MONEY, nullable=False)
     subtotal: Mapped[Decimal] = mapped_column(MONEY, nullable=False)
+    # Snapshot de modificadores (F2 / ADR 0032 D3): [{grupo, opcion, delta_precio}] al momento del
+    # pedido. NULL/[] = sin modificadores. El catálogo puede cambiar después; el pedido no.
+    modificadores: Mapped[list | None] = mapped_column(JSONB)
+
+
+class ModificadorGrupo(TenantBase):
+    """Grupo de modificadores de un producto del menú ("Proteína", min=1 max=1; ADR 0032 D3)."""
+
+    __tablename__ = "modificador_grupos"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    producto_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("productos.id", ondelete="CASCADE"), nullable=False
+    )
+    nombre: Mapped[str] = mapped_column(Text, nullable=False)
+    min_sel: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    max_sel: Mapped[int | None] = mapped_column(Integer)   # NULL = sin tope
+    obligatorio: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    orden: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    activo: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+    opciones: Mapped[list["ModificadorOpcion"]] = relationship(
+        cascade="all, delete-orphan", lazy="selectin"
+    )
+
+
+class ModificadorOpcion(TenantBase):
+    __tablename__ = "modificador_opciones"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    grupo_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("modificador_grupos.id", ondelete="CASCADE"), nullable=False
+    )
+    nombre: Mapped[str] = mapped_column(Text, nullable=False)
+    delta_precio: Mapped[Decimal] = mapped_column(MONEY, nullable=False, default=Decimal("0"))
+    activo: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)

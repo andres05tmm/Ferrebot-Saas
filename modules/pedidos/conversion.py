@@ -92,11 +92,17 @@ async def convertir_pedido(
         activo = (
             item.producto_id is not None and await repo.producto_activo(item.producto_id)
         )
+        # Los modificadores (F2) viajan en la DESCRIPCIÓN de la línea; su delta ya viene sumado en
+        # el precio_unitario del snapshot del pedido.
+        descripcion = item.nombre
+        if item.modificadores:
+            descripcion += " — " + ", ".join(m["opcion"] for m in item.modificadores)
         if activo:
             # Catálogo: el precio override es el SNAPSHOT del pedido; el stock baja vía SALIDA.
             lineas.append(
                 VentaDetalleCrear(
                     producto_id=item.producto_id,
+                    descripcion=descripcion,
                     cantidad=item.cantidad,
                     precio_unitario=item.precio_unitario,
                 )
@@ -105,7 +111,7 @@ async def convertir_pedido(
             lineas.append(
                 VentaDetalleCrear(
                     producto_id=None,
-                    descripcion=item.nombre,
+                    descripcion=descripcion,
                     cantidad=item.cantidad,
                     precio_unitario=item.precio_unitario,
                     iva=0,

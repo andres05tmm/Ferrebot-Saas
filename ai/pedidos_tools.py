@@ -26,6 +26,8 @@ from modules.pagos.service import PagosService
 log = get_logger("ai.pedidos_tools")
 from modules.pedidos.errors import (
     CocinaCerrada,
+    ModificadorInvalido,
+    ModificadorNoEncontrado,
     PedidoMuyChico,
     ProductoNoEncontrado,
     SinBorrador,
@@ -57,8 +59,12 @@ def _telefono(ctx: Contexto) -> str | None:
 
 
 def _resumen_pedido(pedido) -> str:
-    lineas = "; ".join(f"{i.cantidad:g}× {i.nombre} ({_pesos(i.subtotal)})" for i in pedido.items)
-    return f"{lineas}. Subtotal: {_pesos(pedido.subtotal)}."
+    partes = []
+    for i in pedido.items:
+        mods = ", ".join(m["opcion"] for m in (i.modificadores or []))
+        etiqueta = f"{i.nombre} ({mods})" if mods else i.nombre
+        partes.append(f"{i.cantidad:g}× {etiqueta} ({_pesos(i.subtotal)})")
+    return "; ".join(partes) + f". Subtotal: {_pesos(pedido.subtotal)}."
 
 
 def _solo_telefono(crudo: str) -> str | None:
@@ -76,7 +82,10 @@ def _data_pedido(pedido) -> dict:
         "subtotal": str(pedido.subtotal), "domicilio": str(pedido.costo_domicilio),
         "total": str(pedido.total),
         "items": [
-            {"nombre": i.nombre, "cantidad": str(i.cantidad), "subtotal": str(i.subtotal)}
+            {
+                "nombre": i.nombre, "cantidad": str(i.cantidad), "subtotal": str(i.subtotal),
+                "modificadores": [m["opcion"] for m in (i.modificadores or [])],
+            }
             for i in pedido.items
         ],
     }
@@ -136,6 +145,9 @@ class VerMenuArgs(BaseModel):
 class ItemArgs(BaseModel):
     producto: str = Field(min_length=1, max_length=120)   # como lo dice el cliente
     cantidad: Decimal = Field(gt=0, le=999)
+    # Modificadores del ítem tal como los dice el cliente ("sin cebolla", "adición de queso",
+    # "carne asada"). El motor los resuelve contra las opciones del producto — NUNCA se inventan.
+    modificadores: list[str] = Field(default_factory=list, max_length=10)
 
 
 class ArmarPedidoArgs(BaseModel):
@@ -205,7 +217,13 @@ async def _armar_pedido(
                 "comida adicional, repite armar_pedido con pedido_adicional=true.",
                 recuperable=True,
             )
-    items = [ItemPedido(producto=i.producto, cantidad=i.cantidad) for i in args.items]
+    items = [
+        ItemPedido(
+            producto=i.producto, cantidad=i.cantidad,
+            modificadores=tuple(m.strip() for m in i.modificadores if m.strip()),
+        )
+        for i in args.items
+    ]
     try:
         res = await deps.pedidos.armar_pedido(
             telefono, items, ahora=now_co(), notas=args.notas or None,
@@ -229,6 +247,16 @@ async def _armar_pedido(
             f"De '{exc.nombre}' solo quedan {exc.disponible}. Ofrece ajustar la cantidad.",
             recuperable=True,
         )
+    except ModificadorNoEncontrado as exc:
+        detalle = f"'{exc.nombre}' no es un modificador de '{exc.producto}'."
+        if exc.sugerencias:
+            detalle += " Opciones reales: " + ", ".join(exc.sugerencias) + ". Pregunta al cliente."
+        return ErrorTool("modificador_no_encontrado", detalle, recuperable=True)
+    except ModificadorInvalido as exc:
+        detalle = exc.mensaje
+        if exc.opciones:
+            detalle += " Opciones: " + ", ".join(exc.opciones) + ". Pregunta al cliente."
+        return ErrorTool("modificador_invalido", detalle, recuperable=True)
     pedido = res.pedido
     return Resultado(
         data=_data_pedido(pedido),
@@ -359,9 +387,10 @@ CATALOGO_PEDIDOS: tuple[PedidosTool, ...] = (
     PedidosTool(
         nombre="armar_pedido",
         descripcion=(
-            "Arma (o reemplaza) el pedido del cliente con los ítems que pidió (nombre + cantidad). "
-            "Valida contra el catálogo y el stock real. Tras armarlo, pide dirección, barrio y "
-            "método de pago para confirmar."
+            "Arma (o reemplaza) el pedido del cliente con los ítems que pidió (nombre + cantidad "
+            "+ modificadores como 'sin cebolla', 'adición de queso' o la proteína elegida). Valida "
+            "contra el catálogo y el stock real; los modificadores deben existir en el menú. Tras "
+            "armarlo, pide dirección, barrio y método de pago para confirmar."
         ),
         args_model=ArmarPedidoArgs, handler=_armar_pedido,
     ),

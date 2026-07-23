@@ -149,6 +149,62 @@ class ModificadorGrupo(TenantBase):
     )
 
 
+class ComandaZona(TenantBase):
+    """Zona de comandas de la cocina (parrilla, bar, …; ADR 0032 D5). NULL en el producto = cocina."""
+
+    __tablename__ = "comanda_zonas"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    nombre: Mapped[str] = mapped_column(Text, nullable=False)
+    activo: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+
+# Transiciones válidas de una comanda (auditadas con timestamps). `pendiente → listo` directo vale
+# (plancha rápida); `listo` es terminal.
+TRANSICIONES_COMANDA: dict[str, frozenset[str]] = {
+    "pendiente": frozenset({"en_preparacion", "listo"}),
+    "en_preparacion": frozenset({"listo"}),
+    "listo": frozenset(),
+}
+
+
+class Comanda(TenantBase):
+    """Una comanda: los ítems de UN pedido que caen en UNA zona (vista de cocina, no copia precios)."""
+
+    __tablename__ = "comandas"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    pedido_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("pedidos.id", ondelete="CASCADE"), nullable=False
+    )
+    zona_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("comanda_zonas.id", ondelete="SET NULL")
+    )
+    estado: Mapped[str] = mapped_column(Text, nullable=False, default="pendiente")
+    creada_en: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    iniciada_en: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    lista_en: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    items: Mapped[list["ComandaItem"]] = relationship(
+        cascade="all, delete-orphan", lazy="selectin"
+    )
+
+
+class ComandaItem(TenantBase):
+    __tablename__ = "comanda_items"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    comanda_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("comandas.id", ondelete="CASCADE"), nullable=False
+    )
+    pedido_item_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("pedido_items.id", ondelete="CASCADE"), nullable=False
+    )
+    cantidad: Mapped[Decimal] = mapped_column(Numeric(12, 3), nullable=False)
+
+
 class ModificadorOpcion(TenantBase):
     __tablename__ = "modificador_opciones"
 

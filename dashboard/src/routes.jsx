@@ -15,7 +15,7 @@ import {
   FileText, FileCheck, Calculator, FileCog,
   CalendarDays, Headset, BookText, HandCoins, ChefHat, Banknote,
   CreditCard, FileSpreadsheet, Star, BedDouble, Undo2, Percent, Library, Landmark, Scale,
-  HardHat, Wrench, ClipboardList, TrendingDown, Gauge, PackageSearch, Timer, Armchair,
+  HardHat, Wrench, ClipboardList, TrendingDown, Gauge, PackageSearch, Timer, Armchair, Flame,
 } from 'lucide-react'
 import { esConstruccion, isRouteEnabled } from './lib/features.jsx'
 
@@ -38,6 +38,7 @@ export const ROUTES = [
   { path: '/reservas',            label: 'Reservas',            icon: BedDouble,       group: 'operacion' },
   { path: '/pedidos',             label: 'Pedidos',             icon: ChefHat,         group: 'operacion' },
   { path: '/mesas',               label: 'Mesas',               icon: Armchair,        group: 'operacion' },
+  { path: '/kds',                 label: 'Cocina',              icon: Flame,           group: 'operacion' },
   { path: '/cotizaciones',        label: 'Cotizaciones',        icon: FileSpreadsheet, group: 'operacion' },
   { path: '/postventa',           label: 'Postventa',           icon: Star,            group: 'operacion' },
   { path: '/conversaciones',      label: 'Conversaciones',      icon: Headset,         group: 'operacion' },

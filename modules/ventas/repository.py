@@ -308,6 +308,7 @@ class SqlVentasRepository:
             precio_sobre_umbral=prod.precio_sobre_umbral,
             fracciones=fracciones,
             unidad_medida=prod.unidad_medida,
+            tipo_impuesto=prod.tipo_impuesto,
         )
 
     async def lock_inventario(self, producto_id: int) -> Decimal | None:
@@ -432,6 +433,7 @@ class SqlVentasRepository:
             venta.detalles.append(VentaDetalle(
                 producto_id=ln.producto_id, descripcion=ln.descripcion, cantidad=ln.cantidad,
                 precio_unitario=ln.precio_unitario, iva=ln.iva,
+                tipo_impuesto=getattr(ln, "tipo_impuesto", None) or "iva",
             ))
         self._s.add(venta)
         await self._s.flush()  # asigna venta.id

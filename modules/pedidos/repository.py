@@ -73,20 +73,99 @@ class SqlPedidosRepository:
         return dict(fila._mapping) if fila else None
 
     async def menu(self, *, limite: int = 20) -> list[dict]:
-        """Productos activos con stock para mostrar el menú (sin búsqueda)."""
+        """Productos activos con stock — o con RECETA (el plato no lleva stock propio, F6)."""
         filas = (
             await self._s.execute(
                 text(
                     "SELECT p.id, p.nombre, p.precio_venta, p.unidad_medida, "
                     "       COALESCE(i.stock_actual, 0) AS stock "
                     "FROM productos p LEFT JOIN inventario i ON i.producto_id = p.id "
-                    "WHERE p.activo AND COALESCE(i.stock_actual, 0) > 0 "
+                    "WHERE p.activo AND (COALESCE(i.stock_actual, 0) > 0 "
+                    "      OR EXISTS (SELECT 1 FROM recetas r WHERE r.producto_id = p.id)) "
                     "ORDER BY p.nombre LIMIT :lim"
                 ),
                 {"lim": limite},
             )
         ).all()
         return [dict(f._mapping) for f in filas]
+
+    # --- recetas / BOM (F6 / ADR 0032 D9) ---------------------------------------------
+    async def receta_de(self, producto_id: int) -> list[dict]:
+        """Insumos de la receta del plato: [{insumo_id, nombre, cantidad, costo_unitario}]."""
+        filas = (
+            await self._s.execute(
+                text(
+                    "SELECT r.insumo_id, p.nombre, r.cantidad, "
+                    "       COALESCE(p.costo_promedio, p.precio_compra) AS costo_unitario "
+                    "FROM recetas r JOIN productos p ON p.id = r.insumo_id "
+                    "WHERE r.producto_id = :pid ORDER BY p.nombre"
+                ),
+                {"pid": producto_id},
+            )
+        ).all()
+        return [dict(f._mapping) for f in filas]
+
+    async def reemplazar_receta(self, producto_id: int, insumos: list[dict]) -> None:
+        """Reescribe la receta del plato (edición admin): borra y re-inserta."""
+        await self._s.execute(
+            text("DELETE FROM recetas WHERE producto_id = :pid"), {"pid": producto_id}
+        )
+        for insumo in insumos:
+            await self._s.execute(
+                text(
+                    "INSERT INTO recetas (producto_id, insumo_id, cantidad) "
+                    "VALUES (:pid, :i, :c)"
+                ),
+                {"pid": producto_id, "i": insumo["insumo_id"], "c": insumo["cantidad"]},
+            )
+
+    async def descontar_insumo(
+        self, insumo_id: int, cantidad: Decimal, *, idempotency_key: str,
+        referencia: str, usuario_id: int, costo_unitario: Decimal | None,
+    ) -> Decimal | None:
+        """SALIDA de un insumo por receta, IDEMPOTENTE por clave UNIQUE (regla #7 + #8).
+
+        INSERT del movimiento con ON CONFLICT DO NOTHING: si la clave ya existe (reintento/replay)
+        NO se descuenta stock de nuevo. Devuelve el stock resultante (None si fue replay) — el
+        caller alerta si quedó negativo (insumo insuficiente NO bloquea; política ADR 0032 D9).
+        """
+        creado = (
+            await self._s.execute(
+                text(
+                    "INSERT INTO movimientos_inventario "
+                    "(producto_id, tipo, cantidad, costo_unitario, referencia, usuario_id, "
+                    " idempotency_key, fecha_operacion) "
+                    "VALUES (:p, 'SALIDA', :c, :cu, :ref, :u, :key, now()) "
+                    "ON CONFLICT (idempotency_key) WHERE idempotency_key IS NOT NULL DO NOTHING "
+                    "RETURNING id"
+                ),
+                {"p": insumo_id, "c": cantidad, "cu": costo_unitario, "ref": referencia,
+                 "u": usuario_id, "key": idempotency_key},
+            )
+        ).scalar_one_or_none()
+        if creado is None:
+            return None   # replay: el movimiento ya existía; el stock ya se descontó
+        resultante = (
+            await self._s.execute(
+                text(
+                    "UPDATE inventario SET stock_actual = stock_actual - :c "
+                    "WHERE producto_id = :p RETURNING stock_actual"
+                ),
+                {"c": cantidad, "p": insumo_id},
+            )
+        ).scalar_one_or_none()
+        if resultante is None:
+            # Insumo sin fila de inventario (datos migrados): se crea en negativo honesto.
+            resultante = (
+                await self._s.execute(
+                    text(
+                        "INSERT INTO inventario (producto_id, stock_actual, stock_minimo) "
+                        "VALUES (:p, 0 - :c, 0) RETURNING stock_actual"
+                    ),
+                    {"p": insumo_id, "c": cantidad},
+                )
+            ).scalar_one()
+        return resultante
 
     async def modificadores_de(self, producto_id: int) -> list[ModificadorGrupo]:
         """Grupos ACTIVOS de modificadores del producto (con sus opciones, selectin), en orden."""
@@ -154,6 +233,20 @@ class SqlPedidosRepository:
                 )
             ).scalar_one_or_none()
         )
+
+    async def producto_info_conversion(self, producto_id: int) -> dict | None:
+        """(activo, iva, tipo_impuesto, tiene_receta) del producto — decide la línea al convertir."""
+        fila = (
+            await self._s.execute(
+                text(
+                    "SELECT activo, iva, tipo_impuesto, "
+                    "       EXISTS (SELECT 1 FROM recetas r WHERE r.producto_id = p.id) AS tiene_receta "
+                    "FROM productos p WHERE p.id = :p"
+                ),
+                {"p": producto_id},
+            )
+        ).first()
+        return dict(fila._mapping) if fila else None
 
     async def vincular_venta(self, pedido: Pedido, venta_id: int) -> Pedido:
         """Vincula la venta (UNIQUE) y cierra el ciclo: el pedido convertido queda `entregado`.

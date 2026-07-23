@@ -40,6 +40,9 @@ class VentaDetalleCrear(BaseModel):
     # Catálogo: opcional (override de precio declarado). Varia: obligatorio.
     precio_unitario: Decimal | None = Field(default=None, ge=0)
     iva: int | None = Field(default=None, ge=0, le=100)
+    # Tipo del impuesto de la tarifa `iva` (ADR 0032 D2). Solo lo usan las líneas VARIA (el
+    # catálogo lo trae del producto): 'iva' (default histórico) o 'inc' (impoconsumo 8%).
+    tipo_impuesto: str = Field(default="iva", pattern="^(iva|inc)$")
 
     @model_validator(mode="after")
     def _validar_linea(self) -> "VentaDetalleCrear":

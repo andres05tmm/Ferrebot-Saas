@@ -46,6 +46,8 @@ class ResultadoConversion:
     venta_id: int
     total: Decimal
     replay: bool  # True = el pedido ya estaba convertido (o la venta ya existía): misma venta
+    # Avisos NO bloqueantes (F6 / ADR 0032 D9): insumos de receta que quedaron en negativo.
+    alertas: tuple[str, ...] = ()
 
 
 def _idempotency_key(pedido_id: int) -> str:
@@ -93,16 +95,33 @@ async def convertir_pedido(
         raise PedidoNoConvertible(pedido_id, "la propina solo aplica en salón (origen mesa)")
 
     lineas: list[VentaDetalleCrear] = []
+    con_receta: list = []   # (item, info): platos cuya venta descuenta INSUMOS, no el plato (F6)
     for item in pedido.items:
-        activo = (
-            item.producto_id is not None and await repo.producto_activo(item.producto_id)
+        info = (
+            await repo.producto_info_conversion(item.producto_id)
+            if item.producto_id is not None else None
         )
+        activo = bool(info and info["activo"])
         # Los modificadores (F2) viajan en la DESCRIPCIÓN de la línea; su delta ya viene sumado en
         # el precio_unitario del snapshot del pedido.
         descripcion = item.nombre
         if item.modificadores:
             descripcion += " — " + ", ".join(m["opcion"] for m in item.modificadores)
-        if activo:
+        if activo and info["tiene_receta"]:
+            # Plato con RECETA (F6 / ADR 0032 D9): línea varia con el impuesto del producto — el
+            # plato no lleva stock por construcción; los insumos se descuentan tras la venta.
+            lineas.append(
+                VentaDetalleCrear(
+                    producto_id=None,
+                    descripcion=descripcion,
+                    cantidad=item.cantidad,
+                    precio_unitario=item.precio_unitario,
+                    iva=info["iva"],
+                    tipo_impuesto=info["tipo_impuesto"],
+                )
+            )
+            con_receta.append(item)
+        elif activo:
             # Catálogo: el precio override es el SNAPSHOT del pedido; el stock baja vía SALIDA.
             lineas.append(
                 VentaDetalleCrear(
@@ -156,7 +175,24 @@ async def convertir_pedido(
     resultado = await ventas.registrar_venta(
         datos, vendedor_id=usuario_id, control_stock_estricto=control_stock_estricto
     )
+    # Insumos de receta (F6): SALIDA por insumo, idempotente por clave UNIQUE — corre SIEMPRE
+    # (incluido el replay: recupera un crash entre la venta y los movimientos sin duplicar nada).
+    alertas: list[str] = []
+    for item in con_receta:
+        for insumo in await repo.receta_de(item.producto_id):
+            requerido = insumo["cantidad"] * item.cantidad
+            resultante = await repo.descontar_insumo(
+                insumo["insumo_id"], requerido,
+                idempotency_key=f"receta:{resultado.venta.id}:{item.id}:{insumo['insumo_id']}",
+                referencia=f"venta:{resultado.venta.id}",
+                usuario_id=usuario_id, costo_unitario=insumo["costo_unitario"],
+            )
+            if resultante is not None and resultante < 0:
+                alertas.append(
+                    f"Insumo insuficiente: {insumo['nombre']} quedó en {resultante}"
+                )
     await repo.vincular_venta(pedido, resultado.venta.id)
     return ResultadoConversion(
-        venta_id=resultado.venta.id, total=resultado.venta.total, replay=resultado.replay
+        venta_id=resultado.venta.id, total=resultado.venta.total, replay=resultado.replay,
+        alertas=tuple(alertas),
     )

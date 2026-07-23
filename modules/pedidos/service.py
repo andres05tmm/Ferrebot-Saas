@@ -119,7 +119,9 @@ class PedidosService:
             fila = await self._repo.producto_para_menu(resuelto.producto_id)
             if fila is None:
                 raise ProductoNoEncontrado(item.producto, [])
-            if Decimal(fila["stock"]) < item.cantidad:
+            # Un plato CON receta no lleva stock propio (F6): su disponibilidad es de los insumos
+            # (alerta al vender, no bloquea — ADR 0032 D9). El check informativo aplica al resto.
+            if Decimal(fila["stock"]) < item.cantidad and not await self._repo.receta_de(fila["id"]):
                 raise StockInsuficiente(fila["nombre"], fila["stock"])
             precio = Decimal(fila["precio_venta"])
             snapshot = await self._resolver_modificadores(
@@ -211,7 +213,13 @@ class PedidosService:
         if pedido.subtotal < config.minimo_pedido:
             raise PedidoMuyChico(config.minimo_pedido)
         zona = await self._repo.zona_por_nombre(barrio) if barrio.strip() else None
-        costo = zona.tarifa if zona is not None else config.costo_domicilio_default
+        if zona is not None:
+            # Recargo POR PLATO de la zona (F6 / ADR 0032 D8, caso Bocagrande): tarifa plana +
+            # recargo × Σ cantidades. Zonas sin recargo (default 0) quedan como siempre.
+            unidades = sum((i.cantidad for i in pedido.items), Decimal("0"))
+            costo = zona.tarifa + zona.recargo_por_item * unidades
+        else:
+            costo = config.costo_domicilio_default
         pedido = await self._repo.confirmar(
             pedido, direccion=direccion, zona_id=zona.id if zona else None,
             costo_domicilio=costo, metodo_pago=metodo_pago, nombre=nombre,

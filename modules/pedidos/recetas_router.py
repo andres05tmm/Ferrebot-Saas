@@ -48,6 +48,25 @@ def _respuesta(insumos: list[dict]) -> dict:
     }
 
 
+@router.get("/ingenieria")
+async def ingenieria_menu(
+    dias: int = 30,
+    session: AsyncSession = Depends(get_tenant_db),
+    _user: Principal = Depends(require_role("vendedor")),
+) -> list[dict]:
+    """Reporte de ingeniería de menú (F7 / ADR 0032): margen (F6) × rotación por plato con receta."""
+    filas = await SqlPedidosRepository(session).ingenieria_menu(dias=max(1, min(dias, 365)))
+    return [
+        {
+            **f,
+            "precio_venta": str(f["precio_venta"]), "costo_plato": str(f["costo_plato"]),
+            "margen": str(f["margen"]), "rotacion": str(f["rotacion"]),
+            "margen_total": str(f["margen_total"]),
+        }
+        for f in filas
+    ]
+
+
 @router.get("/{producto_id}")
 async def ver_receta(
     producto_id: int,

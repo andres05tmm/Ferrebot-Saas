@@ -114,6 +114,25 @@ async def convertir_en_venta(
     return ConversionLeer(venta_id=res.venta_id, total=res.total, replay=res.replay)
 
 
+@router.get("/resumen-dia")
+async def resumen_dia(
+    session: AsyncSession = Depends(get_tenant_db),
+    _user: Principal = Depends(require_role("vendedor")),
+) -> dict:
+    """Resumen del día restaurantero (F7 / ADR 0032): canales, top platos y ciclo medio. Solo lectura."""
+    resumen = await SqlPedidosRepository(session).resumen_dia()
+    return {
+        "canales": [
+            {**c, "vendido": str(c["vendido"])} for c in resumen["canales"]
+        ],
+        "top_platos": [
+            {**t, "unidades": str(t["unidades"]), "total": str(t["total"])}
+            for t in resumen["top_platos"]
+        ],
+        "ciclo_medio_min": resumen["ciclo_medio_min"],
+    }
+
+
 @router.get("/config", response_model=PedidoConfigLeer)
 async def obtener_config(
     service: PedidosService = Depends(get_pedidos_service),

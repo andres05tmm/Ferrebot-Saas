@@ -57,15 +57,27 @@ def _upsert_zonas(conn, pedidos: PackPedidos) -> int:
         ).fetchone()
         if existente is not None:
             conn.execute(
-                "UPDATE zonas_domicilio SET tarifa=%s, activo=true WHERE id=%s",
-                (Decimal(z.tarifa), existente["id"]),
+                "UPDATE zonas_domicilio SET tarifa=%s, recargo_por_item=%s, activo=true WHERE id=%s",
+                (Decimal(z.tarifa), Decimal(z.recargo_por_item), existente["id"]),
             )
         else:
             conn.execute(
-                "INSERT INTO zonas_domicilio (nombre, tarifa, activo) VALUES (%s, %s, true)",
-                (z.nombre, Decimal(z.tarifa)),
+                "INSERT INTO zonas_domicilio (nombre, tarifa, recargo_por_item, activo) "
+                "VALUES (%s, %s, %s, true)",
+                (z.nombre, Decimal(z.tarifa), Decimal(z.recargo_por_item)),
             )
     return len(pedidos.zonas)
+
+
+def _upsert_mesas(conn, pedidos: PackPedidos) -> int:
+    """UPSERT de mesas del salón por `nombre` (F3 / ADR 0032 D4)."""
+    for nombre in pedidos.mesas:
+        existente = conn.execute("SELECT id FROM mesas WHERE nombre = %s", (nombre,)).fetchone()
+        if existente is not None:
+            conn.execute("UPDATE mesas SET activo=true WHERE id=%s", (existente["id"],))
+        else:
+            conn.execute("INSERT INTO mesas (nombre, activo) VALUES (%s, true)", (nombre,))
+    return len(pedidos.mesas)
 
 
 def cargar_pedidos(pedidos: PackPedidos, conn) -> dict[str, int]:
@@ -75,6 +87,7 @@ def cargar_pedidos(pedidos: PackPedidos, conn) -> dict[str, int]:
     """
     _upsert_config(conn, pedidos.config)
     n_zonas = _upsert_zonas(conn, pedidos)
-    conteos = {"zonas": n_zonas}
+    n_mesas = _upsert_mesas(conn, pedidos)
+    conteos = {"zonas": n_zonas, "mesas": n_mesas}
     log.info("pack_pedidos_cargado", **conteos)
     return conteos

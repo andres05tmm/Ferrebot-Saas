@@ -24,7 +24,7 @@
 | Peluquería / salón / spa | `peluqueria-demo` | `pack_agenda, pack_faq, canal_whatsapp, caja, ventas` | `lienzo` | peluquería | `/inicio` |
 | Barbería | `barberia-demo` | `pack_agenda, pack_faq, canal_whatsapp, caja, ventas` | `navaja` | barbería | `/inicio` |
 | Clínica / consultorio | `clinica-demo` | `pack_agenda, pack_faq, canal_whatsapp` | `aurora` | clínica | `/inicio` |
-| Restaurante | `restaurante-demo` | `pos, pack_pedidos, pack_faq, canal_whatsapp` | `brasa` | restaurante | `/pedidos` |
+| Restaurante | `restaurante-demo` | `pos, pack_pedidos, pack_faq, canal_whatsapp, pack_mesas, kds, menu_qr, recetas` | `brasa` | restaurante | `/pedidos` |
 | Hotel / hospedaje | `hotel-demo` | `pack_agenda, pack_reservas, pack_faq, canal_whatsapp` | `brisa` | hotel | `/inicio` |
 
 ## Cómo se decide el "software contable" de cada vertical (ADR 0021/0022)

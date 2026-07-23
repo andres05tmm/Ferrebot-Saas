@@ -258,10 +258,14 @@ class PackFaq(_Base):
 # tiempo estimado y zonas de domicilio.
 # ---------------------------------------------------------------------------
 class ZonaDomicilio(_Base):
-    """-> tabla `zonas_domicilio` (barrio → tarifa). `tarifa` en pesos (entero); el loader → Decimal."""
+    """-> tabla `zonas_domicilio` (barrio → tarifa). `tarifa` en pesos (entero); el loader → Decimal.
+
+    `recargo_por_item` (F6 / ADR 0032 D8): recargo POR PLATO de la zona (caso Bocagrande); 0 = plana.
+    """
 
     nombre: str
     tarifa: int
+    recargo_por_item: int = 0
 
 
 class PedidoConfig(_Base):
@@ -283,6 +287,8 @@ class PedidoConfig(_Base):
 class PackPedidos(_Base):
     config: PedidoConfig = Field(default_factory=PedidoConfig)
     zonas: list[ZonaDomicilio] = Field(default_factory=list)
+    # Mesas del salón (F3 / ADR 0032 D4): nombres; el loader upserta por nombre. Requiere pack_mesas.
+    mesas: list[str] = Field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -331,6 +337,8 @@ class ProductoPos(_Base):
     unidad_medida: str
     precio_venta: int
     iva: int = 19
+    # Tipo del impuesto de la tarifa `iva` (ADR 0032 D2): 'iva' (0/5/19) o 'inc' (impoconsumo, 8).
+    tipo_impuesto: str = "iva"
     permite_fraccion: bool = False
     precio_compra: int | None = None
     escalonado: EscalonadoPos | None = None
@@ -338,6 +346,36 @@ class ProductoPos(_Base):
     # Stock de apertura: el loader crea la fila de inventario CON su movimiento ENTRADA (regla 7 de
     # CLAUDE.md: nada toca stock sin movimiento). Ausente = no se siembra inventario.
     stock_inicial: float | None = None
+    # Pack Restaurante (ADR 0032): zona de comandas KDS (nombre; el loader la upserta), grupos de
+    # modificadores del plato (espejo del fixture de carta) y receta/BOM (insumos por nombre).
+    zona_comanda: str | None = None
+    modificadores: list["GrupoModificadorPos"] = Field(default_factory=list)
+    receta: list["InsumoRecetaPos"] = Field(default_factory=list)
+
+
+class OpcionModificadorPos(_Base):
+    """-> tabla `modificador_opciones` (F2 / ADR 0032 D3). `delta_precio` en pesos (entero)."""
+
+    nombre: str
+    delta_precio: int = 0
+
+
+class GrupoModificadorPos(_Base):
+    """-> tabla `modificador_grupos`. Estructura ESPEJO del fixture de carta (ADR 0032 §D3):
+    `grupo` es el nombre; `min`/`max` la selección permitida (max None = sin tope)."""
+
+    grupo: str
+    min: int = 0
+    max: int | None = None
+    obligatorio: bool = False
+    opciones: list[OpcionModificadorPos] = Field(default_factory=list)
+
+
+class InsumoRecetaPos(_Base):
+    """-> tabla `recetas` (F6 / ADR 0032 D9). `insumo` = NOMBRE de otro producto del manifiesto."""
+
+    insumo: str
+    cantidad: float
 
 
 class AliasPos(_Base):
@@ -353,6 +391,10 @@ class AliasPos(_Base):
 class PackPos(_Base):
     productos: list[ProductoPos] = Field(default_factory=list)
     aliases: list[AliasPos] = Field(default_factory=list)
+
+
+# Referencias adelantadas de ProductoPos (modificadores/receta se declaran después).
+ProductoPos.model_rebuild()
 
 
 # ---------------------------------------------------------------------------

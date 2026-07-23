@@ -70,6 +70,7 @@ def _columnas_producto(p: ProductoPos) -> dict:
         "precio_venta": _dec(p.precio_venta),
         "precio_compra": _dec(p.precio_compra),
         "iva": p.iva,
+        "tipo_impuesto": p.tipo_impuesto,
         "permite_fraccion": p.permite_fraccion,
         "precio_umbral": _dec(esc.umbral) if esc else None,
         "precio_bajo_umbral": _dec(esc.bajo) if esc else None,
@@ -85,7 +86,8 @@ def _upsert_producto(conn, p: ProductoPos) -> int:
         conn.execute(
             "UPDATE productos SET codigo=%(codigo)s, nombre=%(nombre)s, categoria=%(categoria)s, "
             "unidad_medida=%(unidad_medida)s, precio_venta=%(precio_venta)s, "
-            "precio_compra=%(precio_compra)s, iva=%(iva)s, permite_fraccion=%(permite_fraccion)s, "
+            "precio_compra=%(precio_compra)s, iva=%(iva)s, tipo_impuesto=%(tipo_impuesto)s, "
+            "permite_fraccion=%(permite_fraccion)s, "
             "precio_umbral=%(precio_umbral)s, precio_bajo_umbral=%(precio_bajo_umbral)s, "
             "precio_sobre_umbral=%(precio_sobre_umbral)s, activo=true, actualizado_en=now() "
             "WHERE id=%(id)s",
@@ -94,10 +96,11 @@ def _upsert_producto(conn, p: ProductoPos) -> int:
         return existente
     return conn.execute(
         "INSERT INTO productos (codigo, nombre, categoria, unidad_medida, precio_venta, precio_compra, "
-        "iva, permite_fraccion, precio_umbral, precio_bajo_umbral, precio_sobre_umbral, activo) "
+        "iva, tipo_impuesto, permite_fraccion, precio_umbral, precio_bajo_umbral, precio_sobre_umbral, "
+        "activo) "
         "VALUES (%(codigo)s, %(nombre)s, %(categoria)s, %(unidad_medida)s, %(precio_venta)s, "
-        "%(precio_compra)s, %(iva)s, %(permite_fraccion)s, %(precio_umbral)s, %(precio_bajo_umbral)s, "
-        "%(precio_sobre_umbral)s, true) RETURNING id",
+        "%(precio_compra)s, %(iva)s, %(tipo_impuesto)s, %(permite_fraccion)s, %(precio_umbral)s, "
+        "%(precio_bajo_umbral)s, %(precio_sobre_umbral)s, true) RETURNING id",
         cols,
     ).fetchone()["id"]
 
@@ -156,6 +159,64 @@ def _sembrar_stock_inicial(conn, producto_id: int, p: ProductoPos) -> None:
     )
 
 
+def _zona_comanda_id(conn, nombre: str | None, cache: dict[str, int]) -> int | None:
+    """Upsert de la zona de comandas por nombre (F4 / ADR 0032 D5). None = cocina general."""
+    if not nombre:
+        return None
+    if nombre not in cache:
+        fila = conn.execute("SELECT id FROM comanda_zonas WHERE nombre = %s", (nombre,)).fetchone()
+        if fila is None:
+            fila = conn.execute(
+                "INSERT INTO comanda_zonas (nombre, activo) VALUES (%s, true) RETURNING id", (nombre,)
+            ).fetchone()
+        cache[nombre] = fila["id"]
+    return cache[nombre]
+
+
+def _cargar_modificadores(conn, producto_id: int, p: ProductoPos) -> int:
+    """RECONCILIA los grupos de modificadores del producto con el manifiesto (F2 / ADR 0032 D3).
+
+    Borra y re-inserta (cascade a opciones): el estado converge al manifiesto — un modificador
+    huérfano con delta viejo cobraría mal, igual que una fracción huérfana.
+    """
+    conn.execute("DELETE FROM modificador_grupos WHERE producto_id = %s", (producto_id,))
+    for orden, g in enumerate(p.modificadores):
+        grupo_id = conn.execute(
+            "INSERT INTO modificador_grupos (producto_id, nombre, min_sel, max_sel, obligatorio, "
+            "orden, activo) VALUES (%s, %s, %s, %s, %s, %s, true) RETURNING id",
+            (producto_id, g.grupo, g.min, g.max, g.obligatorio, orden),
+        ).fetchone()["id"]
+        for o in g.opciones:
+            conn.execute(
+                "INSERT INTO modificador_opciones (grupo_id, nombre, delta_precio, activo) "
+                "VALUES (%s, %s, %s, true)",
+                (grupo_id, o.nombre, _dec(o.delta_precio)),
+            )
+    return len(p.modificadores)
+
+
+def _cargar_recetas(conn, pos: PackPos, ids_por_nombre: dict[str, int]) -> int:
+    """RECONCILIA la receta/BOM de cada plato (F6 / ADR 0032 D9). `insumo` por nombre del lote.
+
+    Segunda pasada (todos los productos ya upserteados): un insumo puede declararse después del
+    plato en el YAML. Insumo no declarado en el manifiesto → lo reporta `validacion.validar`.
+    """
+    n = 0
+    for p in pos.productos:
+        producto_id = ids_por_nombre[normalizar_nombre(p.nombre)]
+        conn.execute("DELETE FROM recetas WHERE producto_id = %s", (producto_id,))
+        for r in p.receta:
+            insumo_id = ids_por_nombre.get(normalizar_nombre(r.insumo))
+            if insumo_id is None:
+                continue   # validación ya lo reportó; no inventar insumos
+            conn.execute(
+                "INSERT INTO recetas (producto_id, insumo_id, cantidad) VALUES (%s, %s, %s)",
+                (producto_id, insumo_id, _dec(r.cantidad)),
+            )
+            n += 1
+    return n
+
+
 def _cargar_aliases(conn, pos: PackPos, ids_por_nombre: dict[str, int]) -> int:
     """UPSERT de aliases por `termino`. `producto` (nombre normalizado) → `producto_id` del lote."""
     for a in pos.aliases:
@@ -176,14 +237,26 @@ def cargar_pos(pos: PackPos, conn) -> dict[str, int]:
     """
     ids_por_nombre: dict[str, int] = {}
     n_fracciones = 0
+    n_modificadores = 0
+    zonas_cache: dict[str, int] = {}
     for p in pos.productos:
         producto_id = _upsert_producto(conn, p)
         ids_por_nombre[normalizar_nombre(p.nombre)] = producto_id
         n_fracciones += _cargar_fracciones(conn, producto_id, p)
         _sembrar_stock_inicial(conn, producto_id, p)
+        # Pack Restaurante (ADR 0032): ruteo KDS + modificadores del plato.
+        zona_id = _zona_comanda_id(conn, p.zona_comanda, zonas_cache)
+        conn.execute(
+            "UPDATE productos SET zona_comanda_id = %s WHERE id = %s", (zona_id, producto_id)
+        )
+        n_modificadores += _cargar_modificadores(conn, producto_id, p)
 
+    n_recetas = _cargar_recetas(conn, pos, ids_por_nombre)
     n_aliases = _cargar_aliases(conn, pos, ids_por_nombre)
 
-    conteos = {"productos": len(pos.productos), "fracciones": n_fracciones, "aliases": n_aliases}
+    conteos = {
+        "productos": len(pos.productos), "fracciones": n_fracciones, "aliases": n_aliases,
+        "modificadores": n_modificadores, "recetas": n_recetas,
+    }
     log.info("pack_pos_cargado", **conteos)
     return conteos

@@ -39,9 +39,9 @@ carta:
           - {nombre: Pechuga asada, delta_precio: 0}
           - {nombre: Salpicón de jurel, delta_precio: 0}
       - grupo: Acompañantes
-        min: null            # DUDA D1: la carta no dice cuántos se eligen
-        max: null
-        obligatorio: null
+        min: 1               # D1 RESUELTA (Andrés, checkpoint F0 / ADR 0032): incluye 2
+        max: 2
+        obligatorio: true
         opciones:            # 4 vistas, sin precio → incluidas en el plato (INFERENCIA I2)
           - {nombre: Arroz blanco o de coco, delta_precio: 0}   # carta dice "Arroz de blanco o coco"
           - {nombre: Tajadas, delta_precio: 0}
@@ -64,7 +64,10 @@ politicas_vistas_en_carta:
     # → OJO ADR 0032: zonas_domicilio hoy es tarifa plana por pedido (ADR 0016);
     #   este caso real exige recargo por unidad. Decidir en F0.
 
-dudas:                        # regla 1: no se completa, se pregunta
+dudas:                        # RESUELTAS en el checkpoint F0 (ADR 0032 §DUDAS, 2026-07-23):
+                              # D1=2 acompañantes · D2=sopa aparte · D3=sin bebida ·
+                              # D4=precio final con INC incluido · D5=costo_domicilio_default.
+                              # Inferencias I1-I4 aceptadas en lote.
   - id: D1
     campo: acompañantes min/max
     detalle: "¿Cuántos acompañantes incluye el plato fuerte? La carta no lo dice."

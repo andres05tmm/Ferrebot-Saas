@@ -1,6 +1,6 @@
 # ADR 0032 — Pack Restaurante (paridad Yuumi)
 
-- **Estado:** PROPUESTO — checkpoint F0 con Andrés (goal `docs/goal-pack-restaurante.md`)
+- **Estado:** ACEPTADO — aprobado por Andrés en el checkpoint F0 (2026-07-23)
 - **Fecha:** 2026-07-23
 - **Relacionados:** ADR 0016 (`pack_pedidos`), ADR 0021 (features finas), ADR 0022 (cobro→venta),
   ADR 0014 (documento por venta), ADR 0025 (COGS), ADR 0007 (manifiesto), ADR 0011 (anti-alucinación)
@@ -85,7 +85,7 @@ Catálogo relacional + snapshot JSONB (la espec objetivo es la estructura del fi
 estado, pero duplica ítems/snapshot/SSE/conversión-a-venta y obliga a un segundo puente a venta.
 Reusar `pedidos` da KDS gratis (F4 lee pedidos confirmados de ambos orígenes) y un solo puente F1.
 El costo (estado `abierto` que los flujos de domicilio nunca usan) se acota validando transiciones
-por `origen`. **Recomendación: reusar. Punto de PARAR si Andrés prefiere entidad aparte.**
+por `origen`. **Decisión (Andrés, checkpoint F0): REUSAR `pedidos`.**
 
 ## D5 — Comandas KDS
 
@@ -143,19 +143,19 @@ default 0 deja idénticas las zonas existentes.
   `tests/evals/replay/baseline/baseline_puntorojo.json`. Gate de TODAS las fases: ≥ 68.3% y 0
   peligrosos.
 
-## DUDAS del fixture (D1–D5) e INFERENCIAS (I1–I4) — resolver con Andrés/Siriuss
+## DUDAS del fixture (D1–D5) e INFERENCIAS (I1–I4) — RESUELTAS (checkpoint F0, 2026-07-23)
 
-| Id | Pregunta | Propuesta si no hay respuesta |
+| Id | Pregunta | Resolución (Andrés) |
 |---|---|---|
-| D1 | ¿Cuántos acompañantes incluye el plato fuerte? | `min=1, max=2` (configurable; se corrige con dato real) |
+| D1 | ¿Cuántos acompañantes incluye el plato fuerte? | **2** (`min=1, max=2`) |
 | D2 | ¿La sopa está incluida en el plato fuerte o siempre aparte? | Aparte (tiene precio propio $14.000) |
-| D3 | ¿Bebida incluida en el plato del día? | No incluida (la carta no la menciona) |
+| D3 | ¿Bebida incluida en el plato del día? | No incluida |
 | D4 | ¿Precios de carta con o sin INC 8%? | Precio final al público (INC incluido) — como el POS hoy |
-| D5 | ¿Tarifa base de domicilio (solo se ve Bocagrande +$1.000/plato)? | `costo_domicilio_default` del tenant; Bocagrande via D8 |
-| I1 | 10 proteínas = grupo min=1 max=1 delta 0 | Aceptar |
-| I2 | 4 acompañantes incluidos, delta 0 | Aceptar |
-| I3 | Menú especial = combo fijo (sin elección) | Aceptar |
-| I4 | Menú del día rotativo → activar/desactivar sin borrar | Aceptar (cubierto con `activo`, D3) |
+| D5 | ¿Tarifa base de domicilio (solo se ve Bocagrande +$1.000/plato)? | `costo_domicilio_default` del tenant; Bocagrande vía D8 |
+| I1 | 10 proteínas = grupo min=1 max=1 delta 0 | Aceptada |
+| I2 | 4 acompañantes incluidos, delta 0 | Aceptada |
+| I3 | Menú especial = combo fijo (sin elección) | Aceptada |
+| I4 | Menú del día rotativo → activar/desactivar sin borrar | Aceptada (cubierto con `activo`, D3) |
 
 ## Consecuencias
 

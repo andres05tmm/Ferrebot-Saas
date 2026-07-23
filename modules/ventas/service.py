@@ -56,6 +56,8 @@ class ProductoPrecio:
     # Unidad de venta del catálogo: "Unidad" (default) o sub-unidad de granel ("GRM"/"Cms") que el
     # motor de precios usa para cobrar por gramo/cm (puntillas, lija esmeril). Ver precios.py.
     unidad_medida: str = "Unidad"
+    # Tipo del impuesto de la tarifa `iva` (ADR 0032 D2): 'iva' (0/5/19) o 'inc' (impoconsumo 8%).
+    tipo_impuesto: str = "iva"
 
     def esquema(self) -> EsquemaPrecio:
         """Arma el esquema que consume el motor de precios (modules.inventario)."""
@@ -109,6 +111,8 @@ class LineaResuelta:
     descontar_stock: bool
     # Costo del producto al vender (None en varia: no hay mercancía → sin movimiento ni costo).
     costo_unitario: Decimal | None = None
+    # Snapshot del TIPO del impuesto (ADR 0032 D2): 'iva' | 'inc'. La tarifa vive en `iva`.
+    tipo_impuesto: str = "iva"
 
 
 @dataclass(frozen=True, slots=True)
@@ -429,6 +433,7 @@ class VentaService:
             producto_id=None, descripcion=ln.descripcion, cantidad=ln.cantidad,
             precio_unitario=ln.precio_unitario, iva=ln.iva or 0,
             total_linea=total, descontar_stock=False,
+            tipo_impuesto=getattr(ln, "tipo_impuesto", None) or "iva",
         )
 
     async def _linea_catalogo(self, ln, control_stock_estricto: bool) -> LineaResuelta:
@@ -461,5 +466,5 @@ class VentaService:
         return LineaResuelta(
             producto_id=prod.id, descripcion=ln.descripcion or prod.nombre, cantidad=ln.cantidad,
             precio_unitario=precio, iva=prod.iva, total_linea=total, descontar_stock=True,
-            costo_unitario=costo,
+            costo_unitario=costo, tipo_impuesto=prod.tipo_impuesto,
         )

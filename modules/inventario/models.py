@@ -45,6 +45,9 @@ class Producto(TenantBase):
     activo: Mapped[bool] = mapped_column(Boolean, nullable=False)
     # Zona de comandas KDS (0062, ADR 0032 D5): rutea el producto a parrilla/bar/…; NULL = cocina.
     zona_comanda_id: Mapped[int | None] = mapped_column(BigInteger)
+    # Tipo del impuesto de la tarifa en `iva` (0063, ADR 0032 D2): 'iva' (0/5/19) o 'inc'
+    # (impoconsumo 8%, restaurantes). El precio sigue siendo FINAL al público en ambos casos.
+    tipo_impuesto: Mapped[str] = mapped_column(Text, nullable=False, default="iva")
 
     fracciones: Mapped[list["ProductoFraccion"]] = relationship(
         cascade="all, delete-orphan", lazy="selectin"

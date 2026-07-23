@@ -62,5 +62,7 @@ class VentaDetalle(TenantBase):
     cantidad: Mapped[Decimal] = mapped_column(Numeric(12, 3), nullable=False)
     precio_unitario: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
     iva: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+    # Snapshot del TIPO del impuesto de la tarifa `iva` (0063, ADR 0032 D2): 'iva' | 'inc'.
+    tipo_impuesto: Mapped[str] = mapped_column(Text, nullable=False, default="iva")
 
     venta: Mapped["Venta"] = relationship(back_populates="detalles")

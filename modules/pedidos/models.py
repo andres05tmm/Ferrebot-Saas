@@ -65,7 +65,29 @@ class ZonaDomicilio(TenantBase):
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     nombre: Mapped[str] = mapped_column(Text, nullable=False)
     tarifa: Mapped[Decimal] = mapped_column(MONEY, nullable=False)
+    # Recargo POR PLATO de la zona (F6 / ADR 0032 D8, caso Bocagrande +$1.000/plato):
+    # costo_domicilio = tarifa + recargo_por_item × Σ cantidades. Default 0 = tarifa plana de siempre.
+    recargo_por_item: Mapped[Decimal] = mapped_column(MONEY, nullable=False, default=Decimal("0"))
     activo: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+
+class Receta(TenantBase):
+    """Receta/BOM de un plato (F6 / ADR 0032 D9): vender el plato descuenta sus INSUMOS.
+
+    El plato mismo no lleva stock; el insumo es otro producto del catálogo CON inventario.
+    `cantidad` en la unidad del insumo (compatible con fracciones: Numeric 12,3).
+    """
+
+    __tablename__ = "recetas"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    producto_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("productos.id", ondelete="CASCADE"), nullable=False
+    )
+    insumo_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("productos.id", ondelete="CASCADE"), nullable=False
+    )
+    cantidad: Mapped[Decimal] = mapped_column(Numeric(12, 3), nullable=False)
 
 
 class Pedido(TenantBase):

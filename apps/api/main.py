@@ -17,6 +17,7 @@ from core.db.engine_cache import engine_cache
 from core.db.session import _control
 from core.events import event_hub
 from core.logging import configure_logging, get_logger
+from apps.api.menu_publico import crear_router_menu_publico, crear_router_menu_qr
 from apps.tg_publico.webhook import crear_router_tg_publico
 from apps.tg_publico.wiring import construir_tg_deps
 from apps.wa.webhook import crear_router_wa
@@ -208,6 +209,7 @@ def create_app(spa_dist: Path | None = None) -> FastAPI:
     app.include_router(pedidos_router, prefix="/api/v1")    # kanban Pedidos (ADR 0016)
     app.include_router(mesas_router, prefix="/api/v1")      # salón/mesas (ADR 0032 F3)
     app.include_router(kds_router, prefix="/api/v1")        # comandas KDS (ADR 0032 F4)
+    app.include_router(crear_router_menu_qr(), prefix="/api/v1")  # QR del menú público (ADR 0032 F5)
     app.include_router(cotizaciones_router, prefix="/api/v1")  # cotizaciones WA (ADR 0017)
     app.include_router(pagos_router, prefix="/api/v1")         # cobros (ADR 0013)
     app.include_router(pagar_router, prefix="/api/v1")         # cuentas por pagar (ADR 0019)
@@ -223,6 +225,8 @@ def create_app(spa_dist: Path | None = None) -> FastAPI:
     # Webhook del canal Telegram público (agente de clientes, demo Sirius): `/tg-publico/{slug}`,
     # fuera de /api/ (protegido por el secret-token de Telegram, fail-closed).
     app.include_router(crear_router_tg_publico())
+    # Menú digital público por slug (ADR 0032 F5): sin auth, gateado por el flag `menu_qr`.
+    app.include_router(crear_router_menu_publico())
     # Webhook de MATIAS (D7.1): `/webhooks/matias/{token}`, fuera de /api/ (sin JWT; protegido por firma
     # + token del registro). Resuelve la empresa por el token, jamás por el payload.
     app.include_router(crear_router_matias())

@@ -77,3 +77,15 @@ class PedidoLeer(BaseModel):
 
 class CambioEstado(BaseModel):
     estado: str = Field(min_length=1)
+
+
+class ConvertirPayload(BaseModel):
+    """Conversión pedido → venta (F1 / ADR 0032). `metodo_pago` explícito gana sobre el del pedido."""
+
+    metodo_pago: str | None = None
+
+
+class ConversionLeer(BaseModel):
+    venta_id: int
+    total: Decimal
+    replay: bool

@@ -14,6 +14,7 @@ from modules.inventario.busqueda import BuscadorProductos, ResultadoBusqueda
 from modules.inventario.repository import SqlInventarioRepository
 from modules.pagos.models import Cobro
 from modules.pedidos.models import (
+    Mesa,
     ModificadorGrupo,
     Pedido,
     PedidoConfig,
@@ -260,6 +261,56 @@ class SqlPedidosRepository:
         pedidos = list((await self._s.execute(consulta)).scalars())
         await self._anotar_pagados(pedidos)
         return pedidos
+
+    # --- mesas (F3 / ADR 0032 D4) ----------------------------------------------------
+    async def mesa_por_id(self, mesa_id: int) -> Mesa | None:
+        return await self._s.get(Mesa, mesa_id)
+
+    async def listar_mesas(self, *, solo_activas: bool = True) -> list[Mesa]:
+        consulta = select(Mesa).order_by(Mesa.nombre)
+        if solo_activas:
+            consulta = consulta.where(Mesa.activo.is_(True))
+        return list((await self._s.execute(consulta)).scalars())
+
+    async def crear_mesa(self, *, nombre: str, zona: str | None) -> Mesa:
+        mesa = Mesa(nombre=nombre, zona=zona)
+        self._s.add(mesa)
+        await self._s.flush()
+        return mesa
+
+    async def orden_abierta_de(self, mesa_id: int, *, for_update: bool = False) -> Pedido | None:
+        """La orden `abierta` de la mesa (una sola, por índice parcial UNIQUE)."""
+        consulta = select(Pedido).where(Pedido.mesa_id == mesa_id, Pedido.estado == "abierto")
+        if for_update:
+            consulta = consulta.with_for_update()
+        return (await self._s.execute(consulta)).scalar_one_or_none()
+
+    async def abrir_orden_mesa(self, mesa: Mesa) -> Pedido:
+        pedido = Pedido(
+            cliente_telefono=f"mesa:{mesa.id}", cliente_nombre=mesa.nombre,
+            estado="abierto", origen="mesa", mesa_id=mesa.id,
+        )
+        self._s.add(pedido)
+        await self._s.flush()
+        # Los timestamps son server-default y refresh() expira el resto: cargar también `items`
+        # (serializar sin esto dispara un lazy-load síncrono → MissingGreenlet).
+        await self._s.refresh(pedido, attribute_names=["creado_en", "actualizado_en", "items"])
+        await publish(self._s, "mesa_abierta", {"mesa_id": mesa.id, "pedido_id": pedido.id})
+        return pedido
+
+    async def agregar_items(self, pedido: Pedido, filas: list[dict]) -> Pedido:
+        """APPEND de una ronda a la orden abierta (a diferencia del borrador, que reemplaza)."""
+        await self._s.refresh(pedido, attribute_names=["items"])
+        for fila in filas:
+            pedido.items.append(PedidoItem(**fila))
+        pedido.subtotal = sum((i.subtotal for i in pedido.items), Decimal("0"))
+        pedido.total = pedido.subtotal + pedido.costo_domicilio
+        await self._s.flush()
+        await self._s.refresh(pedido, attribute_names=["actualizado_en"])
+        await publish(self._s, "mesa_items", {
+            "mesa_id": pedido.mesa_id, "pedido_id": pedido.id, "total": str(pedido.total),
+        })
+        return pedido
 
     async def _anotar_pagados(self, pedidos: list[Pedido]) -> None:
         """Marca `pedido.pagado` en lote: UNA consulta a `cobros` por el lote entero (sin N+1).

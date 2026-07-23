@@ -23,8 +23,9 @@ from modules.ventas.schemas import VentaCrear, VentaDetalleCrear
 from modules.ventas.service import VentaService
 
 # Estados desde los que se convierte: el cliente ya confirmó. `entregado` entra SOLO si aún no tiene
-# venta (se entregó primero, se registró después). `recibido` (borrador) y `cancelado`, jamás.
-_ESTADOS_CONVERTIBLES = ("confirmado", "en_preparacion", "en_camino", "entregado")
+# venta (se entregó primero, se registró después). `abierto` es el cobro de MESA (F3). `recibido`
+# (borrador) y `cancelado`, jamás.
+_ESTADOS_CONVERTIBLES = ("confirmado", "en_preparacion", "en_camino", "entregado", "abierto")
 
 # Métodos que acepta el puente. `fiado` queda fuera (requiere cliente_id del POS; la identidad del
 # pedido es el teléfono) — mismo recorte que el cobro de citas (ADR 0022 D6).
@@ -58,6 +59,7 @@ async def convertir_pedido(
     ventas: VentaService,
     usuario_id: int,
     metodo_pago: str | None = None,
+    propina: Decimal | None = None,
     control_stock_estricto: bool = False,
 ) -> ResultadoConversion:
     """Convierte el pedido en venta (o la reusa). Idempotente; ver ADR 0032 / ADR 0022.
@@ -86,6 +88,9 @@ async def convertir_pedido(
         raise PedidoNoConvertible(
             pedido_id, f"método de pago '{metodo}' inválido; envía metodo_pago"
         )
+    # Propina SOLO en salón/mostrador, JAMÁS domicilio (decisión de Andrés, ADR 0032 D7).
+    if propina is not None and propina > 0 and pedido.origen != "mesa":
+        raise PedidoNoConvertible(pedido_id, "la propina solo aplica en salón (origen mesa)")
 
     lineas: list[VentaDetalleCrear] = []
     for item in pedido.items:
@@ -124,6 +129,18 @@ async def convertir_pedido(
                 descripcion=f"Domicilio — pedido #{pedido.id}",
                 cantidad=Decimal("1"),
                 precio_unitario=pedido.costo_domicilio,
+                iva=0,
+            )
+        )
+    if propina is not None and propina > 0:
+        # Línea varia discriminada (ADR 0022 D2): no toca stock por construcción, suma al total
+        # (y por tanto a ventas_efectivo — la caja cuadra) sin alterar el total de productos.
+        lineas.append(
+            VentaDetalleCrear(
+                producto_id=None,
+                descripcion="Propina",
+                cantidad=Decimal("1"),
+                precio_unitario=propina,
                 iva=0,
             )
         )

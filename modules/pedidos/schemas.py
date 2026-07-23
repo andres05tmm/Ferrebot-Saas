@@ -83,6 +83,39 @@ class CambioEstado(BaseModel):
     estado: str = Field(min_length=1)
 
 
+class MesaLeer(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    nombre: str
+    zona: str | None
+    activo: bool
+    # Orden abierta anotada por el router (None = mesa libre).
+    pedido_id: int | None = None
+    total: Decimal | None = None
+
+
+class MesaCrear(BaseModel):
+    nombre: str = Field(min_length=1, max_length=80)
+    zona: str | None = Field(default=None, max_length=80)
+
+
+class ItemMesa(BaseModel):
+    producto: str = Field(min_length=1, max_length=120)
+    cantidad: Decimal = Field(gt=0, le=999)
+    modificadores: list[str] = Field(default_factory=list, max_length=10)
+
+
+class RondaMesa(BaseModel):
+    items: list[ItemMesa] = Field(min_length=1, max_length=30)
+
+
+class CobrarMesa(BaseModel):
+    metodo_pago: str = Field(min_length=1, max_length=40)
+    # Propina opcional elegida por el cliente (solo salón — ADR 0032 D7).
+    propina: Decimal | None = Field(default=None, ge=0)
+
+
 class ConvertirPayload(BaseModel):
     """Conversión pedido → venta (F1 / ADR 0032). `metodo_pago` explícito gana sobre el del pedido."""
 

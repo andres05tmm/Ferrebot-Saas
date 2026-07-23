@@ -90,6 +90,25 @@ class PedidosService:
         if not config.activo or not (config.hora_apertura <= ahora.time() < config.hora_cierre):
             raise CocinaCerrada()
 
+        filas = await self.resolver_items(items)
+
+        pedido = await self._repo.borrador_de(telefono)
+        if pedido is None:
+            pedido = await self._repo.crear_pedido(
+                telefono=telefono, notas=notas, idempotency_key=idempotency_key, origen=origen
+            )
+        elif notas:
+            pedido.notas = notas
+        pedido = await self._repo.reemplazar_items(pedido, filas)
+        return ResultadoArmar(pedido=pedido, replay=False)
+
+    async def resolver_items(self, items: list[ItemPedido]) -> list[dict]:
+        """Resuelve ítems de texto libre contra el catálogo real (buscador de 4 capas) + modificadores.
+
+        Devuelve las filas snapshot ({producto_id, nombre, cantidad, precio_unitario, subtotal,
+        modificadores}). Lo comparten el domicilio (`armar_pedido`) y el salón (`MesasService`):
+        el agente y el mesero jamás inventan productos ni precios.
+        """
         filas: list[dict] = []
         for item in items:
             resultado = await self._repo.buscar_producto(item.producto)
@@ -112,16 +131,64 @@ class PedidosService:
                 "precio_unitario": precio, "subtotal": precio * item.cantidad,
                 "modificadores": snapshot or None,
             })
+        return filas
 
-        pedido = await self._repo.borrador_de(telefono)
-        if pedido is None:
-            pedido = await self._repo.crear_pedido(
-                telefono=telefono, notas=notas, idempotency_key=idempotency_key, origen=origen
-            )
-        elif notas:
-            pedido.notas = notas
-        pedido = await self._repo.reemplazar_items(pedido, filas)
-        return ResultadoArmar(pedido=pedido, replay=False)
+    async def _resolver_modificadores(
+        self, producto_id: int, producto_nombre: str, pedidos: tuple[str, ...]
+    ) -> list[dict]:
+        """Resuelve los modificadores dichos contra el catálogo del producto y valida min/max.
+
+        Devuelve el SNAPSHOT [{grupo, opcion, delta_precio}] en el orden dicho. Anti-alucinación:
+        texto que no matchea una opción activa → `ModificadorNoEncontrado` con sugerencias; grupo
+        obligatorio/min sin cubrir o max excedido → `ModificadorInvalido` (el bot pregunta).
+        """
+        grupos = await self._repo.modificadores_de(producto_id)
+        if not grupos and not pedidos:
+            return []
+        # (opción activa) → (grupo, opción); match por nombre normalizado.
+        indice: dict[str, tuple] = {}
+        for g in grupos:
+            for o in g.opciones:
+                if o.activo:
+                    indice[o.nombre.strip().lower()] = (g, o)
+        if pedidos and not indice:
+            raise ModificadorNoEncontrado(pedidos[0], producto_nombre, [])
+
+        snapshot: list[dict] = []
+        conteo: dict[int, int] = {}
+        for dicho in pedidos:
+            clave = dicho.strip().lower()
+            par = indice.get(clave)
+            if par is None:
+                # Match laxo: contención en cualquiera de las dos direcciones ("queso" ~ "Adición de queso").
+                candidatos = [v for k, v in indice.items() if clave in k or k in clave]
+                par = candidatos[0] if len(candidatos) == 1 else None
+            if par is None:
+                sugerencias = [o.nombre for g in grupos for o in g.opciones if o.activo][:8]
+                raise ModificadorNoEncontrado(dicho, producto_nombre, sugerencias)
+            grupo, opcion = par
+            conteo[grupo.id] = conteo.get(grupo.id, 0) + 1
+            snapshot.append({
+                "grupo": grupo.nombre, "opcion": opcion.nombre,
+                "delta_precio": f"{opcion.delta_precio:.2f}",
+            })
+        for g in grupos:
+            n = conteo.get(g.id, 0)
+            minimo = max(g.min_sel, 1 if g.obligatorio else 0)
+            opciones = [o.nombre for o in g.opciones if o.activo]
+            if n < minimo:
+                raise ModificadorInvalido(
+                    producto_nombre,
+                    f"'{producto_nombre}' requiere elegir {minimo} de {g.nombre}.",
+                    opciones,
+                )
+            if g.max_sel is not None and n > g.max_sel:
+                raise ModificadorInvalido(
+                    producto_nombre,
+                    f"'{g.nombre}' de '{producto_nombre}' admite máximo {g.max_sel}.",
+                    opciones,
+                )
+        return snapshot
 
     async def _resolver_modificadores(
         self, producto_id: int, producto_nombre: str, pedidos: tuple[str, ...]

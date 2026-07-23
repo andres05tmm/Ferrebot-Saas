@@ -35,6 +35,29 @@ class PedidoMuyChico(Exception):
         self.minimo = minimo
 
 
+class ModificadorNoEncontrado(Exception):
+    """Un modificador no resolvió contra las opciones del producto (anti-alucinación: preguntar).
+
+    `sugerencias` = opciones activas disponibles del producto (para que el bot ofrezca, no invente).
+    """
+
+    def __init__(self, nombre: str, producto: str, sugerencias: list[str]) -> None:
+        super().__init__(nombre)
+        self.nombre = nombre
+        self.producto = producto
+        self.sugerencias = sugerencias
+
+
+class ModificadorInvalido(Exception):
+    """Selección fuera de las reglas del grupo (obligatorio sin elegir, o excede el máximo)."""
+
+    def __init__(self, producto: str, mensaje: str, opciones: list[str] | None = None) -> None:
+        super().__init__(mensaje)
+        self.producto = producto
+        self.mensaje = mensaje
+        self.opciones = opciones or []
+
+
 class PedidoInexistente(Exception):
     """El pedido no existe (dashboard)."""
 

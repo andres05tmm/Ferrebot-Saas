@@ -49,6 +49,8 @@ class PedidoItemLeer(BaseModel):
     cantidad: Decimal
     precio_unitario: Decimal
     subtotal: Decimal
+    # Snapshot de modificadores (F2): [{grupo, opcion, delta_precio}] o None.
+    modificadores: list[dict] | None = None
 
 
 class PedidoLeer(BaseModel):

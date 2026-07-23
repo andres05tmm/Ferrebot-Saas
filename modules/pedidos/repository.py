@@ -13,7 +13,13 @@ from core.events import publish
 from modules.inventario.busqueda import BuscadorProductos, ResultadoBusqueda
 from modules.inventario.repository import SqlInventarioRepository
 from modules.pagos.models import Cobro
-from modules.pedidos.models import Pedido, PedidoConfig, PedidoItem, ZonaDomicilio
+from modules.pedidos.models import (
+    ModificadorGrupo,
+    Pedido,
+    PedidoConfig,
+    PedidoItem,
+    ZonaDomicilio,
+)
 from modules.pedidos.schemas import PedidoConfigActualizar, ZonaCrear
 
 
@@ -72,6 +78,21 @@ class SqlPedidosRepository:
             )
         ).all()
         return [dict(f._mapping) for f in filas]
+
+    async def modificadores_de(self, producto_id: int) -> list[ModificadorGrupo]:
+        """Grupos ACTIVOS de modificadores del producto (con sus opciones, selectin), en orden."""
+        return list(
+            (
+                await self._s.execute(
+                    select(ModificadorGrupo)
+                    .where(
+                        ModificadorGrupo.producto_id == producto_id,
+                        ModificadorGrupo.activo.is_(True),
+                    )
+                    .order_by(ModificadorGrupo.orden, ModificadorGrupo.id)
+                )
+            ).scalars()
+        )
 
     # --- zonas de domicilio ------------------------------------------------------
     async def listar_zonas(self, *, solo_activas: bool = True) -> list[ZonaDomicilio]:

@@ -28,6 +28,7 @@ _TABLAS_ESPERADAS: frozenset[str] = frozenset({
     "cobranza_config", "cobranza_clientes", "promesas_pago", "pagos_reportados",   # pack cobranza (0017)
     "cobranza_recordatorios",   # log durable → métrica "pesos recuperados" (0018)
     "pedido_config", "zonas_domicilio", "pedidos", "pedido_items",   # pack pedidos (0019, ADR 0016)
+    "modificador_grupos", "modificador_opciones",   # modificadores de menú (0060, ADR 0032 F2)
     "ventas_wa_config", "cotizaciones", "cotizacion_items",   # pack ventas/cotizaciones (0020, ADR 0017)
     "cobros",   # frente de pagos (0021, ADR 0013)
     "comprobantes_pago",   # comprobante de pago por foto → desempate conciliación (0057, demo Sirius)

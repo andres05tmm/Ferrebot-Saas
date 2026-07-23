@@ -27,8 +27,9 @@ from modules.pedidos.schemas import (
     ZonaLeer,
 )
 from modules.pedidos.service import PedidosService
-from modules.ventas.errors import IdempotenciaConflicto
+from modules.ventas.errors import IdempotenciaConflicto, StockInsuficiente
 from modules.ventas.repository import SqlVentasRepository
+from modules.ventas.router import get_control_stock_estricto
 from modules.ventas.service import VentaService
 
 # Todo el router exige el flag pack_pedidos (sin él, 404 — como si no existiera).
@@ -81,10 +82,12 @@ async def convertir_en_venta(
     response: Response,
     session: AsyncSession = Depends(get_tenant_db),
     user: Principal = Depends(require_role("vendedor")),
+    control_stock_estricto: bool = Depends(get_control_stock_estricto),
 ) -> ConversionLeer:
     """Convierte el pedido en venta (snapshot + vínculo idempotente, misma transacción).
 
-    Reintento/ya convertido → 200 con `replay=true` (misma venta). Tras la conversión se encola el
+    Reintento/ya convertido → 200 con `replay=true` (misma venta). Respeta el control de stock
+    estricto del tenant (misma dependencia que POST /ventas). Tras la conversión se encola el
     cierre fiscal según capacidades del tenant (best-effort: nunca rompe la venta), como en POST /ventas.
     """
     try:
@@ -94,12 +97,15 @@ async def convertir_en_venta(
             ventas=VentaService(SqlVentasRepository(session)),
             usuario_id=user.user_id,
             metodo_pago=payload.metodo_pago,
+            control_stock_estricto=control_stock_estricto,
         )
     except PedidoInexistente as exc:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Pedido no encontrado") from exc
     except PedidoNoConvertible as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
     except IdempotenciaConflicto as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+    except StockInsuficiente as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
     if res.replay:
         response.status_code = status.HTTP_200_OK

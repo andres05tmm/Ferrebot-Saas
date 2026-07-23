@@ -125,8 +125,25 @@ def _errores_producto_pos(p, rotulo: str) -> list[str]:
         errores.append(f"{rotulo}: precio_venta debe ser > 0 (es {p.precio_venta})")
     if p.precio_compra is not None and p.precio_compra <= 0:
         errores.append(f"{rotulo}: precio_compra debe ser > 0 si se declara (es {p.precio_compra})")
-    if p.iva not in _IVA_VALIDO:
+    if p.tipo_impuesto == "inc":
+        # Impoconsumo (ADR 0032 D2): la tarifa vigente en Colombia es 8%.
+        if p.iva != 8:
+            errores.append(f"{rotulo}: tipo_impuesto 'inc' exige tarifa 8 en iva (es {p.iva})")
+    elif p.tipo_impuesto != "iva":
+        errores.append(f"{rotulo}: tipo_impuesto inválido '{p.tipo_impuesto}' (esperado: iva | inc)")
+    elif p.iva not in _IVA_VALIDO:
         errores.append(f"{rotulo}: iva inválido {p.iva} (esperado: 0, 5 o 19)")
+    for g in p.modificadores:
+        if g.min < 0 or (g.max is not None and g.max < max(g.min, 1)):
+            errores.append(f"{rotulo}: grupo '{g.grupo}' con min/max incoherentes ({g.min}/{g.max})")
+        if not g.opciones:
+            errores.append(f"{rotulo}: grupo '{g.grupo}' sin opciones")
+        for o in g.opciones:
+            if o.delta_precio < 0:
+                errores.append(f"{rotulo}: opción '{o.nombre}' con delta_precio negativo")
+    for r in p.receta:
+        if r.cantidad <= 0:
+            errores.append(f"{rotulo}: receta con cantidad <= 0 para insumo '{r.insumo}'")
     if p.fracciones and not p.permite_fraccion:
         errores.append(f"{rotulo}: tiene fracciones pero permite_fraccion es false")
     for f in p.fracciones:
@@ -188,6 +205,14 @@ def _errores_pos(manifiesto: Manifiesto) -> list[str]:
                 f"alias '{a.termino}': referencia el producto '{a.producto}', "
                 f"que no está declarado en packs.pos.productos"
             )
+    # receta.insumo → debe referir a otro producto declarado (F6 / ADR 0032: no inventar insumos).
+    for p in pos.productos:
+        for r in p.receta:
+            if normalizar_nombre(r.insumo) not in declarados:
+                errores.append(
+                    f"producto '{p.nombre}': receta referencia el insumo '{r.insumo}', "
+                    f"que no está declarado en packs.pos.productos"
+                )
     return errores
 
 

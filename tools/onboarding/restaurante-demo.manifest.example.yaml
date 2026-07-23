@@ -1,10 +1,10 @@
-# Manifiesto de tenant DEMO — restaurante "Brasa" (vertical restaurante). Ver ADR docs/adr/0007.
+# Manifiesto de tenant DEMO — restaurante "Brasa" (vertical restaurante). Ver ADR docs/adr/0007 y 0032.
 # Demo provisionable por:  python -m tools.provision_from_manifest --from tools/onboarding/restaurante-demo.manifest.example.yaml
 #
-# El MENÚ vive en packs.pos.productos (es el catálogo del POS, que pack_pedidos LEE). pack_pedidos solo
-# aporta lo operativo: pedido_config (horario de cocina, mínimo, domicilio) + zonas_domicilio.
-# IVA de los ítems = 0: la comida preparada en restaurante tributa IMPOCONSUMO 8% (fuera del campo iva,
-# que solo admite 0/5/19); para la demo basta el precio de carta.
+# El MENÚ vive en packs.pos.productos (es el catálogo del POS, que pack_pedidos LEE). pack_pedidos
+# aporta lo operativo: pedido_config + zonas_domicilio (+ recargo por plato) + mesas del salón.
+# Pack Restaurante (ADR 0032): modificadores por plato (grupos/opciones con delta), zona_comanda
+# (ruteo KDS), receta/BOM (insumos) e impoconsumo 8% (`tipo_impuesto: inc` con tarifa 8 en `iva`).
 version: 1
 
 identidad:
@@ -26,7 +26,9 @@ plan:
   # Nombre de plan ÚNICO por demo (los planes se comparten por nombre; ver barberia-demo).
   nombre: "Demo Restaurante"
   # pack_pedidos depende de pos (el catálogo/menú). canal_whatsapp para atender por WhatsApp.
-  features: ["pos", "pack_pedidos", "pack_faq", "canal_whatsapp"]
+  # Pack Restaurante (ADR 0032): mesas/salón, comandas KDS, menú QR público y recetas/BOM.
+  features: ["pos", "pack_pedidos", "pack_faq", "canal_whatsapp",
+             "pack_mesas", "kds", "menu_qr", "recetas"]
 features_override: {}
 
 branding:
@@ -45,8 +47,42 @@ packs:
       - { nombre: "Empanadas de carne (x3)", categoria: "Entradas", unidad_medida: "porción", precio_venta: 12000, iva: 0 }
       - { nombre: "Chicharrón crocante", categoria: "Entradas", unidad_medida: "porción", precio_venta: 16000, iva: 0 }
       - { nombre: "Yuca frita", categoria: "Entradas", unidad_medida: "porción", precio_venta: 9000, iva: 0 }
+      # Plato del día estilo carta Siriuss (ADR 0032): impoconsumo 8%, proteína a elegir (min 1
+      # max 1), 2 acompañantes incluidos (min 1 max 2), receta que descuenta insumos y KDS parrilla.
+      - nombre: "Plato del día"
+        categoria: "Platos fuertes"
+        unidad_medida: "plato"
+        precio_venta: 19000
+        iva: 8
+        tipo_impuesto: "inc"
+        zona_comanda: "parrilla"
+        modificadores:
+          - grupo: "Proteína"
+            min: 1
+            max: 1
+            obligatorio: true
+            opciones:
+              - { nombre: "Carne asada", delta_precio: 0 }
+              - { nombre: "Cerdo asado", delta_precio: 0 }
+              - { nombre: "Pollo frito", delta_precio: 0 }
+              - { nombre: "Pechuga asada", delta_precio: 0 }
+          - grupo: "Acompañantes"
+            min: 1
+            max: 2
+            obligatorio: true
+            opciones:
+              - { nombre: "Arroz blanco o de coco", delta_precio: 0 }
+              - { nombre: "Tajadas", delta_precio: 0 }
+              - { nombre: "Lentejas", delta_precio: 0 }
+              - { nombre: "Ensalada de payaso", delta_precio: 0 }
+        receta:
+          - { insumo: "Arroz insumo (kg)", cantidad: 0.2 }
+          - { insumo: "Carne insumo (kg)", cantidad: 0.25 }
+      # Insumos de cocina (no se muestran con stock 0 en el menú del bot; alimentan la receta).
+      - { nombre: "Arroz insumo (kg)", categoria: "Insumos", unidad_medida: "kg", precio_venta: 1, iva: 0, precio_compra: 2000, stock_inicial: 50 }
+      - { nombre: "Carne insumo (kg)", categoria: "Insumos", unidad_medida: "kg", precio_venta: 1, iva: 0, precio_compra: 18000, stock_inicial: 20 }
       # Parrilla / platos fuertes
-      - { nombre: "Bandeja paisa", categoria: "Platos fuertes", unidad_medida: "plato", precio_venta: 32000, iva: 0 }
+      - { nombre: "Bandeja paisa", categoria: "Platos fuertes", unidad_medida: "plato", precio_venta: 32000, iva: 0, zona_comanda: "parrilla" }
       - { nombre: "Churrasco 300g", categoria: "Platos fuertes", unidad_medida: "plato", precio_venta: 38000, iva: 0 }
       - { nombre: "Punta de anca 250g", categoria: "Platos fuertes", unidad_medida: "plato", precio_venta: 36000, iva: 0 }
       - { nombre: "Pechuga a la plancha", categoria: "Platos fuertes", unidad_medida: "plato", precio_venta: 28000, iva: 0 }
@@ -55,16 +91,28 @@ packs:
       - { nombre: "Cazuela de mariscos", categoria: "Platos fuertes", unidad_medida: "plato", precio_venta: 40000, iva: 0 }
       - { nombre: "Picada para dos", categoria: "Platos fuertes", unidad_medida: "plato", precio_venta: 58000, iva: 0 }
       # Hamburguesas / rápidas
-      - { nombre: "Hamburguesa Brasa", categoria: "Rápidas", unidad_medida: "unidad", precio_venta: 24000, iva: 0 }
+      - nombre: "Hamburguesa Brasa"
+        categoria: "Rápidas"
+        unidad_medida: "unidad"
+        precio_venta: 24000
+        iva: 0
+        zona_comanda: "parrilla"
+        modificadores:
+          - grupo: "Personalización"
+            opciones:
+              - { nombre: "Sin cebolla", delta_precio: 0 }
+              - { nombre: "Sin tomate", delta_precio: 0 }
+              - { nombre: "Adición de queso", delta_precio: 3000 }
+              - { nombre: "Adición de tocineta", delta_precio: 4000 }
       - { nombre: "Perro caliente especial", categoria: "Rápidas", unidad_medida: "unidad", precio_venta: 16000, iva: 0 }
       - { nombre: "Salchipapa", categoria: "Rápidas", unidad_medida: "plato", precio_venta: 18000, iva: 0 }
       # Acompañamientos
       - { nombre: "Arroz blanco", categoria: "Acompañamientos", unidad_medida: "porción", precio_venta: 5000, iva: 0 }
       - { nombre: "Papa a la francesa", categoria: "Acompañamientos", unidad_medida: "porción", precio_venta: 8000, iva: 0 }
       - { nombre: "Ensalada de la casa", categoria: "Acompañamientos", unidad_medida: "porción", precio_venta: 9000, iva: 0 }
-      # Bebidas
-      - { nombre: "Limonada natural", categoria: "Bebidas", unidad_medida: "vaso", precio_venta: 7000, iva: 0 }
-      - { nombre: "Jugo de mora", categoria: "Bebidas", unidad_medida: "vaso", precio_venta: 7000, iva: 0 }
+      # Bebidas (ruteadas al bar en el KDS)
+      - { nombre: "Limonada natural", categoria: "Bebidas", unidad_medida: "vaso", precio_venta: 7000, iva: 0, zona_comanda: "bar" }
+      - { nombre: "Jugo de mora", categoria: "Bebidas", unidad_medida: "vaso", precio_venta: 7000, iva: 0, zona_comanda: "bar" }
       - { nombre: "Gaseosa 400ml", categoria: "Bebidas", unidad_medida: "unidad", precio_venta: 5000, iva: 0 }
       - { nombre: "Cerveza nacional", categoria: "Bebidas", unidad_medida: "unidad", precio_venta: 6000, iva: 0 }
       - { nombre: "Agua", categoria: "Bebidas", unidad_medida: "unidad", precio_venta: 4000, iva: 0 }
@@ -91,6 +139,10 @@ packs:
       - { nombre: "La Soledad",   tarifa: 4000 }
       - { nombre: "Chapinero",    tarifa: 6000 }
       - { nombre: "Norte",        tarifa: 8000 }
+      # Recargo POR PLATO (ADR 0032 D8, caso real Bocagrande): tarifa + 1000 × platos.
+      - { nombre: "Bocagrande",   tarifa: 4000, recargo_por_item: 1000 }
+    # Mesas del salón (pack_mesas): orden abierta + precuenta + cobro con propina.
+    mesas: ["Mesa 1", "Mesa 2", "Mesa 3", "Mesa 4", "Barra"]
 
   faq:
     entradas:

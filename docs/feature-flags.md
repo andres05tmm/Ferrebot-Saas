@@ -39,6 +39,10 @@
 | `pack_faq` | Base de conocimiento del agente WhatsApp | — |
 | `pack_cobranza` | Agente de cobranza por WhatsApp: recordatorios de cartera, promesas de pago, página Cartera (ADR 0015) | `fiados` |
 | `pack_pedidos` | Pedidos y domicilios por WhatsApp + kanban Pedidos (ADR 0016) | `ventas` |
+| `pack_mesas` | Mesas/salón: orden abierta por mesa, precuenta y cobro con propina que cierra en venta (ADR 0032 F3) | `ventas` |
+| `kds` | Comandas KDS: zonas de cocina, cola por comanda y aviso de "listo" al canal (ADR 0032 F4) | `pack_pedidos` o `pack_mesas` |
+| `menu_qr` | Menú digital público por slug (HTML sin auth + QR imprimible, ADR 0032 F5) | `ventas` |
+| `recetas` | Recetas/BOM: vender el plato descuenta insumos con movimiento idempotente + costo del plato e ingeniería de menú (ADR 0032 F6/F7) | `inventario` |
 | `pack_ventas` | Cotizaciones y carrito por WhatsApp con el catálogo real (ADR 0017) | `ventas` |
 | `pack_reservas` | Reservas por noches (hotel) sobre el motor de agenda | `pack_agenda` |
 | `pack_postventa` | Encuesta 1-5, reseñas y seguimiento tras cita/pedido | — |

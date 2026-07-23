@@ -58,12 +58,16 @@ class SqlPedidosRepository:
         return await BuscadorProductos(SqlInventarioRepository(self._s)).buscar(texto, limite=limite)
 
     async def producto_para_menu(self, producto_id: int) -> dict | None:
-        """Nombre, precio y stock disponible de un producto activo (None si no existe/inactivo)."""
+        """Nombre, precio y stock disponible de un producto activo (None si no existe/inactivo).
+
+        `stock` NULL = el producto NO lleva fila de inventario (restaurante que no controla stock
+        de platos): el motor no bloquea por stock — coherente con el permisivo de la venta.
+        """
         fila = (
             await self._s.execute(
                 text(
                     "SELECT p.id, p.nombre, p.precio_venta, p.unidad_medida, "
-                    "       COALESCE(i.stock_actual, 0) AS stock "
+                    "       i.stock_actual AS stock "
                     "FROM productos p LEFT JOIN inventario i ON i.producto_id = p.id "
                     "WHERE p.id = :pid AND p.activo"
                 ),
@@ -73,14 +77,15 @@ class SqlPedidosRepository:
         return dict(fila._mapping) if fila else None
 
     async def menu(self, *, limite: int = 20) -> list[dict]:
-        """Productos activos con stock — o con RECETA (el plato no lleva stock propio, F6)."""
+        """Productos activos disponibles: con stock, SIN control de stock (sin fila de inventario —
+        restaurante que no lleva kárdex de platos) o con RECETA (su stock es de los insumos, F6)."""
         filas = (
             await self._s.execute(
                 text(
                     "SELECT p.id, p.nombre, p.precio_venta, p.unidad_medida, "
-                    "       COALESCE(i.stock_actual, 0) AS stock "
+                    "       i.stock_actual AS stock "
                     "FROM productos p LEFT JOIN inventario i ON i.producto_id = p.id "
-                    "WHERE p.activo AND (COALESCE(i.stock_actual, 0) > 0 "
+                    "WHERE p.activo AND (i.stock_actual IS NULL OR i.stock_actual > 0 "
                     "      OR EXISTS (SELECT 1 FROM recetas r WHERE r.producto_id = p.id)) "
                     "ORDER BY p.nombre LIMIT :lim"
                 ),
@@ -88,6 +93,87 @@ class SqlPedidosRepository:
             )
         ).all()
         return [dict(f._mapping) for f in filas]
+
+    # --- reportes restauranteros (F7 / ADR 0032) ---------------------------------------
+    async def resumen_dia(self) -> dict:
+        """Resumen del día (hora Colombia): pedidos por canal, top platos y tiempo medio de ciclo.
+
+        Canal = `origen` del pedido (whatsapp/mesa/…). Solo cuenta pedidos NO cancelados de HOY;
+        vendido = los convertidos en venta (venta_id). Tiempo de ciclo = creado → convertido.
+        """
+        from core.config.timezone import rango_dia_co
+
+        inicio, fin = rango_dia_co()
+        canales = (
+            await self._s.execute(
+                text(
+                    "SELECT origen, count(*) AS pedidos, "
+                    "       count(venta_id) AS vendidos, "
+                    "       COALESCE(sum(total) FILTER (WHERE venta_id IS NOT NULL), 0) AS vendido "
+                    "FROM pedidos WHERE creado_en BETWEEN :i AND :f AND estado <> 'cancelado' "
+                    "GROUP BY origen ORDER BY origen"
+                ),
+                {"i": inicio, "f": fin},
+            )
+        ).all()
+        top = (
+            await self._s.execute(
+                text(
+                    "SELECT pi.nombre, sum(pi.cantidad) AS unidades, sum(pi.subtotal) AS total "
+                    "FROM pedido_items pi JOIN pedidos p ON p.id = pi.pedido_id "
+                    "WHERE p.creado_en BETWEEN :i AND :f AND p.estado <> 'cancelado' "
+                    "GROUP BY pi.nombre ORDER BY unidades DESC LIMIT 5"
+                ),
+                {"i": inicio, "f": fin},
+            )
+        ).all()
+        ciclo = (
+            await self._s.execute(
+                text(
+                    "SELECT avg(EXTRACT(EPOCH FROM (convertido_en - creado_en)) / 60.0) AS minutos "
+                    "FROM pedidos WHERE creado_en BETWEEN :i AND :f AND convertido_en IS NOT NULL"
+                ),
+                {"i": inicio, "f": fin},
+            )
+        ).scalar_one_or_none()
+        return {
+            "canales": [dict(f._mapping) for f in canales],
+            "top_platos": [dict(f._mapping) for f in top],
+            "ciclo_medio_min": float(ciclo) if ciclo is not None else None,
+        }
+
+    async def ingenieria_menu(self, *, dias: int = 30) -> list[dict]:
+        """Ingeniería de menú (F7): por plato CON receta — margen (precio − costo insumos, F6) ×
+        rotación (unidades pedidas en la ventana). El clásico margen×rotación del menú."""
+        filas = (
+            await self._s.execute(
+                text(
+                    "SELECT p.id, p.nombre, p.precio_venta, "
+                    "       COALESCE(SUM(COALESCE(ins.costo_promedio, ins.precio_compra, 0) * r.cantidad), 0) AS costo_plato, "
+                    "       COALESCE(( "
+                    "           SELECT sum(pi.cantidad) FROM pedido_items pi "
+                    "           JOIN pedidos pe ON pe.id = pi.pedido_id "
+                    "           WHERE pi.producto_id = p.id AND pe.estado <> 'cancelado' "
+                    "             AND pe.creado_en >= now() - make_interval(days => :dias) "
+                    "       ), 0) AS rotacion "
+                    "FROM productos p "
+                    "JOIN recetas r ON r.producto_id = p.id "
+                    "JOIN productos ins ON ins.id = r.insumo_id "
+                    "WHERE p.activo GROUP BY p.id, p.nombre, p.precio_venta ORDER BY p.nombre"
+                ),
+                {"dias": dias},
+            )
+        ).all()
+        resultado = []
+        for f in filas:
+            margen = Decimal(f.precio_venta) - Decimal(f.costo_plato)
+            resultado.append({
+                "producto_id": f.id, "nombre": f.nombre,
+                "precio_venta": f.precio_venta, "costo_plato": f.costo_plato,
+                "margen": margen, "rotacion": f.rotacion,
+                "margen_total": margen * Decimal(f.rotacion),
+            })
+        return resultado
 
     # --- recetas / BOM (F6 / ADR 0032 D9) ---------------------------------------------
     async def receta_de(self, producto_id: int) -> list[dict]:

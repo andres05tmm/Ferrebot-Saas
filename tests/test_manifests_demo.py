@@ -66,8 +66,19 @@ def test_restaurante_tiene_menu_pos_y_pedidos():
     assert {"pos", "pack_pedidos"} <= efectivas
     assert m.packs.pos is not None and len(m.packs.pos.productos) >= 25   # menú ~25 ítems
     assert m.packs.pedidos is not None and len(m.packs.pedidos.zonas) >= 1
-    # IVA de los ítems = 0 (impoconsumo aparte); el validador solo admite 0/5/19.
-    assert all(p.iva in {0, 5, 19} for p in m.packs.pos.productos)
+    # Impuestos (ADR 0032 D2): tipo 'iva' admite 0/5/19; el impoconsumo va como tipo 'inc' tarifa 8.
+    assert all(
+        (p.tipo_impuesto == "iva" and p.iva in {0, 5, 19})
+        or (p.tipo_impuesto == "inc" and p.iva == 8)
+        for p in m.packs.pos.productos
+    )
+    # Pack Restaurante (ADR 0032): la demo trae modificadores, receta, KDS y mesas.
+    con_mods = [p for p in m.packs.pos.productos if p.modificadores]
+    assert con_mods, "la demo debe traer platos con modificadores"
+    assert any(p.receta for p in m.packs.pos.productos), "la demo debe traer un plato con receta"
+    assert any(p.zona_comanda for p in m.packs.pos.productos)
+    assert len(m.packs.pedidos.mesas) >= 3
+    assert {"pack_mesas", "kds", "menu_qr", "recetas"} <= _efectivas(m)
     # pack_pedidos corre como pack con loader (config + zonas); el menú lo siembra el pack `ventas`
     # (ADR 0021: hereda el loader del catálogo; `pos` expande a la fina en el set efectivo).
     flags = {p.flag for p in packs_activos(efectivas | {"clientes", "reportes"})}

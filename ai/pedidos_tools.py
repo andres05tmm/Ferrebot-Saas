@@ -127,6 +127,50 @@ def _instruccion_transferencia(total, titular: str | None, numero: str | None) -
         return base + destino + " y te aviso apenas entre el pago. 🙌"
     return base + " y envíame el comprobante; te aviso apenas entre el pago. 🙌"
 
+async def _leer_upsell(tenant_id: int) -> str | None:
+    """Complemento a sugerir tras armar el pedido (`config_empresa.upsell_sugerencia`, F7/ADR 0032).
+
+    Es solo el NOMBRE del producto configurado por el negocio; el riel anti-alucinación está en el
+    caller: solo se sugiere si el catálogo REAL lo resuelve (precio incluido). Degrada a None.
+    """
+    from core.db.session import control_session
+    from sqlalchemy import text as _text
+
+    try:
+        async with control_session() as cs:
+            valor = (
+                await cs.execute(
+                    _text(
+                        "SELECT valor FROM config_empresa WHERE empresa_id = :e "
+                        "AND clave = 'upsell_sugerencia'"
+                    ),
+                    {"e": tenant_id},
+                )
+            ).scalar_one_or_none()
+        return (valor or "").strip() or None
+    except Exception:  # noqa: BLE001 — sin upsell el flujo sigue igual
+        return None
+
+
+async def _sugerencia_upsell(ctx: Contexto, deps: PedidosDeps) -> str:
+    """Upsell determinista-acotado (F7): 1 complemento, SOLO si existe en el catálogo real.
+
+    El nombre configurado se resuelve contra `ver_menu` (catálogo activo): si no matchea, NO se
+    sugiere nada (el bot jamás inventa productos ni promos). Devuelve "" o la coletilla lista.
+    """
+    nombre = await _leer_upsell(ctx.tenant_id)
+    if not nombre:
+        return ""
+    menu = await deps.pedidos.ver_menu(nombre, limite=1)
+    if not menu:
+        return ""
+    p = menu[0]
+    return (
+        f" Puedes ofrecer UN complemento: {p['nombre']} ({_pesos(p['precio_venta'])}) — "
+        "solo sugerirlo, sin insistir."
+    )
+
+
 _ESTADOS_LEGIBLES = {
     "recibido": "en armado (aún sin confirmar)",
     "confirmado": "confirmado — la cocina ya lo tiene",
@@ -263,6 +307,7 @@ async def _armar_pedido(
         resumen=(
             f"Pedido armado 🛒 {_resumen_pedido(pedido)} "
             "Pide la dirección, el barrio y el método de pago para confirmarlo."
+            + await _sugerencia_upsell(ctx, deps)
         ),
         evento="pedido_armado",
         idempotente="duplicada" if res.replay else "aplicada",

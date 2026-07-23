@@ -1,0 +1,4751 @@
+{
+  "global": {
+    "n": 586,
+    "ok": 400,
+    "peligrosos": 0,
+    "equivocaciones": 128,
+    "resolvio": 525,
+    "defirio": 61
+  },
+  "categorias": {
+    "fraccion_reconstruida": {
+      "n": 26,
+      "ok": 22,
+      "peligrosos": 0,
+      "equivocaciones": 0
+    },
+    "no_reconciliado": {
+      "n": 156,
+      "ok": 25,
+      "peligrosos": 0,
+      "equivocaciones": 108
+    },
+    "entero": {
+      "n": 252,
+      "ok": 245,
+      "peligrosos": 0,
+      "equivocaciones": 2
+    },
+    "mayorista": {
+      "n": 34,
+      "ok": 16,
+      "peligrosos": 0,
+      "equivocaciones": 18
+    },
+    "fraccion": {
+      "n": 111,
+      "ok": 85,
+      "peligrosos": 0,
+      "equivocaciones": 0
+    },
+    "lija_esmeril_cm": {
+      "n": 3,
+      "ok": 3,
+      "peligrosos": 0,
+      "equivocaciones": 0
+    },
+    "lija_normal_hoja": {
+      "n": 1,
+      "ok": 1,
+      "peligrosos": 0,
+      "equivocaciones": 0
+    },
+    "lija_desambiguacion": {
+      "n": 3,
+      "ok": 3,
+      "peligrosos": 0,
+      "equivocaciones": 0
+    }
+  },
+  "filas": [
+    {
+      "frase": "1/2 Thinner",
+      "categoria": "fraccion_reconstruida",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 CERRADURA DE GAVETA ECONOMICA",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 3500.00 != esperado 4000"
+    },
+    {
+      "frase": "1 Thinner",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "0.06 Thinner",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "defiere",
+      "outcome": "fail_no_registro",
+      "detalle": "esperaba venta, obtuvo 'defiere' (cobertura: la tomaría el modelo)"
+    },
+    {
+      "frase": "1 Poliuretano Negro",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "defiere",
+      "outcome": "fail_no_registro",
+      "detalle": "esperaba venta, obtuvo 'defiere' (cobertura: la tomaría el modelo)"
+    },
+    {
+      "frase": "0.06 Thinner",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "defiere",
+      "outcome": "fail_no_registro",
+      "detalle": "esperaba venta, obtuvo 'defiere' (cobertura: la tomaría el modelo)"
+    },
+    {
+      "frase": "600 TORNILLO DRYWALL 6X2",
+      "categoria": "mayorista",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Aerosol Negro",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Vinilo Davinci T1 Blanco",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 50000.00 != esperado 10000"
+    },
+    {
+      "frase": "4 Rodachina de 1-1/2 Con Frenos",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Rodachina de 1-1/2",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 broca 3/8",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Broca para Muro 1/4",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Enchufe de Caucho M",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "2 Lija N°80",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "16 TORNILLO DRYWALL 6X1-1/2",
+      "categoria": "mayorista",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 928.00 != esperado 900"
+    },
+    {
+      "frase": "3 Thinner",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "2 Lija N°150",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1/4 Thinner",
+      "categoria": "fraccion_reconstruida",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Broca para Metal 1/8",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 4000.00 != esperado 3000"
+    },
+    {
+      "frase": "70 TORNILLO DRYWALL 6X1/2",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 1750.00 != esperado 3000"
+    },
+    {
+      "frase": "0.1 Thinner",
+      "categoria": "fraccion_reconstruida",
+      "espera": "venta",
+      "got": "defiere",
+      "outcome": "fail_no_registro",
+      "detalle": "esperaba venta, obtuvo 'defiere' (cobertura: la tomaría el modelo)"
+    },
+    {
+      "frase": "1 Poliamida blanca",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "defiere",
+      "outcome": "fail_no_registro",
+      "detalle": "esperaba venta, obtuvo 'defiere' (cobertura: la tomaría el modelo)"
+    },
+    {
+      "frase": "1 Lija N°150",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "3 Lija N°80",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "2 disco carboflash",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "500 PUNTILLA 3/4\" CON CABEZA",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "48 TORNILLOS HEX 1/4X1-1/2 GALVANIZADO",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "48 TUERCA UÑA 1/4",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 7200.00 != esperado 9600"
+    },
+    {
+      "frase": "1 Brocha de 2\"",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1/4 Thinner",
+      "categoria": "fraccion_reconstruida",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Vinilo Davinci T1 Blanco",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1/2 Esmalte Blanco",
+      "categoria": "fraccion_reconstruida",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "2 Enchufe de Caucho M",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Acronal",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "8 Manguera de Jardín",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "2 Brocha de 2\"",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "5 Pita Atafacil",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Cerradura de Alcoba",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Esmalte Blanco",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 65000.00 != esperado 10000"
+    },
+    {
+      "frase": "1 Esmalte Negro",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 65000.00 != esperado 10000"
+    },
+    {
+      "frase": "1 Thinner",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 26000.00 != esperado 10000"
+    },
+    {
+      "frase": "428 TORNILLO DRYWALL 6X3",
+      "categoria": "mayorista",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1/8 Poliamida Verde",
+      "categoria": "fraccion_reconstruida",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Vinilo ICO blanco",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Pluma Plastica",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 4000.00 != esperado 5000"
+    },
+    {
+      "frase": "2 Manija Pequeña",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "0.1 Thinner",
+      "categoria": "fraccion_reconstruida",
+      "espera": "venta",
+      "got": "defiere",
+      "outcome": "fail_no_registro",
+      "detalle": "esperaba venta, obtuvo 'defiere' (cobertura: la tomaría el modelo)"
+    },
+    {
+      "frase": "200 PUNTILLA 2\" CON CABEZA",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Pegante Ceramico X bolsa",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "6 Curva Conduit",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Broca para Muro 1/4",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "6 TORNILLO DRYWALL 6X1-1/2",
+      "categoria": "mayorista",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 348.00 != esperado 1000"
+    },
+    {
+      "frase": "6 Chazo Plastico 1/4",
+      "categoria": "mayorista",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 252.00 != esperado 500"
+    },
+    {
+      "frase": "50 TORNILLO DRYWALL 6X1/2",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 1250.00 != esperado 1500"
+    },
+    {
+      "frase": "50 TORNILLO DRYWALL 6X3/4",
+      "categoria": "mayorista",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 1500.00 != esperado 2500"
+    },
+    {
+      "frase": "200 PUNTILLA 2\" SIN CABEZA",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "76.9 Tinte Rojo Ingles",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "defiere",
+      "outcome": "fail_no_registro",
+      "detalle": "esperaba venta, obtuvo 'defiere' (cobertura: la tomaría el modelo)"
+    },
+    {
+      "frase": "1 BISAGRA DE PARCHE",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Destornillador de estría grueso",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Latecol",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 13000.00 != esperado 10000"
+    },
+    {
+      "frase": "2 Carbonato X 25 Kg",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 52000.00 != esperado 105900"
+    },
+    {
+      "frase": "2 Acronal",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "2 Brocha de 4\"",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Vinilo Davinci T2 Blanco",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1/2 Vinilo Davinci T2 Azul Concentrado",
+      "categoria": "fraccion_reconstruida",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1/4 Vinilo Davinci T2 Naranja",
+      "categoria": "fraccion_reconstruida",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "0.06 colbon",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "defiere",
+      "outcome": "fail_no_registro",
+      "detalle": "esperaba venta, obtuvo 'defiere' (cobertura: la tomaría el modelo)"
+    },
+    {
+      "frase": "133.3 PUNTILLA 1\" SIN CABEZA",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "defiere",
+      "outcome": "fail_no_registro",
+      "detalle": "esperaba venta, obtuvo 'defiere' (cobertura: la tomaría el modelo)"
+    },
+    {
+      "frase": "500 PUNTILLA 1\" SIN CABEZA",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1/4 colbon",
+      "categoria": "fraccion_reconstruida",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "500 PUNTILLA 3/4\" SIN CABEZA",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Cerradura de Alcoba",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Cerradura de Alcoba",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "100 Lija Esmeril N°36",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1/2 Thinner",
+      "categoria": "fraccion_reconstruida",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 BISAGRAS 2X2 PAR",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 2500.00 != esperado 3000"
+    },
+    {
+      "frase": "1 SinteSolda",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "30 Lija Esmeril N°60",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "36 TORNILLO DRYWALL 6X1-1/2",
+      "categoria": "mayorista",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 2088.00 != esperado 2000"
+    },
+    {
+      "frase": "1 Cuñete Vinilo Tipo 1 Davinci",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 220000.00 != esperado 258000"
+    },
+    {
+      "frase": "2 Acronal",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Vinilo Davinci T1 Thai",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Brocha de 4\"",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Rodillo Convencional",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Esmalte Negro",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 65000.00 != esperado 10000"
+    },
+    {
+      "frase": "1/4 COLBON",
+      "categoria": "fraccion_reconstruida",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "500 PUNTILLA 2\" SIN CABEZA",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "100 TORNILLO DRYWALL 6X2",
+      "categoria": "mayorista",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 5000.00 != esperado 6000"
+    },
+    {
+      "frase": "1 Vinilo Davinci T1 Rosa Fuerte",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1/2 Acronal",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 7000.00 != esperado 10000"
+    },
+    {
+      "frase": "1 Carbonato X 25 Kg",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Acronal",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Brocha de 4\"",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1/4 Latecol",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "defiere",
+      "outcome": "fail_no_registro",
+      "detalle": "esperaba venta, obtuvo 'defiere' (cobertura: la tomaría el modelo)"
+    },
+    {
+      "frase": "1 Hilo Nailo",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "2 Lija N°150",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1/2 Thinner",
+      "categoria": "fraccion_reconstruida",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "36 TORNILLO DRYWALL 10X4",
+      "categoria": "mayorista",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "24 TORNILLO DRYWALL 8X3",
+      "categoria": "mayorista",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 2016.00 != esperado 2500"
+    },
+    {
+      "frase": "1 Vinilo Davinci T1 Blanco",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1/4 Vinilo Davinci T1 Rosa Fuerte",
+      "categoria": "fraccion_reconstruida",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Lija N°150",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "2 Brocha de 4\"",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Removedor",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 80000.00 != esperado 15000"
+    },
+    {
+      "frase": "76.9 Tinte Negro",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "defiere",
+      "outcome": "fail_no_registro",
+      "detalle": "esperaba venta, obtuvo 'defiere' (cobertura: la tomaría el modelo)"
+    },
+    {
+      "frase": "3 Pita Atafacil",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1/4 Esmalte Blanco",
+      "categoria": "fraccion_reconstruida",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "0.1 Thinner",
+      "categoria": "fraccion_reconstruida",
+      "espera": "venta",
+      "got": "defiere",
+      "outcome": "fail_no_registro",
+      "detalle": "esperaba venta, obtuvo 'defiere' (cobertura: la tomaría el modelo)"
+    },
+    {
+      "frase": "1 Plato para Disco de Pulidora",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 16000.00 != esperado 14000"
+    },
+    {
+      "frase": "12 TORNILLO DRYWALL 6X1/2",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "24 TORNILLO DRYWALL 8X3/4",
+      "categoria": "mayorista",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 816.00 != esperado 900"
+    },
+    {
+      "frase": "12 TORNILLO DRYWALL 6X1-1/2",
+      "categoria": "mayorista",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 696.00 != esperado 800"
+    },
+    {
+      "frase": "1/8 Thinner",
+      "categoria": "fraccion_reconstruida",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "4 Manija Pequeña",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "0.1 Thinner",
+      "categoria": "fraccion_reconstruida",
+      "espera": "venta",
+      "got": "defiere",
+      "outcome": "fail_no_registro",
+      "detalle": "esperaba venta, obtuvo 'defiere' (cobertura: la tomaría el modelo)"
+    },
+    {
+      "frase": "1 Boxer X Botella 375cm³",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "200 Lija Esmeril N°80",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "15 Lija N°220",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Racor de Manguera",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "80 TORNILLO DRYWALL 6X2",
+      "categoria": "mayorista",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Vinilo Davinci T2 Curuba",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1/2 COLBON",
+      "categoria": "fraccion_reconstruida",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 paquete de zunchos",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "8 Tornillo Estufa 5/32 X 1 1/2",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 1200.00 != esperado 2000"
+    },
+    {
+      "frase": "1/2 Thinner",
+      "categoria": "fraccion_reconstruida",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Cuñete Vinilo Tipo 1 Davinci",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 220000.00 != esperado 240000"
+    },
+    {
+      "frase": "1/8 COLBON",
+      "categoria": "fraccion_reconstruida",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Disco de Corte Metal 4\"",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "2 Vinilo ICO blanco",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 110000.00 != esperado 100000"
+    },
+    {
+      "frase": "1 Lija N°150",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "100 Chazo Plastico 1/4",
+      "categoria": "mayorista",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "100 TORNILLO DRYWALL 6X1",
+      "categoria": "mayorista",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 4000.00 != esperado 6000"
+    },
+    {
+      "frase": "1 Broca para Muro 1/4",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 5500.00 != esperado 5000"
+    },
+    {
+      "frase": "1 Aerosol Blanco",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Base Catalizada Blanco",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 80000.00 != esperado 10000"
+    },
+    {
+      "frase": "1/8 COLBON",
+      "categoria": "fraccion_reconstruida",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "4 Tirador de boton",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 PUNTILLA 1\" CON CABEZA",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 14.00 != esperado 2000"
+    },
+    {
+      "frase": "2 BISAGRA 3X3 PAR",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1/4 Esmalte Negro",
+      "categoria": "fraccion_reconstruida",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1/2 Esmalte Blanco",
+      "categoria": "fraccion_reconstruida",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Vinilo ICO Blanco",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 55000.00 != esperado 28000"
+    },
+    {
+      "frase": "2 Brocha de 1\"",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Brocha de 2.5\"",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Thinner",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 26000.00 != esperado 16000"
+    },
+    {
+      "frase": "1 1/2 Cuñete Vinilo T3 Blanco",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "defiere",
+      "outcome": "fail_no_registro",
+      "detalle": "esperaba venta, obtuvo 'defiere' (cobertura: la tomaría el modelo)"
+    },
+    {
+      "frase": "2 Union PVC 1/2",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Pegante PVC",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Codo Galvanizado 1/2",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "3 Adaptador Macho 1/2",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 INTERRUPTOR SENCILLO",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 7000.00 != esperado 5000"
+    },
+    {
+      "frase": "1 Brocha de 2\"",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 rally",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "160 Tornillo Tirafondo 3/4",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Metro de 5 Economico",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Brocha de 3\"",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1/4 Poliamida blanca",
+      "categoria": "fraccion_reconstruida",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1/8 Thinner",
+      "categoria": "fraccion_reconstruida",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Aerosol Negro",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "3 WAYPER BLANCO UNIDAD",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 2100.00 != esperado 2000"
+    },
+    {
+      "frase": "2 BISAGRA 3X3 PAR",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Acronal",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1/4 Esmalte Blanco",
+      "categoria": "fraccion",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1/2 Esmalte Blanco",
+      "categoria": "fraccion",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "100 TORNILLO DRYWALL 6X1/2",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1/4 Esmalte Blanco",
+      "categoria": "fraccion",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Thinner",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Thinner",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "2 BISAGRA 3X3 PAR",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "100 TORNILLO DRYWALL 6X2",
+      "categoria": "mayorista",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1/4 Vinilo Davinci T1 Blanco",
+      "categoria": "fraccion",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1/2 Vinilo Davinci T1 Blanco Almendra",
+      "categoria": "fraccion",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "100 TORNILLO DRYWALL 6X2",
+      "categoria": "mayorista",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "2 1/2 Acronal",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Acronal",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Lija N°150",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Acronal",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 1/4 Hueso Duro",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "defiere",
+      "outcome": "fail_no_registro",
+      "detalle": "esperaba venta, obtuvo 'defiere' (cobertura: la tomaría el modelo)"
+    },
+    {
+      "frase": "1/2 Thinner",
+      "categoria": "fraccion",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "4 Rodachina de 2",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Hoja De Segueta Nichelson",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "2 Acronal",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Esmalte Verde",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "3 Yeso",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Thinner",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "10 CLAVO DE ACERO 1-1/2\"",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "12 TORNILLO DRYWALL 6X1-1/2",
+      "categoria": "mayorista",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "12 ARANDELA GALV. 5/32",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 600.00 != esperado 700"
+    },
+    {
+      "frase": "1/8 Laca Caramelo Catalizada",
+      "categoria": "fraccion",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1/8 Vinilo Davinci T1 Blanco",
+      "categoria": "fraccion",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Lija N°120",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "0.1 Aerosol Blanco",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "defiere",
+      "outcome": "fail_no_registro",
+      "detalle": "esperaba venta, obtuvo 'defiere' (cobertura: la tomaría el modelo)"
+    },
+    {
+      "frase": "1 Pluma Plastica",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 4000.00 != esperado 5000"
+    },
+    {
+      "frase": "1 Rollo Teflon",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1/8 Thinner",
+      "categoria": "fraccion",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1/8 Poliamida Negra",
+      "categoria": "fraccion",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "0.1 Thinner",
+      "categoria": "fraccion",
+      "espera": "venta",
+      "got": "defiere",
+      "outcome": "fail_no_registro",
+      "detalle": "esperaba venta, obtuvo 'defiere' (cobertura: la tomaría el modelo)"
+    },
+    {
+      "frase": "1 cepillo de acero",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Brocha de 1\"",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1/2 Esmalte 3 En 1 Blanco davinci",
+      "categoria": "fraccion",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "0.1 Thinner",
+      "categoria": "fraccion",
+      "espera": "venta",
+      "got": "defiere",
+      "outcome": "fail_no_registro",
+      "detalle": "esperaba venta, obtuvo 'defiere' (cobertura: la tomaría el modelo)"
+    },
+    {
+      "frase": "2 Brocha de 1\"",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "0.1 Thinner",
+      "categoria": "fraccion",
+      "espera": "venta",
+      "got": "defiere",
+      "outcome": "fail_no_registro",
+      "detalle": "esperaba venta, obtuvo 'defiere' (cobertura: la tomaría el modelo)"
+    },
+    {
+      "frase": "1 Palustre #9",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "2 CINTA AISLANTE",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 8000.00 != esperado 4000"
+    },
+    {
+      "frase": "1/2 SOLDADURA 60/11",
+      "categoria": "fraccion",
+      "espera": "venta",
+      "got": "defiere",
+      "outcome": "fail_no_registro",
+      "detalle": "esperaba venta, obtuvo 'defiere' (cobertura: la tomaría el modelo)"
+    },
+    {
+      "frase": "1 1/2 Cuñete Vinilo T1 Blanco",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "defiere",
+      "outcome": "fail_no_registro",
+      "detalle": "esperaba venta, obtuvo 'defiere' (cobertura: la tomaría el modelo)"
+    },
+    {
+      "frase": "1 Vinilo Davinci T1 Palo de Rosa",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Rodillo Convencional",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Brocha de 3\"",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Disco de corte 3-1/2 Hierro",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Disco de Corte Segmentado 4\"",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Rollo Teflon",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Llave de ducha (lavacabeza)",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Vinilo Davinci T1 Blanco",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 WAYPER BLANCO",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "items emitidos [(125, Decimal('1'))] != esperados [(123, Decimal('1'))]"
+    },
+    {
+      "frase": "1 Cerradura de Alcoba",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 14000.00 != esperado 13000"
+    },
+    {
+      "frase": "1/4 Vinilo Davinci T2 Gris Baslto",
+      "categoria": "fraccion",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Aerosol Negro",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Lija N°150",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "8 TUERCAS HEX 3/8 GALVANIZADA",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 3200.00 != esperado 1200"
+    },
+    {
+      "frase": "8 ARANDELAS HEX 3/4 GALBANIZADA",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 6400.00 != esperado 1200"
+    },
+    {
+      "frase": "100 TORNILLO DRYWALL 6X1",
+      "categoria": "mayorista",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 4000.00 != esperado 5000"
+    },
+    {
+      "frase": "100 TORNILLO DRYWALL 6X1",
+      "categoria": "mayorista",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 4000.00 != esperado 5000"
+    },
+    {
+      "frase": "3 Acronal",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1/2 Esmalte Blanco",
+      "categoria": "fraccion",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "10 TORNILLO DRYWALL 6X2",
+      "categoria": "mayorista",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 1/2 Cuñete Vinilo T1 Blanco",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "defiere",
+      "outcome": "fail_no_registro",
+      "detalle": "esperaba venta, obtuvo 'defiere' (cobertura: la tomaría el modelo)"
+    },
+    {
+      "frase": "1 Esmalte 3 En 1 Blanco davinci",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 1/2 Thinner",
+      "categoria": "fraccion",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1/2 Vinilo Davinci T1 Palo de Rosa",
+      "categoria": "fraccion",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1/2 Vinilo Davinci T1 Blanco",
+      "categoria": "fraccion",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1/2 Esmalte Blanco",
+      "categoria": "fraccion",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 1/4 Hueso Duro",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "defiere",
+      "outcome": "fail_no_registro",
+      "detalle": "esperaba venta, obtuvo 'defiere' (cobertura: la tomaría el modelo)"
+    },
+    {
+      "frase": "1 Aerografo",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Balde Concretero",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "2 Atafacil",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "2 WAYPER BLANCO UNIDAD",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 1400.00 != esperado 2000"
+    },
+    {
+      "frase": "1 Boxer X Botella 60cm³",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 MASILLA PLASTICA 1/16",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Manto Frío",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 26000.00 != esperado 260000"
+    },
+    {
+      "frase": "2 CINTA AISLANTE",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 8000.00 != esperado 10000"
+    },
+    {
+      "frase": "5 GUANTES DE INGENIERO",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 30000.00 != esperado 25000"
+    },
+    {
+      "frase": "1/4 Esmalte Dorado",
+      "categoria": "fraccion",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1/4 Varsol",
+      "categoria": "fraccion",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Boxer X Botella 60cm³",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "12 Lija Esmeril N°60",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 2400.00 != esperado 2500"
+    },
+    {
+      "frase": "1/2 Thinner",
+      "categoria": "fraccion",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1/4 Esmalte Amarillo",
+      "categoria": "fraccion",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "0.1 Thinner",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "defiere",
+      "outcome": "fail_no_registro",
+      "detalle": "esperaba venta, obtuvo 'defiere' (cobertura: la tomaría el modelo)"
+    },
+    {
+      "frase": "1 Brocha de 3\"",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1/2 Thinner",
+      "categoria": "fraccion",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "3/4 MASILLA PLASTICA 1/16",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "defiere",
+      "outcome": "fail_no_registro",
+      "detalle": "esperaba venta, obtuvo 'defiere' (cobertura: la tomaría el modelo)"
+    },
+    {
+      "frase": "1/2 Thinner",
+      "categoria": "fraccion",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "15 Lija Esmeril N°36",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1/2 Esmalte Negro",
+      "categoria": "fraccion",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "4 Lija N°120",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "2 Brocha de 3\"",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Thinner",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1/4 Removedor",
+      "categoria": "fraccion",
+      "espera": "venta",
+      "got": "defiere",
+      "outcome": "fail_no_registro",
+      "detalle": "esperaba venta, obtuvo 'defiere' (cobertura: la tomaría el modelo)"
+    },
+    {
+      "frase": "1/4 COLBON",
+      "categoria": "fraccion",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1/4 Vinilo Davinci T1 Negro",
+      "categoria": "fraccion",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Sifon Manguera de Lavaplatos",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 15000.00 != esperado 8000"
+    },
+    {
+      "frase": "1 Cemento Blanco",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Vinilo Davinci T1 Blanco",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 CUÑETE VINILO T 2",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "3 Cerradura de Alcoba",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1/2 Thinner",
+      "categoria": "fraccion",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "5 BISAGRA 3X3 PAR",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "500 PUNTILLA 2\" CON CABEZA",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Vinilo Davinci T2 Rojo Colonial",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Vinilo Davinci T2 Blanco",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Acronal",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 TORNILLOS HEX 5/16X5 GALVANIZADO",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 1500.00 != esperado 1300"
+    },
+    {
+      "frase": "1 Lija N°150",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Vinilo Davinci T1 Blanco",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "3 Cemento Blanco",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Balde Concretero",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 5000.00 != esperado 5800"
+    },
+    {
+      "frase": "48 TORNILLO DRYWALL 6X1",
+      "categoria": "mayorista",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1/4 COLBON",
+      "categoria": "fraccion",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1/2 Vinilo Davinci T2 Oceanico",
+      "categoria": "fraccion",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Brocha de 3\"",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "2 Carbonato x Kg",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1/8 COLBON",
+      "categoria": "fraccion",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "233.3 Puntilla 1\" Con Cabeza",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "defiere",
+      "outcome": "fail_no_registro",
+      "detalle": "esperaba venta, obtuvo 'defiere' (cobertura: la tomaría el modelo)"
+    },
+    {
+      "frase": "1 Broca para Metal 3/16",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "12 Chazo Plastico 3/8",
+      "categoria": "mayorista",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 1500.00 != esperado 1000"
+    },
+    {
+      "frase": "12 TORNILLO DRYWALL 6X2-1/2",
+      "categoria": "mayorista",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 900.00 != esperado 1000"
+    },
+    {
+      "frase": "1/4 COLBON",
+      "categoria": "fraccion",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "2 Cerradura de Alcoba",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 28000.00 != esperado 24000"
+    },
+    {
+      "frase": "1/8 COLBON",
+      "categoria": "fraccion",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Talco",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 disco carboflash",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "550 PUNTILLA 1-1/2\" SIN CABEZA",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Thinner",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Thinner",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Brocha de 3\"",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "6 Base Catalizada Blanco Hueso",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 TORNILLO DRYWALL 6X3/4",
+      "categoria": "mayorista",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "50 TORNILLO DRYWALL 10X2-1/2",
+      "categoria": "mayorista",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 8000.00 != esperado 2000"
+    },
+    {
+      "frase": "1 Destornillador de estrella Delgado",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 6000.00 != esperado 7000"
+    },
+    {
+      "frase": "1 Llave de ducha (lavacabeza)",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 15000.00 != esperado 18000"
+    },
+    {
+      "frase": "1/2 Vinilo Davinci T1 Rojo Vivo",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 26000.00 != esperado 21000"
+    },
+    {
+      "frase": "1 Cinta Pele M",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "10 Cabulla XS",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "2 Manija Pequeña",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "150 TORNILLO DRYWALL 6X1-1/2",
+      "categoria": "mayorista",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 6750.00 != esperado 7000"
+    },
+    {
+      "frase": "1/2 Thinner",
+      "categoria": "fraccion",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1/8 Sellador Corriente",
+      "categoria": "fraccion",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Cinta Enmascarar de 1/2 X 20M",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Vinilico BLANCO",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 65000.00 != esperado 55000"
+    },
+    {
+      "frase": "1 Brocha de 4\"",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1/2 Thinner",
+      "categoria": "fraccion",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "0.063 Esmalte Rojo",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "defiere",
+      "outcome": "fail_no_registro",
+      "detalle": "esperaba venta, obtuvo 'defiere' (cobertura: la tomaría el modelo)"
+    },
+    {
+      "frase": "0.1 Thinner",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "defiere",
+      "outcome": "fail_no_registro",
+      "detalle": "esperaba venta, obtuvo 'defiere' (cobertura: la tomaría el modelo)"
+    },
+    {
+      "frase": "1 Lija N°150",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "60 Lija Esmeril N°36",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 13200.00 != esperado 14000"
+    },
+    {
+      "frase": "35 TORNILLO DRYWALL 6X1-1/2",
+      "categoria": "mayorista",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 2030.00 != esperado 2000"
+    },
+    {
+      "frase": "1/2 Poliamida Gris",
+      "categoria": "fraccion",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1/4 Thinner",
+      "categoria": "fraccion",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Lija N°180",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 1/2 Acronal",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Brocha de 2\"",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1/2 COLBON",
+      "categoria": "fraccion",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1/2 Thinner",
+      "categoria": "fraccion",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1/4 Esmalte Amarillo",
+      "categoria": "fraccion",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "0.1 Thinner",
+      "categoria": "fraccion",
+      "espera": "venta",
+      "got": "defiere",
+      "outcome": "fail_no_registro",
+      "detalle": "esperaba venta, obtuvo 'defiere' (cobertura: la tomaría el modelo)"
+    },
+    {
+      "frase": "1 Brocha de 1.5\"",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "0.063 Esmalte 3 En 1 Aluminio",
+      "categoria": "fraccion",
+      "espera": "venta",
+      "got": "defiere",
+      "outcome": "fail_no_registro",
+      "detalle": "esperaba venta, obtuvo 'defiere' (cobertura: la tomaría el modelo)"
+    },
+    {
+      "frase": "0.1 Thinner",
+      "categoria": "fraccion",
+      "espera": "venta",
+      "got": "defiere",
+      "outcome": "fail_no_registro",
+      "detalle": "esperaba venta, obtuvo 'defiere' (cobertura: la tomaría el modelo)"
+    },
+    {
+      "frase": "2.063 Base catalizada blanco",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "defiere",
+      "outcome": "fail_no_registro",
+      "detalle": "esperaba venta, obtuvo 'defiere' (cobertura: la tomaría el modelo)"
+    },
+    {
+      "frase": "1 Lija N°100",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1/8 Esmalte Blanco",
+      "categoria": "fraccion",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Aerosol Blanco",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "0.063 Sellador Corriente",
+      "categoria": "fraccion",
+      "espera": "venta",
+      "got": "defiere",
+      "outcome": "fail_no_registro",
+      "detalle": "esperaba venta, obtuvo 'defiere' (cobertura: la tomaría el modelo)"
+    },
+    {
+      "frase": "0.1 Thinner",
+      "categoria": "fraccion",
+      "espera": "venta",
+      "got": "defiere",
+      "outcome": "fail_no_registro",
+      "detalle": "esperaba venta, obtuvo 'defiere' (cobertura: la tomaría el modelo)"
+    },
+    {
+      "frase": "1 Brocha de 1.5\"",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "0.063 Esmalte 3 En 1 Aluminio",
+      "categoria": "fraccion",
+      "espera": "venta",
+      "got": "defiere",
+      "outcome": "fail_no_registro",
+      "detalle": "esperaba venta, obtuvo 'defiere' (cobertura: la tomaría el modelo)"
+    },
+    {
+      "frase": "0.1 Thinner",
+      "categoria": "fraccion",
+      "espera": "venta",
+      "got": "defiere",
+      "outcome": "fail_no_registro",
+      "detalle": "esperaba venta, obtuvo 'defiere' (cobertura: la tomaría el modelo)"
+    },
+    {
+      "frase": "1 LIJA N° 1000",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1/8 Esmalte Blanco",
+      "categoria": "fraccion",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Aerosol Blanco",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "0.063 Sellador Corriente",
+      "categoria": "fraccion",
+      "espera": "venta",
+      "got": "defiere",
+      "outcome": "fail_no_registro",
+      "detalle": "esperaba venta, obtuvo 'defiere' (cobertura: la tomaría el modelo)"
+    },
+    {
+      "frase": "0.1 Thinner",
+      "categoria": "fraccion",
+      "espera": "venta",
+      "got": "defiere",
+      "outcome": "fail_no_registro",
+      "detalle": "esperaba venta, obtuvo 'defiere' (cobertura: la tomaría el modelo)"
+    },
+    {
+      "frase": "1 Brocha de 1.5\"",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "45 Lija Esmeril N°36",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Brocha de 1\"",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1/8 Poliamida blanca",
+      "categoria": "fraccion",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "0.1 Thinner",
+      "categoria": "fraccion",
+      "espera": "venta",
+      "got": "defiere",
+      "outcome": "fail_no_registro",
+      "detalle": "esperaba venta, obtuvo 'defiere' (cobertura: la tomaría el modelo)"
+    },
+    {
+      "frase": "1 Aerosol Blanco",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "4 Rodachina de 2",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 LLAVE AJUSTABLE DE EXPANSION",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 11000.00 != esperado 15000"
+    },
+    {
+      "frase": "1/4 Poliamida Gris",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 45000.00 != esperado 50000"
+    },
+    {
+      "frase": "1 Brocha de 2\"",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1/4 Thinner",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 8000.00 != esperado 10000"
+    },
+    {
+      "frase": "0.063 Anticorrosivo Negro",
+      "categoria": "fraccion",
+      "espera": "venta",
+      "got": "defiere",
+      "outcome": "fail_no_registro",
+      "detalle": "esperaba venta, obtuvo 'defiere' (cobertura: la tomaría el modelo)"
+    },
+    {
+      "frase": "1 Brocha de 1\"",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1/8 MASILLA PLASTICA 1/16",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "defiere",
+      "outcome": "fail_no_registro",
+      "detalle": "esperaba venta, obtuvo 'defiere' (cobertura: la tomaría el modelo)"
+    },
+    {
+      "frase": "1 Lija N°150",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "500 PUNTILLA 2\" CON CABEZA",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Vinilo Davinci T2 Lila",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Rodillo Convencional",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 CUÑETE VINILO T 2",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Acronal",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "3 BISAGRA 3X3 PAR",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 13500.00 != esperado 7000"
+    },
+    {
+      "frase": "1/8 Laca Negra Catalizada",
+      "categoria": "fraccion",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Cuñete Estuco para Exterior Pintuco",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Aerosol Blanco",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Acronal",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 CUÑETE VINILO ICO PINTUCO",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 230000.00 != esperado 240000"
+    },
+    {
+      "frase": "3 Vinilico BLANCO",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 195000.00 != esperado 180000"
+    },
+    {
+      "frase": "1/2 Sellador Corriente",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 33000.00 != esperado 35000"
+    },
+    {
+      "frase": "300 TORNILLO DRYWALL 6X2",
+      "categoria": "mayorista",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "2 Talco",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "10 Lija N°150",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "4 PUNTA ESTRIA",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Rodillo Convencional",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "500 PUNTILLA 1\" CON CABEZA",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1/8 COLBON",
+      "categoria": "fraccion",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1/2 Thinner",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 13000.00 != esperado 12000"
+    },
+    {
+      "frase": "1/4 Esmalte Verde",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 17000.00 != esperado 18000"
+    },
+    {
+      "frase": "1 Brocha de 1\"",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1/2 WAYPER BLANCO",
+      "categoria": "fraccion",
+      "espera": "venta",
+      "got": "defiere",
+      "outcome": "fail_no_registro",
+      "detalle": "esperaba venta, obtuvo 'defiere' (cobertura: la tomaría el modelo)"
+    },
+    {
+      "frase": "3 Rodachina de 1-1/2",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "2 BISAGRA DE PARCHE",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Rodillo Convencional",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1/4 Thinner",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 8000.00 != esperado 10000"
+    },
+    {
+      "frase": "1/2 Acronal",
+      "categoria": "fraccion",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "0.1 Thinner",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "defiere",
+      "outcome": "fail_no_registro",
+      "detalle": "esperaba venta, obtuvo 'defiere' (cobertura: la tomaría el modelo)"
+    },
+    {
+      "frase": "1/2 Thinner",
+      "categoria": "fraccion",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "4 Omega Drywall",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 12000.00 != esperado 18000"
+    },
+    {
+      "frase": "4 Angulos Drywall",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 18000.00 != esperado 12000"
+    },
+    {
+      "frase": "1 Silicona X Tubo",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "2 Manto Frío",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1/8 Anticorrosivo Negro",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 9000.00 != esperado 8000"
+    },
+    {
+      "frase": "0.1 Thinner",
+      "categoria": "fraccion",
+      "espera": "venta",
+      "got": "defiere",
+      "outcome": "fail_no_registro",
+      "detalle": "esperaba venta, obtuvo 'defiere' (cobertura: la tomaría el modelo)"
+    },
+    {
+      "frase": "1 Disco de Corte Metal 7\"",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Yeso",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1/2 Thinner",
+      "categoria": "fraccion",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1/4 Laca CorrienteTransparente",
+      "categoria": "fraccion",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "10 CLAVO DE ACERO 1-1/2\"",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1/2 Varsol",
+      "categoria": "fraccion",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "0.1 Thinner",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "defiere",
+      "outcome": "fail_no_registro",
+      "detalle": "esperaba venta, obtuvo 'defiere' (cobertura: la tomaría el modelo)"
+    },
+    {
+      "frase": "1/8 Anticorrosivo Negro",
+      "categoria": "fraccion",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1/8 Anticorrosivo Negro",
+      "categoria": "fraccion",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Brocha de 1\"",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Disco de Corte Metal 7\"",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "2 Exacto Economico",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 COLBON",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 40000.00 != esperado 60000"
+    },
+    {
+      "frase": "1 WAYPER DE COLOR",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "items emitidos [(126, Decimal('1'))] != esperados [(124, Decimal('1'))]"
+    },
+    {
+      "frase": "1 WAYPER DE COLOR",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "items emitidos [(126, Decimal('1'))] != esperados [(124, Decimal('1'))]"
+    },
+    {
+      "frase": "1 Broca para Metal 3/16",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1/8 Laca Caramelo Catalizada",
+      "categoria": "fraccion",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1/8 Laca Blanca Catalizada",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 10000.00 != esperado 9000"
+    },
+    {
+      "frase": "0.1 Thinner",
+      "categoria": "fraccion",
+      "espera": "venta",
+      "got": "defiere",
+      "outcome": "fail_no_registro",
+      "detalle": "esperaba venta, obtuvo 'defiere' (cobertura: la tomaría el modelo)"
+    },
+    {
+      "frase": "500 PUNTILLA 3\" CON CABEZA",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1/2 Thinner",
+      "categoria": "fraccion",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1/8 Vinilo Davinci T1 Azul Milano",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 9000.00 != esperado 8000"
+    },
+    {
+      "frase": "2 Racor de Manguera",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1/2 Thinner",
+      "categoria": "fraccion",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "10 boton de madera",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1/4 Esmalte Blanco",
+      "categoria": "fraccion",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1/8 Esmalte Negro",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 9000.00 != esperado 10000"
+    },
+    {
+      "frase": "1/2 Thinner",
+      "categoria": "fraccion",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 LIJA N° 1000",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Lija N°180",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Lija N°180",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "4 Manguera de 1/2",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 6800.00 != esperado 4000"
+    },
+    {
+      "frase": "0.063 Laca Caramelo Catalizada",
+      "categoria": "fraccion",
+      "espera": "venta",
+      "got": "defiere",
+      "outcome": "fail_no_registro",
+      "detalle": "esperaba venta, obtuvo 'defiere' (cobertura: la tomaría el modelo)"
+    },
+    {
+      "frase": "25 Talco",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 50000.00 != esperado 30000"
+    },
+    {
+      "frase": "1/2 Esmalte Blanco",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 33000.00 != esperado 35000"
+    },
+    {
+      "frase": "1/4 Thinner",
+      "categoria": "fraccion",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Brocha de 2.5\"",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Brocha de 1\"",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Rollo Teflon",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1/8 Laca Blanca Catalizada",
+      "categoria": "fraccion",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Brocha de 1\"",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "2 Cuña de 40 Amp",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 36000.00 != esperado 28000"
+    },
+    {
+      "frase": "1 Vinilo Davinci T3 Azul Cielo",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "500 PUNTILLA 2-1/2\" CON CABEZA",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Par de Rieles de 50 cm",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1/4 Thinner",
+      "categoria": "fraccion",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "6 Laca Catalizada Beige",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "3 Cemento Blanco",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Thinner",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Brocha de 2\"",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Rodillo Convencional",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1/2 Esmalte Blanco",
+      "categoria": "fraccion",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "3/4 Vinilo Davinci T2 Blanco",
+      "categoria": "fraccion",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1/4 Thinner",
+      "categoria": "fraccion",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Thinner",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Lija N°80",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "6 TORNILLO DRYWALL 6X2",
+      "categoria": "mayorista",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Acronal",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1/4 Thinner",
+      "categoria": "fraccion",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "2 Acronal",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "6 Laca Catalizada Beige",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "2 Cemento Blanco",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "6 Laca Catalizada Beige",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1076.9 Tinte Miel",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "defiere",
+      "outcome": "fail_no_registro",
+      "detalle": "esperaba venta, obtuvo 'defiere' (cobertura: la tomaría el modelo)"
+    },
+    {
+      "frase": "1/4 Laca transparente Catalizada",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 17000.00 != esperado 18000"
+    },
+    {
+      "frase": "1/4 Laca transparente Catalizada",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 17000.00 != esperado 18000"
+    },
+    {
+      "frase": "200 Lija Esmeril N°80",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 40000.00 != esperado 65000"
+    },
+    {
+      "frase": "2 CERRADURA DE GAVETA GATO",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 16000.00 != esperado 24000"
+    },
+    {
+      "frase": "1 Cerradura de Alcoba",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 14000.00 != esperado 37000"
+    },
+    {
+      "frase": "6 BISAGRA 3X3 ACERO INOX",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 90000.00 != esperado 66000"
+    },
+    {
+      "frase": "6 Cerrojo Xunidad",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "200 Lija Esmeril N°80",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 40000.00 != esperado 65000"
+    },
+    {
+      "frase": "1 Cerradura de Alcoba",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 14000.00 != esperado 37000"
+    },
+    {
+      "frase": "2 CERRADURA DE GAVETA GATO",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 16000.00 != esperado 24000"
+    },
+    {
+      "frase": "6 BISAGRA 3X3 ACERO INOX",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 90000.00 != esperado 66000"
+    },
+    {
+      "frase": "6 Cerrojo Xunidad",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Laca Caramelo Catalizada",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Racor de Manguera",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Abrazadera plastica negra 2 mm x 4.8",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Rollo Teflon",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1/8 Vinilo Davinci T1 Verde Primaveral",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 9000.00 != esperado 8000"
+    },
+    {
+      "frase": "24 Tornillo de Lámina 8x3/4",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 1992.00 != esperado 9600"
+    },
+    {
+      "frase": "1 Talco",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "100 TORNILLO DRYWALL 6X1-1/2",
+      "categoria": "mayorista",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 4500.00 != esperado 5000"
+    },
+    {
+      "frase": "100 Lija Esmeril N°60",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Boxer X Botella",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 11000.00 != esperado 12000"
+    },
+    {
+      "frase": "1/2 Thinner",
+      "categoria": "fraccion",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1/8 Thinner",
+      "categoria": "fraccion",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Balde Concretero",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 5000.00 != esperado 7000"
+    },
+    {
+      "frase": "6 Laca Catalizada Beige",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "4 TORNILLOS HEX 3/8X5 GALBANIZADO",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "2 Thinner",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 52000.00 != esperado 50000"
+    },
+    {
+      "frase": "1 Base catalizada blanco",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 80000.00 != esperado 100000"
+    },
+    {
+      "frase": "15 Lija Esmeril N°36",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "50 TORNILLO DRYWALL 6X1/2",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 1250.00 != esperado 3000"
+    },
+    {
+      "frase": "1/4 Thinner",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 8000.00 != esperado 10000"
+    },
+    {
+      "frase": "1/8 Anticorrosivo Rojo",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 9000.00 != esperado 10000"
+    },
+    {
+      "frase": "1/8 Laca CorrienteTransparente",
+      "categoria": "fraccion",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 1/2 Thinner",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 39000.00 != esperado 45000"
+    },
+    {
+      "frase": "1 Sifón de Lavamanos",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Sifon Manguera de Lavaplatos",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 CERRADURA PP KINGLOCK",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 40000.00 != esperado 45000"
+    },
+    {
+      "frase": "1 Manija Pequeña",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 2000.00 != esperado 8000"
+    },
+    {
+      "frase": "1 Brocha de 1\"",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "3 Thinner",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 78000.00 != esperado 76000"
+    },
+    {
+      "frase": "1 Sellador Corriente",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 65000.00 != esperado 63000"
+    },
+    {
+      "frase": "1 Lija N°150",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Acronal",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Atafacil",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1/2 Thinner",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 13000.00 != esperado 18000"
+    },
+    {
+      "frase": "1/2 WAYPER DE COLOR",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "defiere",
+      "outcome": "fail_no_registro",
+      "detalle": "esperaba venta, obtuvo 'defiere' (cobertura: la tomaría el modelo)"
+    },
+    {
+      "frase": "1 exacto de acero",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 10000.00 != esperado 7000"
+    },
+    {
+      "frase": "1 BISAGRA 3X3 PAR",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "0.063 Laca CorrienteTransparente",
+      "categoria": "fraccion",
+      "espera": "venta",
+      "got": "defiere",
+      "outcome": "fail_no_registro",
+      "detalle": "esperaba venta, obtuvo 'defiere' (cobertura: la tomaría el modelo)"
+    },
+    {
+      "frase": "0.063 Esmalte Blanco",
+      "categoria": "fraccion",
+      "espera": "venta",
+      "got": "defiere",
+      "outcome": "fail_no_registro",
+      "detalle": "esperaba venta, obtuvo 'defiere' (cobertura: la tomaría el modelo)"
+    },
+    {
+      "frase": "0.063 Esmalte Blanco",
+      "categoria": "fraccion",
+      "espera": "venta",
+      "got": "defiere",
+      "outcome": "fail_no_registro",
+      "detalle": "esperaba venta, obtuvo 'defiere' (cobertura: la tomaría el modelo)"
+    },
+    {
+      "frase": "1/8 Esmalte Azul",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 9000.00 != esperado 7000"
+    },
+    {
+      "frase": "1/2 Thinner",
+      "categoria": "fraccion",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1/8 Sellador Corriente",
+      "categoria": "fraccion",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Carbonato X 25 Kg",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Acronal",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1/2 Thinner",
+      "categoria": "fraccion",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1/4 COLBON",
+      "categoria": "fraccion",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Talco",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "500 PUNTILLA 1-1/2\" CON CABEZA",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Acronal",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "0.063 Vinilo Davinci T2 Azul Concentrado",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "defiere",
+      "outcome": "fail_no_registro",
+      "detalle": "esperaba venta, obtuvo 'defiere' (cobertura: la tomaría el modelo)"
+    },
+    {
+      "frase": "2 Hilo Nailo",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "100 TORNILLO DRYWALL 8X2",
+      "categoria": "mayorista",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 masillamastick",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 20000.00 != esperado 25000"
+    },
+    {
+      "frase": "50 Lija Esmeril N°60",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "0.1 Thinner",
+      "categoria": "fraccion",
+      "espera": "venta",
+      "got": "defiere",
+      "outcome": "fail_no_registro",
+      "detalle": "esperaba venta, obtuvo 'defiere' (cobertura: la tomaría el modelo)"
+    },
+    {
+      "frase": "1/8 Esmalte Rojo",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 9000.00 != esperado 10000"
+    },
+    {
+      "frase": "100 TORNILLO DRYWALL 8X2",
+      "categoria": "mayorista",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Lija N°150",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "100 TORNILLO DRYWALL 8X2",
+      "categoria": "mayorista",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1/2 Thinner",
+      "categoria": "fraccion",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1/4 Sellador Corriente",
+      "categoria": "fraccion",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1/4 Poliuretano Blanco",
+      "categoria": "fraccion",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1/2 Thinner",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 13000.00 != esperado 15000"
+    },
+    {
+      "frase": "1 Lija N°180",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1/2 Thinner",
+      "categoria": "fraccion",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1/8 Sellador Corriente",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 9000.00 != esperado 10000"
+    },
+    {
+      "frase": "1000 PUNTILLA 1\" CON CABEZA",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Lija N°180",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1/8 COLBON",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 5000.00 != esperado 4000"
+    },
+    {
+      "frase": "1/2 Thinner",
+      "categoria": "fraccion",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1/4 Thinner",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 8000.00 != esperado 7000"
+    },
+    {
+      "frase": "5 Thinner",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 1/4 Hueso Duro",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "defiere",
+      "outcome": "fail_no_registro",
+      "detalle": "esperaba venta, obtuvo 'defiere' (cobertura: la tomaría el modelo)"
+    },
+    {
+      "frase": "1 Esmalte Blanco",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1/4 Thinner",
+      "categoria": "fraccion",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Brocha de 2\"",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "8 Rodachina de 1-1/2",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "15 Lija Esmeril N°60",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1/4 Vinilo Davinci T2 Blanco",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 12000.00 != esperado 11000"
+    },
+    {
+      "frase": "1/8 Sellador Corriente",
+      "categoria": "fraccion",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Enchufe de Caucho S",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Disco de Corte Metal 4\"",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 3500.00 != esperado 4000"
+    },
+    {
+      "frase": "7 Cemente Gris",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 10500.00 != esperado 10000"
+    },
+    {
+      "frase": "7 Union 1/4",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "2 Rollo Teflon",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "3 Pegante PVC",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 9000.00 != esperado 10500"
+    },
+    {
+      "frase": "2 Aerosol Negro",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1/4 Esmalte 3 En 1 Blanco davinci",
+      "categoria": "fraccion",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "3 Aerosol Rojo",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1/4 COLBON",
+      "categoria": "fraccion",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1/4 Esmalte 3 en 1 Blanco tonner",
+      "categoria": "fraccion",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "0.1 Thinner",
+      "categoria": "fraccion",
+      "espera": "venta",
+      "got": "defiere",
+      "outcome": "fail_no_registro",
+      "detalle": "esperaba venta, obtuvo 'defiere' (cobertura: la tomaría el modelo)"
+    },
+    {
+      "frase": "1 Brocha de 1\"",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Vinilo Davinci T2 Blanco",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "2 masillamastick",
+      "categoria": "no_reconciliado",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "fail_equivocacion",
+      "detalle": "total emitido 40000.00 != esperado 45000"
+    },
+    {
+      "frase": "1 Aerosol Blanco",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1/2 Esmalte 3 en 1 Blanco tonner",
+      "categoria": "fraccion",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1/4 Thinner",
+      "categoria": "fraccion",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "2 Brocha de 1\"",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1/8 Poliamida Negra",
+      "categoria": "fraccion",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "0.1 Thinner",
+      "categoria": "fraccion",
+      "espera": "venta",
+      "got": "defiere",
+      "outcome": "fail_no_registro",
+      "detalle": "esperaba venta, obtuvo 'defiere' (cobertura: la tomaría el modelo)"
+    },
+    {
+      "frase": "1 Brocha de 2\"",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Laca Caramelo Catalizada",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1/2 Thinner",
+      "categoria": "fraccion",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 Disco de corte 3-1/2 Hierro",
+      "categoria": "entero",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "10 cm lija esmeril 60",
+      "categoria": "lija_esmeril_cm",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "100 cm lija esmeril 36",
+      "categoria": "lija_esmeril_cm",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "50 cm lija esmeril 80",
+      "categoria": "lija_esmeril_cm",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "1 lija 60",
+      "categoria": "lija_normal_hoja",
+      "espera": "venta",
+      "got": "venta",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "lija esmeril 60",
+      "categoria": "lija_desambiguacion",
+      "espera": "defiere",
+      "got": "defiere",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "lija esmeril",
+      "categoria": "lija_desambiguacion",
+      "espera": "defiere",
+      "got": "defiere",
+      "outcome": "ok",
+      "detalle": ""
+    },
+    {
+      "frase": "10 cm lija esmeril",
+      "categoria": "lija_desambiguacion",
+      "espera": "defiere",
+      "got": "defiere",
+      "outcome": "ok",
+      "detalle": ""
+    }
+  ],
+  "umbral": 0.97
+}

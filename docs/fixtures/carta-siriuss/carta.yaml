@@ -1,0 +1,96 @@
+# Fixture — Carta Siriuss (Comida Ejecutiva) · insumo real del Pack Restaurante
+# Origen: foto de la carta "BUEN DÍA!" enviada por Andrés (Cowork, 20-jul-2026).
+# Extracción bajo el contrato anti-alucinación (ADR 0011): transcrito con
+# scripts/normalizar_precios.py del skill onboarding-magico.
+# Cobertura: 17/17 filas visibles transcritas (100%). Precios parseados: 3/3 visibles.
+#
+# NOTA DE PROPÓSITO: esto NO es un manifiesto provisionable todavía. La estructura
+# `modificadores` que usa este fixture es la ESPECIFICACIÓN OBJETIVO que el ADR 0032 (F0)
+# debe formalizar y la F2 implementar. El E2E de la Definición de Hecho se valida contra
+# esta carta. La foto original debe guardarse junto a este archivo como carta-siriuss.jpg.
+
+negocio:
+  nombre_visto: "SIRIUSS — Comida Ejecutiva"
+  tipo: restaurante_almuerzo_ejecutivo
+  tenant_existente: siriuss   # ya es tenant; confirmar slug real en control DB
+
+carta:
+  - nombre: Sopa de hueso
+    precio: 14000            # visto en carta
+    tipo: producto
+
+  - nombre: Plato fuerte del día
+    precio: 19000            # visto en carta (precio único para todas las proteínas)
+    tipo: producto_con_modificadores
+    modificadores:
+      - grupo: Proteína
+        min: 1
+        max: 1
+        obligatorio: true
+        opciones:            # 10 opciones vistas, ninguna con precio propio → delta 0 (INFERENCIA I1)
+          - {nombre: Carne asada, delta_precio: 0}
+          - {nombre: Cerdo asado, delta_precio: 0}
+          - {nombre: Carne en bistec, delta_precio: 0}
+          - {nombre: Cerdo en bistec, delta_precio: 0}
+          - {nombre: Pollo frito, delta_precio: 0}
+          - {nombre: Albóndigas, delta_precio: 0}
+          - {nombre: Lengua en salsa, delta_precio: 0}
+          - {nombre: Sobrebarriga criolla, delta_precio: 0}
+          - {nombre: Pechuga asada, delta_precio: 0}
+          - {nombre: Salpicón de jurel, delta_precio: 0}
+      - grupo: Acompañantes
+        min: null            # DUDA D1: la carta no dice cuántos se eligen
+        max: null
+        obligatorio: null
+        opciones:            # 4 vistas, sin precio → incluidas en el plato (INFERENCIA I2)
+          - {nombre: Arroz blanco o de coco, delta_precio: 0}   # carta dice "Arroz de blanco o coco"
+          - {nombre: Tajadas, delta_precio: 0}
+          - {nombre: Lentejas, delta_precio: 0}
+          - {nombre: Ensalada de payaso, delta_precio: 0}
+
+  - nombre: Menú especial
+    precio: 21000            # visto en carta
+    tipo: combo_fijo         # INFERENCIA I3: los 4 componentes se sirven juntos
+    componentes:
+      - Arroz de pollo
+      - Papitas a la francesa
+      - Ensalada de aguacate
+      - Caldo
+
+politicas_vistas_en_carta:
+  pago_transferencia: "enviar el comprobante enseguida o apenas reciba su pedido"
+    # → caso real para la conciliación por comprobante (visión ai/vision/recibo.py ya existe)
+  recargo_domicilio_bocagrande: 1000   # POR PLATO, no por pedido
+    # → OJO ADR 0032: zonas_domicilio hoy es tarifa plana por pedido (ADR 0016);
+    #   este caso real exige recargo por unidad. Decidir en F0.
+
+dudas:                        # regla 1: no se completa, se pregunta
+  - id: D1
+    campo: acompañantes min/max
+    detalle: "¿Cuántos acompañantes incluye el plato fuerte? La carta no lo dice."
+  - id: D2
+    campo: sopa incluida
+    detalle: "¿La sopa de hueso está incluida en el plato fuerte o es siempre aparte? Tiene precio propio ($14.000), sugiere aparte, pero en almuerzo ejecutivo suele incluirse una sopa del día."
+  - id: D3
+    campo: bebida
+    detalle: "La carta no menciona bebida/jugo. ¿Incluida en el plato del día?"
+  - id: D4
+    campo: impuestos
+    detalle: "¿Los precios de carta son finales al público (impoconsumo 8% incluido) o antes de INC? Decisión de Andrés: el INC 8% SE MODELA (ADR 0032); falta confirmar si el precio visto es con o sin INC."
+  - id: D5
+    campo: domicilio base
+    detalle: "Solo se ve el recargo de Bocagrande (+$1.000/plato). ¿Tarifa base de domicilio para otras zonas?"
+
+inferencias:                  # regla 2: aceptar/rechazar en lote con Andrés
+  - id: I1
+    detalle: "Las 10 proteínas son un grupo modificador min=1 max=1 con delta 0 (precio único $19.000)."
+  - id: I2
+    detalle: "Los 4 acompañantes van incluidos en el plato fuerte con delta 0 (no tienen precio propio en la carta)."
+  - id: I3
+    detalle: "El Menú especial es un combo fijo de 4 componentes por $21.000 (no elección)."
+  - id: I4
+    detalle: "Es carta de ALMUERZO (\"Buen día… tu almuerzo\") → menú del día rotativo; el modelo de F2 debe soportar activar/desactivar productos por día sin borrarlos."
+
+validacion:
+  estado: PENDIENTE
+  nota: "El validador real (python -m tools.provision_from_manifest --check) corre en el repo; la estructura de modificadores no existe hasta F2. El goal debe validar este fixture contra el schema nuevo en F2 y usarlo como semilla del E2E."

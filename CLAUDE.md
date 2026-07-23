@@ -67,3 +67,13 @@ python -m tools.migrate_tenants            # aplica a todas las empresas
 | Manifiesto de tenant + provisionador de un paso | `docs/adr/0007-manifiesto-tenant-y-provisionador.md` · `tools/provision_from_manifest.py` |
 | Superficie pública Melquiadez (landing, sign-in, demos, switch Kapso) | `docs/plan-melquiadez-superficie-publica.md` |
 | Reglas de desarrollo | `.claude/rules/` |
+
+## Agent skills
+
+### Issue tracker
+
+Issues live in GitHub Issues (`gh` CLI), repo `andres05tmm/Ferrebot-Saas`. See `docs/agents/issue-tracker.md`.
+
+### Domain docs
+
+Single-context: `CONTEXT.md` (if present) + `docs/adr/` at the repo root. See `docs/agents/domain.md`.

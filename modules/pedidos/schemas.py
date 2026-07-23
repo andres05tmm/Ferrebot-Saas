@@ -69,6 +69,8 @@ class PedidoLeer(BaseModel):
     origen: str
     creado_en: datetime
     actualizado_en: datetime
+    # Venta vinculada por la conversión (F1 / ADR 0032); None = aún no convertido.
+    venta_id: int | None = None
     items: list[PedidoItemLeer]
     # ¿Tiene un cobro `pagado` por (origen="pedido", origen_id=id)? Lo anota el repositorio al
     # listar (atributo transitorio); en respuestas de un solo pedido cae al default seguro.

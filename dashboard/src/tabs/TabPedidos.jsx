@@ -8,8 +8,9 @@
  */
 import { useState } from 'react'
 import { toast } from 'sonner'
-import { ChefHat, Bike, CheckCircle2, ClipboardList, XCircle } from 'lucide-react'
+import { ChefHat, Bike, CheckCircle2, ClipboardList, Receipt, XCircle } from 'lucide-react'
 import { api } from '@/lib/api'
+import { useFeatures } from '@/lib/features.jsx'
 import { cop, useFetch } from '@/components/shared.jsx'
 import { useRealtimeEvent } from '@/components/RealtimeProvider.jsx'
 import { Card } from '@/components/ui/card.jsx'
@@ -57,7 +58,7 @@ function InsigniaPagado() {
   )
 }
 
-function TarjetaPedido({ p, col, pagado, onAvanzar, onCancelar }) {
+function TarjetaPedido({ p, col, pagado, onAvanzar, onCancelar, onConvertir }) {
   return (
     <Card className="p-2.5 space-y-1.5">
       <div className="flex items-center justify-between gap-2">
@@ -87,6 +88,12 @@ function TarjetaPedido({ p, col, pagado, onAvanzar, onCancelar }) {
             {col.accion}
           </Button>
         )}
+        {onConvertir && !p.venta_id && (
+          <Button size="sm" variant="outline" className="flex-1"
+            aria-label={`Registrar venta del pedido ${p.id}`} onClick={() => onConvertir(p)}>
+            <Receipt className="size-3.5" /> Registrar venta
+          </Button>
+        )}
         {col.siguiente && (
           <Button size="sm" variant="ghost" className="text-destructive"
             aria-label={`Cancelar pedido ${p.id}`} onClick={() => onCancelar(p)}>
@@ -111,11 +118,18 @@ export default function TabPedidos() {
     pedidosQ.refetch()
   })
 
+  const features = useFeatures()
   const pedidos = arr(pedidosQ.data)
   const onAvanzar = (p, nuevo) =>
     enviar(`/pedidos/${p.id}/estado`, 'PUT', { estado: nuevo }, `Pedido #${p.id} → ${nuevo.replace('_', ' ')}`, pedidosQ.refetch)
   const onCancelar = (p) =>
     enviar(`/pedidos/${p.id}/estado`, 'PUT', { estado: 'cancelado' }, `Pedido #${p.id} cancelado`, pedidosQ.refetch)
+  // Conversión pedido → venta (F1 / ADR 0032): registra la venta POS (stock + caja) desde el kanban.
+  // Solo con la feature `ventas` (el endpoint también la exige) y en pedidos aún sin venta vinculada.
+  const puedeConvertir = features.includes('ventas') || features.includes('pos')
+  const onConvertir = puedeConvertir
+    ? (p) => enviar(`/pedidos/${p.id}/convertir`, 'POST', {}, `Pedido #${p.id} registrado como venta`, pedidosQ.refetch)
+    : null
 
   return (
     <div className="flex flex-col gap-3 h-full min-h-0">
@@ -148,7 +162,7 @@ export default function TabPedidos() {
                   enColumna.map(p => (
                     <TarjetaPedido key={p.id} p={p} col={col}
                       pagado={p.pagado || pagadosLive.has(p.id)}
-                      onAvanzar={onAvanzar} onCancelar={onCancelar} />
+                      onAvanzar={onAvanzar} onCancelar={onCancelar} onConvertir={onConvertir} />
                   ))
                 )}
               </div>

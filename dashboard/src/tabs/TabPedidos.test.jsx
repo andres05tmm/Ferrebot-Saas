@@ -10,6 +10,7 @@ vi.mock('@/components/RealtimeProvider.jsx', () => ({
 }))
 
 import TabPedidos from './TabPedidos.jsx'
+import { FeaturesProvider } from '@/lib/features.jsx'
 import { USER_KEY } from '@/lib/api'
 
 const PEDIDOS = [
@@ -110,6 +111,31 @@ describe('TabPedidos', () => {
 
     // #1 viene pagado en el listado; #2 no.
     expect(screen.getAllByText('Pagado')).toHaveLength(1)
+  })
+
+  it('con la feature ventas ofrece "Registrar venta" y llama al endpoint de conversión', async () => {
+    const fetchMock = instalarFetch()
+    render(
+      <MemoryRouter>
+        <FeaturesProvider features={['pack_pedidos', 'ventas']}><TabPedidos /></FeaturesProvider>
+      </MemoryRouter>,
+    )
+    await screen.findByText('#1 · Ana')
+
+    // Ambos pedidos vienen sin venta_id → botón en los dos.
+    const botones = screen.getAllByRole('button', { name: /Registrar venta/ })
+    expect(botones).toHaveLength(2)
+    fireEvent.click(botones[0])
+    await screen.findByText('#1 · Ana')
+    const llamada = fetchMock.mock.calls.find(c => /\/pedidos\/1\/convertir/.test(String(c[0])))
+    expect(llamada[1].method).toBe('POST')
+  })
+
+  it('sin la feature ventas (o con pedido ya convertido) no hay botón de conversión', async () => {
+    instalarFetch()
+    render(<MemoryRouter><TabPedidos /></MemoryRouter>)   // sin FeaturesProvider → sin `ventas`
+    await screen.findByText('#1 · Ana')
+    expect(screen.queryByRole('button', { name: /Registrar venta/ })).toBeNull()
   })
 
   it('al llegar el SSE pedido_pagado la tarjeta se marca pagada sin recargar', async () => {

@@ -28,8 +28,8 @@ OPCIONALES: frozenset[str] = frozenset({
     # Pedidos a proveedor con lead time (reforma dashboard F2): la orden antes de la mercancía.
     "pedidos_proveedor",
     # Pack Restaurante (ADR 0032): mesas/salón con orden abierta, precuenta y cobro con propina;
-    # `kds` = vista de comandas de cocina por zona.
-    "pack_mesas", "kds",
+    # `kds` = vista de comandas de cocina por zona; `menu_qr` = página pública del menú por slug.
+    "pack_mesas", "kds", "menu_qr",
     # Contable C (ADR 0027): retenciones/INC editables por tenant + libros auxiliar/mayor. Opt-in,
     # sin dependencias duras (un negocio puede retener sin FE; los libros derivan de datos existentes).
     "retenciones", "libros_contables",
@@ -141,6 +141,8 @@ DEPENDENCIAS: dict[str, frozenset[str]] = {
     "pack_mesas": frozenset({"ventas"}),
     # KDS (ADR 0032 D1): la cocina se alimenta de pedidos confirmados o de mesas (OR).
     "kds": frozenset({"pack_pedidos", "pack_mesas"}),
+    # Menú QR (ADR 0032 D1): la página pública muestra el catálogo → `ventas`.
+    "menu_qr": frozenset({"ventas"}),
 }
 
 

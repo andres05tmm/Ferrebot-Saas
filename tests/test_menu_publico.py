@@ -53,6 +53,21 @@ async def _seed_menu(engine, *, secreto: str) -> None:
                 f"       ('{secreto}', 'unidad', 14000, 0, false, true)"
             )
         )
+        # Insumo de receta (BOM interno, ADR 0032 D9): activo y con inventario, pero es materia
+        # prima del plato — JAMÁS debe salir en el menú público (fuga de datos internos).
+        insumo = (
+            await s.execute(
+                text(
+                    "INSERT INTO productos (nombre, categoria, unidad_medida, precio_venta, iva, "
+                    "permite_fraccion, activo) "
+                    "VALUES ('Arroz insumo (kg)', 'Insumos', 'kg', 1, 0, true, true) RETURNING id"
+                )
+            )
+        ).scalar_one()
+        await s.execute(
+            text("INSERT INTO recetas (producto_id, insumo_id, cantidad) VALUES (:p, :i, 0.2)"),
+            {"p": pid, "i": insumo},
+        )
         await s.commit()
 
 
@@ -121,12 +136,51 @@ async def test_menu_publico_sin_token_y_aislado(tenant_factory):
             assert interno not in html, interno
         # Producto desactivado y opción retirada no aparecen.
         assert "Plato retirado" not in html and "Opción retirada" not in html
+        # FUGA DE BOM (auditoría R0): un insumo de receta jamás aparece en el menú público,
+        # aunque esté activo (es materia prima interna, no carta).
+        assert "Arroz insumo" not in html and "Insumos" not in html
         # Sin JS del dashboard (página autocontenida).
         assert "<script" not in html.lower()
 
         # El menú de B es el de B.
         rb = await c.get("/publico/resto-b/menu")
         assert "Secreto De B" in rb.text and "Secreto De A" not in rb.text
+
+
+async def test_menu_qr_autenticado_devuelve_url_y_svg():
+    """Regresión auditoría R0: `GET /menu-qr` respondía 422 porque `Request` se importaba dentro
+    de la factory y, con `from __future__ import annotations`, FastAPI no resolvía la anotación
+    (trataba `request` como query param). El endpoint debe responder 200 con url + svg."""
+    from apps.api.menu_publico import crear_router_menu_qr
+    from core.auth.deps import get_current_user
+    from core.auth.features import get_capacidades
+
+    app = FastAPI()
+
+    @app.middleware("http")
+    async def _tenant_state(request, call_next):
+        request.state.tenant = ResolvedTenant(
+            id=1, slug="resto-a", nombre="Resto A", estado="activa",
+            db_name="x", connection_url="postgresql://x/x",
+        )
+        return await call_next(request)
+
+    app.include_router(crear_router_menu_qr())
+    app.dependency_overrides[get_capacidades] = lambda: frozenset({"menu_qr"})
+
+    class _U:
+        rol = "admin"
+
+    app.dependency_overrides[get_current_user] = lambda: _U()
+
+    async with httpx.AsyncClient(
+        transport=ASGITransport(app=app, raise_app_exceptions=False), base_url="http://t"
+    ) as c:
+        r = await c.get("/menu-qr")
+        assert r.status_code == 200, r.text
+        data = r.json()
+        assert data["url"].endswith("/publico/resto-a/menu")
+        assert "<svg" in data["svg"]
 
 
 async def test_menu_publico_gateado_por_flag_y_slug(tenant_factory):

@@ -32,6 +32,7 @@ _TABLAS_ESPERADAS: frozenset[str] = frozenset({
     "mesas",   # salón/orden abierta por mesa (0061, ADR 0032 F3)
     "comanda_zonas", "comandas", "comanda_items",   # KDS (0062, ADR 0032 F4)
     "recetas",   # BOM del plato (0063, ADR 0032 F6)
+    "trabajos_impresion",   # cola de impresión térmica (0064, ADR 0033 R1)
     "ventas_wa_config", "cotizaciones", "cotizacion_items",   # pack ventas/cotizaciones (0020, ADR 0017)
     "cobros",   # frente de pagos (0021, ADR 0013)
     "comprobantes_pago",   # comprobante de pago por foto → desempate conciliación (0057, demo Sirius)

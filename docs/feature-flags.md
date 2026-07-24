@@ -43,6 +43,7 @@
 | `kds` | Comandas KDS: zonas de cocina, cola por comanda y aviso de "listo" al canal (ADR 0032 F4) | `pack_pedidos` o `pack_mesas` |
 | `menu_qr` | Menú digital público por slug (HTML sin auth + QR imprimible, ADR 0032 F5) | `ventas` |
 | `recetas` | Recetas/BOM: vender el plato descuenta insumos con movimiento idempotente + costo del plato e ingeniería de menú (ADR 0032 F6/F7) | `inventario` |
+| `impresion` | Cola de impresión térmica: trabajos idempotentes (comanda por zona, precuenta, comprobante) + superficie `/api/v1/impresion` para el agente local (ADR 0033) | `pack_pedidos` o `pack_mesas` o `ventas` (OR) |
 | `pack_ventas` | Cotizaciones y carrito por WhatsApp con el catálogo real (ADR 0017) | `ventas` |
 | `pack_reservas` | Reservas por noches (hotel) sobre el motor de agenda | `pack_agenda` |
 | `pack_postventa` | Encuesta 1-5, reseñas y seguimiento tras cita/pedido | — |

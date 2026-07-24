@@ -485,6 +485,13 @@ class SqlPedidosRepository:
         await publish(self._s, "comanda_nueva", {
             "pedido_id": pedido.id, "comandas": [c.id for c in comandas],
         })
+        # Impresión (ADR 0033 D2): un trabajo POR comanda, en la MISMA transacción e idempotente
+        # por UNIQUE. Import local: evita el ciclo pedidos↔impresion en el arranque.
+        from modules.impresion.generacion import generar_trabajos_comandas
+
+        await generar_trabajos_comandas(
+            self._s, pedido_id=pedido.id, comanda_ids=[c.id for c in comandas]
+        )
         return comandas
 
     async def comanda_por_id(self, comanda_id: int) -> Comanda | None:

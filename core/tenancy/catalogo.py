@@ -31,6 +31,8 @@ OPCIONALES: frozenset[str] = frozenset({
     # `kds` = vista de comandas de cocina por zona; `menu_qr` = página pública del menú por slug;
     # `recetas` = BOM del plato (vender descuenta insumos + costo del plato).
     "pack_mesas", "kds", "menu_qr", "recetas",
+    # Impresión térmica (ADR 0033): cola de trabajos + agente local. No exclusiva de restaurantes.
+    "impresion",
     # Contable C (ADR 0027): retenciones/INC editables por tenant + libros auxiliar/mayor. Opt-in,
     # sin dependencias duras (un negocio puede retener sin FE; los libros derivan de datos existentes).
     "retenciones", "libros_contables",
@@ -146,6 +148,8 @@ DEPENDENCIAS: dict[str, frozenset[str]] = {
     "menu_qr": frozenset({"ventas"}),
     # Recetas (ADR 0032 D1): descuentan INSUMOS vía movimientos → `inventario`.
     "recetas": frozenset({"inventario"}),
+    # Impresión (ADR 0033 D7): cualquier negocio con tickets imprime (OR).
+    "impresion": frozenset({"pack_pedidos", "pack_mesas", "ventas"}),
 }
 
 

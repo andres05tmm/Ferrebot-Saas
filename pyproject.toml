@@ -45,6 +45,7 @@ dev = [
 # Agente local de impresión (ADR 0033 D5): solo la máquina de la sede lo necesita, no el server.
 impresion = [
     "python-escpos>=3.1",
+    "pywin32>=306; sys_platform == 'win32'",   # Win32Raw: imprimir a impresora instalada en Windows
 ]
 
 [build-system]

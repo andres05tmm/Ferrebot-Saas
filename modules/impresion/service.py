@@ -71,6 +71,7 @@ class ImpresionService:
             "tipo": "precuenta", "pedido_id": pedido.id, "origen": pedido.origen,
             "cliente": pedido.cliente_nombre, "notas": pedido.notas,
             "subtotal": _num(pedido.subtotal), "total": _num(pedido.total),
+            "costo_domicilio": _num(pedido.costo_domicilio),
             "items": [
                 {
                     "nombre": i.nombre, "cantidad": _num(i.cantidad),
@@ -80,9 +81,13 @@ class ImpresionService:
                 for i in items
             ],
         }
+        # La clave lleva la HUELLA del contenido (total + # ítems): el doble clic replica el mismo
+        # trabajo, pero una ronda nueva cambia la huella y produce una precuenta FRESCA (una orden
+        # abierta evoluciona; `pedido:v1` congelaría el snapshot viejo).
+        huella = f"{_num(pedido.total)}:{len(items)}"
         return await self._repo.crear(
             tipo="precuenta", payload=payload, pedido_id=pedido_id,
-            idempotency_key=f"precuenta:{pedido_id}:v1",
+            idempotency_key=f"precuenta:{pedido_id}:{huella}",
         )
 
     async def crear_comprobante(self, venta_id: int) -> TrabajoImpresion:

@@ -266,6 +266,28 @@ async def test_endpoint_impresion_gating_y_flujo(tenant):
         pre2 = await c.post("/api/v1/impresion/trabajos", json={"tipo": "precuenta", "pedido_id": pedido_id})
         assert pre2.json()["id"] == pre.json()["id"]
 
+    # El pedido EVOLUCIONA (ronda nueva) → la próxima precuenta es FRESCA, no el snapshot viejo.
+    async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
+        await s.execute(
+            text(
+                "INSERT INTO pedido_items (pedido_id, producto_id, nombre, cantidad, "
+                "precio_unitario, subtotal) VALUES (:p, NULL, 'Postre', 1, 8000, 8000)"
+            ),
+            {"p": pedido_id},
+        )
+        await s.execute(
+            text("UPDATE pedidos SET subtotal = subtotal + 8000, total = total + 8000 WHERE id = :p"),
+            {"p": pedido_id},
+        )
+        await s.commit()
+    async with httpx.AsyncClient(
+        transport=ASGITransport(app=_app(caps), raise_app_exceptions=False), base_url="http://t"
+    ) as c:
+        pre3 = await c.post("/api/v1/impresion/trabajos", json={"tipo": "precuenta", "pedido_id": pedido_id})
+        assert pre3.status_code == 200
+        assert pre3.json()["id"] != pre.json()["id"]
+        assert any(i["nombre"] == "Postre" for i in pre3.json()["payload"]["items"])
+
 
 async def test_migracion_0064_up_down(tenant):
     from tools._alembic import downgrade_tenant, upgrade_tenant

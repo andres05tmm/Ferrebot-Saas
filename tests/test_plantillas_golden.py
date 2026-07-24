@@ -97,7 +97,7 @@ def test_goldens_por_plantilla_y_ancho():
             txt_path = GOLDEN_DIR / f"{nombre}_{ancho}.txt"
             if actualizar or not bin_path.exists():
                 bin_path.write_bytes(buffer)
-                txt_path.write_text(_texto(buffer), encoding="utf-8")
+                txt_path.write_text(_texto(buffer), encoding="utf-8", newline="\n")
             assert buffer == bin_path.read_bytes(), (
                 f"golden desviado: {bin_path} — si el cambio de plantilla es intencional, "
                 "regenerar con UPDATE_GOLDEN=1"

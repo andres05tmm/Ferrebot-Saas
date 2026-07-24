@@ -58,6 +58,7 @@ from modules.obra.router import router as obras_router
 from modules.trabajadores.router import router as trabajadores_router
 from modules.pagar.router import router as pagar_router
 from modules.pagos.router import router as pagos_router
+from modules.impresion.router import router as impresion_router
 from modules.pedidos.kds_router import router as kds_router
 from modules.pedidos.recetas_router import router as recetas_router
 from modules.pedidos.mesas_router import router as mesas_router
@@ -211,6 +212,7 @@ def create_app(spa_dist: Path | None = None) -> FastAPI:
     app.include_router(mesas_router, prefix="/api/v1")      # salón/mesas (ADR 0032 F3)
     app.include_router(kds_router, prefix="/api/v1")        # comandas KDS (ADR 0032 F4)
     app.include_router(crear_router_menu_qr(), prefix="/api/v1")  # QR del menú público (ADR 0032 F5)
+    app.include_router(impresion_router, prefix="/api/v1")  # cola de impresión térmica (ADR 0033 R1)
     app.include_router(recetas_router, prefix="/api/v1")    # recetas/BOM (ADR 0032 F6)
     app.include_router(cotizaciones_router, prefix="/api/v1")  # cotizaciones WA (ADR 0017)
     app.include_router(pagos_router, prefix="/api/v1")         # cobros (ADR 0013)

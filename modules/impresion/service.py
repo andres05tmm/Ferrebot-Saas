@@ -67,7 +67,17 @@ class ImpresionService:
                 {"p": pedido_id},
             )
         ).all()
+        # Leyenda "Precios incluyen INC 8%" SOLO si el tenant maneja impoconsumo (condicional R3):
+        # una ferretería (IVA) no debe verla en sus precuentas.
+        con_inc = bool(
+            (
+                await s.execute(
+                    text("SELECT EXISTS (SELECT 1 FROM productos WHERE tipo_impuesto = 'inc')")
+                )
+            ).scalar_one()
+        )
         payload = {
+            "con_inc": con_inc,
             "tipo": "precuenta", "pedido_id": pedido.id, "origen": pedido.origen,
             "cliente": pedido.cliente_nombre, "notas": pedido.notas,
             "subtotal": _num(pedido.subtotal), "total": _num(pedido.total),

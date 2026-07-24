@@ -78,6 +78,7 @@ def test_render_precuenta_propina_ley_1935():
     d = Dummy()
     payload = {
         "tipo": "precuenta", "cliente": "Mesa 1", "total": "52000", "subtotal": "52000",
+        "con_inc": True,
         "items": [{"nombre": "Churrasco", "cantidad": "1", "subtotal": "52000",
                    "precio_unitario": "52000", "modificadores": []}],
     }

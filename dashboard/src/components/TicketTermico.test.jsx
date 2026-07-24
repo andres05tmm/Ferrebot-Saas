@@ -13,7 +13,7 @@ const COMANDA = {
 }
 
 const PRECUENTA = {
-  tipo: 'precuenta', cliente: 'Mesa 1', total: '52000', subtotal: '52000',
+  tipo: 'precuenta', cliente: 'Mesa 1', total: '52000', subtotal: '52000', con_inc: true,
   items: [{ nombre: 'Churrasco', cantidad: '1', subtotal: '52000', modificadores: [] }],
 }
 
@@ -47,6 +47,11 @@ describe('TicketTermico (fallback navegador)', () => {
     // total + propina ($57.200) NO existe en el ticket: la propina jamás se suma por defecto.
     expect(screen.queryByText(/57\.200/)).toBeNull()
     expect(screen.getByText(/no fiscal/)).toBeInTheDocument()
+  })
+
+  it('precuenta sin INC (tenant IVA): la leyenda NO aparece', () => {
+    render(<TicketTermico payload={{ ...PRECUENTA, con_inc: false }} ancho={80} />)
+    expect(screen.queryByText(/INC 8%/)).toBeNull()
   })
 
   it('comprobante: venta, método de pago y no fiscal', () => {

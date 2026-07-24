@@ -42,6 +42,10 @@ def render_comanda(printer, payload: dict, *, ancho: int = 80) -> None:
     printer.set(bold=False)
     if cliente and origen:
         printer.text(f"({origen})\n")
+    numero = payload.get("pedido_id")
+    hora = payload.get("hora")
+    if numero or hora:
+        printer.text(" · ".join(x for x in (f"Pedido #{numero}" if numero else "", hora or "") if x) + "\n")
     _linea(printer, "-", ancho)
     for item in payload.get("items", []):
         printer.set(bold=True, double_height=True)
@@ -79,7 +83,8 @@ def render_precuenta(printer, payload: dict, *, ancho: int = 80, negocio: str | 
     printer.set(bold=True)
     printer.text(_fila("TOTAL", _pesos(payload["total"]), ancho))
     printer.set(bold=False)
-    printer.text("Precios incluyen INC 8%\n")
+    if payload.get("con_inc"):
+        printer.text("Precios incluyen INC 8%\n")
     _linea(printer, "-", ancho)
     # Ley 1935/2018: voluntaria, sugerida max 10%, el cliente decide. NUNCA sumada por defecto.
     sugerida = _pesos(str(int(float(payload["total"]) * 0.10)))

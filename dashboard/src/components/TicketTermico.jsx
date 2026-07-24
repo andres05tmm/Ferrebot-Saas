@@ -20,6 +20,9 @@ function Comanda({ payload }) {
       <div className="tt-sep" />
       <div className="tt-negrita">{payload.cliente || (payload.origen || '').toUpperCase()}</div>
       {payload.cliente && payload.origen ? <div>({payload.origen.toUpperCase()})</div> : null}
+      {payload.pedido_id || payload.hora
+        ? <div>{[payload.pedido_id ? `Pedido #${payload.pedido_id}` : '', payload.hora || ''].filter(Boolean).join(' · ')}</div>
+        : null}
       <div className="tt-sep" />
       {(payload.items || []).map((it, i) => (
         <div key={i}>
@@ -58,7 +61,7 @@ function Precuenta({ payload, negocio }) {
       <Filas items={payload.items} />
       <div className="tt-sep" />
       <div className="tt-fila tt-negrita"><span>TOTAL</span><span>{cop(total)}</span></div>
-      <div>Precios incluyen INC 8%</div>
+      {payload.con_inc ? <div>Precios incluyen INC 8%</div> : null}
       <div className="tt-sep" />
       <div>Propina sugerida (10%): {cop(total * 0.1)}</div>
       <div>Es VOLUNTARIA: usted decide si la paga, la aumenta o la elimina.</div>

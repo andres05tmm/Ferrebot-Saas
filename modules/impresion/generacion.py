@@ -32,6 +32,7 @@ async def generar_trabajos_comandas(
             text(
                 "SELECT c.id AS comanda_id, c.zona_id, z.nombre AS zona, "
                 "       p.origen, p.cliente_nombre, p.notas, "
+                "       to_char(p.creado_en AT TIME ZONE 'America/Bogota', 'HH24:MI') AS hora, "
                 "       pi.nombre, ci.cantidad, pi.modificadores "
                 "FROM comandas c "
                 "LEFT JOIN comanda_zonas z ON z.id = c.zona_id "
@@ -49,12 +50,21 @@ async def generar_trabajos_comandas(
         trabajo = por_comanda.setdefault(f.comanda_id, {
             "tipo": "comanda", "pedido_id": pedido_id, "comanda_id": f.comanda_id,
             "zona_id": f.zona_id, "zona": f.zona or "cocina", "origen": f.origen,
-            "cliente": f.cliente_nombre, "notas": f.notas, "items": [],
+            "cliente": f.cliente_nombre, "notas": f.notas, "hora": f.hora, "items": [],
         })
-        trabajo["items"].append({
-            "nombre": f.nombre, "cantidad": _num(f.cantidad),
-            "modificadores": f.modificadores or [],
-        })
+        # Cantidad AGRUPADA (goal §A.3): dos rondas del mismo plato con los mismos modificadores
+        # salen como una sola línea sumada — la cocina cuenta platos, no rondas.
+        mods = f.modificadores or []
+        previo = next(
+            (i for i in trabajo["items"] if i["nombre"] == f.nombre and i["modificadores"] == mods),
+            None,
+        )
+        if previo is not None:
+            previo["cantidad"] = _num(Decimal(previo["cantidad"]) + Decimal(f.cantidad))
+        else:
+            trabajo["items"].append({
+                "nombre": f.nombre, "cantidad": _num(f.cantidad), "modificadores": mods,
+            })
 
     creados: list[int] = []
     for comanda_id, payload in por_comanda.items():

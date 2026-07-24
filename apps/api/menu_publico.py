@@ -17,10 +17,15 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from decimal import Decimal
 
-from fastapi import APIRouter
+# `Request` y `Principal` DEBEN importarse a nivel de módulo: con `from __future__ import
+# annotations`, FastAPI resuelve las anotaciones contra los globals del módulo — importadas dentro
+# de la factory no se resuelven y `request` degenera en query param obligatorio (422, bug R0).
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import HTMLResponse
 from sqlalchemy import text
 
+from core.auth import Principal, require_role
+from core.auth.features import require_feature
 from core.db.session import control_session, tenant_session
 from core.logging import get_logger
 from core.tenancy.capacidades import ControlCapacidades
@@ -71,11 +76,14 @@ def _pesos(v) -> str:
 async def _leer_menu(session) -> list[dict]:
     """Catálogo ACTIVO para el público: secciones por categoría + modificadores activos. Solo lo
     que un comensal puede ver — nada de costos/stock/proveedores (por construcción: no se leen)."""
+    # Un producto que es INSUMO de una receta (BOM, ADR 0032 D9) es materia prima interna, no
+    # carta: excluirlo aunque esté activo (auditoría R0: fuga de "Arroz insumo (kg)" al comensal).
     productos = (
         await session.execute(
             text(
                 "SELECT id, nombre, categoria, precio_venta FROM productos "
-                "WHERE activo ORDER BY categoria NULLS LAST, nombre"
+                "WHERE activo AND id NOT IN (SELECT insumo_id FROM recetas) "
+                "ORDER BY categoria NULLS LAST, nombre"
             )
         )
     ).all()
@@ -162,11 +170,6 @@ def crear_router_menu_qr() -> APIRouter:
     Gateado por `menu_qr` (404 sin el flag) y rol vendedor+. El QR se genera con `segno`
     (pure-python) sobre la URL pública derivada del host del request (subdominio del tenant).
     """
-    from fastapi import Depends, HTTPException, Request, status
-
-    from core.auth import Principal, require_role
-    from core.auth.features import require_feature
-
     router = APIRouter(
         prefix="/menu-qr", tags=["menu-qr"],
         dependencies=[Depends(require_feature("menu_qr"))],

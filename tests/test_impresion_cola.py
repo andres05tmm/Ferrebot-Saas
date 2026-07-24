@@ -201,9 +201,10 @@ async def test_endpoint_impresion_gating_y_flujo(tenant):
     from fastapi import FastAPI
     from httpx import ASGITransport
 
-    from core.auth import Principal, get_current_user
+    from core.auth import Principal
     from core.auth.features import get_capacidades
     from core.db.session import get_tenant_db
+    from modules.impresion.router import get_staff_opcional
     from modules.impresion.router import router as impresion_router
 
     async def _db():
@@ -218,7 +219,7 @@ async def test_endpoint_impresion_gating_y_flujo(tenant):
     def _app(caps: frozenset[str]) -> FastAPI:
         app = FastAPI()
         app.include_router(impresion_router, prefix="/api/v1")
-        app.dependency_overrides[get_current_user] = lambda: Principal(
+        app.dependency_overrides[get_staff_opcional] = lambda: Principal(
             user_id=1, tenant="t", rol="vendedor"
         )
         app.dependency_overrides[get_tenant_db] = _db

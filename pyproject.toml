@@ -40,6 +40,11 @@ dev = [
     "pytest-asyncio>=0.25",
     "anyio>=4.7",
     "pytest-timeout>=2.3",   # cap por test en CI: un cuelgue falla con traceback del culpable
+    "python-escpos>=3.1",    # impresora FALSA (Dummy) para los tests del agente de impresión
+]
+# Agente local de impresión (ADR 0033 D5): solo la máquina de la sede lo necesita, no el server.
+impresion = [
+    "python-escpos>=3.1",
 ]
 
 [build-system]

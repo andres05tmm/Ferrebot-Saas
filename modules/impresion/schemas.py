@@ -28,6 +28,10 @@ class AckTrabajo(BaseModel):
     detalle: str | None = Field(default=None, max_length=500)
 
 
+class DispositivoCrear(BaseModel):
+    nombre: str = Field(min_length=1, max_length=120)
+
+
 class CrearTrabajo(BaseModel):
     """Trabajo bajo demanda: precuenta de un pedido o comprobante de una venta."""
 

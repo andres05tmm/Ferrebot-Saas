@@ -1,0 +1,11 @@
+{
+  "url": "https://miempresa.melquiadez.com",
+  "slug": "miempresa",
+  "token": "imp_PEGAR_AQUI_EL_TOKEN_DEL_DASHBOARD",
+  "intervalo_seg": 3,
+  "impresoras": {
+    "parrilla": { "tipo": "red", "destino": "192.168.1.50", "ancho": 80 },
+    "bar": { "tipo": "windows", "destino": "POS-58", "ancho": 58 },
+    "*": { "tipo": "red", "destino": "192.168.1.50", "ancho": 80 }
+  }
+}

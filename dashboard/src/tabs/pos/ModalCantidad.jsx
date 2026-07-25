@@ -54,11 +54,13 @@ function BotonKpi({ activo, onClick, titulo, precio, sub }) {
 }
 
 export default function ModalCantidad({ prod, onCerrar, onConfirmar }) {
+  const tipo = prod ? (tipoVenta(prod) || 'unidad') : null
   return (
     <Dialog open={prod != null} onOpenChange={(o) => { if (!o) onCerrar() }}>
-      <DialogContent aria-describedby="cant-desc">
+      {/* `unidad` es solo cantidad + total: cuadro compacto (en móvil el grande tapaba media pantalla). */}
+      <DialogContent aria-describedby="cant-desc" className={tipo === 'unidad' ? 'max-w-xs gap-3' : undefined}>
         {prod && (
-          <FormCantidad key={prod.id} prod={prod} tipo={tipoVenta(prod) || 'unidad'}
+          <FormCantidad key={prod.id} prod={prod} tipo={tipo}
             onConfirmar={onConfirmar} onCancelar={onCerrar} />
         )}
       </DialogContent>
@@ -202,21 +204,13 @@ function FormCantidad({ prod, tipo, onConfirmar, onCancelar }) {
         )}
 
         {tipo === 'unidad' && (
-          <>
-            <div className="grid grid-cols-3 gap-1.5">
-              {[5, 10, 20, 50, 100, 200].map((n) => (
-                <BotonKpi key={n} activo={Number(uniVal) === n} onClick={() => setUniVal(String(n))}
-                  titulo={`×${n}`} precio={previewMotor(prod, n)} />
-              ))}
-            </div>
-            <div>
-              <Label className="text-caption uppercase tracking-wider text-muted-foreground">Cantidad</Label>
-              <Input type="number" min="0" step="1" value={uniVal} autoFocus className="mt-1.5"
-                onChange={(e) => setUniVal(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); confirmar() } }}
-                placeholder="ej: 400" aria-label="Cantidad en unidades" />
-            </div>
-          </>
+          <div>
+            <Label className="text-caption uppercase tracking-wider text-muted-foreground">Cantidad</Label>
+            <Input type="number" min="0" step="1" value={uniVal} autoFocus className="mt-1.5"
+              onChange={(e) => setUniVal(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); confirmar() } }}
+              placeholder="ej: 400" aria-label="Cantidad en unidades" />
+          </div>
         )}
 
         {tipo === 'kg' && (

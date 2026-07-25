@@ -148,8 +148,8 @@ export default function TabHoy() {
     <div className="space-y-3">
       <AlertasHoy datos={hoy} navigate={navigate} />
 
-      {/* KPI STRIP — Ventas / Caja / Gastos */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+      {/* KPI STRIP — Ventas / Caja / Gastos (2 cols en tablet: a 3 truncan los labels con la sidebar) */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
         <KpiCard
           tone="primary" label="Ventas hoy" value={cop(totalHoy)} icon={ShoppingCart}
           loading={resumenQ.loading} iconStyle="filled" heroValue deltaPct={deltaAyer} spark={serie7}
@@ -166,8 +166,8 @@ export default function TabHoy() {
         />
       </div>
 
-      {/* MINI METRIC STRIP — N° ventas / Ticket / Semana / Mes */}
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+      {/* MINI METRIC STRIP — N° ventas / Ticket / Semana / Mes (2×2 hasta lg por lo mismo) */}
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <KpiCard headerBand tone="primary" icon={ShoppingCart} label="N° de ventas" value={num(pedidosHoy)}
           sub="ventas de hoy" />
         <KpiCard headerBand tone="info" icon={CalendarDays} label="Ticket prom." value={cop(ticketProm)}

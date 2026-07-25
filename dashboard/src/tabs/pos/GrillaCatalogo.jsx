@@ -32,10 +32,10 @@ const CardProducto = memo(function CardProducto({ p, enCarrito, esFav, resaltado
     <div className="relative">
       <button onClick={() => onTap(p)}
         aria-label={`Agregar ${p.nombre}`}
-        className={`w-full h-full flex flex-col items-start gap-1 p-2.5 pr-7 rounded-lg border text-left transition-colors ${
+        className={`w-full h-full flex flex-col items-start gap-1 p-2.5 pr-8 rounded-lg border text-left transition-colors ${
           resaltado ? 'border-primary bg-primary/10' : 'border-border bg-surface hover:border-primary/40 hover:bg-surface-2'}`}>
         <Icono className={`size-4 ${color}`} aria-hidden="true" />
-        <span className="text-caption font-medium leading-tight line-clamp-2 min-h-[2em]">{p.nombre}</span>
+        <span className="text-caption font-medium leading-tight line-clamp-2 min-h-[2em] [overflow-wrap:anywhere]">{p.nombre}</span>
         <span className="text-body-sm font-semibold tabular text-foreground">{cop(Number(p.precio_venta))}</span>
       </button>
       {enCarrito > 0 && (
@@ -50,19 +50,21 @@ const CardProducto = memo(function CardProducto({ p, enCarrito, esFav, resaltado
           <Percent className="size-2.5" aria-label="Tiene precio mayorista" />
         </span>
       )}
+      {/* Rail de acciones: estrella y # separados ≥8px, blancos de toque de 28px (touch-manipulation)
+          — en la card densa el objetivo grande es el tap de agregar; estos son secundarios. */}
       <button onClick={(e) => { e.stopPropagation(); onFav(p.id) }}
         aria-label={esFav ? `Quitar ${p.nombre} de favoritos` : `Marcar ${p.nombre} como favorito`}
         aria-pressed={esFav}
-        className="absolute top-1.5 right-1.5 size-6 grid place-items-center rounded text-muted-foreground/60 hover:text-warning">
-        <Star className={`size-3.5 ${esFav ? 'fill-warning text-warning' : ''}`} />
+        className="absolute top-1 right-1 size-7 grid place-items-center rounded touch-manipulation text-muted-foreground/60 hover:text-warning">
+        <Star className={`size-4 ${esFav ? 'fill-warning text-warning' : ''}`} />
       </button>
       {/* Cantidad de un golpe (unitarios): abre el modal para vender "400 tornillos" sin 400 taps.
           Los de fracción/granel no lo necesitan: su tap ya abre modal. */}
       {!tipoVenta(p) && (
         <button onClick={(e) => { e.stopPropagation(); onCantidad(p) }}
           aria-label={`Elegir cantidad de ${p.nombre}`}
-          className="absolute top-8 right-1.5 size-6 grid place-items-center rounded text-muted-foreground/60 hover:text-primary">
-          <Hash className="size-3.5" />
+          className="absolute top-10 right-1 size-7 grid place-items-center rounded touch-manipulation text-muted-foreground/60 hover:text-primary">
+          <Hash className="size-4" />
         </button>
       )}
     </div>

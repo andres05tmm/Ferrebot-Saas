@@ -44,7 +44,7 @@ export function Kbd({ children }) {
 
 export function AtajosHint() {
   return (
-    <p className="flex flex-wrap items-center gap-x-3 gap-y-1 px-1 text-caption text-muted-foreground">
+    <p className="hidden md:flex flex-wrap items-center gap-x-3 gap-y-1 px-1 text-caption text-muted-foreground">
       <span><Kbd>F2</Kbd> o <Kbd>/</Kbd> buscar</span>
       <span><Kbd>↑</Kbd><Kbd>↓</Kbd> elegir</span>
       <span><Kbd>Enter</Kbd> agrega</span>

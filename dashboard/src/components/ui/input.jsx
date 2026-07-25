@@ -8,7 +8,8 @@ const Input = React.forwardRef(({ className, type, ...props }, ref) => {
       ref={ref}
       className={cn(
         'flex h-9 w-full rounded-md border border-input bg-surface px-3 py-1 text-sm text-foreground placeholder:text-muted-foreground',
-        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background',
+        // Foco según DESIGN.md §4: borde primario + anillo exterior del primario al 10% (sin offset duro).
+        'focus-visible:outline-none focus-visible:border-primary focus-visible:ring-4 focus-visible:ring-primary/10',
         'disabled:cursor-not-allowed disabled:opacity-50 transition-colors duration-fast',
         className,
       )}

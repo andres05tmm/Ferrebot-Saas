@@ -457,10 +457,11 @@ export default function TabVentasRapidas() {
       )}
       {carrito.length === 0 ? (
         <div className="py-10 text-center">
-          <span className="mx-auto mb-3 size-16 grid place-items-center rounded-full bg-surface-2">
-            <ShoppingCart className="size-7 text-muted-foreground/50" aria-hidden="true" />
+          <span className="mx-auto mb-3 size-14 grid place-items-center rounded-full bg-surface-2">
+            <ShoppingCart className="size-6 text-muted-foreground/50" aria-hidden="true" />
           </span>
           <p className="text-body-sm text-muted-foreground">Busca o escanea un producto para empezar.</p>
+          <p className="mt-1 text-caption text-muted-foreground/70">F2 busca · F9 cobra</p>
         </div>
       ) : (
         <ul className="divide-y divide-border-subtle mb-3">
@@ -539,22 +540,25 @@ export default function TabVentasRapidas() {
       {!isMobile && (
         <>
           <PillCarrito total={total} numItems={carrito.length} onAbrir={() => setCarritoAbierto(true)} />
-          {/* El carrito completo entra como Sheet lateral: líneas scrolleables + checkout fijo abajo. */}
+          {/* El carrito entra como tarjeta flotante (quieter): sin banda de color, esquinas redondas,
+              sombra difusa; líneas scrolleables + checkout fijo abajo en capa tonal. */}
           <Sheet open={carritoAbierto} onOpenChange={setCarritoAbierto}>
             <SheetContent side="right" aria-describedby={undefined}
-              className="p-0 gap-0 flex flex-col overflow-hidden [&>button]:text-primary-foreground [&>button]:top-3.5">
-              <div className="flex items-center gap-2 bg-primary text-primary-foreground px-4 py-3 pr-12 shrink-0">
-                <ShoppingCart className="size-4" aria-hidden="true" />
-                <SheetTitle className="text-caption font-semibold uppercase tracking-wider text-primary-foreground flex-1">
-                  Carrito
-                </SheetTitle>
-                <span className="min-w-6 h-6 px-1.5 grid place-items-center rounded-full bg-white/20 text-sm font-bold tabular"
-                  aria-label={`${carrito.length} en el carrito`}>
-                  {carrito.length}
+              className="p-0 gap-0 flex flex-col overflow-hidden inset-y-3 right-3 h-auto rounded-2xl border border-border shadow-xl data-[state=closed]:duration-200">
+              <div className="flex items-center gap-2.5 px-5 pt-4 pb-3 pr-12 shrink-0">
+                <span className="size-8 grid place-items-center rounded-full bg-primary/10" aria-hidden="true">
+                  <ShoppingCart className="size-4 text-primary" />
                 </span>
+                <SheetTitle className="text-base font-semibold flex-1">Carrito</SheetTitle>
+                {carrito.length > 0 && (
+                  <span className="h-6 px-2.5 grid place-items-center rounded-full bg-surface-2 text-caption font-medium tabular text-muted-foreground"
+                    aria-label={`${carrito.length} en el carrito`}>
+                    {carrito.length} {carrito.length === 1 ? 'ítem' : 'ítems'}
+                  </span>
+                )}
               </div>
-              <div className="flex-1 overflow-y-auto px-4 py-3 scrollbar-aurora">{seccionLineas}</div>
-              <div className="border-t border-border px-4 py-3 shrink-0">{seccionCheckout}</div>
+              <div className="flex-1 overflow-y-auto px-5 pb-4 scrollbar-aurora">{seccionLineas}</div>
+              <div className="border-t border-border-subtle bg-surface-2/50 px-5 py-4 shrink-0">{seccionCheckout}</div>
             </SheetContent>
           </Sheet>
         </>

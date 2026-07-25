@@ -80,7 +80,7 @@ describe('TabHoy — paridad', () => {
     expect(screen.getByText('Pendiente de apertura')).toBeInTheDocument() // caja 404 → cerrada (no rompe)
   })
 
-  it('F4: pinta alertas accionables, utilidad estimada y fiados desde el agregado', async () => {
+  it('F4: pinta alertas accionables desde el agregado y el KPI de N° de ventas', async () => {
     instalarFetch()
     render(<MemoryRouter><TabHoy /></MemoryRouter>)
 
@@ -90,10 +90,11 @@ describe('TabHoy — paridad', () => {
     expect(screen.getByText(/1 pedido a proveedor demorado/)).toBeInTheDocument()
     expect(screen.getByText(/\$9\.000 vencidos a proveedores/)).toBeInTheDocument()
     expect(screen.getByText(/2 productos con stock bajo/)).toBeInTheDocument()
-    // Utilidad estimada (admin) y fiados.
-    expect(screen.getByText('Utilidad estimada hoy')).toBeInTheDocument()
-    expect(screen.getByText('$13.000')).toBeInTheDocument()
-    expect(screen.getByText('$40.000')).toBeInTheDocument()   // fiados en la calle
+    // KPI de conteo de ventas (reemplazó utilidad estimada y fiados).
+    expect(screen.getByText('N° de ventas')).toBeInTheDocument()
+    // Utilidad estimada y fiados ya no se pintan.
+    expect(screen.queryByText('Utilidad estimada hoy')).toBeNull()
+    expect(screen.queryByText('Fiados en la calle')).toBeNull()
   })
 
   it('F4: acción rápida "Gasto" abre el modal y postea /gastos', async () => {

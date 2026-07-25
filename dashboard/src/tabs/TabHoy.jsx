@@ -10,10 +10,11 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useOutletContext } from 'react-router-dom'
 import {
   AreaChart, Area, ResponsiveContainer, CartesianGrid, XAxis, YAxis, Tooltip,
+  PieChart, Pie, Cell,
 } from 'recharts'
 import {
   ArrowRight, Plus, AlertTriangle, ShoppingCart, Receipt, Package, Activity,
-  CreditCard, Briefcase, CalendarDays, Timer, Banknote, HandCoins, Wallet, PackageSearch,
+  CreditCard, Briefcase, CalendarDays, Timer, Banknote, PackageSearch,
 } from 'lucide-react'
 import { useFetch, cop, num, rangoHoyCO, ProductThumb } from '@/components/shared.jsx'
 import { useRealtimeEvent } from '@/components/RealtimeProvider.jsx'
@@ -23,7 +24,6 @@ import KpiCard from '@/components/KpiCard.jsx'
 import FeedActividad from '@/components/FeedActividad.jsx'
 import ModalGastoRapido from '@/components/ModalGastoRapido.jsx'
 import ModalAbonoProveedor from '@/components/ModalAbonoProveedor.jsx'
-import { useFeatures } from '@/lib/features.jsx'
 import { cn } from '@/lib/utils'
 
 const HORA_CO = { hour: '2-digit', minute: '2-digit', timeZone: 'America/Bogota' }
@@ -40,7 +40,6 @@ const EVENTOS = [
 
 export default function TabHoy() {
   const navigate = useNavigate()
-  const features = useFeatures()
   const { refreshKey } = useOutletContext() ?? {}
   const deps = [refreshKey]
 
@@ -142,9 +141,8 @@ export default function TabHoy() {
     [stockArr],
   )
 
-  // ── Agregado del cockpit (F4): alertas accionables + utilidad estimada ──────
+  // ── Agregado del cockpit (F4): alertas accionables ──────────────────────────
   const hoy = hoyQ.data && !Array.isArray(hoyQ.data) ? hoyQ.data : null
-  const utilidad = hoy?.utilidad_estimada != null ? Number(hoy.utilidad_estimada) : null
 
   return (
     <div className="space-y-3">
@@ -168,21 +166,16 @@ export default function TabHoy() {
         />
       </div>
 
-      {/* MINI METRIC STRIP — Utilidad (admin) / Ticket / Semana / Mes / Fiados */}
-      <div className={cn('grid grid-cols-2 gap-3', utilidad != null ? 'md:grid-cols-5' : 'md:grid-cols-4')}>
-        {utilidad != null && (
-          <KpiCard headerBand coloredValue tone={utilidad >= 0 ? 'success' : 'danger'} icon={Wallet}
-            label="Utilidad estimada hoy" value={cop(utilidad)} sub="ventas − costo − gastos" />
-        )}
+      {/* MINI METRIC STRIP — N° ventas / Ticket / Semana / Mes */}
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+        <KpiCard headerBand tone="primary" icon={ShoppingCart} label="N° de ventas" value={num(pedidosHoy)}
+          sub="ventas de hoy" />
         <KpiCard headerBand tone="info" icon={CalendarDays} label="Ticket prom." value={cop(ticketProm)}
-          sub={`${num(pedidosHoy)} ${pedidosHoy === 1 ? 'venta' : 'ventas'}`} />
+          sub="promedio por venta" />
         <KpiCard headerBand tone="success" icon={CalendarDays} label="Total semana" value={cop(totalSemana)}
           sub="últimos 7 días" />
         <KpiCard headerBand coloredValue tone="warning" icon={CalendarDays} label="Total mes" value={cop(totalMes)}
           sub="mes en curso" />
-        <KpiCard headerBand tone="primary" icon={HandCoins} label="Fiados en la calle"
-          value={cop(Number(hoy?.fiados_total ?? 0))} sub="por cobrar a clientes"
-          onClick={features.includes('pack_cobranza') ? () => navigate('/cartera') : undefined} />
       </div>
 
       {/* HERO — Evolución (2/3) + Feed live (1/3) */}
@@ -198,12 +191,11 @@ export default function TabHoy() {
         <FeedActividad />
       </div>
 
-      {/* Stock bajo */}
+      {/* Stock bajo + Acciones rápidas (misma fila: sin tercio huérfano) */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
         <StockBajo items={stockBajo} total={stockArr.length} onMore={() => navigate('/inventario')} />
+        <QuickActions navigate={navigate} onRefetch={() => { gastosQ.refetch(); hoyQ.refetch() }} />
       </div>
-
-      <QuickActions navigate={navigate} onRefetch={() => { gastosQ.refetch(); hoyQ.refetch() }} />
     </div>
   )
 }
@@ -449,41 +441,66 @@ function metodoTone(metodo) {
 }
 
 // ── MÉTODOS DE PAGO ───────────────────────────────────────────────────────────
+// Mismos tonos que los chips de metodoTone (el color sigue al método en TODO el tab).
 const METODO_BAR_COLORS = {
-  Efectivo: 'hsl(var(--success))', Transferencia: 'hsl(var(--accent))',
-  Datafono: 'hsl(var(--info))', Fiado: 'hsl(var(--warning))',
+  Efectivo: 'hsl(var(--success))', Transferencia: 'hsl(var(--warning))',
+  Datafono: 'hsl(var(--info))', Fiado: 'hsl(var(--danger))',
   Tarjeta: 'hsl(var(--info))',   // histórico (las claves ausentes caen al color muted por defecto)
 }
 
+// En qué llegó la plata de hoy: donut (un sector por método, mismos colores que los chips del
+// feed) con el total en el centro + la lista con el monto REAL de cada método. Al pasar el mouse
+// por un sector, el CENTRO muestra ese método (nada de tooltip flotante: se montaba sobre el total).
 function MetodosPago({ items, total }) {
+  const [activo, setActivo] = useState(null)
+  const sel = activo != null ? items[activo] : null
+  const colorDe = m => METODO_BAR_COLORS[m.nombre] || 'hsl(var(--text-muted))'
   return (
     <Card className="p-3.5">
       <div className="flex items-center justify-between mb-2.5">
         <h2 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground inline-flex items-center gap-1.5">
           <CreditCard className="size-3.5" /> Métodos de pago · Hoy
         </h2>
-        {total > 0 && <span className="text-[11px] text-muted-foreground tabular">{cop(total)}</span>}
       </div>
       {items.length === 0 ? (
         <p className="py-6 text-center text-sm text-muted-foreground">Sin ventas hoy.</p>
       ) : (
-        <ul className="space-y-2">
-          {items.map((m, i) => (
-            <li key={i}>
-              <div className="flex items-baseline justify-between mb-1 text-[12px]">
-                <span className="font-medium truncate">{m.nombre}</span>
-                <span className="tabular font-semibold shrink-0">{cop(m.monto)}</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="flex-1 h-2 rounded-full bg-surface-2 overflow-hidden">
-                  <div className="h-full rounded-full transition-all duration-base"
-                    style={{ width: `${Math.max(4, m.pct)}%`, background: METODO_BAR_COLORS[m.nombre] || 'hsl(var(--text-muted))' }} />
+        <>
+          <div className="relative h-[150px]" role="img"
+            aria-label={items.map(m => `${m.nombre} ${cop(m.monto)}`).join(', ')}>
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie data={items} dataKey="monto" nameKey="nombre" cx="50%" cy="50%"
+                  innerRadius={48} outerRadius={70} paddingAngle={items.length > 1 ? 2 : 0}
+                  stroke="hsl(var(--bg-surface))" strokeWidth={2} startAngle={90} endAngle={-270}
+                  isAnimationActive={false}
+                  onMouseEnter={(_, i) => setActivo(i)} onMouseLeave={() => setActivo(null)}>
+                  {items.map((m, i) => (
+                    <Cell key={i} fill={colorDe(m)} opacity={activo == null || activo === i ? 1 : 0.35} />
+                  ))}
+                </Pie>
+              </PieChart>
+            </ResponsiveContainer>
+            <div className="absolute inset-0 grid place-items-center pointer-events-none">
+              <div className="text-center">
+                <div className="text-[15px] font-semibold tracking-tight tabular text-foreground">{cop(sel ? sel.monto : total)}</div>
+                <div className="text-[10px] text-muted-foreground uppercase tracking-wide">
+                  {sel ? `${sel.nombre} · ${sel.pct}%` : 'hoy'}
                 </div>
-                <span className="text-[10px] text-muted-foreground tabular w-9 text-right shrink-0">{m.pct}%</span>
               </div>
-            </li>
-          ))}
-        </ul>
+            </div>
+          </div>
+          <ul className="divide-y divide-border-subtle mt-2">
+            {items.map((m, i) => (
+              <li key={i} className="py-1.5 flex items-center gap-2">
+                <span className="size-2.5 rounded-full shrink-0" style={{ background: colorDe(m) }} />
+                <span className="flex-1 min-w-0 text-[12.5px] font-medium truncate">{m.nombre}</span>
+                <span className="text-[11px] text-muted-foreground tabular shrink-0">{m.pct}%</span>
+                <span className="text-[14px] font-semibold tabular text-foreground shrink-0">{cop(m.monto)}</span>
+              </li>
+            ))}
+          </ul>
+        </>
       )}
     </Card>
   )
@@ -586,13 +603,13 @@ function QuickActions({ navigate, onRefetch }) {
     success: { color: 'hsl(var(--success))', bg: 'bg-success/10' },
   }
   return (
-    <Card className="p-3">
+    <Card className="p-3 lg:col-span-2">
       <div className="flex items-center justify-between mb-2.5">
         <h2 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground inline-flex items-center gap-1.5">
           <Activity className="size-3.5" /> Acciones rápidas
         </h2>
       </div>
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+      <div className="grid grid-cols-2 gap-2 content-start">
         {actions.map(a => {
           const t = toneStyles[a.tone]
           const Icon = a.icon

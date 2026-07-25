@@ -1,9 +1,17 @@
 /*
  * TabInventario — catálogo con CRUD para admin (Fase 12, Slice 1; sobre el solo-lectura de E6).
- * Lista/búsqueda: GET /productos (?q, ?activo=true por defecto, limite/offset → "cargar más").
+ *
+ * Navegación POR CATEGORÍA (réplica del FerreBot viejo, igual que Ventas Rápidas): el catálogo
+ * completo se carga en memoria con `usePosCatalogo` y se agrupa en un acordeón de categorías; dentro
+ * de cada una, los chips de SUBCATEGORÍA parten el surtido por palabra clave del nombre reusando
+ * `pos/subcategorias.js` (misma lógica y mismas etiquetas que el POS: una sola fuente de verdad).
+ * Antes era una lista plana paginada de 50 en 50 donde encontrar algo exigía buscar de memoria.
+ * La búsqueda es local e instantánea (`filtrarYRankear`, el mismo ranking del POS) y expande todas
+ * las categorías con resultados.
+ *
  * Stock: GET /inventario/stock. Admin: nuevo/editar (POST/PUT /productos), eliminar (DELETE = soft,
  * con confirmación) y ajuste de stock (POST /inventario/ajuste). El vendedor sigue en solo-lectura.
- * Live: re-fetch ante inventario_actualizado / reconnected.
+ * Live: el hook del catálogo recarga ante inventario_actualizado / reconnected.
  *
  * Familia construcción (esConstruccion): el "catálogo" es de CONSUMIBLES y REPUESTOS de obra, no de venta
  * por mostrador. Se re-encuadra el formulario: sin precio escalonado, sin fracciones/media unidad, sin
@@ -12,20 +20,25 @@
  * protagonismo. Stock/stock mínimo quedan (sirven para repuestos). El aviso de stock negativo cambia el
  * copy de "vendiste de más" a "se consumió de más". Retail queda idéntico.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import { toast } from 'sonner'
-import { Pencil, Plus, Search, SlidersHorizontal, Trash2 } from 'lucide-react'
+import { ChevronDown, Package, Pencil, Plus, Search, SlidersHorizontal, Trash2 } from 'lucide-react'
 import { api, apiJson } from '@/lib/api'
 import { useFetch, cop, num } from '@/components/shared.jsx'
-import { useRealtimeEvent } from '@/components/RealtimeProvider.jsx'
 import { useFeatures, esConstruccion } from '@/lib/features.jsx'
 import { useAuth } from '@/hooks/useAuth.js'
 import { Card } from '@/components/ui/card.jsx'
 import { Input } from '@/components/ui/input.jsx'
 import { Badge } from '@/components/ui/badge.jsx'
+import usePosCatalogo from './pos/usePosCatalogo.js'
+import { filtrarYRankear } from './pos/filtroLocal.js'
+import { etiquetaCategoria, iconoCategoria } from './pos/categorias.js'
+import { filtrarSubcat, ordenarProductos, subcatsDe } from './pos/subcategorias.js'
 
-const LIMITE = 50
+const SIN_CATEGORIA = 'Sin categoría'
+const PAGINA_STOCK = 500    // límite máximo del endpoint (modules/inventario/router.py)
+const TOPE_STOCK = 5000     // red de seguridad client-side, como el TOPE del catálogo del POS
 
 export default function TabInventario() {
   const { refreshKey } = useOutletContext() ?? {}
@@ -34,73 +47,78 @@ export default function TabInventario() {
   const construccion = esConstruccion(useFeatures())
 
   const [q, setQ] = useState('')
-  const [productos, setProductos] = useState([])
-  const [offset, setOffset] = useState(0)
-  const [hayMas, setHayMas] = useState(false)
-  const [loading, setLoading] = useState(true)
+  const [abierta, setAbierta] = useState(null)   // categoría expandida del acordeón
+  const [subcats, setSubcats] = useState({})     // { categoria: subcatKey | null }
   const [editando, setEditando] = useState(null) // null | 'nuevo' | producto
 
-  // Secuencia de la última búsqueda lanzada: una respuesta que llega tarde (de una query vieja)
-  // se descarta en vez de pisar los resultados de la query vigente.
-  const seqRef = useRef(0)
+  // Catálogo completo en memoria (mismo hook del POS: paginado hasta el final + recarga por SSE).
+  const { productos, cargando: loading, parcial, recargar: recargarCatalogo } = usePosCatalogo()
 
-  const cargar = useCallback(async (busqueda, off, append) => {
-    const seq = ++seqRef.current
-    setLoading(true)
-    // activo=true: los productos inactivos (soft-deleted) no salen en el listado por defecto.
-    const params = new URLSearchParams({ limite: String(LIMITE), offset: String(off), activo: 'true' })
-    if (busqueda) params.set('q', busqueda)
+  // Stock PAGINADO hasta el final: el tope del endpoint es 500 por página y el catálogo puede ser mayor
+  // (Punto Rojo va por 632) — con una sola página, a los productos de la cola el stock les "desaparecía"
+  // en silencio y parecía que no manejaban inventario. Mismo patrón que usePosCatalogo.
+  const [stock, setStock] = useState([])
+  const cargarStock = useCallback(async () => {
+    const todos = []
+    let offset = 0
     try {
-      const data = await apiJson(`/productos?${params.toString()}`)
-      if (seq !== seqRef.current) return
-      const lista = Array.isArray(data) ? data : []
-      setProductos(prev => (append ? [...prev, ...lista] : lista))
-      setHayMas(lista.length === LIMITE)
+      for (;;) {
+        const pagina = await apiJson(`/inventario/stock?limite=${PAGINA_STOCK}&offset=${offset}`)
+        const lista = Array.isArray(pagina) ? pagina : []
+        todos.push(...lista)
+        if (lista.length < PAGINA_STOCK || todos.length >= TOPE_STOCK) break
+        offset += PAGINA_STOCK
+      }
+      setStock(todos)
     } catch {
-      if (seq === seqRef.current) toast.error('No se pudo cargar el inventario')
-    } finally {
-      if (seq === seqRef.current) setLoading(false)
+      setStock(todos)   // lo que alcanzó a traer: mejor stock parcial que ninguno
     }
   }, [])
+  const stockMap = useMemo(() => new Map(stock.map(s => [s.producto_id, s])), [stock])
 
-  const recargar = useCallback(() => { setOffset(0); cargar(q, 0, false) }, [q, cargar])
+  const recargar = () => { recargarCatalogo(); cargarStock() }
+  useEffect(() => { cargarStock() }, [cargarStock])
+  // El botón de refrescar del shell (refreshKey arranca en 0 → no dispara en el montaje).
+  useEffect(() => { if (refreshKey) recargar() }, [refreshKey])   // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(() => {
-    setOffset(0)
-    cargar(q, 0, false)
-  }, [q, refreshKey, cargar])
+  const buscando = q.trim().length > 0
+  const visibles = useMemo(
+    () => (buscando ? filtrarYRankear(productos, q) : productos),
+    [productos, q, buscando],
+  )
 
-  // limite=500 (F2.7): el default del backend es 100 y la lista de productos pagina sin tope — a partir
-  // de la fila ~101 el stock "desaparecía" en silencio y parecía que esos productos no manejaban stock.
-  const stockQ = useFetch('/inventario/stock?limite=500', [refreshKey])
-  const stockMap = useMemo(() => {
+  // Agrupado por categoría: el orden lo da el nombre (los catálogos vienen prefijados "1 …", "2 …"),
+  // con "Sin categoría" siempre al final. Dentro de cada grupo manda `ordenarProductos` (el orden de
+  // tornillería del viejo; en el resto, sin reordenar).
+  const grupos = useMemo(() => {
     const m = new Map()
-    for (const s of (Array.isArray(stockQ.data) ? stockQ.data : [])) m.set(s.producto_id, s)
-    return m
-  }, [stockQ.data])
+    for (const p of visibles) {
+      const cat = p.categoria || SIN_CATEGORIA
+      if (!m.has(cat)) m.set(cat, [])
+      m.get(cat).push(p)
+    }
+    return [...m.entries()]
+      .sort(([a], [b]) => (a === SIN_CATEGORIA) - (b === SIN_CATEGORIA) || a.localeCompare(b, 'es'))
+      .map(([cat, items]) => [cat, ordenarProductos(cat, items)])
+  }, [visibles])
 
-  useRealtimeEvent(['inventario_actualizado', 'reconnected'], () => {
-    setOffset(0); cargar(q, 0, false); stockQ.refetch()
-  })
-
-  function cargarMas() {
-    const next = offset + LIMITE
-    setOffset(next)
-    cargar(q, next, true)
-  }
+  // Buscando se expande todo (el resultado importa más que el orden); si no, acordeón cerrado para ver
+  // las categorías de un vistazo y entrar a la que toca. Con UNA sola categoría el acordeón sobra: se
+  // abre sola (un clic obligatorio para ver el único grupo no ayuda a nadie).
+  const abiertaEfectiva = abierta ?? (grupos.length === 1 ? grupos[0][0] : null)
 
   async function eliminar(producto) {
     if (!window.confirm(`¿Eliminar "${producto.nombre}"? Dejará de aparecer en el catálogo.`)) return
     try {
       const res = await api(`/productos/${producto.id}`, { method: 'DELETE' })
-      if (res.ok) { toast.success('Producto eliminado'); recargar(); stockQ.refetch() }
+      if (res.ok) { toast.success('Producto eliminado'); recargar() }
       else toast.error('No se pudo eliminar el producto')
     } catch { toast.error('Error de conexión') }
   }
 
   return (
     <div className="space-y-3">
-      <Card className="p-3">
+      <Card className="p-3 space-y-2">
         <div className="flex items-center gap-2">
           <div className="relative flex-1">
             <Search className="size-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
@@ -119,6 +137,13 @@ export default function TabInventario() {
             </button>
           )}
         </div>
+        <p className="text-[11px] text-muted-foreground inline-flex items-center gap-1.5">
+          <Package className="size-3.5" />
+          <strong className="text-foreground font-semibold">{visibles.length}</strong>
+          {buscando ? ' resultados' : ' productos'} en{' '}
+          <strong className="text-foreground font-semibold">{grupos.length}</strong>
+          {grupos.length === 1 ? ' categoría' : ' categorías'}
+        </p>
       </Card>
 
       {admin && editando && (
@@ -126,37 +151,114 @@ export default function TabInventario() {
           producto={editando === 'nuevo' ? null : editando}
           construccion={construccion}
           onClose={() => setEditando(null)}
-          onSaved={() => { setEditando(null); recargar(); stockQ.refetch() }}
+          onSaved={() => { setEditando(null); recargar() }}
         />
       )}
 
-      <Card className="p-0 overflow-hidden">
-        {loading && productos.length === 0 ? (
-          <p className="py-10 text-center text-sm text-muted-foreground">Cargando…</p>
-        ) : productos.length === 0 ? (
-          <p className="py-10 text-center text-sm text-muted-foreground">Sin productos.</p>
-        ) : (
-          <ul className="divide-y divide-border-subtle">
-            {productos.map(p => (
-              <ProductoRow key={p.id} producto={p} stock={stockMap.get(p.id)} admin={admin}
-                construccion={construccion}
-                onAjustado={() => { recargar(); stockQ.refetch() }}
-                onEditar={() => setEditando(p)}
-                onEliminar={() => eliminar(p)} />
-            ))}
-          </ul>
-        )}
-      </Card>
+      {loading && productos.length === 0 ? (
+        <Card className="py-10 text-center text-sm text-muted-foreground">Cargando…</Card>
+      ) : grupos.length === 0 ? (
+        <Card className="py-10 text-center text-sm text-muted-foreground">
+          {buscando ? 'Sin resultados para esa búsqueda.' : 'Sin productos.'}
+        </Card>
+      ) : (
+        grupos.map(([categoria, items]) => (
+          <CategoriaCard
+            key={categoria}
+            categoria={categoria}
+            productos={items}
+            expandida={buscando || categoria === abiertaEfectiva}
+            onToggle={() => setAbierta(a => ((a ?? abiertaEfectiva) === categoria ? '' : categoria))}
+            subcatSel={subcats[categoria] || null}
+            onSubcat={(key) => setSubcats(s => ({ ...s, [categoria]: s[categoria] === key ? null : key }))}
+            stockMap={stockMap}
+            admin={admin}
+            construccion={construccion}
+            onAjustado={recargar}
+            onEditar={setEditando}
+            onEliminar={eliminar}
+          />
+        ))
+      )}
 
-      {hayMas && (
-        <div className="flex justify-center">
-          <button onClick={cargarMas}
-            className="text-xs px-4 py-2 rounded-md border border-border bg-surface hover:bg-surface-2 transition-colors">
-            Cargar más
-          </button>
-        </div>
+      {parcial && (
+        <p className="text-[11px] text-muted-foreground text-center">
+          Catálogo muy grande: se está mostrando solo una parte. Usa la búsqueda para encontrar un producto.
+        </p>
       )}
     </div>
+  )
+}
+
+// ── Categoría (acordeón) + chips de subcategoría ──────────────────────────────
+function CategoriaCard({
+  categoria, productos, expandida, onToggle, subcatSel, onSubcat, stockMap,
+  admin, construccion, onAjustado, onEditar, onEliminar,
+}) {
+  const { Icono, color } = iconoCategoria(categoria)
+  const subs = subcatsDe(categoria)
+  const visibles = subcatSel ? filtrarSubcat(productos, subs, subcatSel) : productos
+  // Cuántos piden atención: stock bajo el mínimo o en negativo (lo que uno viene a mirar al inventario).
+  const porRevisar = productos.filter(p => {
+    const s = stockMap.get(p.id)
+    return s && (s.bajo || Number(s.stock_actual) < 0)
+  }).length
+
+  return (
+    <Card className={`p-0 overflow-hidden ${expandida ? 'border-primary/40' : ''}`}>
+      <button onClick={onToggle} aria-expanded={expandida}
+        className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-left hover:bg-surface-2/60 transition-colors">
+        <span className={`grid place-items-center size-8 rounded-md bg-surface-2 shrink-0 ${color}`}>
+          <Icono className="size-4" />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block text-[13px] font-semibold truncate">{etiquetaCategoria(categoria)}</span>
+          <span className="block text-[11px] text-muted-foreground">
+            {productos.length} {productos.length === 1 ? 'producto' : 'productos'}
+          </span>
+        </span>
+        {porRevisar > 0 && (
+          <Badge variant="outline" className="h-5 text-[10px] text-warning border-warning/30 shrink-0">
+            {porRevisar} por revisar
+          </Badge>
+        )}
+        <ChevronDown className={`size-4 text-muted-foreground shrink-0 transition-transform ${expandida ? 'rotate-180' : ''}`} />
+      </button>
+
+      {expandida && (
+        <div className="border-t border-border-subtle">
+          {subs.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 px-3.5 py-2 border-b border-border-subtle">
+              {subs.map(s => {
+                const cnt = filtrarSubcat(productos, subs, s.key).length
+                if (cnt === 0) return null
+                const activo = subcatSel === s.key
+                return (
+                  <button key={s.key} onClick={() => onSubcat(s.key)} aria-pressed={activo}
+                    className={`inline-flex items-center gap-1.5 h-7 px-2 rounded-full text-[11px] border transition-colors ${
+                      activo
+                        ? 'bg-primary text-primary-foreground border-primary'
+                        : 'bg-surface border-border text-muted-foreground hover:bg-surface-2'}`}>
+                    <s.Icono className="size-3" />
+                    {s.label}
+                    <span className="tabular-nums opacity-70">{cnt}</span>
+                  </button>
+                )
+              })}
+            </div>
+          )}
+          <ul className="divide-y divide-border-subtle">
+            {visibles.map(p => (
+              <ProductoRow key={p.id} producto={p} stock={stockMap.get(p.id)} admin={admin}
+                construccion={construccion}
+                onAjustado={onAjustado}
+                onEditar={() => onEditar(p)}
+                onEliminar={() => onEliminar(p)} />
+            ))}
+          </ul>
+        </div>
+      )}
+    </Card>
   )
 }
 
@@ -183,9 +285,8 @@ function ProductoRow({ producto, stock, admin, construccion, onAjustado, onEdita
             <span className="text-[13px] font-medium truncate">{producto.nombre}</span>
             {!producto.activo && <Badge variant="outline" className="h-4 text-[9px] text-muted-foreground">inactivo</Badge>}
           </div>
-          <div className="text-[11px] text-muted-foreground truncate">
-            {[producto.codigo, producto.categoria].filter(Boolean).join(' · ') || '—'}
-          </div>
+          {/* Sin la categoría: la card que contiene la fila ya la dice (era ruido repetido 200 veces). */}
+          <div className="text-[11px] text-muted-foreground truncate">{producto.codigo || '—'}</div>
         </div>
         <div className="text-right shrink-0">
           <div className="text-[13px] font-semibold tabular">{cop(Number(producto.precio_venta))}</div>

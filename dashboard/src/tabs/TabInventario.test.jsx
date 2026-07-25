@@ -55,7 +55,7 @@ beforeEach(() => { localStorage.clear(); authState.admin = false })
 afterEach(() => { cleanup(); vi.restoreAllMocks() })
 
 describe('TabInventario — solo lectura (vendedor)', () => {
-  it('lista productos (activo=true) y filtra con ?q', async () => {
+  it('lista productos (activo=true) y filtra localmente al escribir', async () => {
     const fetchMock = instalarFetch()
     render(<MemoryRouter><TabInventario /></MemoryRouter>)
 
@@ -63,10 +63,10 @@ describe('TabInventario — solo lectura (vendedor)', () => {
     // El listado por defecto pide solo activos.
     expect(fetchMock.mock.calls.some(c => String(c[0]).includes('activo=true'))).toBe(true)
 
+    // La búsqueda es local sobre el catálogo en memoria (no vuelve al servidor).
     fireEvent.change(screen.getByLabelText('Buscar producto'), { target: { value: 'mar' } })
-    await waitFor(() => {
-      expect(fetchMock.mock.calls.some(c => String(c[0]).includes('q=mar'))).toBe(true)
-    })
+    await waitFor(() => expect(screen.queryByText('Clavo')).toBeNull())
+    expect(screen.getByText('Martillo')).toBeInTheDocument()
   })
 
   it('un vendedor NO ve controles de crear/editar/eliminar/ajustar', async () => {
@@ -235,6 +235,35 @@ describe('TabInventario — CRUD (admin)', () => {
       expect(call).toBeTruthy()
       expect(JSON.parse(call[1].body)).toMatchObject({ producto_id: 1, cantidad_contada: 40 })
     })
+  })
+})
+
+describe('TabInventario — stock paginado', () => {
+  it('pide páginas de stock hasta agotar el listado (una sola página dejaba productos sin stock)', async () => {
+    // Página 1 llena (500 filas) → tiene que pedir la 2; la 2 llega corta y ahí para.
+    const pagina1 = Array.from({ length: 500 }, (_, i) => (
+      { producto_id: 1000 + i, nombre: `P${i}`, stock_actual: '1', stock_minimo: '0', bajo: false }
+    ))
+    const pagina2 = [{ producto_id: 2, nombre: 'Clavo', stock_actual: '7', stock_minimo: '0', bajo: false }]
+    const fetchMock = vi.fn((url, opts) => {
+      const u = String(url)
+      if (u.includes('/inventario/stock')) {
+        return Promise.resolve(jsonResp(u.includes('offset=500') ? pagina2 : pagina1))
+      }
+      if (u.includes('/productos/categorias')) return Promise.resolve(jsonResp(CATEGORIAS))
+      if (u.includes('/proveedores')) return Promise.resolve(jsonResp(PROVEEDORES))
+      if (u.includes('/productos')) return Promise.resolve(jsonResp(PRODUCTOS))
+      return Promise.resolve(jsonResp([]))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    render(<MemoryRouter><TabInventario /></MemoryRouter>)
+    await screen.findByText('Clavo')
+
+    await waitFor(() => {
+      expect(fetchMock.mock.calls.some(c => String(c[0]).includes('/inventario/stock') && String(c[0]).includes('offset=500'))).toBe(true)
+    })
+    // El stock de la segunda página se pinta (antes se perdía).
+    expect(await screen.findByText('7 unidad')).toBeInTheDocument()
   })
 })
 

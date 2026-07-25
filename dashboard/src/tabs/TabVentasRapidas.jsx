@@ -25,7 +25,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
-import { Flame, Search, ShoppingCart, Star, X } from 'lucide-react'
+import { Search, ShoppingCart, Star, X } from 'lucide-react'
 import { api, apiJson } from '@/lib/api'
 import { useIsMobile } from '@/components/shared.jsx'
 import ModalAbrirCaja from '@/components/ModalAbrirCaja.jsx'
@@ -127,7 +127,7 @@ export default function TabVentasRapidas() {
   useEffect(() => { guardarLS(CART_KEY, carrito) }, [carrito])
   useEffect(() => { guardarLS(ESPERA_KEY, enEspera) }, [enEspera])
 
-  // Frecuentes (una vez): "Top productos del mes" en la grilla + la fila MÁS VENDIDOS (chips).
+  // Frecuentes (una vez): alimentan el chip-categoría "Más vendidos" y su sección en "Todos".
   useEffect(() => {
     apiJson('/productos/frecuentes?dias=30&limite=12')
       .then(d => setFrecuentes(Array.isArray(d) ? d : []))
@@ -522,24 +522,6 @@ export default function TabVentasRapidas() {
               <p className="mt-2 text-caption text-muted-foreground">
                 Catálogo grande: la búsqueda va directa al servidor.
               </p>
-            )}
-
-            {/* MÁS VENDIDOS — chips de un toque (réplica del viejo): lo que más rota, sin buscar. */}
-            {!buscando && frecuentes.length > 0 && (
-              <div className="mt-3">
-                <div className="flex items-center gap-1.5 text-caption font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">
-                  <Flame className="size-3.5 text-warning" aria-hidden="true" /> Más vendidos
-                </div>
-                <div className="flex flex-wrap gap-1.5" role="group" aria-label="Más vendidos">
-                  {frecuentes.map(p => (
-                    <button key={p.id} onClick={() => alTocar(p)}
-                      aria-label={`Agregar ${p.nombre} (más vendido)`}
-                      className="inline-flex items-center h-8 px-3 rounded-full border border-border bg-surface text-caption hover:border-primary/40 hover:bg-primary/5 transition-colors">
-                      {p.nombre}
-                    </button>
-                  ))}
-                </div>
-              </div>
             )}
 
             {!buscando && favoritos.size === 0 && (

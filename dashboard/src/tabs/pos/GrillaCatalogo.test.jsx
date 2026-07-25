@@ -63,9 +63,9 @@ describe('GrillaCatalogo', () => {
     expect(screen.getByLabelText('3 en el carrito')).toBeInTheDocument()   // badge del Martillo
   })
 
-  it('el chip Top productos filtra por los ids de frecuentes', () => {
+  it('el chip Más vendidos filtra por los ids de frecuentes', () => {
     render(<Harness frecuentesIds={new Set([3])} />)
-    fireEvent.click(screen.getByRole('button', { name: /Top productos/ }))
+    fireEvent.click(screen.getByRole('button', { name: /Más vendidos/ }))
     expect(screen.getByLabelText('Agregar Estuco')).toBeInTheDocument()
     expect(screen.queryByLabelText('Agregar Martillo')).toBeNull()
   })
@@ -96,7 +96,7 @@ describe('GrillaCatalogo', () => {
   it('en "Todos" los productos van agrupados por categoría con header y conteo', () => {
     render(<Harness frecuentesIds={new Set([1])} />)
     // Sección Top del mes (frecuentes) + una por categoría, cada una con su conteo.
-    expect(screen.getByRole('heading', { name: 'Top productos del mes' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Más vendidos del mes' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Herramientas' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Pinturas' })).toBeInTheDocument()
   })

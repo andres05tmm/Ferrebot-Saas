@@ -22,9 +22,13 @@ def _exp_iat(settings) -> dict:
     }
 
 
-def create_access_token(*, user_id: int, tenant: str, rol: str) -> str:
+def create_access_token(*, user_id: int, tenant: str, rol: str, email: str | None = None) -> str:
+    """`email` (opcional): la identidad CON LA QUE se inició sesión. Un usuario puede tener varias
+    identidades (grandfather + email nuevo); solo el login sabe cuál se usó — el perfil lo muestra."""
     settings = get_settings()
     payload = {"sub": str(user_id), "tenant": tenant, "rol": rol, "scope": "tenant", **_exp_iat(settings)}
+    if email:
+        payload["email"] = email
     return jwt.encode(payload, settings.secret_key, algorithm=settings.jwt_algorithm)
 
 

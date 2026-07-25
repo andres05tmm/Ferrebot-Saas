@@ -72,8 +72,13 @@ async def _perfil_o_404(repo: SqlPerfilRepository, usuario_id: int):
 
 async def _leer(session: AsyncSession, user: Principal, empresa_id: int) -> PerfilLeer:
     fila = await _perfil_o_404(SqlPerfilRepository(session), user.user_id)
-    async with control_session() as cs:
-        email = await email_de_usuario(cs, empresa_id, user.user_id)
+    # El email es el de la identidad CON LA QUE se entró (claim del login). Un usuario puede tener
+    # varias identidades; el directorio no sabe cuál se usó — solo el token. Fallback al directorio
+    # para tokens sin claim (viejos, Telegram, dev_token).
+    email = user.email
+    if email is None:
+        async with control_session() as cs:
+            email = await email_de_usuario(cs, empresa_id, user.user_id)
     return PerfilLeer(
         id=fila.id, nombre=fila.nombre, rol=fila.rol, email=email,
         avatar_url=fila.avatar_url, color=fila.color, creado_en=fila.creado_en,

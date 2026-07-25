@@ -186,7 +186,9 @@ async def login_password(
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Credenciales inválidas")
 
     await lockout.reset(clave)
-    token = create_access_token(user_id=identidad.usuario_id, tenant=slug, rol=identidad.rol)
+    token = create_access_token(
+        user_id=identidad.usuario_id, tenant=slug, rol=identidad.rol, email=identidad.email
+    )
     log.info("login_password_ok", tenant=slug, usuario_id=identidad.usuario_id, rol=identidad.rol)
     return LoginOut(
         token=token, usuario=UsuarioOut(id=identidad.usuario_id, rol=identidad.rol, tenant=slug)

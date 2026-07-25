@@ -103,25 +103,27 @@ export default function TabCaja() {
 
   return (
     <div className="space-y-3">
-      {/* KPIs — bandas de color por tipo. Construcción (caja menor) no muestra "Ventas hoy": su caja no
-          registra ventas de mostrador. La grilla pasa de 4 a 3 columnas para no dejar un hueco. */}
-      <div className={`grid grid-cols-2 gap-2.5 ${construccion ? 'lg:grid-cols-3' : 'lg:grid-cols-4'}`}>
-        <KpiCard headerBand tone="muted" icon={Wallet} label="Apertura"
+      {/* KPIs — misma tarjeta hero del tab Hoy (ícono sólido + cifra grande en una sola fila, sin banda
+          de color arriba) y el mismo gap-3, para que las dos portadas del POS se lean igual.
+          Construcción (caja menor) no muestra "Ventas hoy": su caja no registra ventas de mostrador; la
+          grilla pasa de 4 a 3 columnas para no dejar un hueco. */}
+      <div className={`grid grid-cols-1 sm:grid-cols-2 gap-3 ${construccion ? 'lg:grid-cols-3' : 'lg:grid-cols-4'}`}>
+        <KpiCard tone="muted" icon={Wallet} label="Apertura" iconStyle="filled" heroValue
           value={cop(apertura)}
           sub={abierta && arqueo.fecha_apertura ? `Desde las ${hora(arqueo.fecha_apertura)}` : 'Base inicial de la caja'} />
         {!construccion && (
-          <KpiCard headerBand tone="success" icon={TrendingUp} label="Ventas hoy"
+          <KpiCard tone="success" icon={TrendingUp} label="Ventas hoy" iconStyle="filled" heroValue
             value={cop(ventasHoy)}
-            sub={`${resumen.num_ventas ?? 0} ventas · ticket ${cop(ticket)}`} coloredValue />
+            sub={`${resumen.num_ventas ?? 0} ventas · ticket ${cop(ticket)}`} />
         )}
-        <KpiCard headerBand tone="danger" icon={TrendingDown} label="Gastos"
-          value={cop(totalGastos)} sub={`${gastos.length} egresos del día`} coloredValue />
+        <KpiCard tone="danger" icon={TrendingDown} label="Gastos" iconStyle="filled" heroValue
+          value={cop(totalGastos)} sub={`${gastos.length} egresos del día`} />
         {/* En construcción el efectivo esperado es el KPI clave de la caja menor: ocupa fila completa en
-            móvil (col-span-2) para que la grilla de 3 no deje una celda vacía abajo. */}
-        <div className={construccion ? 'col-span-2 lg:col-span-1' : 'contents'}>
-          <KpiCard headerBand tone="primary" icon={Coins} label="Efectivo esperado"
+            móvil (sm:col-span-2) para que la grilla de 3 no deje una celda vacía abajo. */}
+        <div className={construccion ? 'sm:col-span-2 lg:col-span-1' : 'contents'}>
+          <KpiCard tone="primary" icon={Coins} label="Efectivo esperado" iconStyle="filled" heroValue coloredValue
             value={cop(esperado)}
-            sub={construccion ? 'Apertura + movimientos − gastos' : 'Apertura + ventas efectivo − gastos'} coloredValue />
+            sub={construccion ? 'Apertura + movimientos − gastos' : 'Apertura + ventas efectivo − gastos'} />
         </div>
       </div>
 

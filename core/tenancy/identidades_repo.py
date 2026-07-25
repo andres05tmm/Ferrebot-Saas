@@ -54,6 +54,16 @@ async def buscar_por_email(session: AsyncSession, email: str) -> Identidad | Non
     return _fila(row)
 
 
+async def email_de_usuario(session: AsyncSession, empresa_id: int, usuario_id: int) -> str | None:
+    """Email de la identidad de un usuario de la empresa (para el perfil). None si no tiene login."""
+    return (
+        await session.execute(
+            text("SELECT email FROM identidades WHERE empresa_id = :e AND usuario_id = :u"),
+            {"e": empresa_id, "u": usuario_id},
+        )
+    ).scalar_one_or_none()
+
+
 async def upsert(
     session: AsyncSession, *, email: str, empresa_id: int, usuario_id: int, rol: str
 ) -> Identidad:

@@ -16,6 +16,7 @@ import {
   CalendarDays, Headset, BookText, HandCoins, ChefHat, Banknote,
   CreditCard, FileSpreadsheet, Star, BedDouble, Undo2, Percent, Library, Landmark, Scale,
   HardHat, Wrench, ClipboardList, TrendingDown, Gauge, PackageSearch, Timer, Armchair, Flame, QrCode,
+  UserRound,
 } from 'lucide-react'
 import { esConstruccion, isRouteEnabled } from './lib/features.jsx'
 
@@ -28,6 +29,10 @@ export const ROUTES = [
   // riesgo, máquinas, alertas). Solo visible para construcción (isRouteEnabled) y admin (guardia en
   // el propio panel + resolveHomePath por rol). `/obras` sigue siendo la vista operativa CRUD.
   { path: '/panel',               label: 'Panel',               icon: Gauge,           group: 'top' },
+  // Perfil del usuario logueado: núcleo (sin feature), toda familia. NO es una portada ni vive en
+  // el nav lateral (grupo propio que ningún renderer lista): se llega por el botón del HeaderBar
+  // (móvil y escritorio) y por ⌘K.
+  { path: '/perfil',              label: 'Mi perfil',           icon: UserRound,       group: 'perfil' },
 
   // Operación
   { path: '/ventas',              label: 'Ventas Rápidas',      icon: ShoppingCart,    group: 'operacion' },

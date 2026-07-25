@@ -23,6 +23,7 @@ import TabCaja from './tabs/TabCaja.jsx'
 import TabGastos from './tabs/TabGastos.jsx'
 import TabClientes from './tabs/TabClientes.jsx'
 import TabHistorial from './tabs/TabHistorial.jsx'
+import TabPerfil from './tabs/TabPerfil.jsx'
 import TabHistorialServicios from './tabs/TabHistorialServicios.jsx'
 import TabResultados from './tabs/TabResultados.jsx'
 import TabTopProductos from './tabs/TabTopProductos.jsx'
@@ -75,6 +76,7 @@ const TABS = {
   '/gastos': TabGastos,
   '/clientes': TabClientes,
   '/historial': HistorialPorFamilia,
+  '/perfil': TabPerfil,
   '/resultados': TabResultados,
   '/top-productos': TabTopProductos,
   '/facturacion': TabFacturacion,

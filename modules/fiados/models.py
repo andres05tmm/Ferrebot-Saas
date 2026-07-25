@@ -35,6 +35,9 @@ class FiadoMovimiento(TenantBase):
     tipo: Mapped[str] = mapped_column(fiado_mov_tipo, nullable=False)
     monto: Mapped[Decimal] = mapped_column(MONEY, nullable=False)
     idempotency_key: Mapped[str | None] = mapped_column(Text)
+    # Quién registró el abono (0065): alimenta el historial de acciones del perfil. NULL en el
+    # histórico previo y en movimientos de sistema (p. ej. reversa por devolución).
+    usuario_id: Mapped[int | None] = mapped_column(BigInteger)
     creado_en: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

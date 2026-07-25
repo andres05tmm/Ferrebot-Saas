@@ -4,8 +4,8 @@
  * eventos en vivo, ámbar = reconectando, gris = sin conexión. Mide el canal de tiempo real, no el
  * proceso del bot de Telegram (eso sería un heartbeat aparte, diferido).
  */
-import { useLocation } from 'react-router-dom'
-import { Command, RefreshCw, Sun, Moon } from 'lucide-react'
+import { useLocation, useNavigate } from 'react-router-dom'
+import { Command, RefreshCw, Sun, Moon, UserRound } from 'lucide-react'
 import { findRoute } from '@/routes.jsx'
 import { useRealtimeStatus } from '@/components/RealtimeProvider.jsx'
 
@@ -19,6 +19,7 @@ const PILL = {
 export default function HeaderBar({ isMobile, onOpenCommand, onRefresh, lastRefresh, colorScheme, onToggleColorScheme }) {
   const { estado } = useRealtimeStatus()
   const pill = PILL[estado] || PILL.conectando
+  const navigate = useNavigate()
   const location = useLocation()
   const route = findRoute(location.pathname)
   const title = route?.label || 'Hoy'
@@ -77,6 +78,20 @@ export default function HeaderBar({ isMobile, onOpenCommand, onRefresh, lastRefr
           <span className={`size-2 rounded-full ${pill.dot}`} />
           <span className="text-muted-foreground">{pill.texto}</span>
         </div>
+
+        {/* Mi perfil — único acceso en móvil (el bottom nav solo lista grupos), atajo en escritorio */}
+        <button
+          onClick={() => navigate('/perfil')}
+          title="Mi perfil"
+          aria-label="Mi perfil"
+          className={`size-9 grid place-items-center rounded-md border transition-colors ${
+            location.pathname === '/perfil'
+              ? 'border-primary/40 bg-primary-soft text-primary'
+              : 'border-border bg-surface text-muted-foreground hover:text-foreground hover:bg-surface-2'
+          }`}
+        >
+          <UserRound className="size-4" />
+        </button>
       </div>
     </header>
   )

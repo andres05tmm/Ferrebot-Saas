@@ -64,6 +64,7 @@ from modules.pedidos.recetas_router import router as recetas_router
 from modules.pedidos.mesas_router import router as mesas_router
 from modules.pedidos.router import router as pedidos_router
 from modules.fiados.router import router as fiados_router
+from modules.perfil.router import router as perfil_router
 from modules.inventario.router import router as inventario_router, router_catalogo as catalogo_router
 from modules.postventa.router import router as postventa_router
 from modules.proveedores.router import router as proveedores_router
@@ -204,6 +205,7 @@ def create_app(spa_dist: Path | None = None) -> FastAPI:
     app.include_router(proveedores_router, prefix="/api/v1")
     app.include_router(reportes_router, prefix="/api/v1")
     app.include_router(config_router, prefix="/api/v1")
+    app.include_router(perfil_router, prefix="/api/v1")   # perfil + historial de acciones propio
     app.include_router(agenda_router, prefix="/api/v1")
     app.include_router(conversaciones_router, prefix="/api/v1")
     app.include_router(faq_router, prefix="/api/v1")

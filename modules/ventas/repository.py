@@ -71,14 +71,16 @@ class SqlVentasRepository:
     async def listar_recientes(
         self, *, limite: int = 5, vendedor_id: int | None = None,
     ) -> list[VentaRecienteLeer]:
-        """Últimas `limite` ventas COMPLETADAS (fecha DESC) con sus items resueltos, para el feed del cockpit.
+        """Últimas `limite` ventas COMPLETADAS de HOY (Colombia, fecha DESC) con sus items resueltos,
+        para el feed del cockpit. Solo el día presente: el pulso del día no arrastra ventas de ayer.
 
         Dos queries (sin N+1): (1) las cabeceras recientes; (2) sus renglones en batch, uniendo a `productos`
         para el nombre de catálogo (COALESCE con la descripción de una venta varia). `vendedor_id` acota por
         RBAC (None = todas). Excluye anuladas: el pulso del día no debe mostrar ventas revertidas."""
+        inicio, fin = rango_dia_co()
         cab_stmt = (
             select(Venta.id, Venta.consecutivo, Venta.fecha, Venta.total, Venta.metodo_pago)
-            .where(Venta.estado == "completada")
+            .where(Venta.estado == "completada", Venta.fecha >= inicio, Venta.fecha <= fin)
         )
         if vendedor_id is not None:
             cab_stmt = cab_stmt.where(Venta.vendedor_id == vendedor_id)

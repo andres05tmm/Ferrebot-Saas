@@ -230,6 +230,26 @@ async def test_listar_recientes_resuelve_nombre_y_ordena(tenant, seed_producto):
     assert recientes[0].num_items == 1
 
 
+async def test_listar_recientes_solo_del_dia_presente(tenant, seed_producto):
+    """El feed del cockpit es del DÍA presente (Colombia): una venta de ayer no aparece."""
+    async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
+        uid, pid = await seed_producto(s, stock="100")
+        svc = VentaService(SqlVentasRepository(s))
+        r_ayer = await svc.registrar_venta(_venta(pid, "1", key="v-ayer"), vendedor_id=uid)
+        await s.commit()
+        r_hoy = await svc.registrar_venta(_venta(pid, "1", key="v-hoy"), vendedor_id=uid)
+        await s.commit()
+        await s.execute(
+            text("UPDATE ventas SET fecha = fecha - interval '1 day' WHERE id=:i"), {"i": r_ayer.venta.id}
+        )
+        await s.commit()
+
+    async with AsyncSession(tenant.engine) as s:
+        recientes = await SqlVentasRepository(s).listar_recientes(limite=5)
+
+    assert [v.id for v in recientes] == [r_hoy.venta.id]     # la de ayer queda fuera del feed
+
+
 async def test_listar_recientes_excluye_anuladas(tenant, seed_producto):
     """El feed no muestra ventas anuladas: solo las completadas."""
     async with AsyncSession(tenant.engine, expire_on_commit=False) as s:

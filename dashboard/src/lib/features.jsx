@@ -127,7 +127,6 @@ export const RUTA_FEATURE = {
   '/mesas': 'pack_mesas',
   '/kds': 'kds',
   '/menu-qr': 'menu_qr',
-  '/cotizaciones': 'pack_ventas',
   '/postventa': 'pack_postventa',
   '/cobros': 'pagos_online',
   '/reservas': 'pack_reservas',

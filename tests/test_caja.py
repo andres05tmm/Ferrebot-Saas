@@ -154,3 +154,47 @@ async def test_http_arqueo_cerrada_y_abierta(tenant):
     body = abierta.json()
     assert body["estado"] == "abierta"
     assert body["saldo_inicial"] == "40000.00" and body["saldo_esperado"] == "40000.00"
+
+
+# --- HTTP: GET /caja/movimientos (ledger del turno) ---------------------------
+
+async def test_http_movimientos_del_turno(tenant):
+    """Sin caja abierta la lista es vacía (200, no 404); abierta, devuelve los movimientos del turno
+    más reciente primero."""
+    import httpx
+    from fastapi import FastAPI
+    from httpx import ASGITransport
+
+    from core.auth import Principal, get_current_user
+    from core.auth.features import get_capacidades
+    from core.db.session import get_tenant_db
+    from modules.caja.router import router as caja_router
+
+    async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
+        uid = await _usuario(s)
+        await s.commit()
+
+    app = FastAPI()
+    app.include_router(caja_router, prefix="/api/v1")
+
+    async def _db():
+        async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
+            yield s
+            await s.commit()
+
+    app.dependency_overrides[get_current_user] = lambda: Principal(user_id=uid, tenant="pr", rol="vendedor")
+    app.dependency_overrides[get_capacidades] = lambda: frozenset({"caja"})
+    app.dependency_overrides[get_tenant_db] = _db
+
+    transport = ASGITransport(app=app, raise_app_exceptions=False)
+    async with httpx.AsyncClient(transport=transport, base_url="http://t") as c:
+        vacia = await c.get("/api/v1/caja/movimientos")
+        await c.post("/api/v1/caja/apertura", json={"saldo_inicial": "40000"})
+        await c.post("/api/v1/caja/movimiento", json={"tipo": "ingreso", "monto": "5000", "concepto": "ajuste"})
+        await c.post("/api/v1/caja/movimiento", json={"tipo": "egreso", "monto": "3000", "concepto": "propina"})
+        listado = await c.get("/api/v1/caja/movimientos")
+
+    assert vacia.status_code == 200 and vacia.json() == []
+    movs = listado.json()
+    assert [m["tipo"] for m in movs] == ["egreso", "ingreso"]     # más reciente primero
+    assert movs[0]["monto"] == "3000.00" and movs[0]["concepto"] == "propina"

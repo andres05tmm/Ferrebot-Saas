@@ -88,6 +88,21 @@ async def caja_arqueo(
     )
 
 
+@router.get("/caja/movimientos", response_model=list[MovimientoLeer])
+async def listar_movimientos_caja(
+    limite: int = Query(default=100, ge=1, le=500),
+    session: AsyncSession = Depends(get_tenant_db),
+    user: Principal = Depends(require_role("vendedor")),
+    modo_empresa: bool = Depends(get_caja_obligatoria),
+) -> list[MovimientoLeer]:
+    """Movimientos del turno abierto, más reciente primero (incluye el egreso que postea cada gasto:
+    `referencia='gasto:<id>'`). Caja cerrada → lista vacía (200, igual que el arqueo)."""
+    movs = await _service(session).movimientos(
+        user.user_id, modo_empresa=modo_empresa, limite=limite
+    )
+    return [MovimientoLeer.model_validate(m) for m in movs]
+
+
 @router.post("/caja/apertura", response_model=CajaLeer, status_code=status.HTTP_201_CREATED)
 async def abrir_caja(
     payload: AperturaCrear,

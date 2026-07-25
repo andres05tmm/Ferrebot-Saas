@@ -32,13 +32,21 @@ const ARQUEO_CERRADA = {
 const RESUMEN = { fecha: '2026-06-05', num_ventas: 3, total_vendido: '80000', ticket_promedio: '26666',
   por_metodo_pago: { efectivo: '30000', transferencia: '50000' } }
 const GASTOS = [{ id: 1, categoria: 'transporte', monto: '8000', concepto: 'Gasolina', creado_en: '2026-06-05T16:00:00+00:00' }]
+// Ledger del turno: el egreso con referencia 'gasto:1' es el que postea el gasto de arriba — la UI lo
+// filtra para no contar la misma plata en dos cards.
+const MOVIMIENTOS = [
+  { id: 3, caja_id: 1, tipo: 'egreso', monto: '8000', concepto: 'Gasolina', referencia: 'gasto:1', creado_en: '2026-06-05T16:00:00+00:00' },
+  { id: 2, caja_id: 1, tipo: 'egreso', monto: '2000', concepto: 'Domicilio', referencia: null, creado_en: '2026-06-05T15:00:00+00:00' },
+  { id: 1, caja_id: 1, tipo: 'ingreso', monto: '5000', concepto: 'Base extra', referencia: null, creado_en: '2026-06-05T14:00:00+00:00' },
+]
 
 function jsonResp(data, status = 200) { return { ok: status < 400, status, json: async () => data } }
 
-function instalarFetch({ arqueo = ARQUEO_ABIERTA } = {}) {
+function instalarFetch({ arqueo = ARQUEO_ABIERTA, movimientos = MOVIMIENTOS } = {}) {
   const fetchMock = vi.fn((url) => {
     const u = String(url)
     if (u.includes('/caja/arqueo')) return Promise.resolve(jsonResp(arqueo))
+    if (u.includes('/caja/movimientos')) return Promise.resolve(jsonResp(movimientos))
     if (u.includes('/caja/movimiento')) return Promise.resolve(jsonResp({ id: 7 }, 201))
     if (u.includes('/caja/apertura')) return Promise.resolve(jsonResp({ id: 2, estado: 'abierta' }, 201))
     if (u.includes('/reportes/resumen')) return Promise.resolve(jsonResp(RESUMEN))
@@ -66,6 +74,18 @@ describe('TabCaja — caja abierta', () => {
     expect(screen.getByText('Gasolina')).toBeInTheDocument()       // gasto del día
   })
 
+  it('lista los movimientos del turno y excluye los egresos que vienen de un gasto', async () => {
+    instalarFetch()
+    renderCaja()
+    await screen.findByText('Caja abierta')
+
+    expect(screen.getByText('Base extra')).toBeInTheDocument()
+    expect(screen.getByText('Domicilio')).toBeInTheDocument()
+    expect(screen.getByText('Movimientos del turno (2)')).toBeInTheDocument()   // el 'gasto:1' no cuenta
+    // El gasto sigue apareciendo (una sola vez) en su propia card.
+    expect(screen.getAllByText('Gasolina')).toHaveLength(1)
+  })
+
   it('registra un movimiento (POST + Idempotency-Key)', async () => {
     const fetchMock = instalarFetch()
     render(<MemoryRouter><TabCaja /></MemoryRouter>)
@@ -76,7 +96,8 @@ describe('TabCaja — caja abierta', () => {
 
     await waitFor(() =>
       expect(fetchMock.mock.calls.some(c => String(c[0]).includes('/caja/movimiento') && c[1]?.method === 'POST')).toBe(true))
-    const call = fetchMock.mock.calls.find(c => String(c[0]).includes('/caja/movimiento'))
+    // El POST, no el GET del ledger (`/caja/movimientos`, que comparte prefijo).
+    const call = fetchMock.mock.calls.find(c => String(c[0]).includes('/caja/movimiento') && c[1]?.method === 'POST')
     expect(new Headers(call[1].headers).get('Idempotency-Key')).toBeTruthy()
     expect(JSON.parse(call[1].body)).toMatchObject({ tipo: 'ingreso', monto: 5000 })
   })

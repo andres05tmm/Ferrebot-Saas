@@ -83,8 +83,8 @@ describe('TabCartera', () => {
     expect(screen.getByText('Bruno Díaz')).toBeInTheDocument()
     expect(screen.getByText(/\(sin recordatorios\)/)).toBeInTheDocument()  // opt-out visible
     expect(screen.getByText('Transferí por Nequi', { exact: false })).toBeInTheDocument()
-    // Config cargada en el form
-    expect(screen.getByLabelText('Cadencia (días)')).toHaveValue(7)
+    // Config cargada en el form (fetch aparte → findBy: en CI lento llega después que los deudores)
+    expect(await screen.findByLabelText('Cadencia (días)')).toHaveValue(7)
   })
 
   it('verificar un pago llama al endpoint y refresca la bandeja', async () => {

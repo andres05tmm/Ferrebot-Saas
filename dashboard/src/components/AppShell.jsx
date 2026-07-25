@@ -34,6 +34,12 @@ export default function AppShell() {
     try { localStorage.setItem('ferrebot_color_scheme', colorScheme) } catch {}
   }, [colorScheme])
   const toggleColorScheme = () => setColorScheme(s => s === 'dark' ? 'light' : 'dark')
+  // El control de tema de /perfil no es dueño del estado: avisa por evento y aquí se aplica.
+  useEffect(() => {
+    const fn = () => setColorScheme(s => s === 'dark' ? 'light' : 'dark')
+    window.addEventListener('ferrebot:toggle-theme', fn)
+    return () => window.removeEventListener('ferrebot:toggle-theme', fn)
+  }, [])
 
   // ── Sidebar colapsado ───────────────────────────────────────────────────────
   const [collapsed, setCollapsed] = useState(() => {

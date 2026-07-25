@@ -74,10 +74,14 @@ class SqlFiadosRepository:
         })
         return fiado
 
-    async def abonar(self, fiado: Fiado, *, monto: Decimal, idempotency_key: str | None) -> FiadoMovimiento:
+    async def abonar(
+        self, fiado: Fiado, *, monto: Decimal, idempotency_key: str | None,
+        usuario_id: int | None = None,
+    ) -> FiadoMovimiento:
         """Inserta el abono en el ledger y actualiza fiado.saldo + clientes.saldo_fiado."""
         movimiento = FiadoMovimiento(
             fiado_id=fiado.id, tipo=ABONO, monto=monto, idempotency_key=idempotency_key,
+            usuario_id=usuario_id,
         )
         self._s.add(movimiento)
         fiado.saldo = nuevo_saldo(fiado.saldo or Decimal("0"), ABONO, monto)

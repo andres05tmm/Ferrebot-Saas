@@ -49,7 +49,8 @@ class FiadosService:
         return ResultadoFiado(fiado, replay=False)
 
     async def abonar(
-        self, *, fiado_id: int, monto: Decimal, idempotency_key: str | None = None
+        self, *, fiado_id: int, monto: Decimal, idempotency_key: str | None = None,
+        usuario_id: int | None = None,
     ) -> ResultadoAbono:
         fiado = await self._repo.lock_fiado(fiado_id)          # serializa por fiado
         if fiado is None:
@@ -61,7 +62,9 @@ class FiadosService:
         saldo = fiado.saldo or Decimal("0")
         if excede_saldo(saldo, monto):
             raise SobreAbono(fiado_id, saldo, monto)
-        movimiento = await self._repo.abonar(fiado, monto=monto, idempotency_key=idempotency_key)
+        movimiento = await self._repo.abonar(
+            fiado, monto=monto, idempotency_key=idempotency_key, usuario_id=usuario_id,
+        )
         return ResultadoAbono(movimiento, replay=False)
 
     async def deudas(self) -> list[dict]:

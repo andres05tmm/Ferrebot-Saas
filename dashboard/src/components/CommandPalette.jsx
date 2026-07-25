@@ -75,7 +75,8 @@ export default function CommandPalette({ open, setOpen, onRefresh }) {
         <CommandSeparator />
 
         <CommandGroup heading="Inicio">
-          {ROUTES.filter(r => r.group === 'top' && isRouteEnabled(r.path, features)).map(r => {
+          {/* Portadas + Mi perfil (grupo propio fuera del nav lateral, pero buscable aquí). */}
+          {ROUTES.filter(r => (r.group === 'top' || r.group === 'perfil') && isRouteEnabled(r.path, features)).map(r => {
             const Icon = r.icon
             return (
               <CommandItem key={r.path} onSelect={() => run(() => navigate(r.path))}>

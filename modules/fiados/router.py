@@ -48,12 +48,13 @@ async def abonar_fiado(
     payload: AbonoCrear,
     response: Response,
     session: AsyncSession = Depends(get_tenant_db),
-    _user: Principal = Depends(require_role("vendedor")),
+    user: Principal = Depends(require_role("vendedor")),
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
 ) -> MovimientoFiadoLeer:
     try:
         res = await _service(session).abonar(
             fiado_id=fiado_id, monto=payload.monto, idempotency_key=idempotency_key,
+            usuario_id=user.user_id,
         )
     except FiadoInexistente as exc:
         raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc

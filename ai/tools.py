@@ -257,6 +257,7 @@ async def _abonar_fiado(args: AbonarFiadoArgs, ctx: Contexto, deps: Deps) -> Res
     try:
         res = await deps.fiados.abonar(
             fiado_id=args.fiado_id, monto=args.monto, idempotency_key=ctx.idempotency_key,
+            usuario_id=ctx.usuario_id,
         )
     except FiadoInexistente as exc:
         return ErrorTool("cliente_no_encontrado", str(exc), recuperable=True)

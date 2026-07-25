@@ -109,6 +109,17 @@ describe('TabVentasRapidas', () => {
     expect(body.origen).toBe('web')
   })
 
+  it('el botón # de la card abre el modal de cantidad y agrega N unidades de una', async () => {
+    instalarFetch()
+    render(<TabVentasRapidas />)
+    fireEvent.change(screen.getByLabelText('Buscar producto'), { target: { value: 'mar' } })
+    fireEvent.click(await screen.findByLabelText('Elegir cantidad de Martillo'))
+    fireEvent.change(await screen.findByLabelText('Cantidad en unidades'), { target: { value: '400' } })
+    fireEvent.click(screen.getByText('Agregar al carrito'))
+    await abrirCarrito()
+    expect(enCarrito('Martillo')).toHaveValue(400)
+  })
+
   it('elegir "especial" envía precio_unitario como override explícito', async () => {
     const fetchMock = instalarFetch([TALADRO_ESP])
     render(<TabVentasRapidas />)

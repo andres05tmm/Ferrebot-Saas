@@ -508,6 +508,7 @@ export default function TabVentasRapidas() {
         chip={chip} setChip={setChip}
         sel={sel}
         onTap={alTocar}
+        onCantidad={(p) => setModalProd(p)}
         slotBusqueda={(
           <div className="relative">
             <Search className="size-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />

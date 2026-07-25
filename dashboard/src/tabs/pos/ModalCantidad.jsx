@@ -4,6 +4,9 @@
  * gramos, tintilla por ml, producto por kilo. Determina la CANTIDAD decimal; el precio final de la
  * línea lo pone el servidor vía /precio, y el total de abajo a la derecha es EDITABLE (regatear un
  * monto) → si el cajero lo cambia, esa cifra viaja como precio de la línea (override).
+ *
+ * Tipo `unidad` (fallback): captura de cantidad para productos unitarios — el botón # de la card lo
+ * abre para vender 400 tornillos sin taps repetidos. Enter confirma.
  */
 import { useState } from 'react'
 import { cop } from '@/components/shared.jsx'
@@ -55,7 +58,7 @@ export default function ModalCantidad({ prod, onCerrar, onConfirmar }) {
     <Dialog open={prod != null} onOpenChange={(o) => { if (!o) onCerrar() }}>
       <DialogContent aria-describedby="cant-desc">
         {prod && (
-          <FormCantidad key={prod.id} prod={prod} tipo={tipoVenta(prod)}
+          <FormCantidad key={prod.id} prod={prod} tipo={tipoVenta(prod) || 'unidad'}
             onConfirmar={onConfirmar} onCancelar={onCerrar} />
         )}
       </DialogContent>
@@ -75,6 +78,7 @@ function FormCantidad({ prod, tipo, onConfirmar, onCancelar }) {
   const [valor, setValor] = useState('')             // gramos/ml: sub-unidades o pesos según `modo`
   const [cmVal, setCmVal] = useState('')             // cm
   const [kgVal, setKgVal] = useState('')             // kg
+  const [uniVal, setUniVal] = useState('')           // unidad: cantidad entera
   // Total editable de abajo: `precio` es lo que se muestra/edita; `tocado` marca que el cajero lo
   // cambió a mano (regateo). Mientras no lo toque, sigue al total calculado.
   const [precio, setPrecio] = useState('')
@@ -114,6 +118,10 @@ function FormCantidad({ prod, tipo, onConfirmar, onCancelar }) {
     if (tipo === 'cm') {
       const cantidad = Number(cmVal) || 0
       return { cantidad, precioManual: null, total: previewMotor(prod, cantidad), desc: `${cantidad} cm` }
+    }
+    if (tipo === 'unidad') {
+      const cantidad = Number(uniVal) || 0
+      return { cantidad, precioManual: null, total: previewMotor(prod, cantidad), desc: cantidad > 0 ? `${cantidad} u` : '' }
     }
     // kg
     const cantidad = Number(kgVal) || 0
@@ -193,6 +201,24 @@ function FormCantidad({ prod, tipo, onConfirmar, onCancelar }) {
           </div>
         )}
 
+        {tipo === 'unidad' && (
+          <>
+            <div className="grid grid-cols-3 gap-1.5">
+              {[5, 10, 20, 50, 100, 200].map((n) => (
+                <BotonKpi key={n} activo={Number(uniVal) === n} onClick={() => setUniVal(String(n))}
+                  titulo={`×${n}`} precio={previewMotor(prod, n)} />
+              ))}
+            </div>
+            <div>
+              <Label className="text-caption uppercase tracking-wider text-muted-foreground">Cantidad</Label>
+              <Input type="number" min="0" step="1" value={uniVal} autoFocus className="mt-1.5"
+                onChange={(e) => setUniVal(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); confirmar() } }}
+                placeholder="ej: 400" aria-label="Cantidad en unidades" />
+            </div>
+          </>
+        )}
+
         {tipo === 'kg' && (
           <>
             <div className="grid grid-cols-3 gap-1.5">
@@ -228,7 +254,7 @@ function FormCantidad({ prod, tipo, onConfirmar, onCancelar }) {
 }
 
 function subtitulo(tipo, prod, pv, precioSub, paquete) {
-  if (tipo === 'fraccion') return `Precio unidad: ${cop(pv)}`
+  if (tipo === 'fraccion' || tipo === 'unidad') return `Precio unidad: ${cop(pv)}`
   if (tipo === 'gramos') return `${cop(precioSub)}/g · ${cop(pv)} por caja (${paquete} g)`
   if (tipo === 'ml') return `${cop(precioSub)}/ml · ${cop(pv)} por tarro (${paquete} ml)`
   if (tipo === 'cm') return `Pliego: ${cop(pv)} · ${cop(precioSub)}/cm`

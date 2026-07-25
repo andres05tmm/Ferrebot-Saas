@@ -10,10 +10,11 @@
  * El precio de la card es REFERENCIA del catálogo — el real lo pone el servidor al agregar.
  */
 import { memo, useEffect, useMemo, useState } from 'react'
-import { Flame, LayoutGrid, Percent, Star } from 'lucide-react'
+import { Flame, Hash, LayoutGrid, Percent, Star } from 'lucide-react'
 import { cop } from '@/components/shared.jsx'
 import { guardarLS, leerLS } from './piezas.jsx'
 import { etiquetaCategoria, iconoCategoria } from './categorias.js'
+import { tipoVenta } from './cantidad.js'
 import { filtrarSubcat, ordenarProductos, subcatsDe } from './subcategorias.js'
 
 const CAP_SECCION = 12
@@ -24,7 +25,7 @@ const COLS_CLS = {
   7: 'lg:grid-cols-7', 8: 'lg:grid-cols-8',
 }
 
-const CardProducto = memo(function CardProducto({ p, enCarrito, esFav, resaltado, onTap, onFav }) {
+const CardProducto = memo(function CardProducto({ p, enCarrito, esFav, resaltado, onTap, onFav, onCantidad }) {
   const { Icono, color } = iconoCategoria(p.categoria)
   const mayorista = p.precio_umbral != null && p.precio_sobre_umbral != null
   return (
@@ -55,6 +56,15 @@ const CardProducto = memo(function CardProducto({ p, enCarrito, esFav, resaltado
         className="absolute top-1.5 right-1.5 size-6 grid place-items-center rounded text-muted-foreground/60 hover:text-warning">
         <Star className={`size-3.5 ${esFav ? 'fill-warning text-warning' : ''}`} />
       </button>
+      {/* Cantidad de un golpe (unitarios): abre el modal para vender "400 tornillos" sin 400 taps.
+          Los de fracción/granel no lo necesitan: su tap ya abre modal. */}
+      {!tipoVenta(p) && (
+        <button onClick={(e) => { e.stopPropagation(); onCantidad(p) }}
+          aria-label={`Elegir cantidad de ${p.nombre}`}
+          className="absolute top-8 right-1.5 size-6 grid place-items-center rounded text-muted-foreground/60 hover:text-primary">
+          <Hash className="size-3.5" />
+        </button>
+      )}
     </div>
   )
 })
@@ -112,6 +122,7 @@ export default function GrillaCatalogo({
   chip, setChip,        // chip activo: 'favs' | 'top' | 'todo' | <categoría>
   sel,                  // índice resaltado por teclado (solo aplica buscando)
   onTap,
+  onCantidad = () => {},   // botón # de la card (unitarios): abrir el modal de cantidad
   slotBusqueda,         // SOLO el input de búsqueda: va PRIMERO en la barra sticky
   slotExtras,           // más vendidos / hints del tab: debajo de la barra, scrollea con el contenido
 }) {
@@ -132,7 +143,7 @@ export default function GrillaCatalogo({
       enCarrito={cantidades.get(p.id) || 0}
       esFav={favoritos.has(p.id)}
       resaltado={buscando && i === sel}
-      onTap={onTap} onFav={onToggleFav} />
+      onTap={onTap} onFav={onToggleFav} onCantidad={onCantidad} />
   )
 
   // Secciones de la vista "Todos": Top del mes primero, luego cada categoría en su orden natural

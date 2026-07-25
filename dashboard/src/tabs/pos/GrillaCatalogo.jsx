@@ -1,15 +1,16 @@
 /*
  * GrillaCatalogo — la vitrina tap-first del POS, réplica del diseño del FerreBot viejo.
  *
- * Chips con icono ([Todos] [★ Favoritos] [🏆 Top productos] [categorías del tenant]) + selector de
- * columnas (4/5/6, persistido). En "Todos" los productos van AGRUPADOS por categoría con header de
- * sección (icono + título + línea + conteo), empezando por TOP PRODUCTOS DEL MES (frecuentes). Las
+ * Chips con icono ([Todos] [★ Favoritos] [🔥 Más vendidos] [categorías del tenant]) + selector de
+ * columnas (4/5/6, persistido). Los chips ENVUELVEN en filas (sin scroll horizontal, como el viejo).
+ * En "Todos" los productos van AGRUPADOS por categoría con header de
+ * sección (icono + título + línea + conteo), empezando por MÁS VENDIDOS DEL MES (frecuentes). Las
  * cards llevan icono de categoría, estrella de favorito, precio en rojo y badge % si hay precio
  * mayorista. Buscando, la lista llega YA filtrada/rankeada del tab (local o respaldo del servidor).
  * El precio de la card es REFERENCIA del catálogo — el real lo pone el servidor al agregar.
  */
 import { memo, useEffect, useMemo, useState } from 'react'
-import { LayoutGrid, Percent, Star, Trophy } from 'lucide-react'
+import { Flame, LayoutGrid, Percent, Star } from 'lucide-react'
 import { cop } from '@/components/shared.jsx'
 import { guardarLS, leerLS } from './piezas.jsx'
 import { etiquetaCategoria, iconoCategoria } from './categorias.js'
@@ -104,7 +105,7 @@ export default function GrillaCatalogo({
   productos,            // lista a pintar: filtrada (buscando) o el catálogo completo (sin término)
   buscando,             // hay término activo → se ignoran los chips y se pinta `productos` tal cual
   fuente,               // 'local' | 'servidor' (hint de búsqueda inteligente)
-  frecuentesIds,        // Set de ids frecuentes (GET /productos/frecuentes) = "Top productos del mes"
+  frecuentesIds,        // Set de ids frecuentes (GET /productos/frecuentes) = "Más vendidos del mes"
   favoritos, onToggleFav,
   cantidades,           // Map producto_id → cantidad en carrito (badge)
   categorias,           // categorías reales del tenant (derivadas del catálogo)
@@ -140,7 +141,7 @@ export default function GrillaCatalogo({
     if (buscando || chip !== 'todo') return []
     const s = []
     const top = productos.filter(p => frecuentesIds.has(p.id))
-    if (top.length) s.push({ id: 'top', Icono: Trophy, color: 'text-warning', titulo: 'Top productos del mes', items: top })
+    if (top.length) s.push({ id: 'top', Icono: Flame, color: 'text-warning', titulo: 'Más vendidos del mes', items: top })
     for (const c of categorias) {
       const items = ordenarProductos(c, productos.filter(p => p.categoria === c))
       if (items.length) {
@@ -163,7 +164,7 @@ export default function GrillaCatalogo({
       cabecera = { Icono: Star, color: 'text-warning', titulo: 'Favoritos' }
     } else if (chip === 'top') {
       lista = productos.filter(p => frecuentesIds.has(p.id))
-      cabecera = { Icono: Trophy, color: 'text-warning', titulo: 'Top productos del mes' }
+      cabecera = { Icono: Flame, color: 'text-warning', titulo: 'Más vendidos del mes' }
     } else {
       lista = ordenarProductos(chip, productos.filter(p => p.categoria === chip))
       if (subcat) lista = filtrarSubcat(lista, subs, subcat)
@@ -183,8 +184,8 @@ export default function GrillaCatalogo({
         {slotBusqueda}
 
         {!buscando && (
-          <div className="flex items-center gap-2">
-            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 -mx-1 px-1 flex-1" role="group" aria-label="Filtros del catálogo">
+          <div className="flex items-start gap-2">
+            <div className="flex items-center flex-wrap gap-1.5 flex-1" role="group" aria-label="Filtros del catálogo">
               <Chip activo={chip === 'todo'} onClick={() => setChip('todo')}>
                 <LayoutGrid className="size-3.5" /> Todos
               </Chip>
@@ -192,7 +193,7 @@ export default function GrillaCatalogo({
                 <Star className="size-3.5" /> Favoritos
               </Chip>
               <Chip activo={chip === 'top'} onClick={() => setChip('top')}>
-                <Trophy className="size-3.5" /> Top productos
+                <Flame className="size-3.5 text-warning" /> Más vendidos
               </Chip>
               {categorias.map(c => {
                 const { Icono, color } = iconoCategoria(c)
@@ -220,7 +221,7 @@ export default function GrillaCatalogo({
 
         {/* Segunda fila: subcategorías de la categoría elegida (réplica del viejo). */}
         {!buscando && subs.length > 0 && (
-          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 -mx-1 px-1" role="group"
+          <div className="flex items-center flex-wrap gap-1.5" role="group"
             aria-label={`Subcategorías de ${etiquetaCategoria(chip)}`}>
             <Chip activo={subcat == null} onClick={() => setSubcat(null)}>Todas</Chip>
             {subs.map(s => (

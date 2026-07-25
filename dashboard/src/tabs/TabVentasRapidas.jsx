@@ -461,7 +461,7 @@ export default function TabVentasRapidas() {
             <ShoppingCart className="size-6 text-muted-foreground/50" aria-hidden="true" />
           </span>
           <p className="text-body-sm text-muted-foreground">Busca o escanea un producto para empezar.</p>
-          <p className="mt-1 text-caption text-muted-foreground/70">F2 busca · F9 cobra</p>
+          <p className="mt-1 hidden md:block text-caption text-muted-foreground/70">F2 busca · F9 cobra</p>
         </div>
       ) : (
         <ul className="divide-y divide-border-subtle mb-3">

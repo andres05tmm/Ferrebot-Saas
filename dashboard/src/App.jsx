@@ -44,7 +44,6 @@ import TabMesas from './tabs/TabMesas.jsx'
 import TabKds from './tabs/TabKds.jsx'
 import TabMenuQr from './tabs/TabMenuQr.jsx'
 import TabCobros from './tabs/TabCobros.jsx'
-import TabCotizaciones from './tabs/TabCotizaciones.jsx'
 import TabPostventa from './tabs/TabPostventa.jsx'
 import TabKardex from './tabs/TabKardex.jsx'
 import TabReservas from './tabs/TabReservas.jsx'
@@ -96,7 +95,6 @@ const TABS = {
   '/kds': TabKds,
   '/menu-qr': TabMenuQr,
   '/cobros': TabCobros,
-  '/cotizaciones': TabCotizaciones,
   '/postventa': TabPostventa,
   '/kardex': TabKardex,
   '/reservas': TabReservas,

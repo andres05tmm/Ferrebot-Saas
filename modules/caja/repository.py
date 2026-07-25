@@ -161,6 +161,17 @@ class SqlCajaRepository:
         })
         return movimiento
 
+    async def listar_movimientos(self, caja_id: int, *, limite: int = 100) -> list[CajaMovimiento]:
+        """Movimientos del turno, más reciente primero (el egreso que postea cada gasto incluido:
+        `referencia = 'gasto:<id>'` lo distingue)."""
+        stmt = (
+            select(CajaMovimiento)
+            .where(CajaMovimiento.caja_id == caja_id)
+            .order_by(CajaMovimiento.creado_en.desc(), CajaMovimiento.id.desc())
+            .limit(limite)
+        )
+        return list((await self._s.execute(stmt)).scalars().all())
+
     async def estado_obra(self, obra_id: int) -> str | None:
         """Estado de la obra viva (None si no existe o está soft-deleted). Valida el `obra_id` de un
         gasto imputado ANTES del insert (sin esto la FK revienta con 500 y una LIQUIDADA aceptaría

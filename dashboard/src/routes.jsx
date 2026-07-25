@@ -14,7 +14,7 @@ import {
   History, TrendingUp, Trophy, BookOpen,
   FileText, FileCheck, Calculator, FileCog,
   CalendarDays, Headset, BookText, HandCoins, ChefHat, Banknote,
-  CreditCard, FileSpreadsheet, Star, BedDouble, Undo2, Percent, Library, Landmark, Scale,
+  CreditCard, Star, BedDouble, Undo2, Percent, Library, Landmark, Scale,
   HardHat, Wrench, ClipboardList, TrendingDown, Gauge, PackageSearch, Timer, Armchair, Flame, QrCode,
   UserRound,
 } from 'lucide-react'
@@ -36,7 +36,6 @@ export const ROUTES = [
 
   // Operación
   { path: '/ventas',              label: 'Ventas Rápidas',      icon: ShoppingCart,    group: 'operacion' },
-  { path: '/devoluciones',        label: 'Devoluciones',        icon: Undo2,           group: 'operacion' },
   { path: '/caja',                label: 'Caja',                icon: Wallet,          group: 'operacion', grupoObra: 'plata',      labelObra: 'Caja menor', ordenObra: 3 },
   { path: '/inventario',          label: 'Inventario',          icon: Package,         group: 'operacion', grupoObra: 'materiales', labelObra: 'Materiales' },
   { path: '/agenda',              label: 'Agenda',              icon: CalendarDays,    group: 'operacion' },
@@ -45,7 +44,6 @@ export const ROUTES = [
   { path: '/mesas',               label: 'Mesas',               icon: Armchair,        group: 'operacion' },
   { path: '/kds',                 label: 'Cocina',              icon: Flame,           group: 'operacion' },
   { path: '/menu-qr',             label: 'Menú QR',             icon: QrCode,          group: 'operacion' },
-  { path: '/cotizaciones',        label: 'Cotizaciones',        icon: FileSpreadsheet, group: 'operacion' },
   { path: '/postventa',           label: 'Postventa',           icon: Star,            group: 'operacion' },
   { path: '/conversaciones',      label: 'Conversaciones',      icon: Headset,         group: 'operacion' },
   { path: '/conocimiento',        label: 'Conocimiento',        icon: BookText,        group: 'operacion' },
@@ -79,8 +77,10 @@ export const ROUTES = [
   { path: '/top-productos',       label: 'Top productos',       icon: Trophy,          group: 'reportes' },
   { path: '/kardex',              label: 'Kárdex',              icon: BookOpen,        group: 'reportes' },
 
-  // Fiscal
+  // Fiscal — las devoluciones viven aquí: son nota crédito / reversa fiscal de una venta, no
+  // operación de mostrador.
   { path: '/facturacion',         label: 'Facturación',         icon: FileText,        group: 'fiscal' },
+  { path: '/devoluciones',        label: 'Devoluciones',        icon: Undo2,           group: 'fiscal' },
   { path: '/facturas-recibidas',  label: 'Facturas recibidas',  icon: FileCheck,       group: 'fiscal' },
   { path: '/libro-iva',           label: 'Libro IVA',           icon: Calculator,      group: 'fiscal' },
   { path: '/libros',              label: 'Libros contables',    icon: Library,         group: 'fiscal' },

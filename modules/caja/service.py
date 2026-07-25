@@ -87,6 +87,15 @@ class CajaService:
             egresos=agg.egresos, saldo_esperado=esperado,
         )
 
+    async def movimientos(
+        self, usuario_id: int, *, modo_empresa: bool = False, limite: int = 100
+    ) -> list[CajaMovimiento]:
+        """Movimientos del turno abierto (vacío si no hay caja abierta: es un estado, no un error)."""
+        caja = await self._abierta(usuario_id, modo_empresa=modo_empresa)
+        if caja is None:
+            return []
+        return await self._repo.listar_movimientos(caja.id, limite=limite)
+
     async def abrir(
         self, *, usuario_id: int, saldo_inicial: Decimal, modo_empresa: bool = False
     ) -> ResultadoApertura:

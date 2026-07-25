@@ -33,8 +33,6 @@ export const queryKeys = {
   // Tabs F7 (ADR 0029): claves completas por pantalla. Las mutaciones y el SSE invalidan por el
   // prefijo correspondiente en `keyPrefix` (más abajo).
   cobros: (estado: string) => ['cobros', estado] as const,
-  cotizaciones: (estado: string) => ['cotizaciones', 'lista', estado] as const,
-  cotizacionesConfig: ['cotizaciones', 'config'] as const,
   kardex: (productoId: number | null) => ['kardex', productoId] as const,
   postventaSatisfaccion: ['postventa', 'satisfaccion'] as const,
   postventaRespuestas: ['postventa', 'respuestas'] as const,
@@ -79,8 +77,6 @@ export function useEscanearQR() {
 // las claves de arriba). Mantiene el patrón "una mutación invalida su familia".
 export const keyPrefix = {
   cobros: ['cobros'] as const,
-  cotizacionesLista: ['cotizaciones', 'lista'] as const,
-  cotizacionesConfig: ['cotizaciones', 'config'] as const,
   kardex: ['kardex'] as const,
   postventaConfig: ['postventa', 'config'] as const,
   reservasHabitaciones: ['reservas', 'habitaciones'] as const,
@@ -135,41 +131,6 @@ export function useAccionCobro() {
     mutationFn: ({ id, tipo }: { id: number; tipo: 'pagar' | 'cancelar' }) =>
       api(`/pagos/cobros/${id}/${tipo === 'pagar' ? 'pagado-manual' : 'cancelar'}`, { method: 'POST' }),
     onSuccess: (res) => { if (res.ok) qc.invalidateQueries({ queryKey: keyPrefix.cobros }) },
-  })
-}
-
-// ── Cotizaciones por WhatsApp (ADR 0017) ────────────────────────────────────────────────────────
-export function useCotizaciones(estado: string) {
-  return useQuery({
-    queryKey: queryKeys.cotizaciones(estado),
-    queryFn: () => apiJson<Fila[]>(estado ? `/cotizaciones?estado=${estado}` : '/cotizaciones'),
-  })
-}
-
-// La config solo la lee el admin (403 para staff): `enabled` corta la llamada sin rol.
-export function useCotizacionesConfig(enabled: boolean) {
-  return useQuery({
-    queryKey: queryKeys.cotizacionesConfig,
-    queryFn: () => apiJson<Fila>('/cotizaciones/config'),
-    enabled,
-  })
-}
-
-export function useMarcarCotizacion() {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: ({ id, estado }: { id: number; estado: string }) =>
-      api(`/cotizaciones/${id}/estado`, { method: 'PUT', headers: jsonHeaders, body: JSON.stringify({ estado }) }),
-    onSuccess: (res) => { if (res.ok) qc.invalidateQueries({ queryKey: keyPrefix.cotizacionesLista }) },
-  })
-}
-
-export function useGuardarCotizacionesConfig() {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: (body: Record<string, unknown>) =>
-      api('/cotizaciones/config', { method: 'PUT', headers: jsonHeaders, body: JSON.stringify(body) }),
-    onSuccess: (res) => { if (res.ok) qc.invalidateQueries({ queryKey: keyPrefix.cotizacionesConfig }) },
   })
 }
 

@@ -55,10 +55,18 @@ async def buscar_por_email(session: AsyncSession, email: str) -> Identidad | Non
 
 
 async def email_de_usuario(session: AsyncSession, empresa_id: int, usuario_id: int) -> str | None:
-    """Email de la identidad de un usuario de la empresa (para el perfil). None si no tiene login."""
+    """Email de la identidad de un usuario de la empresa (para el perfil). None si no tiene login.
+
+    Un usuario puede tener VARIAS identidades (p. ej. la identidad grandfather + el email nuevo):
+    la unicidad del directorio es por email, no por (empresa, usuario). Se elige una sola,
+    determinística: activa primero, luego la más reciente.
+    """
     return (
         await session.execute(
-            text("SELECT email FROM identidades WHERE empresa_id = :e AND usuario_id = :u"),
+            text(
+                "SELECT email FROM identidades WHERE empresa_id = :e AND usuario_id = :u "
+                "ORDER BY activo DESC, id DESC LIMIT 1"
+            ),
             {"e": empresa_id, "u": usuario_id},
         )
     ).scalar_one_or_none()

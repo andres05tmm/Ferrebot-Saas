@@ -1,14 +1,22 @@
 """Perfil de usuario: lectura/edición y el historial de acciones SIEMPRE acotado al propio usuario."""
+import uuid
 from datetime import timedelta
 from decimal import Decimal
 
+from alembic import command
+from alembic.config import Config
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from sqlalchemy.pool import NullPool
 
+from core.config import get_settings
 from core.config.timezone import rango_dia_co, today_co
+from core.db.urls import tenant_url, to_async
+from core.tenancy.identidades_repo import email_de_usuario
 from modules.fiados.repository import SqlFiadosRepository
 from modules.fiados.service import FiadosService
 from modules.perfil.repository import SqlPerfilRepository
+from tests.conftest import create_database, drop_database
 
 
 async def _usuario(s: AsyncSession, nombre: str) -> int:
@@ -132,3 +140,40 @@ async def test_acciones_rango_y_paginacion(tenant):
         desde_ayer, _ = rango_dia_co(today_co() - timedelta(days=1), today_co())
         todas = await repo.acciones(uid, desde=desde_ayer, limite=50, offset=0)
         assert len(todas) == 6
+
+
+async def test_email_de_usuario_con_varias_identidades_no_revienta(monkeypatch):
+    """Regresión Sentry (MultipleResultsFound): un usuario puede tener VARIAS identidades — la
+    grandfather vieja + el email nuevo. Debe devolver UNA (activa primero, más reciente), no fallar."""
+    name = f"test_control_perfil_{uuid.uuid4().hex[:12]}"
+    url = tenant_url(get_settings().tenants_direct_url_base, name)
+    # El env de alembic de control lee CONTROL_DATABASE_URL: apuntarlo a la base efímera (patrón
+    # de test_migracion_control_*) para no tocar el control DB real.
+    monkeypatch.setenv("CONTROL_DATABASE_URL", url)
+    get_settings.cache_clear()
+    create_database(name)
+    engine = create_async_engine(
+        to_async(url), poolclass=NullPool, connect_args={"statement_cache_size": 0}
+    )
+    try:
+        command.upgrade(Config("migrations/control/alembic.ini"), "head")
+        async with AsyncSession(engine) as s:
+            eid = (
+                await s.execute(text(
+                    "INSERT INTO empresas (nombre, nit, slug, estado) "
+                    "VALUES ('E','NIT','e','activa') RETURNING id"
+                ))
+            ).scalar_one()
+            await s.execute(text(
+                "INSERT INTO identidades (email, empresa_id, usuario_id, rol, activo) VALUES "
+                "('viejo@x.co', :e, 1, 'admin', false), ('nuevo@x.co', :e, 1, 'admin', true)"
+            ), {"e": eid})
+            await s.commit()
+
+        async with AsyncSession(engine) as s:
+            assert await email_de_usuario(s, eid, 1) == "nuevo@x.co"   # la activa gana
+            assert await email_de_usuario(s, eid, 99) is None
+    finally:
+        await engine.dispose()
+        get_settings.cache_clear()
+        drop_database(name)

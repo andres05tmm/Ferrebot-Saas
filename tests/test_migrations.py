@@ -46,8 +46,10 @@ async def test_tenant_upgrade_downgrade_limpio(tenant):
     # de transmisión de detalles_liquidacion, que no son enums) = 42, + 2 de pedidos a proveedor
     # (pedido_prov_estado, pedido_prov_condicion, 0052_pedidos_proveedor) = 44. 0053_ventas_pagos y
     # 0054_turnos_horas_maquina NO añaden enums (solo tablas/columnas) = 44, + 1 de la operación de máquina
-    # en vivo (estado_sesion_maquina, 0055_operacion_maquina_vivo) = 45. Total: 45.
-    assert enums == 45
+    # en vivo (estado_sesion_maquina, 0055_operacion_maquina_vivo) = 45, + 1 de la naturaleza del egreso
+    # (tipo_egreso, 0071_gastos_tipo_y_recurrentes; esa migración también amplía gasto_categoria, que ya
+    # existía) = 46. Total: 46.
+    assert enums == 46
 
     await tenant.engine.dispose()
     downgrade_tenant(tenant.url, "base")

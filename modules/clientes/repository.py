@@ -10,7 +10,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules.clientes.models import Cliente
-from modules.clientes.schemas import ClienteCrear
+from modules.clientes.schemas import ClienteActualizar, ClienteCrear
 
 
 class SqlClientesRepository:
@@ -62,3 +62,17 @@ class SqlClientesRepository:
         self._s.add(cliente)
         await self._s.flush()  # asigna cliente.id (y, vía RETURNING, estatus/creado_en server-default)
         return cliente
+
+    async def actualizar(self, cliente: Cliente, datos: ClienteActualizar) -> Cliente:
+        """Patch parcial: solo los campos presentes en el payload (`exclude_unset`) — así una edición
+        de teléfono no borra los datos fiscales que el form no mandó."""
+        for campo, valor in datos.model_dump(exclude_unset=True).items():
+            setattr(cliente, campo, valor)
+        await self._s.flush()
+        return cliente
+
+    async def eliminar(self, cliente: Cliente) -> None:
+        """Borrado real. Si el cliente tiene ventas/fiados, la FK (RESTRICT) lo impide y el error
+        sube como IntegrityError — el router lo traduce a 409."""
+        await self._s.delete(cliente)
+        await self._s.flush()

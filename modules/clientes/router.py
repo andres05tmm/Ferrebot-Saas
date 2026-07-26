@@ -1,4 +1,4 @@
-"""Router de clientes (B2, api-contract.md): listar, crear (con dedup), obtener.
+"""Router de clientes (B2, api-contract.md): listar, crear (con dedup), obtener, editar y eliminar.
 
 Núcleo (siempre activo, feature-flags.md): sin require_feature. Lecturas y alta son de rol
 `vendedor` o superior. La lógica vive en `ClientesService` (dedup por documento); aquí solo se
@@ -9,6 +9,7 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.auth import Principal, require_role
@@ -16,7 +17,7 @@ from core.auth.features import require_feature
 from core.config import get_settings
 from core.db.session import control_session, get_tenant_db
 from modules.clientes.repository import SqlClientesRepository
-from modules.clientes.schemas import ClienteCrear, ClienteLeer
+from modules.clientes.schemas import ClienteActualizar, ClienteCrear, ClienteLeer
 from modules.clientes.service import ClientesService
 from modules.facturacion.config import cargar_config_matias
 from modules.facturacion.matias_client import MatiasClient
@@ -108,3 +109,36 @@ async def obtener_cliente(
     if cliente is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, f"Cliente {cliente_id} no existe")
     return ClienteLeer.model_validate(cliente)
+
+
+@router.put("/clientes/{cliente_id}", response_model=ClienteLeer)
+async def actualizar_cliente(
+    cliente_id: int,
+    payload: ClienteActualizar,
+    service: ClientesService = Depends(get_clientes_service),
+    _user: Principal = Depends(require_role("vendedor")),
+) -> ClienteLeer:
+    """Edición parcial desde el dashboard: solo se aplican los campos que vengan en el body."""
+    cliente = await service.actualizar(cliente_id, payload)
+    if cliente is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, f"Cliente {cliente_id} no existe")
+    return ClienteLeer.model_validate(cliente)
+
+
+@router.delete("/clientes/{cliente_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def eliminar_cliente(
+    cliente_id: int,
+    service: ClientesService = Depends(get_clientes_service),
+    _user: Principal = Depends(require_role("admin")),
+) -> Response:
+    """Borra el cliente. Con ventas/fiados asociados la FK lo impide → 409 (no se pierde histórico)."""
+    try:
+        borrado = await service.eliminar(cliente_id)
+    except IntegrityError as exc:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "El cliente tiene ventas o fiados registrados: no se puede eliminar.",
+        ) from exc
+    if not borrado:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, f"Cliente {cliente_id} no existe")
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

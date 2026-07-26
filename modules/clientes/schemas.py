@@ -44,6 +44,27 @@ class ClienteCrear(BaseModel):
     acuerdo_comercial: str | None = None
 
 
+class ClienteActualizar(BaseModel):
+    """Edición desde el dashboard (PUT /clientes/{id}). Todos los campos OPCIONALES: solo se aplica
+    lo que venga (patch parcial). `nombre` no puede quedar vacío si se manda."""
+
+    nombre: str | None = Field(default=None, min_length=1)
+    tipo_documento: TipoDocumento | None = None
+    documento: str | None = None
+    telefono: str | None = None
+    correo: str | None = None
+    direccion: str | None = None
+    ciudad_dane: str | None = None
+    regimen: str | None = None
+
+    estatus: EstatusCliente | None = None
+    contacto_nombre: str | None = None
+    contacto_cargo: str | None = None
+    contacto_telefono: str | None = None
+    contacto_email: str | None = None
+    acuerdo_comercial: str | None = None
+
+
 class ClienteLeer(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

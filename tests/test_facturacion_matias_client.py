@@ -83,6 +83,20 @@ def test_parsear_ciudades_variantes():
     assert _parsear_ciudades(d3) == {5001: "149"}
 
 
+def test_parsear_ciudades_usa_city_code_de_matias():
+    """Forma REAL de /cities: el DANE viene en `city_code` ("05001"). Sin leerlo, el mapa salía vacío
+    y ninguna ciudad de cliente se resolvía (toda factura caía a la ciudad por defecto)."""
+    payload = {"dataRecords": {"data": [
+        {"id": 1, "city_code": "05001", "name_city": "Medellín",
+         "department": {"name_department": "Antioquia"}},
+    ]}}
+    assert _parsear_ciudades(payload) == {5001: "1"}
+    assert _parsear_ciudades_full(payload, 45) == [
+        {"matias_id": "1", "dane_code": 5001, "nombre": "Medellín",
+         "departamento": "Antioquia", "pais_id": 45},
+    ]
+
+
 # --- orquestación con httpx.MockTransport (cero red) -------------------------
 
 class _Handler:

@@ -14,7 +14,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.events import publish
 from core.money import cuantizar
 from modules.compras.models import Compra, CompraDetalle, Proveedor
-from modules.compras.schemas import CompraLeer
+from modules.compras.schemas import CompraConDetalleLeer, CompraLeer, LineaCompraLeer
+from modules.inventario.precios import unidades_por_paquete
 from modules.inventario.models import Inventario, MovimientoInventario
 
 
@@ -130,6 +131,19 @@ class SqlComprasRepository:
     def __init__(self, session: AsyncSession) -> None:
         self._s = session
 
+    async def unidades_medida(self, ids: list[int]) -> dict[int, str]:
+        """`unidad_medida` de esos productos (para convertir una captura en paquetes a la sub-unidad
+        en la que vive el stock). Una sola consulta."""
+        if not ids:
+            return {}
+        filas = (
+            await self._s.execute(
+                text("SELECT id, unidad_medida FROM productos WHERE id = ANY(:ids)"),
+                {"ids": list({i for i in ids if i is not None})},
+            )
+        ).all()
+        return {f.id: f.unidad_medida for f in filas}
+
     async def get_or_create_proveedor(
         self, *, proveedor_id: int | None = None, nombre: str | None = None, nit: str | None = None
     ) -> int:
@@ -202,6 +216,40 @@ class SqlComprasRepository:
             ultima_correccion_key=fila.ultima_correccion_key,
             nota_correccion=fila.nota_correccion,
             lineas=tuple((d.producto_id, Decimal(d.cantidad), Decimal(d.costo)) for d in detalle),
+        )
+
+    async def leer_con_detalle(self, compra_id: int) -> CompraConDetalleLeer | None:
+        """Cabecera + líneas con el nombre y la unidad del producto (para corregir la compra)."""
+        cabecera = (
+            await self._s.execute(
+                select(*self._COLS_CABECERA)
+                .join(Proveedor, Proveedor.id == Compra.proveedor_id, isouter=True)
+                .where(Compra.id == compra_id)
+            )
+        ).one_or_none()
+        if cabecera is None:
+            return None
+        filas = (
+            await self._s.execute(
+                text(
+                    "SELECT d.producto_id, p.nombre, p.unidad_medida, d.cantidad, d.costo "
+                    "FROM compras_detalle d LEFT JOIN productos p ON p.id = d.producto_id "
+                    "WHERE d.compra_id = :c ORDER BY d.id"
+                ),
+                {"c": compra_id},
+            )
+        ).all()
+        base = self._fila_a_leer(cabecera)
+        return CompraConDetalleLeer(
+            **base.model_dump(),
+            lineas=[
+                LineaCompraLeer(
+                    producto_id=f.producto_id, nombre=f.nombre, cantidad=Decimal(f.cantidad),
+                    costo=Decimal(f.costo), unidad_medida=f.unidad_medida,
+                    unidades_por_paquete=unidades_por_paquete(f.unidad_medida),
+                )
+                for f in filas
+            ],
         )
 
     async def leer(self, compra_id: int) -> CompraLeer:

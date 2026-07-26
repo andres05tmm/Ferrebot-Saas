@@ -16,6 +16,7 @@ a centavos (core.money); FerreBot redondeaba a pesos enteros (desviación delibe
 """
 from dataclasses import dataclass, field
 from decimal import Decimal
+from typing import Literal
 
 from core.money import cuantizar
 
@@ -54,6 +55,28 @@ def unidades_por_paquete(unidad_medida: str | None) -> Decimal | None:
     if not unidad_medida:
         return None
     return _UNIDADES_POR_PAQUETE.get(unidad_medida.strip().lower())
+
+
+# Unidad en la que se CAPTURA una cantidad de un producto granel: la sub-unidad en la que vive el
+# stock (gramo/cm/ml) o el paquete con el que se compra y se cuenta (la caja, el tarro, el rollo).
+UnidadCaptura = Literal["sub", "paquete"]
+
+
+def convertir_a_subunidad(
+    cantidad: Decimal, costo: Decimal | None, *, unidad: str, unidad_medida: str | None
+) -> tuple[Decimal, Decimal | None]:
+    """Pasa una captura en PAQUETES a la sub-unidad en la que vive el stock (y su costo).
+
+    La ferretería compra cajas de puntilla pero vende gramos: si no se convierte, "10 cajas" suma 10
+    gramos y el costo queda en $/caja contra un COGS en $/gramo. Función pura; si el producto no es
+    granel (o la captura ya viene en sub-unidad) devuelve los mismos números.
+    """
+    if unidad != "paquete":
+        return cantidad, costo
+    factor = unidades_por_paquete(unidad_medida)
+    if factor is None or factor <= 0:
+        return cantidad, costo
+    return cantidad * factor, (costo / factor if costo is not None else None)
 
 
 @dataclass(frozen=True, slots=True)

@@ -17,6 +17,7 @@ from modules.compras.errors import (
     CorreccionInvalida,
     IdempotenciaConflicto,
 )
+from modules.inventario.precios import convertir_a_subunidad
 from modules.compras.repository import (
     AnalisisPrecioRow,
     CompraIdempotente,
@@ -185,10 +186,16 @@ class ComprasService:
         camino de replay); con payload distinto → `IdempotenciaConflicto`. El índice UNIQUE parcial
         (0025) es el respaldo estructural ante una carrera.
         """
-        items = [
-            ItemCompra(producto_id=it.producto_id, cantidad=it.cantidad, costo=it.costo)
-            for it in datos.items
-        ]
+        # Captura en paquetes (la caja con que se le compra al proveedor) → sub-unidad del stock:
+        # sin esto, "10 cajas de puntilla" sumaría 10 gramos y el costo quedaría en $/caja.
+        unidades = await self._repo.unidades_medida([it.producto_id for it in datos.items])
+        items = []
+        for it in datos.items:
+            cantidad, costo = convertir_a_subunidad(
+                it.cantidad, it.costo, unidad=it.unidad,
+                unidad_medida=unidades.get(it.producto_id),
+            )
+            items.append(ItemCompra(producto_id=it.producto_id, cantidad=cantidad, costo=costo))
         total = cuantizar(sum((it.cantidad * it.costo for it in items), Decimal("0")))
 
         if datos.idempotency_key:
@@ -314,7 +321,13 @@ class ComprasService:
                 compra_id, "ya tiene retenciones practicadas: corrígela por nota de ajuste fiscal"
             )
 
-        nuevas = {ln.producto_id: (ln.cantidad, ln.costo) for ln in datos.lineas}
+        unidades = await self._repo.unidades_medida([ln.producto_id for ln in datos.lineas])
+        nuevas = {}
+        for ln in datos.lineas:
+            cantidad, costo = convertir_a_subunidad(
+                ln.cantidad, ln.costo, unidad=ln.unidad, unidad_medida=unidades.get(ln.producto_id),
+            )
+            nuevas[ln.producto_id] = (cantidad, costo)
         viejas = {pid: (cant, costo) for pid, cant, costo in compra.lineas}
 
         if datos.idempotency_key and datos.idempotency_key == compra.ultima_correccion_key:

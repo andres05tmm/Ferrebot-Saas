@@ -35,6 +35,7 @@ import usePosCatalogo from './pos/usePosCatalogo.js'
 import { filtrarYRankear } from './pos/filtroLocal.js'
 import { etiquetaCategoria, iconoCategoria } from './pos/categorias.js'
 import { filtrarSubcat, ordenarProductos, subcatsDe } from './pos/subcategorias.js'
+import { unidadesDe } from './compras/comunes.jsx'
 
 const SIN_CATEGORIA = 'Sin categoría'
 const PAGINA_STOCK = 500    // límite máximo del endpoint (modules/inventario/router.py)
@@ -324,21 +325,26 @@ function ProductoRow({ producto, stock, admin, construccion, onAjustado, onEdita
         )}
       </div>
       {admin && abierto && (
-        <AjusteForm productoId={producto.id} onDone={() => { setAbierto(false); onAjustado() }} />
+        <AjusteForm producto={producto} onDone={() => { setAbierto(false); onAjustado() }} />
       )}
     </li>
   )
 }
 
-function AjusteForm({ productoId, onDone }) {
+function AjusteForm({ producto, onDone }) {
+  const productoId = producto.id
+  // Producto que se vende menudeado (puntilla por gramo, lija por cm): se cuenta por caja/rollo y el
+  // backend lo pasa a la sub-unidad en la que vive el stock.
+  const granel = unidadesDe(producto)
+  const [porPaquete, setPorPaquete] = useState(!!granel)
   const [delta, setDelta] = useState('')
   const [motivo, setMotivo] = useState('')
   const [contada, setContada] = useState('')
   const [enviando, setEnviando] = useState(false)
   const [error, setError] = useState('')
   // Keys estables por payload (F2.7): un reintento tras timeout es replay, no doble movimiento de stock.
-  const keyConteo = useMemo(() => crypto.randomUUID(), [productoId, contada])
-  const keyAjuste = useMemo(() => crypto.randomUUID(), [productoId, delta, motivo])
+  const keyConteo = useMemo(() => crypto.randomUUID(), [productoId, contada, porPaquete])
+  const keyAjuste = useMemo(() => crypto.randomUUID(), [productoId, delta, motivo, porPaquete])
 
   // Conteo físico (set-to-absolute): el admin escribe el número REAL contado; el backend calcula el
   // delta y deja el stock en ese valor (así se cuadran los negativos). POST /inventario/conteo.
@@ -349,7 +355,10 @@ function AjusteForm({ productoId, onDone }) {
       const res = await api('/inventario/conteo', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Idempotency-Key': keyConteo },
-        body: JSON.stringify({ producto_id: productoId, cantidad_contada: Number(contada), motivo: 'conteo físico' }),
+        body: JSON.stringify({
+          producto_id: productoId, cantidad_contada: Number(contada),
+          unidad: granel && porPaquete ? 'paquete' : 'sub', motivo: 'conteo físico',
+        }),
       })
       if (res.ok) {
         const r = await res.json().catch(() => null)
@@ -368,7 +377,10 @@ function AjusteForm({ productoId, onDone }) {
       const res = await api('/inventario/ajuste', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Idempotency-Key': keyAjuste },
-        body: JSON.stringify({ producto_id: productoId, cantidad: n, motivo: motivo.trim() }),
+        body: JSON.stringify({
+          producto_id: productoId, cantidad: n,
+          unidad: granel && porPaquete ? 'paquete' : 'sub', motivo: motivo.trim(),
+        }),
       })
       if (res.ok) onDone()
       else setError('No se pudo ajustar el stock.')
@@ -377,6 +389,13 @@ function AjusteForm({ productoId, onDone }) {
 
   return (
     <div className="mt-2.5 space-y-2 bg-surface-2/50 rounded-md p-2">
+      {granel && (
+        <label className="flex items-center gap-2 text-[11px] text-muted-foreground">
+          <input type="checkbox" checked={porPaquete} aria-label="Contar por paquete"
+            onChange={(e) => setPorPaquete(e.target.checked)} />
+          Contar por {granel.paquete} ({granel.factor} {granel.sub} cada una) — se vende por {granel.sub}
+        </label>
+      )}
       <div>
         <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Conteo físico · ajustar a cantidad real</p>
         <div className="flex flex-wrap items-center gap-2">

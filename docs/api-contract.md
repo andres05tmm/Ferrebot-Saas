@@ -79,6 +79,7 @@
 | POST | `/compras` | admin | compra + detalle (ENTRADA de inventario) | `compra_registrada`, `inventario_actualizado` |
 | GET | `/compras` | admin | `?desde=&hasta=&proveedor_id=` | — |
 | POST | `/compras/{id}/factura` | admin | foto (Cloudinary) o datos fiscales | — |
+| GET | `/compras/{id}` | vendedor | cabecera + líneas (base de la corrección) | — |
 | POST | `/compras/{id}/corregir` | admin | detalle final correcto + `motivo` (+`ajustar_pago`); aplica los deltas como AJUSTE y concilia CxP/caja. **Idempotency-Key** | `compra_corregida`, `inventario_actualizado` |
 
 `GET /compras` es de `vendedor` (todos ven el tab); registrar y corregir siguen siendo de admin.
@@ -88,6 +89,12 @@ el alta exige líneas con `producto_id`+`cantidad`+`costo_estimado`, `condicion_
 postea egreso). En `POST /proveedores/abonos`, `origen_fondos` decide igual si el abono mueve caja. Los tres pagos
 (al pedir, al recibir, al abonar) aceptan además `pagos: [{origen, monto}]` para el **pago mixto**
 (0068): las partes deben sumar el monto a pagar y solo la de `caja` postea movimiento de caja.
+
+**Unidad de captura.** Las líneas de compra/pedido/recepción/corrección y el ajuste/conteo de
+inventario aceptan `unidad`: `sub` (default — la unidad en la que vive el stock y se vende) o
+`paquete` (la caja/rollo/tarro con que se le compra al proveedor). Para los productos por sub-unidad
+(GRM/Cms/MLT) el servidor convierte cantidad y costo con el mismo divisor del motor de precios; en
+los demás no hay conversión.
 
 ## Clientes / Proveedores / Fiados
 

@@ -6,6 +6,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from core.config.timezone import today_co
+from modules.inventario.precios import UnidadCaptura
 
 # Categoría de compra del vertical construcción (spec 11). Literales EXACTOS a la spec 01_MODELO_DATOS
 # y al enum `categoria_compra` (tenant 0048).
@@ -40,6 +41,9 @@ class CompraItemCrear(BaseModel):
     producto_id: int | None = None
     cantidad: Decimal = Field(gt=0)
     costo: Decimal = Field(ge=0)
+    # En qué unidad viene la captura: 'sub' (la del stock y la venta) o 'paquete' (la caja/tarro con
+    # que se le compra al proveedor). El servicio convierte los granel; el resto no cambia.
+    unidad: UnidadCaptura = "sub"
 
 
 class CompraCrear(BaseModel):
@@ -151,6 +155,7 @@ class LineaCorreccion(BaseModel):
     producto_id: int = Field(gt=0)
     cantidad: Decimal = Field(gt=0)
     costo: Decimal = Field(ge=0)
+    unidad: UnidadCaptura = "sub"
 
 
 class CompraCorregir(BaseModel):
@@ -184,3 +189,20 @@ class CorreccionLeer(BaseModel):
     factura_proveedor_id: str | None = None
     movimiento_caja_id: int | None = None
     replay: bool = False
+
+
+class LineaCompraLeer(BaseModel):
+    """Una línea de la compra tal como quedó registrada (en la unidad en la que vive el stock)."""
+
+    producto_id: int | None
+    nombre: str | None = None
+    cantidad: Decimal
+    costo: Decimal
+    unidad_medida: str | None = None
+    unidades_por_paquete: Decimal | None = None
+
+
+class CompraConDetalleLeer(CompraLeer):
+    """Cabecera + líneas: lo que necesita el modal de corrección para partir de lo REALMENTE recibido."""
+
+    lineas: list[LineaCompraLeer] = []

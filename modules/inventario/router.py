@@ -194,7 +194,8 @@ async def ajustar_stock(
 ) -> AjusteLeer:
     try:
         res = await _service(session).ajustar(
-            producto_id=payload.producto_id, delta=payload.cantidad, motivo=payload.motivo,
+            producto_id=payload.producto_id, delta=payload.cantidad, unidad=payload.unidad,
+            motivo=payload.motivo,
             usuario_id=user.user_id, idempotency_key=idempotency_key,
         )
     except ProductoInexistente as exc:
@@ -225,7 +226,7 @@ async def conteo_fisico(
     try:
         res = await _service(session).contar(
             producto_id=payload.producto_id, cantidad_contada=payload.cantidad_contada,
-            motivo=payload.motivo, usuario_id=user.user_id, idempotency_key=idempotency_key,
+            unidad=payload.unidad, motivo=payload.motivo, usuario_id=user.user_id, idempotency_key=idempotency_key,
         )
     except ProductoInexistente as exc:
         raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc

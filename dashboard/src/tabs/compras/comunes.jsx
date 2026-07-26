@@ -68,9 +68,50 @@ export function BuscadorProducto({ onPick, placeholder = 'Buscar producto para a
   )
 }
 
+// Vocabulario del granel (mismo que el POS): la sub-unidad en que se VENDE y el envase con que se
+// COMPRA. `unidades_por_paquete` (del backend) dice cuántas sub-unidades trae el envase.
+const ENVASE = {
+  grm: { sub: 'g', paquete: 'caja' },
+  gramos: { sub: 'g', paquete: 'caja' },
+  cms: { sub: 'cm', paquete: 'rollo' },
+  mlt: { sub: 'ml', paquete: 'tarro' },
+  ml: { sub: 'ml', paquete: 'tarro' },
+  mililitros: { sub: 'ml', paquete: 'tarro' },
+}
+
+/** Cómo se llama lo que se está capturando: granel (caja/gramo) o la unidad del catálogo. */
+export function unidadesDe(producto) {
+  const paquete = Number(producto?.unidades_por_paquete || 0)
+  const envase = ENVASE[(producto?.unidad_medida || '').trim().toLowerCase()]
+  if (!paquete || !envase) return null
+  return { ...envase, factor: paquete }
+}
+
+/** Línea nueva a partir del producto elegido, con lo necesario para mostrar/convertir la unidad. */
+export function lineaDe(producto, { campoCosto = 'costo' } = {}) {
+  const granel = unidadesDe(producto)
+  return {
+    producto_id: producto.id,
+    nombre: producto.nombre,
+    unidad_medida: producto.unidad_medida,
+    unidades_por_paquete: producto.unidades_por_paquete ?? null,
+    cantidad: '1',
+    // Los granel se capturan por defecto en el envase con que se le compra al proveedor (la caja),
+    // que es como el dueño piensa la compra; el backend lo pasa a la sub-unidad del stock.
+    unidad: granel ? 'paquete' : 'sub',
+    [campoCosto]: producto.precio_compra != null ? String(producto.precio_compra) : '',
+    cuadrar: false,
+    cantidad_fisica: '',
+  }
+}
+
 /**
  * Líneas de la compra: producto, cantidad y COSTO UNITARIO (los tres obligatorios — decisión del
  * dueño). `campoCosto` distingue el costo acordado al pedir (`costo_estimado`) del real al recibir.
+ *
+ * Cada línea muestra SU unidad. En los productos que se venden menudeados (puntilla por gramo, lija
+ * por cm, tintilla por ml) se puede capturar en la caja/rollo/tarro con que se le compra al
+ * proveedor: el backend convierte a la sub-unidad en la que vive el stock.
  */
 export function LineasEditor({ lineas, setLineas, campoCosto = 'costo', etiquetaCosto = 'costo unitario', extraFila }) {
   if (lineas.length === 0) {
@@ -79,27 +120,50 @@ export function LineasEditor({ lineas, setLineas, campoCosto = 'costo', etiqueta
   const set = (i, cambios) => setLineas(prev => prev.map((x, j) => (j === i ? { ...x, ...cambios } : x)))
   return (
     <div className="space-y-2">
-      {lineas.map((l, i) => (
-        <div key={`${l.producto_id}-${i}`} className="border border-border rounded-md p-2 space-y-2">
-          <div className="flex items-center gap-2 text-body-sm">
-            <span className="flex-1 truncate font-medium">{l.nombre}</span>
-            <Input type="number" inputMode="decimal" min="0" value={l.cantidad}
-              aria-label={`Cantidad ${l.nombre}`} className="w-20 h-8"
-              onChange={(e) => set(i, { cantidad: e.target.value })} />
-            <Input type="number" inputMode="numeric" min="0" value={l[campoCosto]}
-              aria-label={`Costo unitario ${l.nombre}`} className="w-28 h-8" placeholder={etiquetaCosto}
-              onChange={(e) => set(i, { [campoCosto]: e.target.value })} />
-            <span className="w-24 text-right tabular-nums text-muted-foreground">
-              {cop(Number(l.cantidad || 0) * Number(l[campoCosto] || 0))}
-            </span>
-            <button type="button" onClick={() => setLineas(prev => prev.filter((_, j) => j !== i))}
-              aria-label={`Quitar ${l.nombre}`} className="text-muted-foreground hover:text-danger">
-              <Trash2 className="size-4" />
-            </button>
+      {lineas.map((l, i) => {
+        const granel = unidadesDe(l)
+        const enPaquetes = granel && l.unidad === 'paquete'
+        const nombreUnidad = granel
+          ? (enPaquetes ? granel.paquete : granel.sub)
+          : (l.unidad_medida || 'unidad')
+        return (
+          <div key={`${l.producto_id}-${i}`} className="border border-border rounded-md p-2 space-y-2">
+            <div className="flex items-center gap-2 text-body-sm">
+              <span className="flex-1 truncate font-medium">{l.nombre}</span>
+              <Input type="number" inputMode="decimal" min="0" value={l.cantidad}
+                aria-label={`Cantidad ${l.nombre}`} className="w-20 h-8"
+                onChange={(e) => set(i, { cantidad: e.target.value })} />
+              <span className="w-16 text-caption text-muted-foreground truncate" title={nombreUnidad}>
+                {nombreUnidad}
+              </span>
+              <Input type="number" inputMode="numeric" min="0" value={l[campoCosto]}
+                aria-label={`Costo unitario ${l.nombre}`} className="w-28 h-8" placeholder={etiquetaCosto}
+                onChange={(e) => set(i, { [campoCosto]: e.target.value })} />
+              <span className="w-24 text-right tabular-nums text-muted-foreground">
+                {cop(Number(l.cantidad || 0) * Number(l[campoCosto] || 0))}
+              </span>
+              <button type="button" onClick={() => setLineas(prev => prev.filter((_, j) => j !== i))}
+                aria-label={`Quitar ${l.nombre}`} className="text-muted-foreground hover:text-danger">
+                <Trash2 className="size-4" />
+              </button>
+            </div>
+            {granel && (
+              <label className="flex items-center gap-2 text-caption text-muted-foreground">
+                <input type="checkbox" checked={enPaquetes}
+                  aria-label={`Comprar por ${granel.paquete} ${l.nombre}`}
+                  onChange={(e) => set(i, { unidad: e.target.checked ? 'paquete' : 'sub' })} />
+                Se compra por {granel.paquete} ({granel.factor} {granel.sub} cada una) — se vende por {granel.sub}
+                {enPaquetes && Number(l.cantidad) > 0 && (
+                  <strong className="text-foreground">
+                    · entran {Number(l.cantidad) * granel.factor} {granel.sub}
+                  </strong>
+                )}
+              </label>
+            )}
+            {extraFila?.(l, i, set)}
           </div>
-          {extraFila?.(l, i, set)}
-        </div>
-      ))}
+        )
+      })}
     </div>
   )
 }

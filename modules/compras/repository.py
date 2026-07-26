@@ -131,18 +131,20 @@ class SqlComprasRepository:
     def __init__(self, session: AsyncSession) -> None:
         self._s = session
 
-    async def unidades_medida(self, ids: list[int]) -> dict[int, str]:
-        """`unidad_medida` de esos productos (para convertir una captura en paquetes a la sub-unidad
-        en la que vive el stock). Una sola consulta."""
+    async def unidades_medida(self, ids: list[int]) -> dict[int, tuple[str, Decimal | None]]:
+        """Unidad de venta y tamaño del empaque de esos productos, para convertir una captura hecha
+        en bultos/cajas a la unidad en la que vive el stock. Una sola consulta."""
         if not ids:
             return {}
         filas = (
             await self._s.execute(
-                text("SELECT id, unidad_medida FROM productos WHERE id = ANY(:ids)"),
+                text(
+                    "SELECT id, unidad_medida, contenido_paquete FROM productos WHERE id = ANY(:ids)"
+                ),
                 {"ids": list({i for i in ids if i is not None})},
             )
         ).all()
-        return {f.id: f.unidad_medida for f in filas}
+        return {f.id: (f.unidad_medida, f.contenido_paquete) for f in filas}
 
     async def get_or_create_proveedor(
         self, *, proveedor_id: int | None = None, nombre: str | None = None, nit: str | None = None
@@ -232,7 +234,8 @@ class SqlComprasRepository:
         filas = (
             await self._s.execute(
                 text(
-                    "SELECT d.producto_id, p.nombre, p.unidad_medida, d.cantidad, d.costo "
+                    "SELECT d.producto_id, p.nombre, p.unidad_medida, p.contenido_paquete, "
+                    "d.cantidad, d.costo "
                     "FROM compras_detalle d LEFT JOIN productos p ON p.id = d.producto_id "
                     "WHERE d.compra_id = :c ORDER BY d.id"
                 ),
@@ -246,7 +249,9 @@ class SqlComprasRepository:
                 LineaCompraLeer(
                     producto_id=f.producto_id, nombre=f.nombre, cantidad=Decimal(f.cantidad),
                     costo=Decimal(f.costo), unidad_medida=f.unidad_medida,
-                    unidades_por_paquete=unidades_por_paquete(f.unidad_medida),
+                    unidades_por_paquete=unidades_por_paquete(
+                        f.unidad_medida, f.contenido_paquete
+                    ),
                 )
                 for f in filas
             ],

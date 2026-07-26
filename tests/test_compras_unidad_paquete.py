@@ -166,3 +166,72 @@ async def test_conteo_fisico_en_cajas_deja_el_stock_en_gramos(tenant):
             )
         ).one()
     assert tipo == "AJUSTE" and Decimal(cantidad) == Decimal("1500.000")
+
+
+async def test_bolsa_de_cal_de_25_kg_es_dato_del_producto(tenant):
+    """La cal se compra por bolsa de 25 kg y se vende por kilo. El tamaño del empaque NO se puede
+    adivinar por la unidad (un bulto de cemento trae 50): es dato del producto (`contenido_paquete`).
+    2 bolsas a $35.000 → 50 kg en stock a $1.400 el kilo."""
+    async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
+        uid = await _usuario(s)
+        pid = (
+            await s.execute(
+                text(
+                    "INSERT INTO productos (nombre, unidad_medida, precio_venta, iva, "
+                    "permite_fraccion, activo, contenido_paquete, nombre_paquete) "
+                    "VALUES ('Cal', 'Kg', 2000, 0, false, true, 25, 'bolsa') RETURNING id"
+                )
+            )
+        ).scalar_one()
+        await s.execute(
+            text("INSERT INTO inventario (producto_id, stock_actual, stock_minimo) VALUES (:p,0,0)"),
+            {"p": pid},
+        )
+        await s.commit()
+
+        await ComprasService(SqlComprasRepository(s)).registrar(
+            CompraCrear(
+                proveedor=ProveedorRef(nombre="Ferrisariato"),
+                items=[CompraItemCrear(
+                    producto_id=pid, cantidad=Decimal("2"), costo=Decimal("35000"),
+                    unidad="paquete",
+                )],
+            ),
+            usuario_id=uid,
+        )
+        await s.commit()
+
+    assert await _stock(tenant.engine, pid) == Decimal("50.000")     # 2 bolsas × 25 kg
+    async with AsyncSession(tenant.engine) as s:
+        promedio = (
+            await s.execute(text("SELECT costo_promedio FROM productos WHERE id=:p"), {"p": pid})
+        ).scalar_one()
+    assert Decimal(promedio) == Decimal("1400.00")                   # $35.000 / 25 kg
+
+
+async def test_el_conteo_de_bultos_usa_el_tamano_del_producto(tenant):
+    """"Conté 3 bolsas de cal" → 75 kg, no 3."""
+    async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
+        uid = await _usuario(s)
+        pid = (
+            await s.execute(
+                text(
+                    "INSERT INTO productos (nombre, unidad_medida, precio_venta, iva, "
+                    "permite_fraccion, activo, contenido_paquete, nombre_paquete) "
+                    "VALUES ('Cal', 'Kg', 2000, 0, false, true, 25, 'bolsa') RETURNING id"
+                )
+            )
+        ).scalar_one()
+        await s.execute(
+            text("INSERT INTO inventario (producto_id, stock_actual, stock_minimo) VALUES (:p,0,0)"),
+            {"p": pid},
+        )
+        await s.commit()
+
+        await InventarioService(SqlInventarioRepository(s)).contar(
+            producto_id=pid, cantidad_contada=Decimal("3"), unidad="paquete",
+            motivo="conteo físico", usuario_id=uid,
+        )
+        await s.commit()
+
+    assert await _stock(tenant.engine, pid) == Decimal("75.000")

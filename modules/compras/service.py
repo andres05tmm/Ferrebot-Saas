@@ -191,9 +191,10 @@ class ComprasService:
         unidades = await self._repo.unidades_medida([it.producto_id for it in datos.items])
         items = []
         for it in datos.items:
+            unidad_medida, contenido = unidades.get(it.producto_id, (None, None))
             cantidad, costo = convertir_a_subunidad(
-                it.cantidad, it.costo, unidad=it.unidad,
-                unidad_medida=unidades.get(it.producto_id),
+                it.cantidad, it.costo, unidad=it.unidad, unidad_medida=unidad_medida,
+                contenido_paquete=contenido,
             )
             items.append(ItemCompra(producto_id=it.producto_id, cantidad=cantidad, costo=costo))
         total = cuantizar(sum((it.cantidad * it.costo for it in items), Decimal("0")))
@@ -324,8 +325,10 @@ class ComprasService:
         unidades = await self._repo.unidades_medida([ln.producto_id for ln in datos.lineas])
         nuevas = {}
         for ln in datos.lineas:
+            unidad_medida, contenido = unidades.get(ln.producto_id, (None, None))
             cantidad, costo = convertir_a_subunidad(
-                ln.cantidad, ln.costo, unidad=ln.unidad, unidad_medida=unidades.get(ln.producto_id),
+                ln.cantidad, ln.costo, unidad=ln.unidad, unidad_medida=unidad_medida,
+                contenido_paquete=contenido,
             )
             nuevas[ln.producto_id] = (cantidad, costo)
         viejas = {pid: (cant, costo) for pid, cant, costo in compra.lineas}

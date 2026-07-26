@@ -194,9 +194,10 @@ class PedidosProveedorService:
         )
         lineas = []
         for ln in datos.lineas:
+            unidad_medida, contenido = unidades_medida.get(ln.producto_id, (None, None))
             cantidad, costo = convertir_a_subunidad(
-                ln.cantidad, ln.costo_estimado, unidad=ln.unidad,
-                unidad_medida=unidades_medida.get(ln.producto_id),
+                ln.cantidad, ln.costo_estimado, unidad=ln.unidad, unidad_medida=unidad_medida,
+                contenido_paquete=contenido,
             )
             lineas.append((ln.producto_id, ln.descripcion, cantidad, costo))
         valor_pedido = cuantizar(sum((c * v for _, _, c, v in lineas), Decimal("0")))
@@ -529,8 +530,10 @@ class PedidosProveedorService:
         unidades = unidades or {}
         detalles = [
             d.model_copy(update={
-                "unidad_medida": unidades.get(d.producto_id),
-                "unidades_por_paquete": unidades_por_paquete(unidades.get(d.producto_id)),
+                "unidad_medida": (unidades.get(d.producto_id) or (None, None))[0],
+                "unidades_por_paquete": unidades_por_paquete(
+                    *(unidades.get(d.producto_id) or (None, None))
+                ),
             })
             for d in base.detalles
         ]

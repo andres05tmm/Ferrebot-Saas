@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.money import cuantizar
 from modules.compras.models import Proveedor
 from modules.proveedores.models import AbonoProveedor, FacturaProveedor
-from modules.proveedores.schemas import FacturaProveedorLeer, ProveedorLeer
+from modules.proveedores.schemas import FacturaProveedorLeer, ProveedorGuardar, ProveedorLeer
 
 
 @dataclass(frozen=True, slots=True)
@@ -33,6 +33,25 @@ class SqlProveedoresRepository:
             await self._s.execute(select(Proveedor).order_by(Proveedor.nombre))
         ).scalars().all()
         return [ProveedorLeer.model_validate(p) for p in filas]
+
+    async def crear_proveedor(self, datos: ProveedorGuardar) -> ProveedorLeer:
+        """Da de alta un proveedor. Sin `tipo`: eso es del vertical construcción, no del POS."""
+        prov = Proveedor(**datos.model_dump())
+        self._s.add(prov)
+        await self._s.flush()
+        return ProveedorLeer.model_validate(prov)
+
+    async def actualizar_proveedor(
+        self, proveedor_id: int, datos: ProveedorGuardar
+    ) -> ProveedorLeer | None:
+        """Reescribe los datos del proveedor. None si no existe (el servicio lo vuelve 404)."""
+        prov = await self._s.get(Proveedor, proveedor_id)
+        if prov is None:
+            return None
+        for campo, valor in datos.model_dump().items():
+            setattr(prov, campo, valor)
+        await self._s.flush()
+        return ProveedorLeer.model_validate(prov)
 
     async def nombre_proveedor(self, proveedor_id: int) -> str | None:
         return (

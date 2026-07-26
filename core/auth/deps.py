@@ -20,6 +20,9 @@ class Principal:
     tenant: str | None   # None para una identidad de PLATAFORMA (super-admin, ADR 0010 §D2)
     rol: str
     scope: str = "tenant"   # "tenant" | "platform"
+    # Email de la identidad con la que se inició sesión (claim `email` del login real). None en
+    # tokens viejos, de Telegram o de dev: el consumidor debe tener fallback.
+    email: str | None = None
 
     @property
     def es_plataforma(self) -> bool:
@@ -44,7 +47,8 @@ def get_current_user(
     if tenant is not None and claim_tenant != tenant.slug:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "El token no pertenece a esta empresa")
     return Principal(
-        user_id=int(claims["sub"]), tenant=claim_tenant, rol=claims.get("rol", "vendedor"), scope=scope
+        user_id=int(claims["sub"]), tenant=claim_tenant, rol=claims.get("rol", "vendedor"),
+        scope=scope, email=claims.get("email"),
     )
 
 

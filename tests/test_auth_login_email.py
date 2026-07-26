@@ -89,6 +89,9 @@ async def test_login_ok_emite_jwt_con_tenant_de_la_empresa():
     assert body["usuario"] == {"id": 42, "rol": "admin", "tenant": "clinica"}
     claims = decode_token(body["token"])
     assert claims["tenant"] == "clinica" and claims["sub"] == "42" and claims["rol"] == "admin"
+    # El token dice CON CUÁL identidad se entró: con varias identidades del mismo usuario
+    # (grandfather + email nuevo), el perfil muestra la que se usó, no una adivinada.
+    assert claims["email"] == "ana@clinica.co"
     assert lockout.reseteos == ["ana@clinica.co"]      # éxito limpia el contador de fallos
 
 

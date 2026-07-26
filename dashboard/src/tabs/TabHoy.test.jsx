@@ -116,7 +116,8 @@ describe('TabHoy — paridad', () => {
     fireEvent.click(screen.getByRole('button', { name: /^Gasto$/ }))
     await screen.findByText('Registrar gasto', { selector: 'h2' })
     fireEvent.change(screen.getByLabelText('Monto'), { target: { value: '7000' } })
-    fireEvent.click(screen.getByRole('button', { name: /^Registrar gasto$/ }))
+    // El botón dice "Registrar" a secas: el modal también registra retiros e inversiones (0071).
+    fireEvent.click(screen.getByRole('button', { name: /^Registrar$/ }))
 
     const { waitFor } = await import('@testing-library/react')
     await waitFor(() => {

@@ -22,6 +22,7 @@ import { useAuth } from '@/hooks/useAuth.js'
 import { Card } from '@/components/ui/card.jsx'
 import { Input } from '@/components/ui/input.jsx'
 import { Badge } from '@/components/ui/badge.jsx'
+import { CATEGORIA_LABEL as CATEGORIAS_LABEL_GASTO, TIPO_LABEL } from '@/lib/gastos.js'
 
 const EVENTOS = ['venta_registrada', 'gasto_registrado', 'inventario_actualizado', 'reconnected']
 
@@ -36,10 +37,9 @@ const METODO_LABEL = {
   efectivo: 'Efectivo', transferencia: 'Transferencia', tarjeta: 'Tarjeta',
   nequi: 'Nequi', daviplata: 'Daviplata', datafono: 'Datáfono',
 }
-const CATEGORIA_LABEL = {
-  transporte: 'Transporte', papeleria: 'Papelería', servicios: 'Servicios',
-  nomina: 'Nómina', mantenimiento: 'Mantenimiento', otros: 'Otros',
-}
+// Categorías de gasto + los renglones que el flujo separa por TIPO (0071): un retiro o una inversión
+// salieron de la caja de verdad, pero no son gasto y no se disfrazan de uno.
+const CATEGORIA_LABEL = { ...CATEGORIAS_LABEL_GASTO, ...TIPO_LABEL }
 
 export default function TabResultados() {
   const { isAdmin } = useAuth()

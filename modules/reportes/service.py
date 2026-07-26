@@ -5,12 +5,14 @@ promedio (Decimal, 0 si no hubo ventas) y fija la fecha del día en hora Colombi
 """
 from __future__ import annotations
 
+from calendar import monthrange
 from datetime import date, timedelta
 from decimal import Decimal
 from typing import Protocol
 
 from core.config.timezone import now_co, rango_dia_co, today_co
 from core.money import cuantizar
+from modules.caja.schemas import CATEGORIAS_FIJAS
 from modules.reportes.repository import (
     AgingProveedorFila,
     AgregadoDia,
@@ -18,6 +20,7 @@ from modules.reportes.repository import (
     AgregadoLibroIVA,
     AgregadoResultados,
     DiaCalendario,
+    GastoAgrupado,
     MargenProductoFila,
     TopProductoFila,
 )
@@ -31,7 +34,9 @@ from modules.reportes.schemas import (
     MargenProducto,
     ProyeccionCaja,
     PuntoSerie,
+    RenglonGasto,
     ResumenDia,
+    ResumenGastos,
     TopProducto,
     TotalesVentas,
 )
@@ -56,6 +61,7 @@ class ReportesRepo(Protocol):
     ) -> list[MargenProductoFila]: ...
     async def aging_cxp(self, *, hoy: date) -> list[AgingProveedorFila]: ...
     async def gastos_por_dia(self, *, inicio, fin) -> list[tuple[date, Decimal]]: ...
+    async def gastos_agrupados(self, *, inicio, fin) -> list[GastoAgrupado]: ...
     async def calendario(
         self, *, inicio, fin, vendedor_id: int | None
     ) -> list[DiaCalendario]: ...
@@ -130,6 +136,86 @@ class ReportesService:
             desde=d, hasta=h,
             ingresos=agg.ingresos, costo_ventas=agg.costo_ventas,
             utilidad_bruta=utilidad_bruta, gastos=agg.gastos, utilidad_neta=utilidad_neta,
+        )
+
+    async def resumen_gastos(
+        self, *, desde: date | None, hasta: date | None
+    ) -> ResumenGastos:
+        """Insumos del tab Gastos (0071): desglose del rango, comparación con el período anterior y
+        punto de equilibrio del mes.
+
+        Punto de equilibrio = gastos FIJOS del mes ÷ margen bruto. Es cuánto hay que vender para no
+        perder; dividido entre los días del mes es la meta diaria. Se calcula sobre el mes de `hasta`
+        aunque el filtro sea "hoy": los fijos de un día son casi cero y el número no significaría nada.
+        """
+        d, h = _rango_o_mes(desde, hasta)
+        inicio, fin = rango_dia_co(d, h)
+        agrupados = await self._repo.gastos_agrupados(inicio=inicio, fin=fin)
+        resultados = await self._repo.estado_resultados(inicio=inicio, fin=fin)
+
+        # Período anterior del MISMO largo, pegado al inicio del rango (ayer vs hoy, mes vs mes).
+        largo = (h - d).days + 1
+        prev_inicio, prev_fin = rango_dia_co(d - timedelta(days=largo), d - timedelta(days=1))
+        prev = await self._repo.gastos_agrupados(inicio=prev_inicio, fin=prev_fin)
+
+        # Mes de `hasta` para el equilibrio (se reusa el rango si ya ES ese mes: dos consultas menos).
+        mes_d = h.replace(day=1)
+        if d == mes_d:                      # el rango YA es el mes corrido hasta `h`
+            mes_agrupados, mes_resultados = agrupados, resultados
+        else:
+            mes_inicio, mes_fin = rango_dia_co(mes_d, h)
+            mes_agrupados = await self._repo.gastos_agrupados(inicio=mes_inicio, fin=mes_fin)
+            mes_resultados = await self._repo.estado_resultados(inicio=mes_inicio, fin=mes_fin)
+
+        def total_de(filas, tipo: str) -> Decimal:
+            return sum((f.total for f in filas if f.tipo_egreso == tipo), Decimal("0"))
+
+        gastos = [f for f in agrupados if f.tipo_egreso == "gasto"]
+        total_gasto = sum((f.total for f in gastos), Decimal("0"))
+        fijos = sum((f.total for f in gastos if f.categoria in CATEGORIAS_FIJAS), Decimal("0"))
+        por_categoria = sorted(
+            (
+                RenglonGasto(
+                    categoria=f.categoria, total=f.total, cantidad=f.cantidad,
+                    fijo=f.categoria in CATEGORIAS_FIJAS,
+                    pct=cuantizar(f.total * 100 / total_gasto) if total_gasto else Decimal("0"),
+                )
+                for f in gastos
+            ),
+            key=lambda r: r.total, reverse=True,
+        )
+
+        ventas = resultados.ingresos
+        pct_ventas = cuantizar(total_gasto * 100 / ventas) if ventas > 0 else None
+
+        fijos_mes = sum(
+            (f.total for f in mes_agrupados
+             if f.tipo_egreso == "gasto" and f.categoria in CATEGORIAS_FIJAS),
+            Decimal("0"),
+        )
+        margen_pct = (
+            cuantizar((mes_resultados.ingresos - mes_resultados.costo_ventas) * 100
+                      / mes_resultados.ingresos)
+            if mes_resultados.ingresos > 0 else None
+        )
+        equilibrio_mes = (
+            cuantizar(fijos_mes * 100 / margen_pct) if margen_pct and margen_pct > 0 else None
+        )
+        dias_mes = monthrange(h.year, h.month)[1]
+
+        return ResumenGastos(
+            desde=d, hasta=h,
+            total_gasto=total_gasto,
+            total_retiro=total_de(agrupados, "retiro"),
+            total_inversion=total_de(agrupados, "inversion"),
+            total_pago_deuda=total_de(agrupados, "pago_deuda"),
+            fijos=fijos, variables=total_gasto - fijos,
+            por_categoria=por_categoria,
+            gasto_periodo_anterior=total_de(prev, "gasto"),
+            ventas=ventas, pct_ventas=pct_ventas,
+            margen_bruto_pct=margen_pct, fijos_mes=fijos_mes,
+            punto_equilibrio_mes=equilibrio_mes,
+            punto_equilibrio_dia=cuantizar(equilibrio_mes / dias_mes) if equilibrio_mes else None,
         )
 
     async def libro_iva(self, *, desde: date | None, hasta: date | None) -> LibroIVA:

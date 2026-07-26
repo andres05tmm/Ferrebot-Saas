@@ -39,6 +39,14 @@ class GastoNoPendiente(CajaError):
         self.accion = accion
 
 
+class RecurrenteInexistente(CajaError):
+    """No existe el gasto recurrente al que se quiere imputar/editar (0071). El router → 404."""
+
+    def __init__(self, recurrente_id: int) -> None:
+        super().__init__(f"No existe el gasto recurrente {recurrente_id}")
+        self.recurrente_id = recurrente_id
+
+
 class GastoInexistente(CajaError):
     """No existe un gasto con ese id (p. ej. al aprobar uno de la bandeja de revisión). El router → 404."""
 

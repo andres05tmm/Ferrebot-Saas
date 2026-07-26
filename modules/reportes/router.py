@@ -35,6 +35,7 @@ from modules.reportes.schemas import (
     ProyeccionCaja,
     PuntoSerie,
     ResumenDia,
+    ResumenGastos,
     SaldoBimestral,
     TopProducto,
     TotalesVentas,
@@ -227,6 +228,23 @@ async def flujo_dinero(
     + ingresos de caja) vs salidas (gastos + abonos a proveedor + egresos de caja) y el neto. No
     exige `contabilidad_ledger`."""
     return await ReportesService(repo).flujo_dinero(desde=desde, hasta=hasta)
+
+
+@router.get(
+    "/reportes/gastos",
+    response_model=ResumenGastos,
+    dependencies=[Depends(require_feature("caja"))],
+)
+async def resumen_gastos(
+    desde: date | None = Query(default=None),
+    hasta: date | None = Query(default=None),
+    repo: SqlReportesRepository = Depends(get_reportes_repo),
+    _user: Principal = Depends(require_role("admin")),
+) -> ResumenGastos:
+    """Insumos del tab Gastos (default mes en curso): desglose por categoría separando gasto de
+    retiro/inversión/pago de deuda, fijos vs variables, comparación con el período anterior, peso
+    sobre la venta y punto de equilibrio del mes. Admin-only (habla de utilidad y márgenes)."""
+    return await ReportesService(repo).resumen_gastos(desde=desde, hasta=hasta)
 
 
 @router.get(

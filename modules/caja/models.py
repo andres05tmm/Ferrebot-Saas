@@ -2,7 +2,9 @@
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Numeric, Text, func, text
+from sqlalchemy import (
+    BigInteger, Boolean, DateTime, ForeignKey, Integer, Numeric, Text, func, text,
+)
 from sqlalchemy.dialects.postgresql import ENUM as PgEnum
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -14,8 +16,15 @@ caja_estado = PgEnum("abierta", "cerrada", name="caja_estado", create_type=False
 caja_mov_tipo = PgEnum("ingreso", "egreso", name="caja_mov_tipo", create_type=False)
 gasto_categoria = PgEnum(
     "transporte", "papeleria", "servicios", "nomina", "mantenimiento", "otros",
+    # 0071: la taxonomía de 6 le quedaba corta a una ferretería (arriendo y bolsas caían en `otros`).
+    "arriendo", "empaque", "impuestos", "comisiones", "aseo",
     name="gasto_categoria", create_type=False,
 )
+# 0071. Qué es realmente la salida de plata: solo `gasto` resta en la utilidad. Un `retiro` reparte
+# utilidad, una `inversion` compra un activo (se deprecia, no se gasta) y un `pago_deuda` salda algo
+# cuyo costo YA se contó al recibir la mercancía. Los cuatro mueven la caja; uno solo mueve el P&L.
+tipo_egreso = PgEnum("gasto", "inversion", "retiro", "pago_deuda", name="tipo_egreso",
+                     create_type=False)
 
 # --- Vertical construcción (spec 09 / tenant 0048). Los TIPOS los crea la migración 0048
 # (create_type=False): aquí solo se mapean. `origen_registro` es dueño 0044 (se reusa). Literales
@@ -66,11 +75,35 @@ class CajaMovimiento(TenantBase):
     )
 
 
+class GastoRecurrente(TenantBase):
+    """Lo que se paga todos los meses (arriendo, luz, nómina) — 0071.
+
+    No es un gasto: es la PLANTILLA del gasto. El gasto que lo paga guarda `recurrente_id`, y con eso
+    el checklist del mes se resuelve por el vínculo (nunca adivinando por nombre o por monto)."""
+
+    __tablename__ = "gastos_recurrentes"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    nombre: Mapped[str] = mapped_column(Text, nullable=False)
+    categoria: Mapped[str] = mapped_column(gasto_categoria, nullable=False)
+    monto_estimado: Mapped[Decimal | None] = mapped_column(MONEY)
+    dia_mes: Mapped[int | None] = mapped_column(Integer)
+    activo: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
+    creado_en: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
 class Gasto(TenantBase):
     __tablename__ = "gastos"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     categoria: Mapped[str] = mapped_column(gasto_categoria, nullable=False)
+    # 0071: naturaleza del egreso. NOT NULL default 'gasto' (todo lo histórico lo era).
+    tipo_egreso: Mapped[str] = mapped_column(tipo_egreso, nullable=False, server_default="gasto")
+    recurrente_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("gastos_recurrentes.id", ondelete="SET NULL")
+    )
     monto: Mapped[Decimal] = mapped_column(MONEY, nullable=False)
     concepto: Mapped[str | None] = mapped_column(Text)
     caja_id: Mapped[int | None] = mapped_column(BigInteger)

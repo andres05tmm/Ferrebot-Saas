@@ -6,7 +6,7 @@
  */
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Loader2 } from 'lucide-react'
+import { Loader2 } from '@/lib/icons.jsx'
 import { Card } from '@/components/ui/card.jsx'
 import { api } from '@/lib/api'
 
@@ -36,7 +36,7 @@ export default function RecuperarPassword() {
   return (
     <main className="min-h-[100dvh] bg-background flex flex-col items-center justify-center p-5 text-foreground">
       <Card className="w-full max-w-sm px-10 py-12 flex flex-col items-center gap-6">
-        <h1 className="m-0 text-[20px] font-extrabold tracking-tight text-center">Recuperar contraseña</h1>
+        <h1 className="m-0 text-xl font-extrabold tracking-tight text-center">Recuperar contraseña</h1>
 
         {enviado ? (
           <p className="text-sm text-center text-muted-foreground">
@@ -46,7 +46,7 @@ export default function RecuperarPassword() {
         ) : (
           <form onSubmit={enviar} className="w-full flex flex-col gap-3" aria-label="Recuperar contraseña">
             <div className="flex flex-col gap-1">
-              <label htmlFor="email" className="text-[11px] font-medium text-muted-foreground">Email</label>
+              <label htmlFor="email" className="text-caption font-medium text-muted-foreground">Email</label>
               <input
                 id="email" type="email" autoComplete="email" value={email}
                 onChange={(e) => setEmail(e.target.value)} required
@@ -60,7 +60,7 @@ export default function RecuperarPassword() {
               {loading && <Loader2 className="size-3.5 animate-spin" />}
               {loading ? 'Enviando…' : 'Enviar enlace'}
             </button>
-            <Link to="/login" className="text-[11px] text-muted-foreground hover:text-foreground text-center">
+            <Link to="/login" className="text-caption text-muted-foreground hover:text-foreground text-center">
               Volver al inicio de sesión
             </Link>
           </form>

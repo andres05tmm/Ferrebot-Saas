@@ -31,7 +31,7 @@ import { toast } from 'sonner'
 import {
   Wallet, Plus, Search, Pencil, Truck, Building2, ChevronDown, ChevronRight,
   CalendarClock,
-} from 'lucide-react'
+} from '@/lib/icons.jsx'
 import ModalAbonoFiado from '@/components/ModalAbonoFiado.jsx'
 import { api } from '@/lib/api'
 import { hoyStrCO as hoyCO } from '@/lib/fechas'
@@ -125,7 +125,7 @@ function CarteraAlquilerActiva() {
         <h2 className="text-base font-semibold inline-flex items-center gap-2">
           <Wallet className="size-4.5 text-primary" aria-hidden="true" /> Cartera de alquiler
         </h2>
-        <span className="text-[11px] text-muted-foreground">crédito por alquiler de maquinaria</span>
+        <span className="text-caption text-muted-foreground">crédito por alquiler de maquinaria</span>
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
@@ -163,7 +163,7 @@ function CarteraAlquilerActiva() {
       <Card className="p-0 overflow-hidden">
         <div className="px-4 py-2.5 border-b border-border-subtle flex items-center gap-2">
           <Wallet className="size-4 text-muted-foreground" aria-hidden="true" />
-          <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+          <h3 className="text-caption font-semibold uppercase tracking-wider text-muted-foreground">
             Cupos por cliente {cupos.length > 0 && <span className="tabular">· {visibles.length}</span>}
           </h3>
         </div>
@@ -211,7 +211,7 @@ function CupoFila({ cupo, colita, umbral, onEditar }) {
       <div className="flex items-center gap-3">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="truncate text-[14px] font-medium text-foreground">
+            <span className="truncate text-base font-medium text-foreground">
               {cupo.cliente_nombre || `Cliente #${cupo.cliente_id}`}
             </span>
             {colita && (
@@ -220,7 +220,7 @@ function CupoFila({ cupo, colita, umbral, onEditar }) {
               </Semaforo>
             )}
           </div>
-          <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-muted-foreground">
+          <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-caption text-muted-foreground">
             <span>Cupo <b className="tabular font-semibold text-secondary-foreground">{cop(tope)}</b></span>
             <span>Consumido <b className="tabular font-semibold text-secondary-foreground">{cop(consumido)}</b></span>
             <span>Disponible <b className={`tabular font-semibold ${excedido ? 'text-destructive' : 'text-foreground'}`}>{cop(disponible)}</b></span>
@@ -247,7 +247,7 @@ function SeccionColitas({ colitas, umbral, loading }) {
     <Card className="p-0 overflow-hidden">
       <div className="px-4 py-2.5 border-b border-border-subtle flex items-center gap-2">
         <Truck className="size-4 text-muted-foreground" aria-hidden="true" />
-        <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+        <h3 className="text-caption font-semibold uppercase tracking-wider text-muted-foreground">
           Cargos por obra {colitas.length > 0 && <span className="tabular">· {colitas.length} estancada{colitas.length === 1 ? '' : 's'}</span>}
         </h3>
       </div>
@@ -282,19 +282,19 @@ function ColitaFila({ colita, umbral }) {
         </span>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="truncate text-[14px] font-medium text-foreground">
+            <span className="truncate text-base font-medium text-foreground">
               {colita.obra_nombre || `Obra #${colita.obra_id}`}
             </span>
             <Semaforo tono={tono}>Colita · {num(colita.dias_sin_abono)} d</Semaforo>
           </div>
-          <div className="mt-0.5 flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-[11px] text-muted-foreground">
+          <div className="mt-0.5 flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-caption text-muted-foreground">
             <span className="truncate">{colita.cliente_nombre || `Cliente #${colita.cliente_id}`}</span>
             {colita.ultimo_abono_en
               ? <span>· último abono {fechaCorta(colita.ultimo_abono_en)}</span>
               : <span>· sin abonos</span>}
           </div>
         </div>
-        <span className="tabular text-[13px] font-semibold text-foreground">{cop(colita.saldo)}</span>
+        <span className="tabular text-body-sm font-semibold text-foreground">{cop(colita.saldo)}</span>
         {abierta ? <ChevronDown className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
           : <ChevronRight className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />}
       </button>
@@ -331,36 +331,36 @@ function ObraCargos({ id, obraId, clienteId }) {
   return (
     <div id={id} className="border-t border-border-subtle bg-surface-2/40 px-4 py-3.5">
       {q.loading ? (
-        <p className="py-4 text-center text-[12px] text-muted-foreground">Cargando cargos…</p>
+        <p className="py-4 text-center text-meta text-muted-foreground">Cargando cargos…</p>
       ) : cargos.length === 0 ? (
-        <p className="py-4 text-center text-[12px] text-muted-foreground">Esta obra aún no tiene cargos de alquiler.</p>
+        <p className="py-4 text-center text-meta text-muted-foreground">Esta obra aún no tiene cargos de alquiler.</p>
       ) : (
         <div className="rounded-md border border-border-subtle bg-surface">
-          <div className="grid grid-cols-[1fr_auto_auto] gap-x-3 border-b border-border-subtle px-3 py-1.5 text-[10px] uppercase tracking-wider text-muted-foreground">
+          <div className="grid grid-cols-[1fr_auto_auto] gap-x-3 border-b border-border-subtle px-3 py-1.5 text-micro uppercase tracking-wider text-muted-foreground">
             <span>Máquina / fecha</span><span className="text-right">Horas</span><span className="text-right">Cargo</span>
           </div>
           <ul className="divide-y divide-border-subtle">
             {cargos.map((c) => (
               <li key={c.id ?? c.registro_horas_id} className="grid grid-cols-[1fr_auto_auto] items-center gap-x-3 px-3 py-2">
                 <div className="min-w-0">
-                  <div className="truncate text-[12px] font-medium text-foreground">{c.maquina_nombre || `Máquina #${c.maquina_id}`}</div>
-                  <div className="text-[11px] text-muted-foreground">{c.fecha || fechaCorta(c.creado_en)}</div>
+                  <div className="truncate text-meta font-medium text-foreground">{c.maquina_nombre || `Máquina #${c.maquina_id}`}</div>
+                  <div className="text-caption text-muted-foreground">{c.fecha || fechaCorta(c.creado_en)}</div>
                 </div>
-                <span className="tabular text-right text-[12px] text-secondary-foreground">{num(c.horas_facturables)} h</span>
-                <span className="tabular text-right text-[12px] font-semibold text-foreground">{cop(c.monto)}</span>
+                <span className="tabular text-right text-meta text-secondary-foreground">{num(c.horas_facturables)} h</span>
+                <span className="tabular text-right text-meta font-semibold text-foreground">{cop(c.monto)}</span>
               </li>
             ))}
           </ul>
         </div>
       )}
 
-      <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2 text-[12px]">
+      <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2 text-meta">
         <span className="text-muted-foreground">
           {abonos.length > 0 ? `${abonos.length} abono${abonos.length === 1 ? '' : 's'} registrado${abonos.length === 1 ? '' : 's'}` : 'Sin abonos'}
         </span>
         <span className="inline-flex items-center gap-1.5">
           <span className="text-muted-foreground">Saldo de la obra</span>
-          <b className="tabular text-[13px] font-semibold text-foreground">{cop(d.saldo)}</b>
+          <b className="tabular text-body-sm font-semibold text-foreground">{cop(d.saldo)}</b>
         </span>
       </div>
       {n(d.saldo) > 0 && (
@@ -370,7 +370,7 @@ function ObraCargos({ id, obraId, clienteId }) {
           </button>
         </div>
       )}
-      <p className="mt-2 text-[11px] text-muted-foreground">
+      <p className="mt-2 text-caption text-muted-foreground">
         El abono baja el saldo del fiado; no mueve caja (el pago puede entrar por transferencia).
       </p>
 

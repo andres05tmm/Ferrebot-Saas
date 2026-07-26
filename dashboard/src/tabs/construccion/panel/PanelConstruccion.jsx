@@ -15,7 +15,7 @@
  */
 import { MotionConfig } from 'framer-motion'
 import { Navigate, useOutletContext, Link } from 'react-router-dom'
-import { HardHat, Plus, ChartColumn } from 'lucide-react'
+import { HardHat, Plus, ChartColumn } from '@/lib/icons.jsx'
 import { useAuth } from '@/hooks/useAuth.js'
 import { useFetch, useIsMobile, ErrorMsg } from '@/components/shared.jsx'
 import { useRealtimeEvent } from '@/components/RealtimeProvider.jsx'
@@ -121,7 +121,7 @@ function Graficos({ obras, topMaquinas }) {
   if (!useIsMobile()) return contenido
   return (
     <details className="rounded-lg border border-border bg-surface">
-      <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3 text-[13px] font-semibold text-foreground">
+      <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3 text-body-sm font-semibold text-foreground">
         <ChartColumn className="size-4 text-muted-foreground" aria-hidden="true" />
         Gráficos del mes
         <span className="ml-auto text-caption font-normal text-muted-foreground">tocar para ver</span>
@@ -136,7 +136,7 @@ function Cabecera({ mes, generado }) {
   return (
     <header>
       <h1 className="font-display text-2xl font-semibold uppercase tracking-wide text-foreground">Panel</h1>
-      <p className="mt-0.5 text-[13px] text-muted-foreground">
+      <p className="mt-0.5 text-body-sm text-muted-foreground">
         {['Construcción', ...partes].join(' · ')}
       </p>
     </header>

@@ -4,7 +4,7 @@
  * mes SIEMPRE en texto al lado. Entrada con scaleX (transform, no width). Solo presentación.
  */
 import { motion } from 'framer-motion'
-import { Gauge } from 'lucide-react'
+import { Gauge } from '@/lib/icons.jsx'
 import { cop, num } from '@/components/shared.jsx'
 import { SeccionPanel, n } from './piezas.jsx'
 
@@ -15,7 +15,7 @@ export default function TopMaquinasMes({ maquinas = [] }) {
   return (
     <SeccionPanel icon={Gauge} titulo="Top máquinas del mes" contentClassName="p-4" aria-label="Máquinas más productivas del mes">
       {top.length === 0 ? (
-        <p className="py-6 text-center text-[13px] text-muted-foreground">Aún no hay horas facturadas este mes.</p>
+        <p className="py-6 text-center text-body-sm text-muted-foreground">Aún no hay horas facturadas este mes.</p>
       ) : (
         <ul className="space-y-3">
           {top.map((m) => {
@@ -24,8 +24,8 @@ export default function TopMaquinasMes({ maquinas = [] }) {
             return (
               <li key={m.maquina_id}>
                 <div className="mb-1 flex items-baseline justify-between gap-2">
-                  <span className="min-w-0 flex-1 truncate text-[13px] text-secondary-foreground">{m.maquina}</span>
-                  <span className="shrink-0 text-[12px] tabular-nums text-muted-foreground">
+                  <span className="min-w-0 flex-1 truncate text-body-sm text-secondary-foreground">{m.maquina}</span>
+                  <span className="shrink-0 text-meta tabular-nums text-muted-foreground">
                     <b className="font-semibold text-foreground">{num(m.horas)} h</b> · {cop(n(m.ingreso))}
                   </span>
                 </div>

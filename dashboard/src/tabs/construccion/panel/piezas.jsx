@@ -53,7 +53,7 @@ export function SeccionPanel({ icon: Icon, titulo, accion, contentClassName = ''
     >
       <div className="flex items-center gap-2 border-b border-border-subtle px-4 py-2.5">
         {Icon && <Icon className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />}
-        <h2 className="font-display text-[13px] font-semibold uppercase tracking-wide text-foreground">{titulo}</h2>
+        <h2 className="font-display text-body-sm font-semibold uppercase tracking-wide text-foreground">{titulo}</h2>
         {accion && <div className="ml-auto flex items-center">{accion}</div>}
       </div>
       <div className={contentClassName}>{children}</div>

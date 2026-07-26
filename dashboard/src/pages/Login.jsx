@@ -12,7 +12,7 @@
  */
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Loader2 } from 'lucide-react'
+import { Loader2 } from '@/lib/icons.jsx'
 import { Card } from '@/components/ui/card.jsx'
 import { useAuth } from '@/hooks/useAuth.js'
 import { TOKEN_KEY } from '@/lib/api'
@@ -66,10 +66,10 @@ export default function Login() {
       <Card className="w-full max-w-sm px-10 py-12 flex flex-col items-center gap-7">
         <div className="flex flex-col items-center gap-2.5 w-full">
           <div className="size-10 rounded-md bg-color-primary mb-1" aria-hidden="true" />
-          <h1 id="login-title" className="m-0 text-[22px] font-extrabold text-foreground tracking-tight leading-tight text-center">
+          <h1 id="login-title" className="m-0 text-xl font-extrabold text-foreground tracking-tight leading-tight text-center">
             Melquiadez
           </h1>
-          <p className="m-0 mt-1 text-[11px] text-muted-foreground tracking-wider uppercase">
+          <p className="m-0 mt-1 text-caption text-muted-foreground tracking-wider uppercase">
             Dashboard
           </p>
         </div>
@@ -79,7 +79,7 @@ export default function Login() {
         {/* Formulario primario: email + contraseña */}
         <form onSubmit={enviar} className="w-full flex flex-col gap-3" aria-label="Iniciar sesión">
           <div className="flex flex-col gap-1">
-            <label htmlFor="email" className="text-[11px] font-medium text-muted-foreground">Email</label>
+            <label htmlFor="email" className="text-caption font-medium text-muted-foreground">Email</label>
             <input
               id="email" type="email" autoComplete="email" value={email}
               onChange={(e) => setEmail(e.target.value)} required
@@ -87,7 +87,7 @@ export default function Login() {
             />
           </div>
           <div className="flex flex-col gap-1">
-            <label htmlFor="password" className="text-[11px] font-medium text-muted-foreground">Contraseña</label>
+            <label htmlFor="password" className="text-caption font-medium text-muted-foreground">Contraseña</label>
             <input
               id="password" type="password" autoComplete="current-password" value={password}
               onChange={(e) => setPassword(e.target.value)} required
@@ -109,14 +109,14 @@ export default function Login() {
           </div>
         )}
 
-        <Link to="/recuperar" className="text-[11px] text-muted-foreground hover:text-foreground underline-offset-2 hover:underline">
+        <Link to="/recuperar" className="text-caption text-muted-foreground hover:text-foreground underline-offset-2 hover:underline">
           ¿Olvidaste tu contraseña?
         </Link>
 
         {/* Escape hatch SOLO en desarrollo: pegar un JWT y entrar sin login. */}
         {import.meta.env.DEV && (
           <div className="w-full border-t border-border pt-4 flex flex-col gap-2">
-            <label className="text-[10px] uppercase tracking-wider text-muted-foreground">Dev: entrar con token</label>
+            <label className="text-micro uppercase tracking-wider text-muted-foreground">Dev: entrar con token</label>
             <input
               value={devToken}
               onChange={(e) => setDevToken(e.target.value)}

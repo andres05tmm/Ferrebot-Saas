@@ -22,7 +22,7 @@ import { toast } from 'sonner'
 import {
   Wallet, Lock, LockOpen, TrendingUp, TrendingDown, Coins, Receipt, ArrowRightLeft,
   ArrowDownLeft, ArrowUpRight, Clock,
-} from 'lucide-react'
+} from '@/lib/icons.jsx'
 import { api } from '@/lib/api'
 import { useFetch, cop, rangoHoyCO } from '@/components/shared.jsx'
 import { useRealtimeEvent } from '@/components/RealtimeProvider.jsx'
@@ -55,7 +55,7 @@ function Seccion({ icon: Icon, titulo, extra, children, className = '' }) {
   return (
     <Card className={`p-3.5 flex flex-col ${className}`}>
       <div className="flex items-center justify-between gap-2 mb-2.5 min-h-5">
-        <h2 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground inline-flex items-center gap-1.5">
+        <h2 className="text-caption font-semibold uppercase tracking-wider text-muted-foreground inline-flex items-center gap-1.5">
           <Icon className="size-3.5" /> {titulo}
         </h2>
         {extra}
@@ -158,14 +158,14 @@ function EstadoCaja({ arqueo, abierta, esperado, onDone, construccion = false })
         </span>
         <div className="min-w-0">
           <p className="text-sm font-semibold">{abierta ? 'Caja abierta' : 'Caja cerrada'}</p>
-          <p className="text-[11px] text-muted-foreground">
+          <p className="text-caption text-muted-foreground">
             {abierta && desde
               ? `Desde las ${desde} · base ${cop(num(arqueo.saldo_inicial))}`
               : 'Registra el saldo inicial para empezar el día.'}
           </p>
         </div>
         {llevaAbierta && (
-          <span className="ml-auto shrink-0 inline-flex items-center gap-1 h-5 px-1.5 rounded bg-surface-2 text-[10px] text-muted-foreground tabular-nums">
+          <span className="ml-auto shrink-0 inline-flex items-center gap-1 h-5 px-1.5 rounded bg-surface-2 text-micro text-muted-foreground tabular-nums">
             <Clock className="size-3" />{llevaAbierta}
           </span>
         )}
@@ -273,7 +273,7 @@ function CierreForm({ esperado, onDone, construccion = false }) {
         </Button>
       </div>
       {dif !== null && (
-        <div className={`rounded-md px-2.5 py-2 text-[12px] tabular-nums ${
+        <div className={`rounded-md px-2.5 py-2 text-meta tabular-nums ${
           dif < 0 ? 'bg-danger/10' : dif > 0 ? 'bg-success/10' : 'bg-surface-2'}`}>
           Esperado <span className="font-semibold">{cop(esperado)}</span> · diferencia{' '}
           <span className={dif < 0 ? 'text-danger font-semibold' : dif > 0 ? 'text-success font-semibold' : 'font-semibold'}>
@@ -302,7 +302,7 @@ function IngresosPorMetodo({ porMetodo }) {
   const total = entradas.reduce((a, m) => a + m.monto, 0)
   return (
     <Seccion icon={ArrowRightLeft} titulo="Ingresos por método · Hoy"
-      extra={total > 0 && <span className="text-[12px] tabular-nums font-semibold text-success">{cop(total)}</span>}>
+      extra={total > 0 && <span className="text-meta tabular-nums font-semibold text-success">{cop(total)}</span>}>
       {entradas.length === 0 ? (
         <Vacio>Sin ventas registradas hoy.</Vacio>
       ) : (
@@ -310,11 +310,11 @@ function IngresosPorMetodo({ porMetodo }) {
           {entradas.map(m => {
             const pct = total > 0 ? Math.round((m.monto / total) * 100) : 0
             return (
-              <li key={m.nombre} className="text-[13px]">
+              <li key={m.nombre} className="text-body-sm">
                 <div className="flex items-baseline justify-between gap-2">
                   <span>{m.nombre}</span>
                   <span className="tabular-nums font-medium">
-                    {cop(m.monto)} <span className="text-[11px] text-muted-foreground">{pct}%</span>
+                    {cop(m.monto)} <span className="text-caption text-muted-foreground">{pct}%</span>
                   </span>
                 </div>
                 <div className="mt-1 h-1.5 rounded-full bg-surface-2 overflow-hidden">
@@ -351,7 +351,7 @@ function CuadreEfectivo({ arqueo, abierta, construccion = false }) {
   ]
   return (
     <Seccion icon={Coins} titulo="Cuadre de efectivo">
-      <dl className="space-y-1.5 text-[13px]">
+      <dl className="space-y-1.5 text-body-sm">
         {filas.map(f => (
           <div key={f.label} className="flex items-baseline justify-between gap-2">
             <dt className="text-muted-foreground">{f.label}</dt>
@@ -362,7 +362,7 @@ function CuadreEfectivo({ arqueo, abierta, construccion = false }) {
         ))}
       </dl>
       <div className="mt-auto pt-2.5 border-t border-border-subtle flex items-baseline justify-between">
-        <span className="text-[13px] font-semibold">= Efectivo esperado</span>
+        <span className="text-body-sm font-semibold">= Efectivo esperado</span>
         <span className="tabular-nums font-semibold text-primary text-base">{cop(num(arqueo.saldo_esperado))}</span>
       </div>
     </Seccion>
@@ -376,7 +376,7 @@ function MovimientosTurno({ movimientos, abierta, onDone }) {
   return (
     <Seccion icon={ArrowRightLeft} titulo={`Movimientos del turno (${movimientos.length})`}
       extra={movimientos.length > 0 && (
-        <span className="text-[11px] tabular-nums text-muted-foreground">
+        <span className="text-caption tabular-nums text-muted-foreground">
           <span className="text-success font-semibold">+{cop(ingresos)}</span>
           {' · '}
           <span className="text-danger font-semibold">−{cop(egresos)}</span>
@@ -391,13 +391,13 @@ function MovimientosTurno({ movimientos, abierta, onDone }) {
             const ingreso = m.tipo === 'ingreso'
             const Flecha = ingreso ? ArrowDownLeft : ArrowUpRight
             return (
-              <li key={m.id} className="py-2 flex items-center gap-2.5 text-[13px]">
+              <li key={m.id} className="py-2 flex items-center gap-2.5 text-body-sm">
                 <span className={`grid place-items-center size-6 rounded shrink-0 ${
                   ingreso ? 'bg-success/15 text-success' : 'bg-danger/15 text-danger'}`}>
                   <Flecha className="size-3.5" />
                 </span>
                 <span className="flex-1 min-w-0 truncate text-muted-foreground">{m.concepto || (ingreso ? 'Ingreso' : 'Egreso')}</span>
-                <span className="text-[11px] text-muted-foreground tabular-nums shrink-0">{hora(m.creado_en)}</span>
+                <span className="text-caption text-muted-foreground tabular-nums shrink-0">{hora(m.creado_en)}</span>
                 <span className={`tabular-nums font-medium shrink-0 w-24 text-right ${ingreso ? 'text-success' : 'text-danger'}`}>
                   {ingreso ? '+' : '−'} {cop(num(m.monto))}
                 </span>
@@ -459,7 +459,7 @@ function GastosDelDia({ gastos, total }) {
 
   return (
     <Seccion icon={Receipt} titulo={`Gastos del día (${gastos.length})`}
-      extra={total > 0 && <span className="text-[12px] tabular-nums font-semibold text-danger">{cop(total)}</span>}>
+      extra={total > 0 && <span className="text-meta tabular-nums font-semibold text-danger">{cop(total)}</span>}>
       {gastos.length === 0 ? (
         <Vacio>Sin gastos registrados hoy.</Vacio>
       ) : (
@@ -467,7 +467,7 @@ function GastosDelDia({ gastos, total }) {
           <div className="flex flex-wrap gap-1.5 pb-2.5 mb-1 border-b border-border-subtle">
             {porCategoria.map(([categoria, monto]) => (
               <span key={categoria}
-                className="inline-flex items-center gap-1.5 h-6 px-2 rounded-full bg-surface-2 text-[11px] capitalize">
+                className="inline-flex items-center gap-1.5 h-6 px-2 rounded-full bg-surface-2 text-caption capitalize">
                 {categoria}
                 <span className="tabular-nums font-semibold text-danger">{cop(monto)}</span>
               </span>
@@ -475,12 +475,12 @@ function GastosDelDia({ gastos, total }) {
           </div>
           <ul className="divide-y divide-border-subtle">
             {gastos.map(g => (
-              <li key={g.id} className="py-2 flex items-center gap-2.5 text-[13px]">
-                <span className="inline-flex items-center h-5 px-1.5 rounded bg-surface-2 text-[10px] uppercase tracking-wide text-muted-foreground capitalize shrink-0">
+              <li key={g.id} className="py-2 flex items-center gap-2.5 text-body-sm">
+                <span className="inline-flex items-center h-5 px-1.5 rounded bg-surface-2 text-micro uppercase tracking-wide text-muted-foreground capitalize shrink-0">
                   {g.categoria}
                 </span>
                 <span className="flex-1 min-w-0 truncate text-muted-foreground">{g.concepto || '—'}</span>
-                <span className="text-[11px] text-muted-foreground tabular-nums shrink-0">{hora(g.creado_en)}</span>
+                <span className="text-caption text-muted-foreground tabular-nums shrink-0">{hora(g.creado_en)}</span>
                 <span className="tabular-nums font-medium shrink-0 w-24 text-right">{cop(num(g.monto))}</span>
               </li>
             ))}

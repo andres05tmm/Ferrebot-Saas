@@ -9,7 +9,7 @@
  * propio en móvil. Solo presentación: recibe el rollup ya calculado del endpoint /obras/dashboard.
  */
 import { Link } from 'react-router-dom'
-import { HardHat, ArrowRight } from 'lucide-react'
+import { HardHat, ArrowRight } from '@/lib/icons.jsx'
 import { cop } from '@/components/shared.jsx'
 import { Semaforo, EstadoVacio } from '../comunes.jsx'
 import { SeccionPanel, n, pctConsumido } from './piezas.jsx'
@@ -25,7 +25,7 @@ const SEMAFORO = {
 
 function verLink(children) {
   return (
-    <Link to="/obras" className="inline-flex items-center gap-1 text-[12px] font-medium text-primary transition-colors hover:text-primary-hover">
+    <Link to="/obras" className="inline-flex items-center gap-1 text-meta font-medium text-primary transition-colors hover:text-primary-hover">
       {children} <ArrowRight className="size-3.5" aria-hidden="true" />
     </Link>
   )
@@ -52,9 +52,9 @@ export default function TablaObrasRiesgo({ obras = [] }) {
         <div className="overflow-x-auto">
           {/* table-fixed: las columnas numéricas tienen ancho fijo y obra/cliente truncan — la tabla
               cabe en la columna del grid sin scroll horizontal (el semáforo nunca queda cortado). */}
-          <table className="w-full min-w-[640px] table-fixed border-collapse text-[13px]">
+          <table className="w-full min-w-[640px] table-fixed border-collapse text-body-sm">
             <thead>
-              <tr className="border-b border-border-subtle text-[10px] uppercase tracking-wider text-muted-foreground">
+              <tr className="border-b border-border-subtle text-micro uppercase tracking-wider text-muted-foreground">
                 <th className="px-4 py-2 text-left font-medium">Obra</th>
                 <th className="w-[19%] px-3 py-2 text-left font-medium">Cliente</th>
                 <th className="w-14 px-3 py-2 text-right font-medium">% ppto.</th>

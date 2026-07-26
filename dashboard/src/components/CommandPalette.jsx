@@ -8,7 +8,7 @@ import {
   CommandDialog, CommandInput, CommandList, CommandEmpty,
   CommandGroup, CommandItem, CommandShortcut, CommandSeparator,
 } from '@/components/ui/command.jsx'
-import { Plus, RefreshCw } from 'lucide-react'
+import { Plus, RefreshCw } from '@/lib/icons.jsx'
 import { ROUTES, groupsFor, routesByGroup } from '@/routes.jsx'
 import { useFeatures, isRouteEnabled } from '@/lib/features.jsx'
 

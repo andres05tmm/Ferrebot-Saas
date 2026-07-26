@@ -4,7 +4,7 @@
  * cero dependencias nuevas. El CONTENIDO llega por children (el panel único del tab: líneas,
  * cliente, checkout) — el estado nunca se duplica entre desktop y móvil.
  */
-import { X } from 'lucide-react'
+import { X } from '@/lib/icons.jsx'
 
 export default function DrawerCarrito({ abierto, onCerrar, children }) {
   if (!abierto) return null

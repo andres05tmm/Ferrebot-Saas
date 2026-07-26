@@ -9,7 +9,7 @@
  * la VISTA activa: 'maquinas' → solo máquinas; 'trabajadores' → solo trabajadores; 'todos'/'obras' → ambos.
  * Live: refetch ante los mismos eventos SSE que mueven la obra (EVENTOS_CALENDARIO).
  */
-import { Radar, Truck, Users, MapPin } from 'lucide-react'
+import { Radar, Truck, Users, MapPin } from '@/lib/icons.jsx'
 import { Card } from '@/components/ui/card.jsx'
 import { useFetch } from '@/components/shared.jsx'
 import { useRealtimeEvent } from '@/components/RealtimeProvider.jsx'
@@ -31,10 +31,10 @@ export default function EstadoActual({ vista = 'todos', refreshKey }) {
   return (
     <Card className="p-0 overflow-hidden">
       <details open>
-        <summary className="flex cursor-pointer list-none items-center gap-2 border-b border-border-subtle px-3.5 py-2.5 text-[13px] font-semibold text-foreground">
+        <summary className="flex cursor-pointer list-none items-center gap-2 border-b border-border-subtle px-3.5 py-2.5 text-body-sm font-semibold text-foreground">
           <Radar className="size-4 text-primary" aria-hidden="true" />
           <span>Estado actual</span>
-          <span className="ml-auto text-[11px] font-normal text-muted-foreground">quién está dónde, ahora</span>
+          <span className="ml-auto text-caption font-normal text-muted-foreground">quién está dónde, ahora</span>
         </summary>
 
         {q.loading ? (
@@ -59,10 +59,10 @@ export default function EstadoActual({ vista = 'todos', refreshKey }) {
 function Bloque({ icono: Icono, titulo, conteo, children }) {
   return (
     <section className="space-y-1.5">
-      <h3 className="flex items-center gap-2 px-0.5 text-[12px] font-semibold text-foreground">
+      <h3 className="flex items-center gap-2 px-0.5 text-meta font-semibold text-foreground">
         <Icono className="size-4 text-muted-foreground" aria-hidden="true" />
         <span>{titulo}</span>
-        <span className="ml-auto tabular text-[11px] font-normal text-muted-foreground">{conteo}</span>
+        <span className="ml-auto tabular text-caption font-normal text-muted-foreground">{conteo}</span>
       </h3>
       {children}
     </section>
@@ -70,7 +70,7 @@ function Bloque({ icono: Icono, titulo, conteo, children }) {
 }
 
 function Fila({ children }) {
-  return <div className="rounded-md bg-surface-2/50 px-2.5 py-1.5 text-[12px] text-secondary-foreground">{children}</div>
+  return <div className="rounded-md bg-surface-2/50 px-2.5 py-1.5 text-meta text-secondary-foreground">{children}</div>
 }
 
 function BloqueMaquinas({ maquinas }) {
@@ -88,7 +88,7 @@ function BloqueMaquinas({ maquinas }) {
                   ? <Semaforo tono="azul" className="ml-auto">En obra</Semaforo>
                   : <Semaforo tono="gris" className="ml-auto">Disponible</Semaforo>}
               </div>
-              <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-muted-foreground">
+              <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-caption text-muted-foreground">
                 {ocupada ? (
                   <>
                     <span className="inline-flex min-w-0 items-center gap-1 break-words text-foreground">
@@ -122,7 +122,7 @@ function BloqueTrabajadores({ trabajadores }) {
                 <MapPin className="size-3 shrink-0" aria-hidden="true" />{t.obra || 'sin obra asignada'}
               </span>
             </div>
-            <div className="mt-0.5 text-[11px] text-muted-foreground">
+            <div className="mt-0.5 text-caption text-muted-foreground">
               {t.maquina ? `con ${t.maquina}` : 'sin máquina'}
               {t.desde && ` · desde el ${fechaDiaMes(t.desde)}`}
             </div>

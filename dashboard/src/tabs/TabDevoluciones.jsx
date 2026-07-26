@@ -8,7 +8,7 @@
  */
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
-import { Undo2, Search, ArrowLeft, FileText } from 'lucide-react'
+import { Undo2, Search, ArrowLeft, FileText } from '@/lib/icons.jsx'
 import { cop } from '@/components/shared.jsx'
 import { useVenta, useRegistrarDevolucion, useVentasFacturadas } from '@/lib/queries'
 import BadgeFiscal, { etiquetaIdentificador } from '@/components/BadgeFiscal.jsx'
@@ -79,16 +79,16 @@ function DetalleVenta({ venta, onHecho }) {
     <Card className="p-3.5 space-y-3">
       <div className="flex items-center gap-2 flex-wrap">
         <h2 className="text-sm font-semibold">Venta #{venta.consecutivo}</h2>
-        <span className="text-[11px] text-muted-foreground">{fechaCorta(venta.fecha)}</span>
-        {venta.fiscal && <BadgeFiscal fiscal={venta.fiscal} className="text-[10px] h-5 px-1.5" />}
+        <span className="text-caption text-muted-foreground">{fechaCorta(venta.fecha)}</span>
+        {venta.fiscal && <BadgeFiscal fiscal={venta.fiscal} className="text-micro h-5 px-1.5" />}
         <span className="ml-auto tabular-nums font-semibold">{cop(venta.total)}</span>
       </div>
 
       {venta.fiscal && (
-        <p className="text-[12px] text-muted-foreground inline-flex items-center gap-1.5">
+        <p className="text-meta text-muted-foreground inline-flex items-center gap-1.5">
           <FileText className="size-3.5 shrink-0" />
           Al devolver se emite la nota crédito de esta {venta.fiscal.tipo === 'pos' ? 'venta POS' : 'factura'}
-          {venta.fiscal.cufe && <span className="font-mono text-[10px] opacity-70">· {etiquetaIdentificador(venta.fiscal.tipo)} {venta.fiscal.cufe.slice(0, 12)}…</span>}
+          {venta.fiscal.cufe && <span className="font-mono text-micro opacity-70">· {etiquetaIdentificador(venta.fiscal.tipo)} {venta.fiscal.cufe.slice(0, 12)}…</span>}
         </p>
       )}
 
@@ -100,17 +100,17 @@ function DetalleVenta({ venta, onHecho }) {
 
       <ul className="divide-y divide-border-subtle border-y border-border-subtle">
         {lineas.length === 0 ? (
-          <li className="py-3 text-[12px] text-muted-foreground text-center">
+          <li className="py-3 text-meta text-muted-foreground text-center">
             Esta venta no tiene líneas de catálogo devolvibles.
           </li>
         ) : lineas.map(l => (
-          <li key={l.producto_id} className="py-2 flex items-center gap-2 text-[13px]">
+          <li key={l.producto_id} className="py-2 flex items-center gap-2 text-body-sm">
             {parcial && (
               <input type="checkbox" checked={sel[l.producto_id] != null} onChange={() => toggle(l)}
                 aria-label={`Devolver ${l.descripcion || l.producto_id}`} />
             )}
             <span className="flex-1 truncate">{l.descripcion || `Producto ${l.producto_id}`}</span>
-            <span className="text-[11px] text-muted-foreground tabular-nums">vendidas {Number(l.cantidad)}</span>
+            <span className="text-caption text-muted-foreground tabular-nums">vendidas {Number(l.cantidad)}</span>
             {parcial && sel[l.producto_id] != null && (
               <Input type="number" min="0" max={Number(l.cantidad)} value={sel[l.producto_id]}
                 onChange={e => setSel(prev => ({ ...prev, [l.producto_id]: e.target.value }))}
@@ -144,17 +144,17 @@ function FilaFacturada({ v, onElegir }) {
         className="w-full text-left py-2.5 px-1 flex items-center gap-3 hover:bg-surface-2 rounded-md transition-colors">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <span className="text-[13px] font-semibold">N.º {v.consecutivo}</span>
-            <BadgeFiscal fiscal={fiscal} className="text-[10px] h-5 px-1.5" />
-            <span className="text-[11px] text-muted-foreground">{fechaCorta(v.fecha)}</span>
+            <span className="text-body-sm font-semibold">N.º {v.consecutivo}</span>
+            <BadgeFiscal fiscal={fiscal} className="text-micro h-5 px-1.5" />
+            <span className="text-caption text-muted-foreground">{fechaCorta(v.fecha)}</span>
           </div>
           {v.cufe && (
-            <div className="text-[10px] font-mono text-muted-foreground truncate mt-0.5">
+            <div className="text-micro font-mono text-muted-foreground truncate mt-0.5">
               {etiquetaIdentificador(v.fiscal_tipo)} {v.cufe}
             </div>
           )}
         </div>
-        <span className="text-[13px] font-semibold tabular-nums shrink-0">{cop(v.total)}</span>
+        <span className="text-body-sm font-semibold tabular-nums shrink-0">{cop(v.total)}</span>
       </button>
     </li>
   )
@@ -184,7 +184,7 @@ export default function TabDevoluciones() {
         <h1 className="text-base font-semibold inline-flex items-center gap-2">
           <Undo2 className="size-4.5 text-primary" /> Devoluciones
         </h1>
-        <p className="text-[12px] text-muted-foreground mt-0.5">
+        <p className="text-meta text-muted-foreground mt-0.5">
           Emite la nota crédito de una venta facturada (POS o factura electrónica).
         </p>
       </div>

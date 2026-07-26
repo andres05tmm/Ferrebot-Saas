@@ -109,7 +109,7 @@ export default {
         xl: 'var(--radius-xl)',
       },
       fontFamily: {
-        sans: ['Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+        sans: ['var(--font-ui)', 'ui-sans-serif', 'system-ui', 'sans-serif'],
         // Familia de títulos temable: base = Inter (idéntico a hoy); aurora la cambia a Nunito.
         display: ['var(--font-display)'],
         mono: ['"JetBrains Mono"', 'ui-monospace', 'monospace'],

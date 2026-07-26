@@ -6,7 +6,7 @@
  */
 import { useMemo, useState } from 'react'
 import { useOutletContext } from 'react-router-dom'
-import { Trophy } from 'lucide-react'
+import { Trophy } from '@/lib/icons.jsx'
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip } from 'recharts'
 import { useFetch, cop, num, mesActualCO } from '@/components/shared.jsx'
 import { useRealtimeEvent } from '@/components/RealtimeProvider.jsx'
@@ -38,11 +38,11 @@ export default function TabTopProductos() {
           <h1 className="text-lg font-semibold tracking-tight mr-auto inline-flex items-center gap-2">
             <Trophy className="size-4 text-warning" /> Top productos
           </h1>
-          <label className="text-[11px] text-muted-foreground">
+          <label className="text-caption text-muted-foreground">
             Desde
             <Input type="date" value={rango.desde} onChange={setCampo('desde')} aria-label="Desde" className="h-9 mt-1" />
           </label>
-          <label className="text-[11px] text-muted-foreground">
+          <label className="text-caption text-muted-foreground">
             Hasta
             <Input type="date" value={rango.hasta} onChange={setCampo('hasta')} aria-label="Hasta" className="h-9 mt-1" />
           </label>
@@ -51,7 +51,7 @@ export default function TabTopProductos() {
 
       {filas.length > 0 && (
         <Card className="p-3.5">
-          <h2 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-3">
+          <h2 className="text-caption font-semibold uppercase tracking-wider text-muted-foreground mb-3">
             Ingreso por producto
           </h2>
           <div style={{ width: '100%', height: Math.max(160, chart.length * 36) }}>
@@ -76,12 +76,12 @@ export default function TabTopProductos() {
           <ul className="divide-y divide-border-subtle">
             {filas.map((f, i) => (
               <li key={f.producto_id} className="flex items-center gap-3 px-3.5 py-2.5">
-                <span className="grid place-items-center size-6 rounded-full bg-surface-2 text-[11px] font-semibold tabular shrink-0">
+                <span className="grid place-items-center size-6 rounded-full bg-surface-2 text-caption font-semibold tabular shrink-0">
                   {i + 1}
                 </span>
-                <span className="min-w-0 flex-1 text-[13px] font-medium truncate">{f.nombre}</span>
-                <span className="text-[12px] text-muted-foreground tabular shrink-0">{num(Number(f.cantidad))} u.</span>
-                <span className="text-[13px] font-semibold tabular shrink-0 w-24 text-right">{cop(Number(f.ingreso))}</span>
+                <span className="min-w-0 flex-1 text-body-sm font-medium truncate">{f.nombre}</span>
+                <span className="text-meta text-muted-foreground tabular shrink-0">{num(Number(f.cantidad))} u.</span>
+                <span className="text-body-sm font-semibold tabular shrink-0 w-24 text-right">{cop(Number(f.ingreso))}</span>
               </li>
             ))}
           </ul>

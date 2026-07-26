@@ -3,7 +3,7 @@
  * abre el panel lateral (Sheet). Es el rol de BarraMovilPos pero flotante: la grilla usa todo el
  * ancho SIEMPRE. Superficie neutra; el acento rojo queda solo en el segmento Cobrar (acción primaria).
  */
-import { ShoppingCart } from 'lucide-react'
+import { ShoppingCart } from '@/lib/icons.jsx'
 import { cop } from '@/components/shared.jsx'
 
 export default function PillCarrito({ total, numItems, onAbrir }) {
@@ -14,7 +14,7 @@ export default function PillCarrito({ total, numItems, onAbrir }) {
       <span className="relative shrink-0">
         <ShoppingCart className={`size-5 ${vacio ? 'text-muted-foreground/60' : 'text-foreground'}`} aria-hidden="true" />
         {!vacio && (
-          <span className="absolute -top-2 -right-2.5 min-w-[18px] h-[18px] px-1 grid place-items-center rounded-full bg-primary text-primary-foreground text-[10px] font-bold tabular"
+          <span className="absolute -top-2 -right-2.5 min-w-[18px] h-[18px] px-1 grid place-items-center rounded-full bg-primary text-primary-foreground text-micro font-bold tabular"
             aria-label={`${numItems} en el carrito`}>
             {numItems}
           </span>
@@ -26,7 +26,7 @@ export default function PillCarrito({ total, numItems, onAbrir }) {
         <>
           <span className="text-body font-semibold tabular">{cop(total)}</span>
           <span className="h-9 px-4 inline-flex items-center gap-1.5 rounded-full bg-primary text-primary-foreground text-body-sm font-medium">
-            Cobrar <kbd className="opacity-70 text-[10px]" aria-hidden="true">F4</kbd>
+            Cobrar <kbd className="opacity-70 text-micro" aria-hidden="true">F4</kbd>
           </span>
         </>
       )}

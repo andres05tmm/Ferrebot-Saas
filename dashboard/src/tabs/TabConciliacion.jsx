@@ -8,7 +8,7 @@
 import { useState } from 'react'
 import { toast } from 'sonner'
 import { useQueryClient } from '@tanstack/react-query'
-import { Landmark, Wand2, ArrowDownLeft, ArrowUpRight, Link2, CheckCircle2 } from 'lucide-react'
+import { Landmark, Wand2, ArrowDownLeft, ArrowUpRight, Link2, CheckCircle2 } from '@/lib/icons.jsx'
 import { cop } from '@/components/shared.jsx'
 import { useMovimientosBancarios, useSugerirConciliacion, useConciliar, keyPrefix } from '@/lib/queries'
 import { useRealtimeEvent } from '@/components/RealtimeProvider.jsx'
@@ -44,33 +44,33 @@ function Movimiento({ item, onConciliar }) {
   const credito = m.naturaleza === 'credito'
   const ambiguo = candidatos.length > 1
   return (
-    <li className="px-3.5 py-2.5 space-y-2 text-[13px]">
+    <li className="px-3.5 py-2.5 space-y-2 text-body-sm">
       <div className="flex items-center gap-3">
         {credito ? <ArrowDownLeft className="size-4 text-success shrink-0" /> : <ArrowUpRight className="size-4 text-destructive shrink-0" />}
         <div className="min-w-0 flex-1">
           <div className="font-medium truncate">{m.referencia_bancaria || 'movimiento'}</div>
-          <div className="text-[11px] text-muted-foreground">{fechaCorta(m.fecha)} · {credito ? 'entrada' : 'salida'}</div>
+          <div className="text-caption text-muted-foreground">{fechaCorta(m.fecha)} · {credito ? 'entrada' : 'salida'}</div>
         </div>
         <span className={`tabular-nums font-semibold shrink-0 ${credito ? 'text-success' : 'text-destructive'}`}>{cop(m.monto)}</span>
-        <Badge variant="outline" className={`h-5 text-[10px] shrink-0 ${ESTADO_BADGE[m.estado_conciliacion] || ''}`}>
+        <Badge variant="outline" className={`h-5 text-micro shrink-0 ${ESTADO_BADGE[m.estado_conciliacion] || ''}`}>
           {ESTADO_LABEL[m.estado_conciliacion] || m.estado_conciliacion}
         </Badge>
       </div>
 
       {m.estado_conciliacion === 'conciliado' ? (
-        <div className="ml-7 text-[11px] text-success inline-flex items-center gap-1">
+        <div className="ml-7 text-caption text-success inline-flex items-center gap-1">
           <CheckCircle2 className="size-3.5" /> enlazado con {m.conciliado_con_tipo} #{m.conciliado_con_id}
         </div>
       ) : candidatos.length === 0 ? (
-        <div className="ml-7 text-[11px] text-muted-foreground">Sin candidatos internos que calcen.</div>
+        <div className="ml-7 text-caption text-muted-foreground">Sin candidatos internos que calcen.</div>
       ) : (
         <div className="ml-7 space-y-1.5">
           {ambiguo && (
-            <div className="text-[11px] text-warning">Varios candidatos: elige cuál corresponde (no se concilia solo).</div>
+            <div className="text-caption text-warning">Varios candidatos: elige cuál corresponde (no se concilia solo).</div>
           )}
           {candidatos.map(cand => (
             <div key={`${cand.tipo}-${cand.id}`} className="flex items-center gap-2">
-              <span className="text-[12px] text-muted-foreground flex-1 truncate">
+              <span className="text-meta text-muted-foreground flex-1 truncate">
                 {cand.tipo} #{cand.id} · {fechaCorta(cand.fecha)} · {cop(cand.monto)}
                 {cand.descripcion ? ` · ${cand.descripcion}` : ''}
               </span>
@@ -146,7 +146,7 @@ function ConciliacionContenido() {
       <div className="flex flex-wrap gap-1.5">
         {FILTROS.map(f => (
           <button key={f.id || 'todos'} onClick={() => setFiltro(f.id)}
-            className={`text-[12px] px-2.5 h-8 rounded-md border transition-colors ${
+            className={`text-meta px-2.5 h-8 rounded-md border transition-colors ${
               filtro === f.id ? 'bg-primary text-primary-foreground border-primary' : 'bg-surface border-border hover:bg-surface-2'
             }`}>
             {f.label}
@@ -172,7 +172,7 @@ function ConciliacionContenido() {
         )}
       </Card>
 
-      <p className="text-[11px] text-muted-foreground px-1">
+      <p className="text-caption text-muted-foreground px-1">
         El cruce automático solo sugiere los movimientos con un único candidato. Los ambiguos requieren
         que elijas la contraparte a mano. Conciliar solo enlaza el movimiento: no mueve saldos.
       </p>

@@ -8,7 +8,7 @@
  *   estado del componente hasta recargar.
  */
 import { useState } from 'react'
-import { Loader2 } from 'lucide-react'
+import { Loader2 } from '@/lib/icons.jsx'
 import { Card } from '@/components/ui/card.jsx'
 import { Input } from '@/components/ui/input.jsx'
 import { Button } from '@/components/ui/button.jsx'
@@ -82,7 +82,7 @@ export default function TenantManage({ tenant, onCambio }) {
       </h2>
 
       <div className="flex flex-col gap-1.5">
-        <span className="text-[11px] text-muted-foreground">Features (clic para activar/desactivar)</span>
+        <span className="text-caption text-muted-foreground">Features (clic para activar/desactivar)</span>
         <div className="flex flex-wrap gap-1.5">
           {FEATURES_OPCIONALES.map(([f, label]) => {
             const on = activas.has(f)
@@ -90,7 +90,7 @@ export default function TenantManage({ tenant, onCambio }) {
               <button
                 key={f} type="button" onClick={() => toggle(f)} disabled={ocupada === f}
                 aria-label={`toggle ${f}`} aria-pressed={on}
-                className={`text-[11px] px-2 py-1 rounded-sm border transition-colors disabled:opacity-50 ${
+                className={`text-caption px-2 py-1 rounded-sm border transition-colors disabled:opacity-50 ${
                   on ? 'bg-primary text-primary-foreground border-primary'
                      : 'bg-surface text-muted-foreground border-border hover:bg-surface-2'
                 }`}
@@ -104,7 +104,7 @@ export default function TenantManage({ tenant, onCambio }) {
       </div>
 
       <form onSubmit={generarEnlace} className="flex flex-col gap-1.5" aria-label="Generar enlace de set-password">
-        <span className="text-[11px] text-muted-foreground">Enlace de set-password del admin</span>
+        <span className="text-caption text-muted-foreground">Enlace de set-password del admin</span>
         <div className="flex gap-2">
           <Input
             type="email" value={email} onChange={(e) => setEmail(e.target.value)}
@@ -119,7 +119,7 @@ export default function TenantManage({ tenant, onCambio }) {
 
       {enlace && (
         <div className="flex flex-col gap-1">
-          <span className="text-[11px] text-success">Enlace generado (cópialo ahora; no se vuelve a mostrar):</span>
+          <span className="text-caption text-success">Enlace generado (cópialo ahora; no se vuelve a mostrar):</span>
           <Input readOnly value={enlace} aria-label="Enlace de set-password" onFocus={(e) => e.target.select()} />
         </div>
       )}

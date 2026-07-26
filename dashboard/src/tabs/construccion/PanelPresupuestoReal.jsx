@@ -41,7 +41,7 @@ import FormRegistroHoras from './calendario/FormRegistroHoras.jsx'
 import {
   Gauge, Wallet, ShoppingCart, Users, Timer, Package, Lock, Search,
   TrendingUp, TrendingDown, Minus, X, CheckCircle2,
-} from 'lucide-react'
+} from '@/lib/icons.jsx'
 import { api } from '@/lib/api'
 import { useFetch, cop, num } from '@/components/shared.jsx'
 import { Input } from '@/components/ui/input.jsx'
@@ -111,9 +111,9 @@ export default function PanelPresupuestoReal({ obra, onCambio }) {
     <section className="rounded-md border border-border-subtle bg-surface p-3.5" aria-label="Presupuesto vs real de la obra">
       <div className="mb-3 flex items-center gap-2">
         <Gauge className="size-4 text-muted-foreground" aria-hidden="true" />
-        <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Presupuesto vs real</h3>
+        <h3 className="text-caption font-semibold uppercase tracking-wider text-muted-foreground">Presupuesto vs real</h3>
         {liquidada && (
-          <span className="ml-auto inline-flex items-center gap-1 text-[11px] text-muted-foreground">
+          <span className="ml-auto inline-flex items-center gap-1 text-caption text-muted-foreground">
             <Lock className="size-3" aria-hidden="true" /> Liquidada
           </span>
         )}
@@ -122,9 +122,9 @@ export default function PanelPresupuestoReal({ obra, onCambio }) {
       {fuente.loading ? (
         <EsqueletoPanel />
       ) : fuente.error ? (
-        <p className="rounded-md bg-destructive/10 px-3 py-2 text-[12px] text-destructive">No se pudo calcular el gasto real de la obra.</p>
+        <p className="rounded-md bg-destructive/10 px-3 py-2 text-meta text-destructive">No se pudo calcular el gasto real de la obra.</p>
       ) : !g ? (
-        <p className="py-6 text-center text-[12px] text-muted-foreground">Sin datos de gasto real.</p>
+        <p className="py-6 text-center text-meta text-muted-foreground">Sin datos de gasto real.</p>
       ) : (
         <>
           <Encabezado g={g} liquidada={liquidada} liq={liqQ.data} />
@@ -132,7 +132,7 @@ export default function PanelPresupuestoReal({ obra, onCambio }) {
           <Desglose g={g} />
 
           {liquidada ? (
-            <p className="mt-3 flex items-center gap-1.5 rounded-md bg-surface-2 px-3 py-2 text-[11px] text-muted-foreground">
+            <p className="mt-3 flex items-center gap-1.5 rounded-md bg-surface-2 px-3 py-2 text-caption text-muted-foreground">
               <Lock className="size-3.5 shrink-0" aria-hidden="true" />
               Obra liquidada: el desglose quedó congelado y no admite nuevas imputaciones.
             </p>
@@ -167,11 +167,11 @@ function Encabezado({ g, liquidada, liq }) {
     <div className="grid grid-cols-1 gap-3 sm:grid-cols-[auto_1fr] sm:items-center">
       {/* Semáforo grande: punto + etiqueta, con el porqué debajo. Nunca solo color. */}
       <div className={`flex flex-col gap-1 rounded-lg border px-4 py-3 ${meta.clase}`} role="status" title={meta.titulo}>
-        <span className="inline-flex items-center gap-2 text-[15px] font-semibold leading-none">
+        <span className="inline-flex items-center gap-2 text-base font-semibold leading-none">
           <span className={`size-2.5 shrink-0 rounded-full ${meta.punto}`} aria-hidden="true" />
           {meta.label}
         </span>
-        <span className="text-[11px] font-normal opacity-80">{meta.titulo}</span>
+        <span className="text-caption font-normal opacity-80">{meta.titulo}</span>
       </div>
 
       {/* KPIs */}
@@ -179,10 +179,10 @@ function Encabezado({ g, liquidada, liq }) {
         <Kpi etiqueta={liquidada ? 'Ingreso presup.' : 'Presupuestado'} valor={g.ingreso} tenue={sinPresupuesto} />
         <Kpi etiqueta="Gasto real" valor={g.total} />
         <div className="rounded-md bg-surface-2 px-2 py-2">
-          <dt className="text-[10px] uppercase tracking-wider text-muted-foreground">Utilidad real</dt>
-          <dd className={`tabular text-[14px] font-semibold ${tonoUtil}`}>{cop(g.utilidadReal)}</dd>
+          <dt className="text-micro uppercase tracking-wider text-muted-foreground">Utilidad real</dt>
+          <dd className={`tabular text-base font-semibold ${tonoUtil}`}>{cop(g.utilidadReal)}</dd>
           {g.utilidadPresup > 0 && !sinPresupuesto && (
-            <dd className="mt-0.5 inline-flex items-center justify-center gap-0.5 text-[10px] text-muted-foreground">
+            <dd className="mt-0.5 inline-flex items-center justify-center gap-0.5 text-micro text-muted-foreground">
               <IconDelta className="size-3" aria-hidden="true" />
               <span className="tabular">{cop(Math.abs(delta))}</span> vs presup.
             </dd>
@@ -190,7 +190,7 @@ function Encabezado({ g, liquidada, liq }) {
         </div>
       </dl>
       {liquidada && liq?.fecha_liquidacion && (
-        <p className="sm:col-span-2 -mt-0.5 text-[11px] text-muted-foreground">
+        <p className="sm:col-span-2 -mt-0.5 text-caption text-muted-foreground">
           Liquidada el {String(liq.fecha_liquidacion).slice(0, 10)}.
         </p>
       )}
@@ -201,8 +201,8 @@ function Encabezado({ g, liquidada, liq }) {
 function Kpi({ etiqueta, valor, tenue = false }) {
   return (
     <div className="rounded-md bg-surface-2 px-2 py-2">
-      <dt className="text-[10px] uppercase tracking-wider text-muted-foreground">{etiqueta}</dt>
-      <dd className={`tabular text-[14px] font-semibold ${tenue ? 'text-muted-foreground' : 'text-foreground'}`}>{cop(valor)}</dd>
+      <dt className="text-micro uppercase tracking-wider text-muted-foreground">{etiqueta}</dt>
+      <dd className={`tabular text-base font-semibold ${tenue ? 'text-muted-foreground' : 'text-foreground'}`}>{cop(valor)}</dd>
     </div>
   )
 }
@@ -212,7 +212,7 @@ function Kpi({ etiqueta, valor, tenue = false }) {
 function MedidorRentabilidad({ g }) {
   if (g.ingreso <= 0) {
     return (
-      <p className="mt-3 rounded-md bg-surface-2 px-3 py-2 text-[11px] text-muted-foreground">
+      <p className="mt-3 rounded-md bg-surface-2 px-3 py-2 text-caption text-muted-foreground">
         Esta obra no tiene ingreso presupuestado (no nació de una cotización): el semáforo se calcula sin umbral de utilidad. Su gasto real se sigue acumulando abajo.
       </p>
     )
@@ -224,7 +224,7 @@ function MedidorRentabilidad({ g }) {
 
   return (
     <div className="mt-3">
-      <div className="mb-1 flex items-center justify-between text-[10px] text-muted-foreground">
+      <div className="mb-1 flex items-center justify-between text-micro text-muted-foreground">
         <span>Gasto real sobre lo presupuestado</span>
         <span className="tabular">{num((g.total / g.ingreso) * 100)}%</span>
       </div>
@@ -237,7 +237,7 @@ function MedidorRentabilidad({ g }) {
             title="Umbral: a partir de aquí se come la utilidad" />
         )}
       </div>
-      <div className="mt-1 flex items-center justify-between text-[10px] text-muted-foreground">
+      <div className="mt-1 flex items-center justify-between text-micro text-muted-foreground">
         <span className="tabular">{cop(g.total)}</span>
         {g.utilidadPresup > 0 && <span>Utilidad presup. {cop(g.utilidadPresup)}</span>}
         <span className="tabular">{cop(g.ingreso)}</span>
@@ -276,9 +276,9 @@ function Desglose({ g }) {
           <li key={clave} className="grid grid-cols-[1fr_auto] items-center gap-x-3">
             <div className="flex items-center gap-2 min-w-0">
               <Icono className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
-              <span className="truncate text-[12px] text-secondary-foreground">{label}</span>
+              <span className="truncate text-meta text-secondary-foreground">{label}</span>
             </div>
-            <span className="tabular text-[12px] font-medium text-foreground">{cop(valor)}</span>
+            <span className="tabular text-meta font-medium text-foreground">{cop(valor)}</span>
             <div className="col-span-2 mt-0.5 h-1 overflow-hidden rounded-full bg-surface-2">
               <div className="h-full rounded-full bg-primary/60" style={{ width: `${pct(valor, g.total)}%` }} aria-hidden="true" />
             </div>
@@ -286,8 +286,8 @@ function Desglose({ g }) {
         )
       })}
       <li className="mt-1 flex items-center justify-between border-t border-border pt-1.5">
-        <span className="text-[12px] font-semibold text-foreground">Gasto real total</span>
-        <span className="tabular text-[14px] font-semibold text-primary">{cop(g.total)}</span>
+        <span className="text-meta font-semibold text-foreground">Gasto real total</span>
+        <span className="tabular text-base font-semibold text-primary">{cop(g.total)}</span>
       </li>
     </ul>
   )
@@ -320,7 +320,7 @@ function MarcoForm({ titulo, onCancelar, enviando, onGuardar, textoGuardar, chil
     <form className="mt-2 rounded-md border border-border-subtle bg-surface-2/50 p-3"
       onSubmit={(e) => { e.preventDefault(); onGuardar() }}>
       <div className="mb-2.5 flex items-center justify-between">
-        <h4 className="text-[12px] font-semibold text-foreground">{titulo}</h4>
+        <h4 className="text-meta font-semibold text-foreground">{titulo}</h4>
         <button type="button" onClick={onCancelar} aria-label="Cerrar formulario"
           className="grid size-6 place-items-center rounded text-muted-foreground hover:bg-surface-2 hover:text-foreground">
           <X className="size-3.5" aria-hidden="true" />
@@ -454,8 +454,8 @@ function FormRegistrarConsumo({ obraId, onHecho, onCancelar }) {
       <Campo label="Producto del catálogo" requerido>
         {sel ? (
           <div className="flex h-8 items-center justify-between gap-2 rounded-md border border-input bg-surface px-2">
-            <span className="truncate text-[12px] text-foreground">{sel.nombre}</span>
-            <button type="button" onClick={() => setSel(null)} className="text-[11px] text-muted-foreground hover:text-foreground">Cambiar</button>
+            <span className="truncate text-meta text-foreground">{sel.nombre}</span>
+            <button type="button" onClick={() => setSel(null)} className="text-caption text-muted-foreground hover:text-foreground">Cambiar</button>
           </div>
         ) : (
           <div className="relative">
@@ -468,14 +468,14 @@ function FormRegistrarConsumo({ obraId, onHecho, onCancelar }) {
       {!sel && q.trim().length >= 2 && (
         <ul className="mt-1 max-h-40 overflow-y-auto rounded-md border border-border-subtle bg-surface">
           {prodQ.loading ? (
-            <li className="px-3 py-2 text-[12px] text-muted-foreground">Buscando…</li>
+            <li className="px-3 py-2 text-meta text-muted-foreground">Buscando…</li>
           ) : productos.length === 0 ? (
-            <li className="px-3 py-2 text-[12px] text-muted-foreground">Sin coincidencias en el catálogo.</li>
+            <li className="px-3 py-2 text-meta text-muted-foreground">Sin coincidencias en el catálogo.</li>
           ) : productos.map((p) => (
             <li key={p.id}>
-              <button type="button" onClick={() => elegir(p)} className="flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-[12px] hover:bg-surface-2">
+              <button type="button" onClick={() => elegir(p)} className="flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-meta hover:bg-surface-2">
                 <span className="truncate text-secondary-foreground">{p.nombre}</span>
-                {p.codigo && <span className="tabular text-[11px] text-muted-foreground">{p.codigo}</span>}
+                {p.codigo && <span className="tabular text-caption text-muted-foreground">{p.codigo}</span>}
               </button>
             </li>
           ))}
@@ -494,7 +494,7 @@ function FormRegistrarConsumo({ obraId, onHecho, onCancelar }) {
         </Campo>
       </div>
       {total > 0 && (
-        <p className="mt-2 text-right text-[11px] text-muted-foreground">Costo del consumo: <span className="tabular font-medium text-foreground">{cop(total)}</span></p>
+        <p className="mt-2 text-right text-caption text-muted-foreground">Costo del consumo: <span className="tabular font-medium text-foreground">{cop(total)}</span></p>
       )}
     </MarcoForm>
   )
@@ -517,7 +517,7 @@ function BarraLiquidar({ obra, finalizada, onHecho }) {
 
   return (
     <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-border-subtle pt-3">
-      <p className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground">
+      <p className="inline-flex items-center gap-1.5 text-caption text-muted-foreground">
         <CheckCircle2 className="size-3.5 shrink-0" aria-hidden="true" />
         {finalizada ? 'La obra está finalizada: puedes cerrarla y congelar su rentabilidad.' : 'Finaliza la obra para poder liquidarla.'}
       </p>

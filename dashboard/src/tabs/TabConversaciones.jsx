@@ -13,7 +13,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import { toast } from 'sonner'
-import { Bot, Headset, Phone, Search, Send, User, UserCheck, Inbox } from 'lucide-react'
+import { Bot, Headset, Phone, Search, Send, User, UserCheck, Inbox } from '@/lib/icons.jsx'
 import { api } from '@/lib/api'
 import { useFetch, Spinner, ErrorMsg } from '@/components/shared.jsx'
 import { useRealtimeEvent } from '@/components/RealtimeProvider.jsx'
@@ -199,10 +199,10 @@ function ConversacionItem({ conv, activa, onClick }) {
         </span>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5">
-            <span className="text-[13px] font-semibold truncate tabular-nums">{conv.cliente_telefono}</span>
+            <span className="text-body-sm font-semibold truncate tabular-nums">{conv.cliente_telefono}</span>
             <span className="ml-auto text-[10.5px] text-muted-foreground shrink-0">{haceCuanto(conv.ultimo_en || conv.escalada_en || conv.creada_en)}</span>
           </div>
-          <p className="text-[12px] text-muted-foreground truncate mt-0.5">{conv.ultimo_texto || conv.motivo || 'Sin mensajes aún'}</p>
+          <p className="text-meta text-muted-foreground truncate mt-0.5">{conv.ultimo_texto || conv.motivo || 'Sin mensajes aún'}</p>
           <EstadoBadge estado={conv.estado} enHumano={enHumano} />
         </div>
       </button>
@@ -281,7 +281,7 @@ function CabeceraHilo({ conversacion, enHumano, onCambio }) {
           <Phone className="size-3.5 text-muted-foreground" aria-hidden="true" />
           <span className="tabular-nums truncate">{conversacion.cliente_telefono}</span>
         </div>
-        {conversacion.motivo && <div className="text-[11px] text-muted-foreground truncate">{conversacion.motivo}</div>}
+        {conversacion.motivo && <div className="text-caption text-muted-foreground truncate">{conversacion.motivo}</div>}
       </div>
       <div className="ml-auto shrink-0">
         {enHumano ? (
@@ -335,12 +335,12 @@ function Burbuja({ mensaje }) {
   const meta = AUTOR_META[mensaje.autor] || AUTOR_META.cliente
   const Icon = meta.icon
   return (
-    <div className={cn('max-w-[75%] rounded-2xl px-3.5 py-2 text-[13px] leading-snug',
+    <div className={cn('max-w-[75%] rounded-2xl px-3.5 py-2 text-body-sm leading-snug',
       entrante
         ? 'self-start bg-surface border border-border rounded-bl-sm'
         : 'self-end bg-primary-soft text-foreground rounded-br-sm')}>
       {!entrante && (
-        <div className="text-[10px] font-bold text-primary mb-0.5 inline-flex items-center gap-1">
+        <div className="text-micro font-bold text-primary mb-0.5 inline-flex items-center gap-1">
           <Icon className="size-2.5" aria-hidden="true" /> {meta.label}
         </div>
       )}

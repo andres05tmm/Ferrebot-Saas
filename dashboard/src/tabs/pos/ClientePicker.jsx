@@ -4,7 +4,7 @@
  * El botón "+" crea el cliente al vuelo con lo escrito (réplica del alta inline del viejo).
  */
 import { useEffect, useState } from 'react'
-import { Plus, X } from 'lucide-react'
+import { Plus, X } from '@/lib/icons.jsx'
 import { toast } from 'sonner'
 import { api, apiJson } from '@/lib/api'
 import { Input } from '@/components/ui/input.jsx'

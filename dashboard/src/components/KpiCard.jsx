@@ -6,7 +6,7 @@
  *   label       — etiqueta superior (uppercase)
  *   value       — valor principal (string | number | ReactNode)
  *   sub         — texto secundario debajo del valor
- *   icon        — componente lucide-react
+ *   icon        — componente de @/lib/icons.jsx (Phosphor)
  *   deltaPct    — número opcional para mostrar tendencia ↑/↓ vs anterior
  *   spark       — array de puntos [{ total }, …] para sparkline (>=3)
  *   onClick     — vuelve la card clickeable + focusable + aria-button
@@ -21,7 +21,7 @@
  *   coloredValue— si true: cifra usa el color del tone (resalta el valor).
  *                 Aplica tanto en variante headerBand como hero.
  */
-import { TrendingUp, TrendingDown, ArrowRight } from 'lucide-react'
+import { TrendingUp, TrendingDown, ArrowRight } from '@/lib/icons.jsx'
 import { ResponsiveContainer, LineChart, Line } from 'recharts'
 import { Card } from '@/components/ui/card.jsx'
 import { cn } from '@/lib/utils'
@@ -156,7 +156,7 @@ export default function KpiCard({
       )}
 
       <div className={cn('flex items-center justify-between gap-2', topAccent && 'mt-0.5')}>
-        <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground truncate">
+        <span className="text-micro font-semibold uppercase tracking-wider text-muted-foreground truncate">
           {label}
         </span>
         <div className="flex items-center gap-1.5">
@@ -164,7 +164,7 @@ export default function KpiCard({
             <span
               className={cn(
                 'hidden sm:inline-flex items-center gap-1 h-5 px-1.5 rounded-md',
-                'text-[10px] font-medium tabular',
+                'text-micro font-medium tabular',
                 'opacity-0 -translate-x-1 group-hover:opacity-100 group-hover:translate-x-0',
                 'group-focus-visible:opacity-100 group-focus-visible:translate-x-0',
                 'transition-all duration-base ease-out-quad',

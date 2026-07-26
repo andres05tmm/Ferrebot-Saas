@@ -11,7 +11,7 @@
 import { useState } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import { toast } from 'sonner'
-import { Wrench, Plus, Search, Pencil, Trash2, MapPin } from 'lucide-react'
+import { Wrench, Plus, Search, Pencil, Trash2, MapPin } from '@/lib/icons.jsx'
 import { api } from '@/lib/api'
 import { useFetch, cop, num } from '@/components/shared.jsx'
 import { useRealtimeEvent } from '@/components/RealtimeProvider.jsx'
@@ -90,7 +90,7 @@ export default function TabHerramientas() {
       <Card className="p-0 overflow-hidden">
         <div className="px-4 py-2.5 border-b border-border-subtle flex items-center gap-2">
           <Wrench className="size-4 text-muted-foreground" aria-hidden="true" />
-          <h2 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+          <h2 className="text-caption font-semibold uppercase tracking-wider text-muted-foreground">
             Herramienta {herramientas.length > 0 && <span className="tabular">· {visibles.length}</span>}
           </h2>
         </div>
@@ -140,10 +140,10 @@ function HerramientaFila({ herramienta, onEditar, onCambio }) {
       </span>
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          <span className="truncate text-[13px] font-medium text-foreground">{herramienta.nombre}</span>
+          <span className="truncate text-body-sm font-medium text-foreground">{herramienta.nombre}</span>
           <Semaforo tono={est.tono}>{est.label}</Semaforo>
         </div>
-        <div className="mt-0.5 flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-[11px] text-muted-foreground">
+        <div className="mt-0.5 flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-caption text-muted-foreground">
           <span className="tabular font-medium text-secondary-foreground">{herramienta.codigo}</span>
           {herramienta.categoria && <span className="truncate">· {herramienta.categoria}</span>}
           {herramienta.ubicacion_actual && <span className="inline-flex items-center gap-1 truncate"><MapPin className="size-3" aria-hidden="true" />{herramienta.ubicacion_actual}</span>}
@@ -151,9 +151,9 @@ function HerramientaFila({ herramienta, onEditar, onCambio }) {
       </div>
 
       <div className="shrink-0 text-right">
-        <div className="tabular text-[13px] font-semibold text-foreground">{num(herramienta.cantidad)}<span className="text-[10px] font-normal text-muted-foreground"> und</span></div>
+        <div className="tabular text-body-sm font-semibold text-foreground">{num(herramienta.cantidad)}<span className="text-micro font-normal text-muted-foreground"> und</span></div>
         {herramienta.valor_reposicion != null && (
-          <div className="tabular text-[10px] text-muted-foreground">rep. {cop(Number(herramienta.valor_reposicion))}</div>
+          <div className="tabular text-micro text-muted-foreground">rep. {cop(Number(herramienta.valor_reposicion))}</div>
         )}
       </div>
 

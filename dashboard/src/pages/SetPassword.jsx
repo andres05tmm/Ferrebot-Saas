@@ -8,7 +8,7 @@
  */
 import { useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { Loader2 } from 'lucide-react'
+import { Loader2 } from '@/lib/icons.jsx'
 import { Card } from '@/components/ui/card.jsx'
 import { api } from '@/lib/api'
 
@@ -54,7 +54,7 @@ export default function SetPassword() {
   return (
     <main className="min-h-[100dvh] bg-background flex flex-col items-center justify-center p-5 text-foreground">
       <Card className="w-full max-w-sm px-10 py-12 flex flex-col items-center gap-6">
-        <h1 className="m-0 text-[20px] font-extrabold tracking-tight text-center">Establecer contraseña</h1>
+        <h1 className="m-0 text-xl font-extrabold tracking-tight text-center">Establecer contraseña</h1>
 
         {!token ? (
           <p role="alert" className="text-xs text-destructive text-center">
@@ -69,7 +69,7 @@ export default function SetPassword() {
         ) : (
           <form onSubmit={enviar} className="w-full flex flex-col gap-3" aria-label="Establecer contraseña">
             <div className="flex flex-col gap-1">
-              <label htmlFor="password" className="text-[11px] font-medium text-muted-foreground">Nueva contraseña</label>
+              <label htmlFor="password" className="text-caption font-medium text-muted-foreground">Nueva contraseña</label>
               <input
                 id="password" type="password" autoComplete="new-password" value={password}
                 onChange={(e) => setPassword(e.target.value)} required
@@ -77,7 +77,7 @@ export default function SetPassword() {
               />
             </div>
             <div className="flex flex-col gap-1">
-              <label htmlFor="confirm" className="text-[11px] font-medium text-muted-foreground">Confirmar contraseña</label>
+              <label htmlFor="confirm" className="text-caption font-medium text-muted-foreground">Confirmar contraseña</label>
               <input
                 id="confirm" type="password" autoComplete="new-password" value={confirm}
                 onChange={(e) => setConfirm(e.target.value)} required

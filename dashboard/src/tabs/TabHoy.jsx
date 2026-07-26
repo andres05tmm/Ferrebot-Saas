@@ -15,7 +15,7 @@ import {
 import {
   ArrowRight, Plus, AlertTriangle, ShoppingCart, Receipt, Package, Activity,
   CreditCard, Briefcase, CalendarDays, Timer, Banknote, PackageSearch,
-} from 'lucide-react'
+} from '@/lib/icons.jsx'
 import { useFetch, cop, num, rangoHoyCO, ProductThumb } from '@/components/shared.jsx'
 import { useRealtimeEvent } from '@/components/RealtimeProvider.jsx'
 import { Card } from '@/components/ui/card.jsx'
@@ -281,16 +281,16 @@ function CajaCard({ abierta, apertura, horaApertura, numMovs, onClick }) {
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40',
       )}>
       <div className="flex items-center justify-between gap-2">
-        <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground truncate">Caja</span>
+        <span className="text-micro font-semibold uppercase tracking-wider text-muted-foreground truncate">Caja</span>
         <span className="grid place-items-center rounded-md size-6 shrink-0" style={{ background: iconColor }}>
           <Briefcase className="size-3 text-white" aria-hidden="true" />
         </span>
       </div>
       <div className={cn('mt-2 px-2 py-1.5 rounded-md border flex items-center gap-2 min-h-[36px]', bandBg)}>
-        <span className={cn('inline-flex items-center px-2 h-5 rounded text-[10px] font-bold uppercase tracking-wide shrink-0', pillBg)}>
+        <span className={cn('inline-flex items-center px-2 h-5 rounded text-micro font-bold uppercase tracking-wide shrink-0', pillBg)}>
           {abierta ? 'Abierta' : 'Cerrada'}
         </span>
-        <span className="text-[11px] text-foreground/80 truncate">
+        <span className="text-caption text-foreground/80 truncate">
           {abierta
             ? (horaApertura ? `${horaApertura} · Base ${cop(apertura)} · ${numMovs} movs` : `Base ${cop(apertura)} · ${numMovs} movs`)
             : 'Pendiente de apertura'}
@@ -319,7 +319,7 @@ function EvolucionChart({ serie7, serie30, loading }) {
     <Card className="lg:col-span-2 p-3.5">
       <div className="flex items-start justify-between mb-3">
         <div>
-          <h2 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Evolución de ventas</h2>
+          <h2 className="text-caption font-semibold uppercase tracking-wider text-muted-foreground">Evolución de ventas</h2>
           <div className="flex items-baseline gap-2 mt-1 flex-wrap">
             <span className="text-xl font-semibold tracking-tight tabular text-foreground">{cop(totalPeriodo)}</span>
             <span className="text-[10.5px] text-muted-foreground">acumulado · prom. {cop(promDia)}/día</span>
@@ -366,7 +366,7 @@ function EvolucionChart({ serie7, serie30, loading }) {
 function PeriodPill({ active, onClick, children }) {
   return (
     <button onClick={onClick}
-      className={cn('px-2.5 py-1 text-[11px] font-medium rounded transition-colors',
+      className={cn('px-2.5 py-1 text-caption font-medium rounded transition-colors',
         active ? 'bg-surface text-foreground shadow-xs' : 'text-muted-foreground hover:text-foreground')}>
       {children}
     </button>
@@ -378,14 +378,14 @@ function FeedLive({ ventas, loading, onMore }) {
   return (
     <Card className="p-3.5">
       <div className="flex items-center justify-between mb-2.5">
-        <h2 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground inline-flex items-center gap-2">
+        <h2 className="text-caption font-semibold uppercase tracking-wider text-muted-foreground inline-flex items-center gap-2">
           Últimas ventas
           <span className="relative flex size-2">
             <span className="absolute inline-flex size-full rounded-full bg-success/60 animate-ping opacity-75" />
             <span className="relative inline-flex size-2 rounded-full bg-success" />
           </span>
         </h2>
-        <button onClick={onMore} className="text-[11px] text-muted-foreground hover:text-foreground inline-flex items-center gap-1">
+        <button onClick={onMore} className="text-caption text-muted-foreground hover:text-foreground inline-flex items-center gap-1">
           ver todas <ArrowRight className="size-3" />
         </button>
       </div>
@@ -411,20 +411,20 @@ function VentaFila({ venta }) {
   return (
     <li className="py-2 first:pt-1">
       <span className={cn(
-        'inline-flex items-center h-[18px] px-1.5 rounded text-[10px] font-semibold uppercase tracking-wide border capitalize',
+        'inline-flex items-center h-[18px] px-1.5 rounded text-micro font-semibold uppercase tracking-wide border capitalize',
         metodoTone(venta.metodo_pago),
       )}>
         {venta.metodo_pago || '—'}
       </span>
       <div className="mt-1 flex items-baseline gap-2">
         {item && (
-          <span className="text-[12px] font-semibold tabular text-muted-foreground shrink-0">{num(Number(item.cantidad))}×</span>
+          <span className="text-meta font-semibold tabular text-muted-foreground shrink-0">{num(Number(item.cantidad))}×</span>
         )}
-        <span className="flex-1 min-w-0 text-[13px] text-foreground truncate">
+        <span className="flex-1 min-w-0 text-body-sm text-foreground truncate">
           {nombre}
           {restantes > 0 && <span className="text-muted-foreground font-normal"> +{restantes} más</span>}
         </span>
-        <span className="text-[13px] font-semibold tabular text-foreground shrink-0">{cop(Number(venta.total))}</span>
+        <span className="text-body-sm font-semibold tabular text-foreground shrink-0">{cop(Number(venta.total))}</span>
       </div>
     </li>
   )
@@ -458,7 +458,7 @@ function MetodosPago({ items, total }) {
   return (
     <Card className="p-3.5">
       <div className="flex items-center justify-between mb-2.5">
-        <h2 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground inline-flex items-center gap-1.5">
+        <h2 className="text-caption font-semibold uppercase tracking-wider text-muted-foreground inline-flex items-center gap-1.5">
           <CreditCard className="size-3.5" /> Métodos de pago · Hoy
         </h2>
       </div>
@@ -483,8 +483,8 @@ function MetodosPago({ items, total }) {
             </ResponsiveContainer>
             <div className="absolute inset-0 grid place-items-center pointer-events-none">
               <div className="text-center">
-                <div className="text-[15px] font-semibold tracking-tight tabular text-foreground">{cop(sel ? sel.monto : total)}</div>
-                <div className="text-[10px] text-muted-foreground uppercase tracking-wide">
+                <div className="text-base font-semibold tracking-tight tabular text-foreground">{cop(sel ? sel.monto : total)}</div>
+                <div className="text-micro text-muted-foreground uppercase tracking-wide">
                   {sel ? `${sel.nombre} · ${sel.pct}%` : 'hoy'}
                 </div>
               </div>
@@ -495,8 +495,8 @@ function MetodosPago({ items, total }) {
               <li key={i} className="py-1.5 flex items-center gap-2">
                 <span className="size-2.5 rounded-full shrink-0" style={{ background: colorDe(m) }} />
                 <span className="flex-1 min-w-0 text-[12.5px] font-medium truncate">{m.nombre}</span>
-                <span className="text-[11px] text-muted-foreground tabular shrink-0">{m.pct}%</span>
-                <span className="text-[14px] font-semibold tabular text-foreground shrink-0">{cop(m.monto)}</span>
+                <span className="text-caption text-muted-foreground tabular shrink-0">{m.pct}%</span>
+                <span className="text-base font-semibold tabular text-foreground shrink-0">{cop(m.monto)}</span>
               </li>
             ))}
           </ul>
@@ -511,8 +511,8 @@ function TopProductos({ items, onMore }) {
   return (
     <Card className="p-3.5">
       <div className="flex items-center justify-between mb-2.5">
-        <h2 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Top productos hoy</h2>
-        <button onClick={onMore} className="text-[11px] text-muted-foreground hover:text-foreground inline-flex items-center gap-1">
+        <h2 className="text-caption font-semibold uppercase tracking-wider text-muted-foreground">Top productos hoy</h2>
+        <button onClick={onMore} className="text-caption text-muted-foreground hover:text-foreground inline-flex items-center gap-1">
           ver todos <ArrowRight className="size-3" />
         </button>
       </div>
@@ -524,7 +524,7 @@ function TopProductos({ items, onMore }) {
             <li key={i} className="flex items-center gap-2.5">
               <ProductThumb nombre={p.nombre} size={32} />
               <div className="flex-1 min-w-0">
-                <div className="flex items-baseline justify-between mb-1 gap-2 text-[12px]">
+                <div className="flex items-baseline justify-between mb-1 gap-2 text-meta">
                   <span className="font-medium truncate">{p.nombre}</span>
                   <span className="tabular font-semibold shrink-0">{cop(p.monto)}</span>
                 </div>
@@ -532,7 +532,7 @@ function TopProductos({ items, onMore }) {
                   <div className="flex-1 h-1.5 rounded-full bg-surface-2 overflow-hidden">
                     <div className="h-full rounded-full bg-primary transition-all duration-base" style={{ width: `${p.pct}%` }} />
                   </div>
-                  <span className="text-[10px] text-muted-foreground tabular w-12 text-right shrink-0">{num(p.cant)} ud</span>
+                  <span className="text-micro text-muted-foreground tabular w-12 text-right shrink-0">{num(p.cant)} ud</span>
                 </div>
               </div>
             </li>
@@ -547,11 +547,11 @@ function StockBajo({ items, total, onMore }) {
   return (
     <Card className="p-3.5">
       <div className="flex items-center justify-between mb-2.5">
-        <h2 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground inline-flex items-center gap-1.5">
+        <h2 className="text-caption font-semibold uppercase tracking-wider text-muted-foreground inline-flex items-center gap-1.5">
           <AlertTriangle className="size-3.5 text-warning" /> Stock bajo
         </h2>
         {total > 0 && (
-          <Badge variant="outline" className="h-5 text-[10px] bg-warning/10 text-warning border-warning/20">
+          <Badge variant="outline" className="h-5 text-micro bg-warning/10 text-warning border-warning/20">
             {total} {total === 1 ? 'alerta' : 'alertas'}
           </Badge>
         )}
@@ -567,7 +567,7 @@ function StockBajo({ items, total, onMore }) {
             {items.map((p, i) => {
               const isCrit = p.stock <= 5
               return (
-                <li key={i} className="py-1.5 flex items-center gap-2 text-[12px]">
+                <li key={i} className="py-1.5 flex items-center gap-2 text-meta">
                   <Package className="size-3.5 text-muted-foreground shrink-0" />
                   <span className="flex-1 truncate">{p.nombre}</span>
                   <span className={cn('tabular font-semibold shrink-0', isCrit ? 'text-primary' : 'text-warning')}>
@@ -577,7 +577,7 @@ function StockBajo({ items, total, onMore }) {
               )
             })}
           </ul>
-          <button onClick={onMore} className="w-full mt-3 text-[11px] text-primary hover:underline font-medium inline-flex items-center justify-center gap-1">
+          <button onClick={onMore} className="w-full mt-3 text-caption text-primary hover:underline font-medium inline-flex items-center justify-center gap-1">
             ver todos en inventario <ArrowRight className="size-3" />
           </button>
         </>
@@ -605,7 +605,7 @@ function QuickActions({ navigate, onRefetch }) {
   return (
     <Card className="p-3 lg:col-span-2">
       <div className="flex items-center justify-between mb-2.5">
-        <h2 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground inline-flex items-center gap-1.5">
+        <h2 className="text-caption font-semibold uppercase tracking-wider text-muted-foreground inline-flex items-center gap-1.5">
           <Activity className="size-3.5" /> Acciones rápidas
         </h2>
       </div>
@@ -619,7 +619,7 @@ function QuickActions({ navigate, onRefetch }) {
               <span className={cn('grid place-items-center rounded-md size-8 shrink-0', t.bg)} style={{ color: t.color }}>
                 <Icon className="size-4" />
               </span>
-              <span className="text-[12px] font-medium truncate">{a.label}</span>
+              <span className="text-meta font-medium truncate">{a.label}</span>
             </button>
           )
         })}

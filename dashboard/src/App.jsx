@@ -5,7 +5,7 @@
  */
 import React, { useEffect, useState } from 'react'
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
-import { Loader2 } from 'lucide-react'
+import { Loader2 } from '@/lib/icons.jsx'
 import { Toaster } from './components/ui/sonner.jsx'
 import AppShell from './components/AppShell.jsx'
 import ProtectedRoute from './components/ProtectedRoute.jsx'

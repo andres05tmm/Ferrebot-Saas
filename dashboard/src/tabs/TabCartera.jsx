@@ -9,7 +9,7 @@
  */
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
-import { BellOff, BellRing, HandCoins, Inbox, Users } from 'lucide-react'
+import { BellOff, BellRing, HandCoins, Inbox, Users } from '@/lib/icons.jsx'
 import { api } from '@/lib/api'
 import { cop, useFetch } from '@/components/shared.jsx'
 import { useRealtimeEvent } from '@/components/RealtimeProvider.jsx'
@@ -53,9 +53,9 @@ function fechaCorta(iso) {
 function Kpi({ label, value, hint }) {
   return (
     <Card className="p-3">
-      <div className="text-[11px] uppercase tracking-wider text-muted-foreground">{label}</div>
+      <div className="text-caption uppercase tracking-wider text-muted-foreground">{label}</div>
       <div className="text-lg font-semibold tabular-nums">{value}</div>
-      {hint && <div className="text-[11px] text-muted-foreground">{hint}</div>}
+      {hint && <div className="text-caption text-muted-foreground">{hint}</div>}
     </Card>
   )
 }
@@ -75,11 +75,11 @@ function SeccionDeudores({ deudores, onOptOut, onAbonar }) {
           {deudores.map(d => (
             <li key={d.cliente_id} className={`py-2.5 flex items-center gap-3 ${d.opt_out ? 'opacity-60' : ''}`}>
               <div className="min-w-0 flex-1">
-                <div className="font-medium text-[13px] truncate">
+                <div className="font-medium text-body-sm truncate">
                   {d.nombre}
-                  {d.opt_out && <span className="ml-1.5 text-[11px] text-muted-foreground">(sin recordatorios)</span>}
+                  {d.opt_out && <span className="ml-1.5 text-caption text-muted-foreground">(sin recordatorios)</span>}
                 </div>
-                <div className="text-[12px] text-muted-foreground">
+                <div className="text-meta text-muted-foreground">
                   {d.telefono || 'sin teléfono'}
                   {' · '}{d.recordatorios_enviados} recordatorio{d.recordatorios_enviados === 1 ? '' : 's'}
                   {d.ultimo_recordatorio_en && ` (último ${fechaCorta(d.ultimo_recordatorio_en)})`}
@@ -88,7 +88,7 @@ function SeccionDeudores({ deudores, onOptOut, onAbonar }) {
                   )}
                 </div>
               </div>
-              <div className="font-semibold tabular-nums text-[13px]">{cop(d.saldo)}</div>
+              <div className="font-semibold tabular-nums text-body-sm">{cop(d.saldo)}</div>
               <Button size="sm" variant="outline" className="shrink-0" onClick={() => onAbonar(d)}>
                 Abonar
               </Button>
@@ -119,8 +119,8 @@ function SeccionPagos({ pagos, onVerificar }) {
           {pagos.map(p => (
             <li key={p.id} className="py-2.5 flex items-center gap-3">
               <div className="min-w-0 flex-1">
-                <div className="font-medium text-[13px]">{p.telefono}</div>
-                <div className="text-[12px] text-muted-foreground line-clamp-2">
+                <div className="font-medium text-body-sm">{p.telefono}</div>
+                <div className="text-meta text-muted-foreground line-clamp-2">
                   {p.nota || 'Sin detalle'} · {fechaCorta(p.creado_en)}
                 </div>
               </div>
@@ -129,7 +129,7 @@ function SeccionPagos({ pagos, onVerificar }) {
           ))}
         </ul>
       )}
-      <p className="mt-2 text-[11px] text-muted-foreground">
+      <p className="mt-2 text-caption text-muted-foreground">
         Verificar el comprobante NO registra el abono: usa «Abonar» en el deudor (baja el saldo del
         fiado; no mueve caja).
       </p>
@@ -157,7 +157,7 @@ function SeccionConfig({ config, refetch }) {
 
   const campo = (label, k, type = 'number') => (
     <label className="flex flex-col gap-1">
-      <span className="text-[11px] uppercase tracking-wider text-muted-foreground">{label}</span>
+      <span className="text-caption uppercase tracking-wider text-muted-foreground">{label}</span>
       <Input type={type} value={f[k] ?? ''} onChange={set(k)} aria-label={label} className="h-9" />
     </label>
   )
@@ -180,7 +180,7 @@ function SeccionConfig({ config, refetch }) {
       <div className="mt-3 flex justify-end">
         <Button onClick={guardar}>Guardar reglas</Button>
       </div>
-      <p className="mt-2 text-[11px] text-muted-foreground">
+      <p className="mt-2 text-caption text-muted-foreground">
         El tono del agente es respetuoso siempre (fijado por el sistema). Los recordatorios solo
         salen en la ventana horaria y respetan promesas de pago y opt-out.
       </p>

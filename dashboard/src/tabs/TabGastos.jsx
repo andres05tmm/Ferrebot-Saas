@@ -6,7 +6,7 @@
  */
 import { useMemo, useState } from 'react'
 import { useOutletContext } from 'react-router-dom'
-import { Plus, Receipt } from 'lucide-react'
+import { Plus, Receipt } from '@/lib/icons.jsx'
 import { useFetch, cop, rangoHoyCO } from '@/components/shared.jsx'
 import { useRealtimeEvent } from '@/components/RealtimeProvider.jsx'
 import { useAuth } from '@/hooks/useAuth.js'
@@ -33,11 +33,11 @@ export default function TabGastos() {
 
       <Card className="p-3.5">
         <div className="flex items-center justify-between mb-2.5">
-          <h2 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground inline-flex items-center gap-1.5">
+          <h2 className="text-caption font-semibold uppercase tracking-wider text-muted-foreground inline-flex items-center gap-1.5">
             <Receipt className="size-3.5" /> Gastos de hoy
           </h2>
           <div className="flex items-center gap-2.5">
-            {gastos.length > 0 && <span className="text-[12px] tabular font-semibold">{cop(total)}</span>}
+            {gastos.length > 0 && <span className="text-meta tabular font-semibold">{cop(total)}</span>}
             <Button size="sm" onClick={() => setModalAbierto(true)} className="h-8 gap-1">
               <Plus className="size-3.5" /> Nuevo gasto
             </Button>
@@ -50,7 +50,7 @@ export default function TabGastos() {
         ) : (
           <ul className="divide-y divide-border-subtle">
             {gastos.map(g => (
-              <li key={g.id} className="py-2 flex items-center gap-2 text-[13px]">
+              <li key={g.id} className="py-2 flex items-center gap-2 text-body-sm">
                 <span className="capitalize w-28 shrink-0 text-muted-foreground">{g.categoria}</span>
                 <span className="flex-1 truncate">{g.concepto || '—'}</span>
                 <span className="tabular font-semibold shrink-0">{cop(Number(g.monto))}</span>

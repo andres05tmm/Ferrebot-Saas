@@ -17,7 +17,7 @@
  */
 import { useState } from 'react'
 import { toast } from 'sonner'
-import { ReceiptText, ExternalLink, Check, HardHat, Truck, Bot, Pencil, X } from 'lucide-react'
+import { ReceiptText, ExternalLink, Check, HardHat, Truck, Bot, Pencil, X } from '@/lib/icons.jsx'
 import { api } from '@/lib/api'
 import { useFetch, cop } from '@/components/shared.jsx'
 import { useRealtimeEvent } from '@/components/RealtimeProvider.jsx'
@@ -179,11 +179,11 @@ function FilaRecibo({ gasto: g, ocupado, editando, onAprobar, onRechazar, onEdit
 
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-            <span className="tabular text-[15px] font-semibold text-foreground">{cop(n(g.monto))}</span>
+            <span className="tabular text-base font-semibold text-foreground">{cop(n(g.monto))}</span>
             <span className="text-caption text-muted-foreground">{fechaCorta(g.creado_en)}</span>
           </div>
           <div className="mt-1 flex flex-wrap items-center gap-1.5">
-            <span className="text-[12px] capitalize text-secondary-foreground">{cat}</span>
+            <span className="text-meta capitalize text-secondary-foreground">{cat}</span>
             {g.obra_id != null && (
               <span className="inline-flex items-center gap-1 text-caption text-muted-foreground">
                 <HardHat className="size-3" aria-hidden="true" /> Obra #{g.obra_id}

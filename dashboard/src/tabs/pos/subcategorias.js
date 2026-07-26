@@ -12,7 +12,7 @@
 import {
   Brush, Circle, Cog, Disc, Droplet, Droplets, FlaskConical, Hammer, Hexagon,
   Link, Lock, Package, Paintbrush, Palette, Pin, Ruler, SprayCan, Wand,
-} from 'lucide-react'
+} from '@/lib/icons.jsx'
 import { normalizarLocal } from './filtroLocal.js'
 
 const nl = (p) => normalizarLocal(p.nombre)

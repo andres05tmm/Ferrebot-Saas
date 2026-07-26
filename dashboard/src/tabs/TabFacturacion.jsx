@@ -8,7 +8,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import { toast } from 'sonner'
-import { AlertTriangle, ChevronDown, FileText, Receipt } from 'lucide-react'
+import { AlertTriangle, ChevronDown, FileText, Receipt } from '@/lib/icons.jsx'
 import { api, apiJson } from '@/lib/api'
 import { useFetch, cop } from '@/components/shared.jsx'
 import { useRealtimeEvent } from '@/components/RealtimeProvider.jsx'
@@ -92,17 +92,17 @@ function EmitirVentas({ ventas, facturadas, onFacturar }) {
           {ventas.map(v => {
             const yaFacturada = facturadas.has(v.id)
             return (
-              <li key={v.id} className="py-2 flex items-center gap-2 text-[13px]">
+              <li key={v.id} className="py-2 flex items-center gap-2 text-body-sm">
                 <div className="min-w-0 flex-1">
                   <div className="font-medium">N.º {v.consecutivo}</div>
-                  <div className="text-[11px] text-muted-foreground capitalize">{v.metodo_pago}</div>
+                  <div className="text-caption text-muted-foreground capitalize">{v.metodo_pago}</div>
                 </div>
                 <span className="tabular font-semibold shrink-0">{cop(Number(v.total))}</span>
                 {yaFacturada ? (
-                  <Badge variant="outline" className="h-5 text-[10px] text-muted-foreground shrink-0">facturada</Badge>
+                  <Badge variant="outline" className="h-5 text-micro text-muted-foreground shrink-0">facturada</Badge>
                 ) : (
                   <button onClick={() => onFacturar(v)}
-                    className="text-[11px] px-2.5 h-7 rounded-md bg-primary text-primary-foreground hover:bg-primary-hover shrink-0">
+                    className="text-caption px-2.5 h-7 rounded-md bg-primary text-primary-foreground hover:bg-primary-hover shrink-0">
                     Facturar
                   </button>
                 )}
@@ -120,7 +120,7 @@ function Historial({ facturas, loading }) {
     <Card className="p-0 overflow-hidden">
       <div className="px-3.5 py-2.5 border-b border-border-subtle flex items-center gap-2">
         <FileText className="size-4 text-muted-foreground" />
-        <h2 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Historial de facturas</h2>
+        <h2 className="text-caption font-semibold uppercase tracking-wider text-muted-foreground">Historial de facturas</h2>
       </div>
       {loading ? (
         <p className="py-10 text-center text-sm text-muted-foreground">Cargando…</p>
@@ -141,15 +141,15 @@ function FacturaRow({ factura }) {
     <li className="px-3.5 py-2.5">
       <button onClick={() => setAbierta(a => !a)} className="w-full flex items-center gap-3 text-left">
         <div className="min-w-0 flex-1">
-          <div className="text-[13px] font-medium">
+          <div className="text-body-sm font-medium">
             {[factura.prefijo, factura.consecutivo].filter(v => v != null).join('-') || `#${factura.id}`}
           </div>
-          <div className="text-[11px] text-muted-foreground truncate">
+          <div className="text-caption text-muted-foreground truncate">
             {factura.creado_en ? new Date(factura.creado_en).toLocaleString('es-CO', FECHA_CO) : '—'}
             {factura.cufe ? ` · CUFE ${String(factura.cufe).slice(0, 12)}…` : ''}
           </div>
         </div>
-        <Badge variant="outline" className={`h-5 text-[10px] capitalize shrink-0 ${ESTADO_BADGE[factura.estado] || ''}`}>
+        <Badge variant="outline" className={`h-5 text-micro capitalize shrink-0 ${ESTADO_BADGE[factura.estado] || ''}`}>
           {factura.estado}
         </Badge>
         <ChevronDown className={`size-4 text-muted-foreground shrink-0 transition-transform ${abierta ? 'rotate-180' : ''}`} />
@@ -171,11 +171,11 @@ function DetalleFactura({ facturaId }) {
     return () => { cancelado = true }
   }, [facturaId])
 
-  if (estado === 'cargando') return <p className="mt-2 text-[11px] text-muted-foreground">Cargando detalle…</p>
-  if (estado === 'error' || !detalle) return <p className="mt-2 text-[11px] text-destructive">No se pudo cargar el detalle.</p>
+  if (estado === 'cargando') return <p className="mt-2 text-caption text-muted-foreground">Cargando detalle…</p>
+  if (estado === 'error' || !detalle) return <p className="mt-2 text-caption text-destructive">No se pudo cargar el detalle.</p>
 
   return (
-    <div className="mt-2.5 space-y-1.5 bg-surface-2/50 rounded-md p-2.5 text-[12px]">
+    <div className="mt-2.5 space-y-1.5 bg-surface-2/50 rounded-md p-2.5 text-meta">
       {detalle.total != null && (
         <div className="flex justify-between"><span className="text-muted-foreground">Total</span>
           <span className="tabular font-semibold">{cop(Number(detalle.total))}</span></div>
@@ -208,11 +208,11 @@ function ConfirmacionEmision({ venta, emitiendo, onConfirmar, onCancelar }) {
           </span>
           <div>
             <h2 className="text-base font-semibold">Confirmar emisión</h2>
-            <p className="text-[13px] text-muted-foreground mt-1.5">
+            <p className="text-body-sm text-muted-foreground mt-1.5">
               Vas a emitir una factura electrónica REAL ante la DIAN. Es un documento legal e IRREVERSIBLE.
               ¿Continuar?
             </p>
-            <p className="text-[12px] text-muted-foreground mt-2">Venta N.º {venta.consecutivo} · {cop(Number(venta.total))}</p>
+            <p className="text-meta text-muted-foreground mt-2">Venta N.º {venta.consecutivo} · {cop(Number(venta.total))}</p>
           </div>
         </div>
         <div className="flex justify-end gap-2 mt-5">

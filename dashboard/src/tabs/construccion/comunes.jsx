@@ -38,7 +38,7 @@ const TONOS = {
 export function Semaforo({ tono = 'gris', children, className = '' }) {
   const t = TONOS[tono] || TONOS.gris
   return (
-    <span className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-semibold leading-none ${t.pildora} ${className}`}>
+    <span className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-caption font-semibold leading-none ${t.pildora} ${className}`}>
       <span className={`size-1.5 shrink-0 rounded-full ${t.punto}`} aria-hidden="true" />
       {children}
     </span>
@@ -58,7 +58,7 @@ export function Chips({ opciones, valor, onChange, ariaLabel }) {
             type="button"
             onClick={() => onChange(op.valor)}
             aria-pressed={activo}
-            className={`inline-flex items-center gap-1.5 rounded-full border px-3 h-7 text-[12px] font-medium transition-colors duration-fast ${
+            className={`inline-flex items-center gap-1.5 rounded-full border px-3 h-7 text-meta font-medium transition-colors duration-fast ${
               activo
                 ? 'border-primary bg-primary-soft text-primary'
                 : 'border-border text-muted-foreground hover:text-foreground hover:bg-surface-2'
@@ -67,7 +67,7 @@ export function Chips({ opciones, valor, onChange, ariaLabel }) {
             {op.tono && <span className={`size-1.5 shrink-0 rounded-full ${(TONOS[op.tono] || TONOS.gris).punto}`} aria-hidden="true" />}
             <span>{op.label}</span>
             {typeof op.conteo === 'number' && (
-              <span className={`tabular text-[11px] ${activo ? 'text-primary' : 'text-muted-foreground'}`}>{op.conteo}</span>
+              <span className={`tabular text-caption ${activo ? 'text-primary' : 'text-muted-foreground'}`}>{op.conteo}</span>
             )}
           </button>
         )
@@ -91,11 +91,11 @@ export function Campo({ label, requerido = false, hint, className = '', children
   return (
     <div className={`flex flex-col gap-1 ${className}`}>
       <span className="flex items-center gap-0.5">
-        <label htmlFor={id} className="text-[11px] font-medium text-secondary-foreground">{label}</label>
+        <label htmlFor={id} className="text-caption font-medium text-secondary-foreground">{label}</label>
         {requerido && <span className="text-destructive" aria-hidden="true">*</span>}
       </span>
       {control}
-      {hint && <span id={hintId} className="text-[11px] text-muted-foreground">{hint}</span>}
+      {hint && <span id={hintId} className="text-caption text-muted-foreground">{hint}</span>}
     </div>
   )
 }
@@ -109,8 +109,8 @@ export function EstadoVacio({ icono: Icono, titulo, descripcion, children }) {
           <Icono className="size-6" aria-hidden="true" />
         </div>
       )}
-      <h3 className="text-[15px] font-semibold text-foreground">{titulo}</h3>
-      {descripcion && <p className="mt-1 max-w-sm text-[13px] leading-relaxed text-muted-foreground">{descripcion}</p>}
+      <h3 className="text-base font-semibold text-foreground">{titulo}</h3>
+      {descripcion && <p className="mt-1 max-w-sm text-body-sm leading-relaxed text-muted-foreground">{descripcion}</p>}
       {children && <div className="mt-5 flex flex-wrap items-center justify-center gap-2">{children}</div>}
     </div>
   )
@@ -160,12 +160,12 @@ export function Kpi({ label, valor, sublinea, tono = 'neutro', tendencia = null,
   const esCard = variante === 'card'
   const cuerpo = (
     <>
-      <div className={`uppercase tracking-wider text-muted-foreground ${esCard ? 'text-[11px]' : 'text-[10px]'}`}>{label}</div>
-      <div className={`flex items-baseline gap-1.5 font-semibold tabular-nums ${esCard ? 'text-lg' : 'text-[14px]'} ${tonoCls}`}>
+      <div className={`uppercase tracking-wider text-muted-foreground ${esCard ? 'text-caption' : 'text-micro'}`}>{label}</div>
+      <div className={`flex items-baseline gap-1.5 font-semibold tabular-nums ${esCard ? 'text-lg' : 'text-base'} ${tonoCls}`}>
         <span className="min-w-0 truncate">{valor}</span>
         {tendencia}
       </div>
-      {sublinea && <div className="mt-0.5 text-[11px] text-muted-foreground">{sublinea}</div>}
+      {sublinea && <div className="mt-0.5 text-caption text-muted-foreground">{sublinea}</div>}
     </>
   )
   return esCard

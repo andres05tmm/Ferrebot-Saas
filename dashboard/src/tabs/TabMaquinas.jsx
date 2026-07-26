@@ -14,7 +14,7 @@
 import { useState } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import { toast } from 'sonner'
-import { Truck, Plus, Search, Gauge, ChevronDown, ChevronRight } from 'lucide-react'
+import { Truck, Plus, Search, Gauge, ChevronDown, ChevronRight } from '@/lib/icons.jsx'
 import { api } from '@/lib/api'
 import { useFetch, useIsMobile, cop, num } from '@/components/shared.jsx'
 import { useRealtimeEvent } from '@/components/RealtimeProvider.jsx'
@@ -94,7 +94,7 @@ export default function TabMaquinas() {
       <Card className="p-0 overflow-hidden">
         <div className="px-4 py-2.5 border-b border-border-subtle flex items-center gap-2">
           <Truck className="size-4 text-muted-foreground" aria-hidden="true" />
-          <h2 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+          <h2 className="text-caption font-semibold uppercase tracking-wider text-muted-foreground">
             Parque de maquinaria {maquinas.length > 0 && <span className="tabular">· {visibles.length}</span>}
           </h2>
         </div>
@@ -149,10 +149,10 @@ function MaquinaFila({ maquina, admin, obrasNombre, onEditar, onCambio }) {
         </span>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <span className="truncate text-[14px] font-medium text-foreground">{maquina.nombre}</span>
+            <span className="truncate text-base font-medium text-foreground">{maquina.nombre}</span>
             <Semaforo tono={est.tono}>{est.label}</Semaforo>
           </div>
-          <div className="mt-0.5 flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-[11px] text-muted-foreground">
+          <div className="mt-0.5 flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-caption text-muted-foreground">
             <span className="tabular font-medium text-secondary-foreground">{maquina.codigo}</span>
             {maquina.tipo && <span className="truncate">· {maquina.tipo}</span>}
             {maquina.placa && <span>· {maquina.placa}</span>}
@@ -161,8 +161,8 @@ function MaquinaFila({ maquina, admin, obrasNombre, onEditar, onCambio }) {
 
         {/* Tarifa por hora + mínimo facturable (vistazo rápido, oculto en móvil estrecho). */}
         <div className="hidden shrink-0 text-right sm:block">
-          <div className="tabular text-[13px] font-semibold text-foreground">{cop(Number(maquina.precio_hora_default))}<span className="text-[10px] font-normal text-muted-foreground">/h</span></div>
-          <div className="inline-flex items-center gap-1 text-[10px] text-muted-foreground">
+          <div className="tabular text-body-sm font-semibold text-foreground">{cop(Number(maquina.precio_hora_default))}<span className="text-micro font-normal text-muted-foreground">/h</span></div>
+          <div className="inline-flex items-center gap-1 text-micro text-muted-foreground">
             <Gauge className="size-3" aria-hidden="true" /> mín. {num(maquina.minimo_horas_factura)} h
           </div>
         </div>

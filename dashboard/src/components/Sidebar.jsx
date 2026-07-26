@@ -5,7 +5,7 @@
  */
 import { useEffect, useState } from 'react'
 import { NavLink } from 'react-router-dom'
-import { ChevronDown, ChevronRight, PanelLeftClose, PanelLeftOpen, Command, Sun, Moon } from 'lucide-react'
+import { ChevronDown, ChevronRight, PanelLeftClose, PanelLeftOpen, Command, Sun, Moon } from '@/lib/icons.jsx'
 import { ROUTES, groupsFor, routesByGroup } from '@/routes.jsx'
 import { useFeatures, isRouteEnabled } from '@/lib/features.jsx'
 import { useBranding } from '@/lib/branding.jsx'
@@ -86,8 +86,8 @@ export default function Sidebar({ collapsed, setCollapsed, onOpenCommand, colorS
         )}
         {!collapsed && (
           <div className="flex flex-col leading-tight min-w-0">
-            <span className="font-display text-[17px] font-bold tracking-tight text-foreground truncate leading-tight">{nombreComercial}</span>
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Dashboard</span>
+            <span className="font-display text-lg font-bold tracking-tight text-foreground truncate leading-tight">{nombreComercial}</span>
+            <span className="text-micro font-semibold uppercase tracking-wider text-muted-foreground">Dashboard</span>
           </div>
         )}
       </div>
@@ -107,7 +107,7 @@ export default function Sidebar({ collapsed, setCollapsed, onOpenCommand, colorS
               {!collapsed && (
                 <button
                   onClick={() => toggleGroup(group.id)}
-                  className="flex w-full items-center justify-between px-4 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors"
+                  className="flex w-full items-center justify-between px-4 py-1.5 text-micro font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors"
                 >
                   <span>{group.label}</span>
                   {isOpen ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}
@@ -135,7 +135,7 @@ export default function Sidebar({ collapsed, setCollapsed, onOpenCommand, colorS
           {!collapsed && (
             <>
               <span>Buscar…</span>
-              <kbd className="ml-auto text-[10px] font-mono bg-surface-2 border border-border rounded px-1.5 py-0.5">⌘K</kbd>
+              <kbd className="ml-auto text-micro font-mono bg-surface-2 border border-border rounded px-1.5 py-0.5">⌘K</kbd>
             </>
           )}
         </button>

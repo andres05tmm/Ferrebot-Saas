@@ -80,13 +80,26 @@ describe('theming por preset (tokens planos de /config)', () => {
     expect(document.documentElement.getAttribute('data-tema')).toBe('navaja')
   })
 
-  it('carga la fuente display dinámica solo si difiere de la default (Inter)', () => {
+  it('las familias que viajan en el bundle NO piden nada a Google Fonts', () => {
+    // Archivo, Fraunces y Bricolage se importan en main.jsx: pedirlas al CDN sería una petición
+    // externa, un parpadeo de fuente y una PWA que no se ve bien sin red.
     applyTheming({ preset: 'navaja', tokens: NAVAJA })
-    const link = document.getElementById('mq-font-archivo')
-    expect(link).not.toBeNull()
-    expect(link.href).toContain('family=Archivo')
+    expect(document.querySelectorAll('link[id^="mq-font-"]').length).toBe(0)
+    expect(document.documentElement.style.getPropertyValue('--font-display')).toContain('Archivo')
 
-    // Un preset cuya display ES la default (Inter) NO inyecta ningún link.
+    applyTheming({ tokens: { font_display: 'Fraunces', font_ui: 'Bricolage Grotesque' } })
+    expect(document.querySelectorAll('link[id^="mq-font-"]').length).toBe(0)
+    // El token del preset se traduce a la familia real self-host (fontsource la nombra "Variable").
+    expect(document.documentElement.style.getPropertyValue('--font-ui'))
+      .toContain('Bricolage Grotesque Variable')
+
+    // Una familia que NO tenemos sí se pide al CDN (el preset sigue siendo libre).
+    applyTheming({ tokens: { font_display: 'Playfair Display' } })
+    const link = document.getElementById('mq-font-playfair-display')
+    expect(link).not.toBeNull()
+    expect(link.href).toContain('family=Playfair+Display')
+
+    // Un preset cuya display ES la default NO inyecta ningún link.
     document.querySelectorAll('link[id^="mq-font-"]').forEach((l) => l.remove())
     applyTheming({ preset: 'lienzo', tokens: { font_display: DEFAULT_DISPLAY_FONT } })
     expect(document.querySelectorAll('link[id^="mq-font-"]').length).toBe(0)

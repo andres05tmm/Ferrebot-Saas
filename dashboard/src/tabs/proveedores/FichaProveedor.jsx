@@ -13,7 +13,7 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { Download, FileText, ImagePlus, Package, Receipt, Truck, Wallet } from 'lucide-react'
+import { Download, FileText, ImagePlus, Package, Receipt, Truck, Wallet } from '@/lib/icons.jsx'
 import { api, apiJson } from '@/lib/api'
 import { cop, SkeletonFilas } from '@/components/shared.jsx'
 import { Badge } from '@/components/ui/badge.jsx'
@@ -39,7 +39,7 @@ const MEDIO = {
 function Metrica({ label, valor, tono = '' }) {
   return (
     <div>
-      <div className="text-[11px] uppercase tracking-wider text-muted-foreground">{label}</div>
+      <div className="text-caption uppercase tracking-wider text-muted-foreground">{label}</div>
       <div className={`text-lg font-semibold tabular-nums ${tono}`}>{valor}</div>
     </div>
   )
@@ -357,7 +357,7 @@ function Listado({ cargando, filas, vacio, render }) {
               <div className="truncate">{r.izquierda}</div>
               <div className="text-caption text-muted-foreground truncate">{r.sub}</div>
             </div>
-            {r.badge && <Badge variant="outline" className="text-[10px] shrink-0">{r.badge}</Badge>}
+            {r.badge && <Badge variant="outline" className="text-micro shrink-0">{r.badge}</Badge>}
             <span className="tabular-nums shrink-0">{r.derecha}</span>
             {r.accion}
           </li>

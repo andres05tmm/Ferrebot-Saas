@@ -28,7 +28,7 @@ import { toast } from 'sonner'
 import {
   Building2, Clock, Wrench, Plus, Bot, TriangleAlert, CalendarClock,
   Gauge, Pencil, Trash2, Coins,
-} from 'lucide-react'
+} from '@/lib/icons.jsx'
 import { api } from '@/lib/api'
 import { hoyStrCO as hoyCO } from '@/lib/fechas'
 import { useFetch, cop, num } from '@/components/shared.jsx'
@@ -140,17 +140,17 @@ function Cabecera({ maquina, isAdmin, onEditar, onCambio }) {
       {/* Especificaciones: la tarifa manda (numeral Oswald), el resto en fila fina. */}
       <div className="flex flex-wrap items-end gap-x-6 gap-y-2">
         <Spec etiqueta="Tarifa / hora" destacado>
-          {cop(n(maquina.precio_hora_default))}<span className="text-[11px] font-normal text-muted-foreground">/h</span>
+          {cop(n(maquina.precio_hora_default))}<span className="text-caption font-normal text-muted-foreground">/h</span>
         </Spec>
         <Spec etiqueta="Mínimo facturable">
           <span className="inline-flex items-center gap-1"><Gauge className="size-3.5 text-muted-foreground" aria-hidden="true" />{num(maquina.minimo_horas_factura)} h</span>
         </Spec>
         {isAdmin && maquina.costo_operacion_hora != null && (
-          <Spec etiqueta="Costo interno / hora">{cop(n(maquina.costo_operacion_hora))}<span className="text-[11px] font-normal text-muted-foreground">/h</span></Spec>
+          <Spec etiqueta="Costo interno / hora">{cop(n(maquina.costo_operacion_hora))}<span className="text-caption font-normal text-muted-foreground">/h</span></Spec>
         )}
         <div className="flex flex-col gap-0.5">
-          <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Ficha técnica</span>
-          <span className="flex flex-wrap items-center gap-x-2 text-[12px] text-secondary-foreground">
+          <span className="text-micro uppercase tracking-wider text-muted-foreground">Ficha técnica</span>
+          <span className="flex flex-wrap items-center gap-x-2 text-meta text-secondary-foreground">
             <span className="tabular font-medium">{maquina.codigo}</span>
             {maquina.tipo && <span className="text-muted-foreground">· {maquina.tipo}</span>}
             {maquina.placa && <span className="text-muted-foreground">· {maquina.placa}</span>}
@@ -162,7 +162,7 @@ function Cabecera({ maquina, isAdmin, onEditar, onCambio }) {
 
       {isAdmin && (
         <div className="flex flex-wrap items-center gap-1.5">
-          <label className="text-[11px] text-muted-foreground" htmlFor={`estado-${maquina.id}`}>Estado:</label>
+          <label className="text-caption text-muted-foreground" htmlFor={`estado-${maquina.id}`}>Estado:</label>
           <select
             id={`estado-${maquina.id}`} value={maquina.estado} onChange={cambiarEstado} disabled={ocupado}
             className={`${SELECT_CLS.replace('w-full', 'w-44')} h-8`}
@@ -185,10 +185,10 @@ function Cabecera({ maquina, isAdmin, onEditar, onCambio }) {
 function Spec({ etiqueta, destacado = false, children }) {
   return (
     <div className="flex flex-col gap-0.5">
-      <span className="text-[10px] uppercase tracking-wider text-muted-foreground">{etiqueta}</span>
+      <span className="text-micro uppercase tracking-wider text-muted-foreground">{etiqueta}</span>
       <span className={destacado
-        ? 'font-display tabular text-[22px] font-semibold leading-none text-foreground'
-        : 'tabular text-[14px] font-semibold text-foreground'}>
+        ? 'font-display tabular text-xl font-semibold leading-none text-foreground'
+        : 'tabular text-base font-semibold text-foreground'}>
         {children}
       </span>
     </div>
@@ -201,8 +201,8 @@ function Panel({ icono: Icono, titulo, conteo, accion, children }) {
     <section className="rounded-md border border-border-subtle bg-surface p-3">
       <div className="mb-2.5 flex items-center gap-2">
         <Icono className="size-4 text-muted-foreground" aria-hidden="true" />
-        <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{titulo}</h3>
-        {typeof conteo === 'number' && conteo > 0 && <span className="tabular text-[11px] text-muted-foreground">· {conteo}</span>}
+        <h3 className="text-caption font-semibold uppercase tracking-wider text-muted-foreground">{titulo}</h3>
+        {typeof conteo === 'number' && conteo > 0 && <span className="tabular text-caption text-muted-foreground">· {conteo}</span>}
         {accion && <div className="ml-auto">{accion}</div>}
       </div>
       {children}
@@ -211,7 +211,7 @@ function Panel({ icono: Icono, titulo, conteo, accion, children }) {
 }
 
 function Vacio({ children }) {
-  return <p className="py-5 text-center text-[12px] text-muted-foreground">{children}</p>
+  return <p className="py-5 text-center text-meta text-muted-foreground">{children}</p>
 }
 function Cargando() {
   return <div className="h-16 animate-pulse rounded bg-surface-2" aria-hidden="true" />
@@ -222,7 +222,7 @@ function SeccionAsignaciones({ q, asignaciones, obraLabel, hoy, maquina, isAdmin
   const [abrirForm, setAbrirForm] = useState(false)
   const accion = isAdmin
     ? (
-      <button onClick={() => setAbrirForm((v) => !v)} className={`${BTN_OUTLINE} h-7 px-2 text-[12px]`} aria-expanded={abrirForm}>
+      <button onClick={() => setAbrirForm((v) => !v)} className={`${BTN_OUTLINE} h-7 px-2 text-meta`} aria-expanded={abrirForm}>
         <Plus className="size-3.5" /> Asignar
       </button>
     )
@@ -241,9 +241,9 @@ function SeccionAsignaciones({ q, asignaciones, obraLabel, hoy, maquina, isAdmin
         : asignaciones.length === 0 ? <Vacio>Esta máquina no está asignada a ninguna obra todavía.</Vacio>
           : (
             <div className="-mx-1 overflow-x-auto">
-              <table className="w-full min-w-[380px] text-[12px]">
+              <table className="w-full min-w-[380px] text-meta">
                 <thead>
-                  <tr className="text-left text-[10px] uppercase tracking-wider text-muted-foreground">
+                  <tr className="text-left text-micro uppercase tracking-wider text-muted-foreground">
                     <th className="px-1 pb-1 font-medium">Obra</th>
                     <th className="px-1 pb-1 font-medium">Vigencia</th>
                     <th className="px-1 pb-1 text-right font-medium">$/h pactado</th>
@@ -289,7 +289,7 @@ function SeccionKardex({ q, horas, asignaciones, obraLabel, isAdmin, maquina, on
 
   const totalPill = isAdmin && horas.length > 0
     ? (
-      <span className="inline-flex items-center gap-1 rounded-full bg-primary-soft px-2 py-0.5 text-[11px] font-semibold text-primary">
+      <span className="inline-flex items-center gap-1 rounded-full bg-primary-soft px-2 py-0.5 text-caption font-semibold text-primary">
         <Coins className="size-3" aria-hidden="true" /> Total facturado {cop(totalIngreso)}
       </span>
     )
@@ -297,7 +297,7 @@ function SeccionKardex({ q, horas, asignaciones, obraLabel, isAdmin, maquina, on
   const accion = (
     <div className="flex items-center gap-2">
       {totalPill}
-      <button onClick={() => setAbrir((v) => !v)} className={`${BTN_OUTLINE} h-7 px-2 text-[12px]`} aria-expanded={abrir}>
+      <button onClick={() => setAbrir((v) => !v)} className={`${BTN_OUTLINE} h-7 px-2 text-meta`} aria-expanded={abrir}>
         <Plus className="size-3.5" /> Registrar horas
       </button>
     </div>
@@ -316,9 +316,9 @@ function SeccionKardex({ q, horas, asignaciones, obraLabel, isAdmin, maquina, on
         : horas.length === 0 ? <Vacio>Sin partes de horas. Llegan del bot de campo o se registran contra la obra.</Vacio>
           : (
             <div className="-mx-1 overflow-x-auto">
-              <table className="w-full min-w-[460px] text-[12px]">
+              <table className="w-full min-w-[460px] text-meta">
                 <thead>
-                  <tr className="text-left text-[10px] uppercase tracking-wider text-muted-foreground">
+                  <tr className="text-left text-micro uppercase tracking-wider text-muted-foreground">
                     <th className="px-1 pb-1 font-medium">Fecha</th>
                     <th className="px-1 pb-1 font-medium">Obra</th>
                     <th className="px-1 pb-1 text-right font-medium">H. trab.</th>
@@ -338,7 +338,7 @@ function SeccionKardex({ q, horas, asignaciones, obraLabel, isAdmin, maquina, on
                             <span className="inline-flex items-center gap-1.5">
                               {r.fecha}
                               {r.origen_registro === 'TELEGRAM_BOT' && (
-                                <span className="inline-flex items-center gap-0.5 text-[10px] text-muted-foreground" title="Registrado por el bot de campo">
+                                <span className="inline-flex items-center gap-0.5 text-micro text-muted-foreground" title="Registrado por el bot de campo">
                                   <Bot className="size-3" aria-hidden="true" /> bot
                                 </span>
                               )}
@@ -382,7 +382,7 @@ function SeccionMantenimientos({ q, mants, horas, maquinaId, isAdmin, onCreado }
 
   const accion = isAdmin
     ? (
-      <button onClick={() => setAbrirForm((v) => !v)} className={`${BTN_OUTLINE} h-7 px-2 text-[12px]`} aria-expanded={abrirForm}>
+      <button onClick={() => setAbrirForm((v) => !v)} className={`${BTN_OUTLINE} h-7 px-2 text-meta`} aria-expanded={abrirForm}>
         <Plus className="size-3.5" /> Registrar
       </button>
     )
@@ -414,15 +414,15 @@ function MantItem({ m, estado }) {
   return (
     <li className="rounded-md border border-border-subtle bg-surface-2/50 px-2.5 py-2">
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-        <span className="text-[12px] font-semibold text-foreground">{TIPO_MANT[m.tipo] || m.tipo}</span>
-        <span className="tabular text-[11px] text-muted-foreground">{m.fecha}</span>
+        <span className="text-meta font-semibold text-foreground">{TIPO_MANT[m.tipo] || m.tipo}</span>
+        <span className="tabular text-caption text-muted-foreground">{m.fecha}</span>
         {estado === 'vencido' && <Semaforo tono="rojo">Vencido</Semaforo>}
         {estado === 'proximo' && <Semaforo tono="ambar">Próximo</Semaforo>}
-        <span className="tabular ml-auto text-[12px] font-medium text-foreground">{cop(n(m.costo))}</span>
+        <span className="tabular ml-auto text-meta font-medium text-foreground">{cop(n(m.costo))}</span>
       </div>
-      <p className="mt-1 text-[12px] leading-snug text-secondary-foreground">{m.descripcion}</p>
+      <p className="mt-1 text-meta leading-snug text-secondary-foreground">{m.descripcion}</p>
       {(m.proximo_en_fecha || m.proximo_en_horas != null || m.horas_maquina != null) && (
-        <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-muted-foreground">
+        <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-caption text-muted-foreground">
           {m.horas_maquina != null && <span className="inline-flex items-center gap-1"><Gauge className="size-3" aria-hidden="true" />{num(m.horas_maquina)} h horómetro</span>}
           {m.proximo_en_fecha && <span className="inline-flex items-center gap-1"><CalendarClock className="size-3" aria-hidden="true" />próximo {m.proximo_en_fecha}</span>}
           {m.proximo_en_horas != null && <span className="inline-flex items-center gap-1"><TriangleAlert className="size-3" aria-hidden="true" />cada {num(m.proximo_en_horas)} h</span>}

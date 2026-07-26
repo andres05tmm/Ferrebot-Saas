@@ -13,7 +13,7 @@
  */
 import { useState } from 'react'
 import { useOutletContext } from 'react-router-dom'
-import { CalendarDays } from 'lucide-react'
+import { CalendarDays } from '@/lib/icons.jsx'
 import { useFetch, useIsMobile } from '@/components/shared.jsx'
 import { useRealtimeEvent } from '@/components/RealtimeProvider.jsx'
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet.jsx'
@@ -66,7 +66,7 @@ export default function CalendarioObra() {
         <h1 className="inline-flex items-center gap-2 text-base font-semibold text-foreground">
           <CalendarDays className="size-5 text-primary" aria-hidden="true" /> Calendario de obra
         </h1>
-        <p className="text-[12px] text-muted-foreground">
+        <p className="text-meta text-muted-foreground">
           {MESES[mes - 1]} {anio} · actividad de obras, máquinas y personal.
         </p>
       </div>

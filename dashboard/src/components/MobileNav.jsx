@@ -5,7 +5,7 @@
  */
 import { useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { LayoutDashboard, ChevronUp, X } from 'lucide-react'
+import { LayoutDashboard, ChevronUp, X } from '@/lib/icons.jsx'
 import { groupsFor, groupOf, routesByGroup, ROUTES } from '@/routes.jsx'
 import { useFeatures, resolveHomePath } from '@/lib/features.jsx'
 import { useAuth } from '@/hooks/useAuth.js'
@@ -133,7 +133,7 @@ function BottomItem({ icon: Icon, label, active, hasMore, onClick }) {
       )}
     >
       <Icon className={cn('size-5', active && 'text-primary')} />
-      <span className={cn('text-[10px] font-medium', active && 'font-semibold')}>{label}</span>
+      <span className={cn('text-micro font-medium', active && 'font-semibold')}>{label}</span>
       {hasMore && <ChevronUp className="size-2.5 absolute top-1 right-1/3 opacity-50" />}
     </button>
   )

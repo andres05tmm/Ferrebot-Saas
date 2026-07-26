@@ -7,7 +7,7 @@
  * La barra entra animando scaleX (transform, GPU) — no width, para no reflowear; reduced-motion la corta.
  */
 import { motion } from 'framer-motion'
-import { BarChart3 } from 'lucide-react'
+import { BarChart3 } from '@/lib/icons.jsx'
 import { cop } from '@/components/shared.jsx'
 import { SeccionPanel, n } from './piezas.jsx'
 
@@ -20,7 +20,7 @@ export default function BarrasUtilidad({ obras = [] }) {
   return (
     <SeccionPanel icon={BarChart3} titulo="Utilidad por obra" contentClassName="p-4" aria-label="Top de obras por utilidad">
       {top.length === 0 ? (
-        <p className="py-6 text-center text-[13px] text-muted-foreground">Aún no hay obras con movimiento.</p>
+        <p className="py-6 text-center text-body-sm text-muted-foreground">Aún no hay obras con movimiento.</p>
       ) : (
         <ul className="space-y-3">
           {top.map((o) => <BarraObra key={o.obra_id} obra={o} max={max} />)}
@@ -40,8 +40,8 @@ function BarraObra({ obra, max }) {
   return (
     <li>
       <div className="mb-1 flex items-baseline justify-between gap-2">
-        <span className="min-w-0 flex-1 truncate text-[13px] text-secondary-foreground">{obra.nombre}</span>
-        <span className={`shrink-0 text-[12px] font-semibold tabular-nums ${positivo ? 'text-success' : 'text-destructive'}`}>
+        <span className="min-w-0 flex-1 truncate text-body-sm text-secondary-foreground">{obra.nombre}</span>
+        <span className={`shrink-0 text-meta font-semibold tabular-nums ${positivo ? 'text-success' : 'text-destructive'}`}>
           {cop(util)}{margenPct != null && <span className="ml-1 font-normal text-muted-foreground">· {margenPct}%</span>}
         </span>
       </div>

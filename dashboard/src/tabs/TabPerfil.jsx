@@ -11,7 +11,7 @@ import { toast } from 'sonner'
 import {
   Building2, Camera, Check, HandCoins, KeyRound, LogOut, Mail, Moon, Pencil,
   Receipt, ShieldCheck, ShoppingCart, Sun, Truck, UserRound, Wallet, X,
-} from 'lucide-react'
+} from '@/lib/icons.jsx'
 import { api, apiJson } from '@/lib/api'
 import { useFetch, cop } from '@/components/shared.jsx'
 import { useAuth } from '@/hooks/useAuth.js'
@@ -159,7 +159,7 @@ function TarjetaIdentidad({ perfil, color, onCambio }) {
                 }}
                 autoFocus
                 maxLength={60}
-                className="h-9 text-[15px] font-semibold"
+                className="h-9 text-base font-semibold"
                 aria-label="Nombre"
               />
               <button onClick={guardarNombre} title="Guardar"
@@ -173,7 +173,7 @@ function TarjetaIdentidad({ perfil, color, onCambio }) {
             </div>
           ) : (
             <div className="flex items-center gap-1 min-w-0 group/nombre">
-              <h2 className="text-[17px] font-semibold tracking-tight truncate">{perfil.nombre}</h2>
+              <h2 className="text-lg font-semibold tracking-tight truncate">{perfil.nombre}</h2>
               <button
                 onClick={() => setEditando(true)}
                 title="Editar nombre"
@@ -185,11 +185,11 @@ function TarjetaIdentidad({ perfil, color, onCambio }) {
             </div>
           )}
           <div className="flex items-center gap-2 mt-1 min-w-0">
-            <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-primary-soft text-primary capitalize shrink-0">
+            <span className="px-2 py-0.5 rounded-full text-caption font-semibold bg-primary-soft text-primary capitalize shrink-0">
               {perfil.rol === 'super_admin' ? 'súper admin' : perfil.rol}
             </span>
             {perfil.email && (
-              <span className="text-[12px] text-muted-foreground truncate">{perfil.email}</span>
+              <span className="text-meta text-muted-foreground truncate">{perfil.email}</span>
             )}
           </div>
         </div>
@@ -249,7 +249,7 @@ function SeccionPreferencias({ perfil, color, onCambio }) {
   return (
     <Seccion titulo="Preferencias">
       <div className="px-4 py-3 space-y-2">
-        <span className="block text-[13px]">Mi color</span>
+        <span className="block text-body-sm">Mi color</span>
         <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Color personal">
           {COLORES.map(c => (
             <button
@@ -262,7 +262,7 @@ function SeccionPreferencias({ perfil, color, onCambio }) {
               className="size-6 rounded-full grid place-items-center transition-transform hover:scale-110 focus-visible:scale-110"
               style={{ backgroundColor: c }}
             >
-              {c === color && <Check className="size-3.5 text-white" strokeWidth={3} />}
+              {c === color && <Check className="size-3.5 text-white" weight="bold" />}
             </button>
           ))}
         </div>
@@ -271,8 +271,8 @@ function SeccionPreferencias({ perfil, color, onCambio }) {
         onClick={toggleTema}
         className="w-full px-4 py-3 flex items-center justify-between gap-3 hover:bg-surface-2 transition-colors text-left"
       >
-        <span className="text-[13px]">Tema</span>
-        <span className="flex items-center gap-1.5 text-[13px] text-muted-foreground">
+        <span className="text-body-sm">Tema</span>
+        <span className="flex items-center gap-1.5 text-body-sm text-muted-foreground">
           {tema === 'dark' ? <Moon className="size-4" /> : <Sun className="size-4" />}
           {tema === 'dark' ? 'Oscuro' : 'Claro'}
         </span>
@@ -310,14 +310,14 @@ function SeccionSeguridad({ perfil }) {
         className="w-full px-4 py-3 flex items-center gap-3 hover:bg-surface-2 transition-colors text-left disabled:opacity-50 disabled:hover:bg-transparent"
       >
         <KeyRound className="size-4 text-muted-foreground shrink-0" />
-        <span className="text-[13px]">{enviando ? 'Enviando correo…' : 'Cambiar contraseña'}</span>
+        <span className="text-body-sm">{enviando ? 'Enviando correo…' : 'Cambiar contraseña'}</span>
       </button>
       <button
         onClick={logout}
         className="w-full px-4 py-3 flex items-center gap-3 hover:bg-destructive/5 transition-colors text-left text-destructive"
       >
         <LogOut className="size-4 shrink-0" />
-        <span className="text-[13px] font-medium">Cerrar sesión</span>
+        <span className="text-body-sm font-medium">Cerrar sesión</span>
       </button>
     </Seccion>
   )
@@ -367,7 +367,7 @@ function Actividad() {
     <Card className="p-0 overflow-hidden min-w-0">
       <div className="px-4 pt-3.5 pb-3 border-b border-border-subtle">
         <div className="flex items-center justify-between gap-3 flex-wrap">
-          <h2 className="text-[13px] font-semibold">Mi actividad</h2>
+          <h2 className="text-body-sm font-semibold">Mi actividad</h2>
           <div className="flex gap-1" role="tablist" aria-label="Rango de actividad">
             {RANGOS.map(r => (
               <button
@@ -376,7 +376,7 @@ function Actividad() {
                 aria-selected={dias === r.dias}
                 onClick={() => setDias(r.dias)}
                 className={cn(
-                  'h-7 px-2.5 rounded-md text-[12px] font-medium transition-colors',
+                  'h-7 px-2.5 rounded-md text-meta font-medium transition-colors',
                   dias === r.dias
                     ? 'bg-primary-soft text-primary'
                     : 'text-muted-foreground hover:text-foreground hover:bg-surface-2',
@@ -395,7 +395,7 @@ function Actividad() {
       ) : feed.acciones.length === 0 ? (
         <div className="py-14 px-6 text-center">
           <p className="text-sm font-medium">Sin actividad en este rango</p>
-          <p className="text-[12px] text-muted-foreground mt-1 max-w-xs mx-auto">
+          <p className="text-meta text-muted-foreground mt-1 max-w-xs mx-auto">
             Las ventas, gastos, abonos y compras que registres con tu usuario van a aparecer aquí.
           </p>
         </div>
@@ -403,7 +403,7 @@ function Actividad() {
         <>
           {grupos.map(g => (
             <section key={g.clave} aria-label={tituloDia(g.clave)}>
-              <div className="px-4 py-1.5 bg-surface-2/50 border-b border-border-subtle text-[11px] font-semibold uppercase tracking-wider text-muted-foreground capitalize">
+              <div className="px-4 py-1.5 bg-surface-2/50 border-b border-border-subtle text-caption font-semibold uppercase tracking-wider text-muted-foreground capitalize">
                 {tituloDia(g.clave)}
               </div>
               <ul className="divide-y divide-border-subtle">
@@ -415,7 +415,7 @@ function Actividad() {
             <button
               onClick={cargarMas}
               disabled={cargandoMas}
-              className="w-full py-2.5 text-[12px] font-medium text-muted-foreground hover:text-foreground hover:bg-surface-2 border-t border-border-subtle disabled:opacity-60"
+              className="w-full py-2.5 text-meta font-medium text-muted-foreground hover:text-foreground hover:bg-surface-2 border-t border-border-subtle disabled:opacity-60"
             >
               {cargandoMas ? 'Cargando…' : 'Cargar más'}
             </button>
@@ -436,7 +436,7 @@ function ResumenLinea({ resumen }) {
     resumen.compras ? `${resumen.compras} ${resumen.compras === 1 ? 'compra' : 'compras'}` : null,
   ].filter(Boolean)
   return (
-    <p className="mt-1.5 text-[12px] text-muted-foreground tabular">{partes.join(' · ')}</p>
+    <p className="mt-1.5 text-meta text-muted-foreground tabular">{partes.join(' · ')}</p>
   )
 }
 
@@ -445,7 +445,7 @@ function FilaAccion({ accion }) {
   const Icon = t.icon
   const anulada = accion.estado === 'anulada'
   return (
-    <li className="px-4 h-[52px] flex items-center gap-3 text-[13px] hover:bg-surface-2/50 transition-colors">
+    <li className="px-4 h-[52px] flex items-center gap-3 text-body-sm hover:bg-surface-2/50 transition-colors">
       <span className="size-7 rounded-md grid place-items-center shrink-0 bg-surface-2 text-muted-foreground">
         <Icon className="size-3.5" />
       </span>
@@ -455,7 +455,7 @@ function FilaAccion({ accion }) {
         </span>
       </div>
       {anulada && (
-        <span className="px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-destructive/10 text-destructive shrink-0">
+        <span className="px-1.5 py-0.5 rounded-full text-micro font-semibold bg-destructive/10 text-destructive shrink-0">
           anulada
         </span>
       )}
@@ -465,7 +465,7 @@ function FilaAccion({ accion }) {
             {cop(Number(accion.monto))}
           </div>
         )}
-        <div className="text-[11px] text-muted-foreground tabular leading-tight">
+        <div className="text-caption text-muted-foreground tabular leading-tight">
           {new Date(accion.fecha).toLocaleTimeString('es-CO', HORA)}
         </div>
       </div>
@@ -477,7 +477,7 @@ function FilaAccion({ accion }) {
 function Seccion({ titulo, children }) {
   return (
     <Card className="p-0 overflow-hidden">
-      <div className="px-4 pt-3 pb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+      <div className="px-4 pt-3 pb-2 text-caption font-semibold uppercase tracking-wider text-muted-foreground">
         {titulo}
       </div>
       <div className="divide-y divide-border-subtle border-t border-border-subtle">{children}</div>
@@ -489,8 +489,8 @@ function FilaDato({ icon: Icon, label, valor, muted }) {
   return (
     <div className="px-4 py-3 flex items-center gap-3">
       <Icon className="size-4 text-muted-foreground shrink-0" />
-      <span className="text-[13px] text-muted-foreground flex-1">{label}</span>
-      <span className={cn('text-[13px] font-medium truncate max-w-[55%] text-right',
+      <span className="text-body-sm text-muted-foreground flex-1">{label}</span>
+      <span className={cn('text-body-sm font-medium truncate max-w-[55%] text-right',
         muted && 'text-muted-foreground font-normal')}>
         {valor}
       </span>

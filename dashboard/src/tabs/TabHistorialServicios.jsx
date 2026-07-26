@@ -19,7 +19,7 @@ import { useState } from 'react'
 import {
   ChevronDown, ChevronRight, MessageCircle, Monitor,
   ClipboardList, CalendarClock, BedDouble,
-} from 'lucide-react'
+} from '@/lib/icons.jsx'
 import { useFetch, cop, num } from '@/components/shared.jsx'
 import { useFeatures } from '@/lib/features.jsx'
 import { Card } from '@/components/ui/card.jsx'
@@ -78,11 +78,11 @@ export default function TabHistorialServicios() {
       </header>
 
       <Card className="p-3 flex flex-wrap items-end gap-3">
-        <label className="flex flex-col gap-1 text-[11px] text-muted-foreground">
+        <label className="flex flex-col gap-1 text-caption text-muted-foreground">
           Desde
           <Input type="date" value={desde} max={hasta} onChange={(e) => setDesde(e.target.value)} aria-label="Desde" className="h-9 w-40" />
         </label>
-        <label className="flex flex-col gap-1 text-[11px] text-muted-foreground">
+        <label className="flex flex-col gap-1 text-caption text-muted-foreground">
           Hasta
           <Input type="date" value={hasta} min={desde} onChange={(e) => setHasta(e.target.value)} aria-label="Hasta" className="h-9 w-40" />
         </label>
@@ -120,12 +120,12 @@ function ChipsEstado({ estados, estado, onEstado, total }) {
       {['todos', ...estados].map((op) => (
         <button
           key={op} type="button" onClick={() => onEstado(op)} aria-pressed={estado === op}
-          className={`px-2.5 py-1 rounded-full text-[12px] font-medium border transition-colors ${estado === op ? 'bg-primary text-primary-foreground border-primary' : 'border-border text-muted-foreground hover:text-foreground'}`}
+          className={`px-2.5 py-1 rounded-full text-meta font-medium border transition-colors ${estado === op ? 'bg-primary text-primary-foreground border-primary' : 'border-border text-muted-foreground hover:text-foreground'}`}
         >
           {CHIP_LABEL[op] || op}
         </button>
       ))}
-      <span className="ml-auto text-[12px] text-muted-foreground tabular-nums">
+      <span className="ml-auto text-meta text-muted-foreground tabular-nums">
         {total} {total === 1 ? 'resultado' : 'resultados'}
       </span>
     </div>
@@ -203,20 +203,20 @@ function FilaPedido({ p }) {
       >
         {abierto ? <ChevronDown className="size-4 shrink-0 text-muted-foreground" />
           : <ChevronRight className="size-4 shrink-0 text-muted-foreground" />}
-        <span className="text-[11px] text-muted-foreground tabular-nums w-24 shrink-0">{fmtFechaHora(p.creado_en)}</span>
-        <span className="text-[13px] font-medium truncate flex-1 inline-flex items-center gap-1.5">
+        <span className="text-caption text-muted-foreground tabular-nums w-24 shrink-0">{fmtFechaHora(p.creado_en)}</span>
+        <span className="text-body-sm font-medium truncate flex-1 inline-flex items-center gap-1.5">
           <OrigenIcon origen={p.origen} />
           <span className="truncate">{p.cliente_nombre || p.cliente_telefono}</span>
         </span>
-        <span className="text-[12px] text-muted-foreground shrink-0 hidden sm:inline">
+        <span className="text-meta text-muted-foreground shrink-0 hidden sm:inline">
           {items.length} {items.length === 1 ? 'ítem' : 'ítems'}
         </span>
-        <span className="text-[13px] font-semibold tabular-nums w-24 text-right shrink-0">{cop(p.total)}</span>
+        <span className="text-body-sm font-semibold tabular-nums w-24 text-right shrink-0">{cop(p.total)}</span>
         <EstadoPedidoBadge estado={p.estado} />
       </button>
       {abierto && (
         <div className="px-9 py-2.5 bg-surface-2/40 border-t border-border-subtle">
-          <ul className="space-y-1 text-[12px]">
+          <ul className="space-y-1 text-meta">
             {items.map((i) => (
               <li key={i.id} className="flex items-center justify-between gap-2">
                 <span className="truncate">{num(i.cantidad)}× {i.nombre}</span>
@@ -249,12 +249,12 @@ function HistorialCitas({ desde, hasta, estado, onEstado }) {
         vacioIcon={CalendarClock} vacioTexto="Sin citas en el rango.">
         {filtradas.map((c) => (
           <li key={c.id} className="flex items-center gap-3 px-3.5 py-2">
-            <span className="text-[11px] text-muted-foreground tabular-nums w-24 shrink-0">{fmtFechaHora(c.inicio)}</span>
-            <span className="text-[13px] font-medium truncate flex-1 inline-flex items-center gap-1.5">
+            <span className="text-caption text-muted-foreground tabular-nums w-24 shrink-0">{fmtFechaHora(c.inicio)}</span>
+            <span className="text-body-sm font-medium truncate flex-1 inline-flex items-center gap-1.5">
               <OrigenIcon origen={c.origen} />
               <span className="truncate">{c.cliente_nombre}</span>
             </span>
-            <span className="text-[12px] text-muted-foreground truncate w-36 shrink-0 hidden sm:block">
+            <span className="text-meta text-muted-foreground truncate w-36 shrink-0 hidden sm:block">
               {nombreServicio[c.servicio_id] || `Servicio #${c.servicio_id}`}
             </span>
             <EstadoBadge estado={c.estado} />
@@ -290,16 +290,16 @@ function HistorialReservas({ desde, hasta, estado, onEstado }) {
         vacioIcon={BedDouble} vacioTexto="Sin reservas en el rango.">
         {filtradas.map((c) => (
           <li key={c.id} className="flex items-center gap-3 px-3.5 py-2">
-            <span className="text-[12px] tabular-nums w-32 shrink-0 inline-flex items-center gap-1">
+            <span className="text-meta tabular-nums w-32 shrink-0 inline-flex items-center gap-1">
               <span className="font-medium">{fmtDia(c.inicio)}</span>
               <span className="text-muted-foreground">→</span>
               <span className="font-medium">{fmtDia(c.fin)}</span>
             </span>
-            <span className="text-[13px] font-medium truncate flex-1 inline-flex items-center gap-1.5">
+            <span className="text-body-sm font-medium truncate flex-1 inline-flex items-center gap-1.5">
               <OrigenIcon origen={c.origen} />
               <span className="truncate">{c.cliente_nombre}</span>
             </span>
-            <span className="text-[12px] text-muted-foreground truncate w-32 shrink-0 hidden sm:block">
+            <span className="text-meta text-muted-foreground truncate w-32 shrink-0 hidden sm:block">
               {nombreHabitacion[c.recurso_id] || `Habitación #${c.recurso_id}`}
             </span>
             <EstadoBadge estado={c.estado} />

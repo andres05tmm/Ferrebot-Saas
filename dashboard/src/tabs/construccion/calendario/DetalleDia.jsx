@@ -14,7 +14,7 @@
 import { useState } from 'react'
 import {
   Truck, HardHat, Users, Wrench, Package, ClipboardList, CalendarDays, TriangleAlert, Camera, Ruler, X, Plus,
-} from 'lucide-react'
+} from '@/lib/icons.jsx'
 import { toast } from 'sonner'
 import { api } from '@/lib/api'
 import { useFetch } from '@/components/shared.jsx'
@@ -70,7 +70,7 @@ export default function DetalleDia({ fecha, filtros, onCerrar, onCambio }) {
     <Card className="p-0 overflow-hidden">
       <div className="flex items-center gap-2 border-b border-border-subtle px-3.5 py-2.5">
         <CalendarDays className="size-4 text-primary" aria-hidden="true" />
-        <h2 className="flex-1 text-[13px] font-semibold text-foreground">{fechaLarga(fecha)}</h2>
+        <h2 className="flex-1 text-body-sm font-semibold text-foreground">{fechaLarga(fecha)}</h2>
         <button type="button" onClick={onCerrar} aria-label="Cerrar detalle del día"
           className="grid size-9 cursor-pointer place-items-center rounded-md text-muted-foreground hover:bg-surface-2 sm:size-7">
           <X className="size-4" />
@@ -85,7 +85,7 @@ export default function DetalleDia({ fecha, filtros, onCerrar, onCambio }) {
       ) : (
         <div className="space-y-2 p-3">
           {total === 0 && (
-            <p className="px-1 text-[12px] text-muted-foreground">
+            <p className="px-1 text-meta text-muted-foreground">
               {cuando === 'pasado'
                 ? 'Sin actividad registrada ese día.'
                 : 'Sin actividad este día. Puedes planear asignaciones abajo.'}
@@ -110,10 +110,10 @@ function Seccion({ icono: Icono, titulo, conteo, children }) {
   if (!conteo) return null
   return (
     <details open className="rounded-md border border-border-subtle bg-surface">
-      <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2 text-[12px] font-semibold text-foreground">
+      <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2 text-meta font-semibold text-foreground">
         <Icono className="size-4 text-muted-foreground" aria-hidden="true" />
         <span>{titulo}</span>
-        <span className="ml-auto tabular text-[11px] text-muted-foreground">{conteo}</span>
+        <span className="ml-auto tabular text-caption text-muted-foreground">{conteo}</span>
       </summary>
       <div className="space-y-2 px-3 pb-3 pt-1">{children}</div>
     </details>
@@ -121,7 +121,7 @@ function Seccion({ icono: Icono, titulo, conteo, children }) {
 }
 
 function Linea({ children }) {
-  return <div className="rounded-md bg-surface-2/50 px-2.5 py-1.5 text-[12px] text-secondary-foreground">{children}</div>
+  return <div className="rounded-md bg-surface-2/50 px-2.5 py-1.5 text-meta text-secondary-foreground">{children}</div>
 }
 
 // Máquinas del día: lista de partes (con desglose de turnos si la máquina rotó operadores) + acceso a
@@ -132,15 +132,15 @@ function SeccionMaquinas({ horas, fecha, registrable, onCambio }) {
   const [abrir, setAbrir] = useState(false)
   return (
     <details open className="rounded-md border border-border-subtle bg-surface">
-      <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2 text-[12px] font-semibold text-foreground">
+      <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2 text-meta font-semibold text-foreground">
         <Truck className="size-4 text-muted-foreground" aria-hidden="true" />
         <span>Máquinas</span>
-        <span className="ml-auto tabular text-[11px] text-muted-foreground">{horas.length}</span>
+        <span className="ml-auto tabular text-caption text-muted-foreground">{horas.length}</span>
       </summary>
       <div className="space-y-2 px-3 pb-3 pt-1">
         {registrable && (
           <button type="button" onClick={() => setAbrir((v) => !v)} aria-expanded={abrir}
-            className={`${BTN_OUTLINE} min-h-11 cursor-pointer px-2.5 text-[12px] sm:min-h-0 sm:h-7`}>
+            className={`${BTN_OUTLINE} min-h-11 cursor-pointer px-2.5 text-meta sm:min-h-0 sm:h-7`}>
             <Plus className="size-3.5" /> Registrar horas
           </button>
         )}
@@ -149,7 +149,7 @@ function SeccionMaquinas({ horas, fecha, registrable, onCambio }) {
             onExito={() => { setAbrir(false); onCambio?.() }} onCancelar={() => setAbrir(false)} />
         )}
         {horas.length === 0 && (
-          <p className="px-1 text-[11px] text-muted-foreground">Sin partes de horas este día.</p>
+          <p className="px-1 text-caption text-muted-foreground">Sin partes de horas este día.</p>
         )}
         {horas.map((r) => <LineaMaquina key={r.id} r={r} />)}
       </div>
@@ -174,13 +174,13 @@ function LineaMaquina({ r }) {
       </div>
       <TurnosSublineas turnos={turnos} />
       {hayMeta && (
-        <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-muted-foreground">
+        <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-caption text-muted-foreground">
           {operadorCabecera && <span>operador {r.operador}</span>}
           {facturablesDifieren && <span className="tabular">· {h(r.horas_facturables)} facturables</span>}
           {viaTelegram && <span>· vía Telegram</span>}
         </div>
       )}
-      {r.observaciones && <p className="mt-0.5 text-[11px] text-muted-foreground">{r.observaciones}</p>}
+      {r.observaciones && <p className="mt-0.5 text-caption text-muted-foreground">{r.observaciones}</p>}
     </Linea>
   )
 }
@@ -192,14 +192,14 @@ function SeccionObras({ reportes, consumos }) {
         <Linea key={`r-${r.id}`}>
           <div className="font-medium text-foreground">{r.obra || `Obra #${r.obra_id}`}</div>
           {r.avance_descripcion && <p className="mt-0.5 leading-relaxed">{r.avance_descripcion}</p>}
-          <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-muted-foreground">
+          <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-caption text-muted-foreground">
             {r.m2_ejecutados != null && <span className="inline-flex items-center gap-1"><Ruler className="size-3" aria-hidden="true" />{r.m2_ejecutados} m²</span>}
             {r.m3_ejecutados != null && <span className="inline-flex items-center gap-1"><Ruler className="size-3" aria-hidden="true" />{r.m3_ejecutados} m³</span>}
             {arr(r.foto_urls).length > 0 && <span className="inline-flex items-center gap-1"><Camera className="size-3" aria-hidden="true" />{arr(r.foto_urls).length} foto(s)</span>}
             {r.reportado_por && <span>· {r.reportado_por}</span>}
           </div>
           {r.incidentes && (
-            <p className="mt-1 inline-flex items-start gap-1 text-[11px] text-warning">
+            <p className="mt-1 inline-flex items-start gap-1 text-caption text-warning">
               <TriangleAlert className="mt-0.5 size-3 shrink-0" aria-hidden="true" />{r.incidentes}
             </p>
           )}
@@ -212,7 +212,7 @@ function SeccionObras({ reportes, consumos }) {
             <span className="font-medium text-foreground">{c.producto || `Producto #${c.producto_id}`}</span>
             <span className="tabular text-muted-foreground">× {c.cantidad}</span>
           </span>
-          {c.obra && <span className="ml-1 text-[11px] text-muted-foreground">· {c.obra}</span>}
+          {c.obra && <span className="ml-1 text-caption text-muted-foreground">· {c.obra}</span>}
         </Linea>
       ))}
     </Seccion>
@@ -232,7 +232,7 @@ function SeccionTrabajadores({ asistencia }) {
                 ? <Semaforo tono="ambar" className="ml-auto">{a.ausencia}</Semaforo>
                 : <Semaforo tono="verde" className="ml-auto">Presente</Semaforo>}
             </div>
-            <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-muted-foreground">
+            <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-caption text-muted-foreground">
               <span className="tabular">{h(a.horas_trabajadas)}</span>
               <span>· {a.obra ? `en ${a.obra}` : 'administrativo'}</span>
               {extras > 0 && <span className="tabular">· +{h(extras)} extra</span>}
@@ -253,8 +253,8 @@ function SeccionMantenimientos({ hechos, proximos }) {
             <span className="font-medium text-foreground">{m.maquina || `Máquina #${m.maquina_id}`}</span>
             {m.tipo && <Semaforo tono="azul" className="ml-auto">{m.tipo}</Semaforo>}
           </div>
-          {m.descripcion && <p className="mt-0.5 text-[11px] text-muted-foreground">{m.descripcion}</p>}
-          {m.proximo_en_fecha && <p className="mt-0.5 text-[11px] text-muted-foreground">Próximo: {m.proximo_en_fecha}</p>}
+          {m.descripcion && <p className="mt-0.5 text-caption text-muted-foreground">{m.descripcion}</p>}
+          {m.proximo_en_fecha && <p className="mt-0.5 text-caption text-muted-foreground">Próximo: {m.proximo_en_fecha}</p>}
         </Linea>
       ))}
       {proximos.map((m, i) => (
@@ -263,7 +263,7 @@ function SeccionMantenimientos({ hechos, proximos }) {
             <span className="font-medium text-foreground">{m.maquina || `Máquina #${m.maquina_id}`}</span>
             <Semaforo tono="ambar" className="ml-auto">Próximo</Semaforo>
           </div>
-          <div className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[11px] text-muted-foreground">
+          <div className="mt-0.5 flex flex-wrap items-center gap-x-2 text-caption text-muted-foreground">
             {m.tipo && <span>{m.tipo}</span>}
             {m.descripcion && <span>· {m.descripcion}</span>}
           </div>
@@ -312,20 +312,20 @@ function SeccionPlaneado({ maquinas, trabajadores, hitos, admin, fecha, cuando, 
 
   return (
     <details open className="rounded-md border border-border-subtle bg-surface">
-      <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2 text-[12px] font-semibold text-foreground">
+      <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2 text-meta font-semibold text-foreground">
         <ClipboardList className="size-4 text-muted-foreground" aria-hidden="true" />
         <span>{TITULO_PLANEADO[cuando] || 'Planeado'}</span>
-        <span className="ml-auto tabular text-[11px] text-muted-foreground">{conteo}</span>
+        <span className="ml-auto tabular text-caption text-muted-foreground">{conteo}</span>
       </summary>
       <div className="space-y-2 px-3 pb-3 pt-1">
         {puedeAsignar && (
           <div className="flex flex-wrap gap-2">
             <button type="button" onClick={() => setForm((v) => (v === 'maquina' ? null : 'maquina'))}
-              aria-expanded={form === 'maquina'} className={`${BTN_OUTLINE} min-h-11 cursor-pointer px-2.5 text-[12px] sm:min-h-0 sm:h-7`}>
+              aria-expanded={form === 'maquina'} className={`${BTN_OUTLINE} min-h-11 cursor-pointer px-2.5 text-meta sm:min-h-0 sm:h-7`}>
               <Plus className="size-3.5" /> Asignar máquina
             </button>
             <button type="button" onClick={() => setForm((v) => (v === 'trabajador' ? null : 'trabajador'))}
-              aria-expanded={form === 'trabajador'} className={`${BTN_OUTLINE} min-h-11 cursor-pointer px-2.5 text-[12px] sm:min-h-0 sm:h-7`}>
+              aria-expanded={form === 'trabajador'} className={`${BTN_OUTLINE} min-h-11 cursor-pointer px-2.5 text-meta sm:min-h-0 sm:h-7`}>
               <Plus className="size-3.5" /> Asignar trabajador
             </button>
           </div>
@@ -347,14 +347,14 @@ function SeccionPlaneado({ maquinas, trabajadores, hitos, admin, fecha, cuando, 
                   <span className="font-medium text-foreground">{p.maquina || `Máquina #${p.maquina_id}`}</span>
                   <span className="min-w-0 break-words text-muted-foreground">→ {p.obra || `Obra #${p.obra_id}`}</span>
                 </span>
-                <div className="mt-0.5 text-[11px] text-muted-foreground">
+                <div className="mt-0.5 text-caption text-muted-foreground">
                   {periodo(p)}{p.operador && ` · operador ${p.operador}`}
                 </div>
               </div>
               {admin && (
                 <button type="button"
                   onClick={() => cerrar(`/maquinas/${p.maquina_id}/asignaciones/${p.asignacion_id}`, p.maquina || `Máquina #${p.maquina_id}`, p.fecha_inicio)}
-                  className="inline-flex min-h-11 shrink-0 cursor-pointer items-center rounded-md px-2.5 py-2 text-[11px] font-medium text-muted-foreground hover:bg-surface-2 hover:text-destructive sm:min-h-0 sm:py-1">
+                  className="inline-flex min-h-11 shrink-0 cursor-pointer items-center rounded-md px-2.5 py-2 text-caption font-medium text-muted-foreground hover:bg-surface-2 hover:text-destructive sm:min-h-0 sm:py-1">
                   Cerrar
                 </button>
               )}
@@ -370,12 +370,12 @@ function SeccionPlaneado({ maquinas, trabajadores, hitos, admin, fecha, cuando, 
                   <span className="font-medium text-foreground">{p.trabajador || `Trabajador #${p.trabajador_id}`}</span>
                   <span className="min-w-0 break-words text-muted-foreground">→ {p.obra || `Obra #${p.obra_id}`}</span>
                 </span>
-                <div className="mt-0.5 text-[11px] text-muted-foreground">{periodo(p)}</div>
+                <div className="mt-0.5 text-caption text-muted-foreground">{periodo(p)}</div>
               </div>
               {admin && (
                 <button type="button"
                   onClick={() => cerrar(`/trabajadores/${p.trabajador_id}/asignaciones/${p.asignacion_id}`, p.trabajador || `Trabajador #${p.trabajador_id}`, p.fecha_inicio)}
-                  className="inline-flex min-h-11 shrink-0 cursor-pointer items-center rounded-md px-2.5 py-2 text-[11px] font-medium text-muted-foreground hover:bg-surface-2 hover:text-destructive sm:min-h-0 sm:py-1">
+                  className="inline-flex min-h-11 shrink-0 cursor-pointer items-center rounded-md px-2.5 py-2 text-caption font-medium text-muted-foreground hover:bg-surface-2 hover:text-destructive sm:min-h-0 sm:py-1">
                   Cerrar
                 </button>
               )}
@@ -388,7 +388,7 @@ function SeccionPlaneado({ maquinas, trabajadores, hitos, admin, fecha, cuando, 
               <span className="font-medium text-foreground">{h.obra || `Obra #${h.obra_id}`}</span>
               <Semaforo tono="azul" className="ml-auto">{h.hito}</Semaforo>
             </div>
-            {h.estado && <p className="mt-0.5 text-[11px] text-muted-foreground">{h.estado}</p>}
+            {h.estado && <p className="mt-0.5 text-caption text-muted-foreground">{h.estado}</p>}
           </Linea>
         ))}
       </div>

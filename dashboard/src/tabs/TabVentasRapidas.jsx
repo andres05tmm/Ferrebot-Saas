@@ -25,7 +25,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
-import { Search, ShoppingCart, Star, X } from 'lucide-react'
+import { Search, ShoppingCart, Star, X } from '@/lib/icons.jsx'
 import { api, apiJson } from '@/lib/api'
 import { useIsMobile } from '@/components/shared.jsx'
 import ModalAbrirCaja from '@/components/ModalAbrirCaja.jsx'
@@ -515,7 +515,7 @@ export default function TabVentasRapidas() {
             <Input ref={searchRef} value={q} onChange={(e) => setQ(e.target.value)}
               placeholder="Buscar producto…  Enter agrega el primero" aria-label="Buscar producto"
               className="pl-9 h-12 rounded-lg" />
-            <kbd className="absolute right-3 top-1/2 -translate-y-1/2 rounded border border-border bg-surface-2 px-1.5 text-[10px] text-muted-foreground" aria-hidden="true">↵</kbd>
+            <kbd className="absolute right-3 top-1/2 -translate-y-1/2 rounded border border-border bg-surface-2 px-1.5 text-micro text-muted-foreground" aria-hidden="true">↵</kbd>
           </div>
         )}
         slotExtras={(

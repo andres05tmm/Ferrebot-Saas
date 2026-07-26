@@ -7,7 +7,7 @@
  * enviar — JAMÁS a localStorage. v1 no pide secretos: los datos de pack ricos van por un área JSON.
  */
 import { useEffect, useState } from 'react'
-import { Loader2 } from 'lucide-react'
+import { Loader2 } from '@/lib/icons.jsx'
 import { Card } from '@/components/ui/card.jsx'
 import { Input } from '@/components/ui/input.jsx'
 import { Button } from '@/components/ui/button.jsx'
@@ -115,31 +115,31 @@ export default function CrearTenantForm({ intervaloMs = 1500, onProvisionado }) 
       <h2 className="text-sm font-semibold text-foreground">Crear empresa</h2>
       <form onSubmit={enviar} className="flex flex-col gap-3" aria-label="Crear empresa">
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-          <label className="flex flex-col gap-1 text-[11px] text-muted-foreground">
+          <label className="flex flex-col gap-1 text-caption text-muted-foreground">
             Slug
             <Input value={slug} onChange={(e) => setSlug(e.target.value)} required aria-label="Slug" placeholder="clinica-demo" />
           </label>
-          <label className="flex flex-col gap-1 text-[11px] text-muted-foreground">
+          <label className="flex flex-col gap-1 text-caption text-muted-foreground">
             Nombre
             <Input value={nombre} onChange={(e) => setNombre(e.target.value)} required aria-label="Nombre" />
           </label>
-          <label className="flex flex-col gap-1 text-[11px] text-muted-foreground">
+          <label className="flex flex-col gap-1 text-caption text-muted-foreground">
             NIT
             <Input value={nit} onChange={(e) => setNit(e.target.value)} required aria-label="NIT" />
           </label>
         </div>
 
-        <label className="flex flex-col gap-1 text-[11px] text-muted-foreground">
+        <label className="flex flex-col gap-1 text-caption text-muted-foreground">
           Email del admin
           <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} aria-label="Email del admin" placeholder="dueño@empresa.co" />
         </label>
 
         <fieldset className="flex flex-col gap-1">
-          <legend className="text-[11px] text-muted-foreground mb-1">Plan / packs (features a activar)</legend>
+          <legend className="text-caption text-muted-foreground mb-1">Plan / packs (features a activar)</legend>
           <Input value={planNombre} onChange={(e) => setPlanNombre(e.target.value)} aria-label="Nombre del plan" placeholder="Nombre del plan (opcional)" className="mb-2" />
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
             {FEATURES_OPCIONALES.map(([f, label]) => (
-              <label key={f} className="flex items-center gap-1.5 text-[12px] text-foreground">
+              <label key={f} className="flex items-center gap-1.5 text-meta text-foreground">
                 <input type="checkbox" checked={features.includes(f)} onChange={() => toggleFeature(f)} aria-label={label} />
                 {label}
               </label>
@@ -148,17 +148,17 @@ export default function CrearTenantForm({ intervaloMs = 1500, onProvisionado }) 
         </fieldset>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-          <label className="flex flex-col gap-1 text-[11px] text-muted-foreground">
+          <label className="flex flex-col gap-1 text-caption text-muted-foreground">
             WhatsApp phone_number_id
             <Input value={waPhone} onChange={(e) => setWaPhone(e.target.value)} aria-label="WhatsApp phone_number_id" />
           </label>
-          <label className="flex flex-col gap-1 text-[11px] text-muted-foreground">
+          <label className="flex flex-col gap-1 text-caption text-muted-foreground">
             WhatsApp número (visible)
             <Input value={waNumero} onChange={(e) => setWaNumero(e.target.value)} aria-label="WhatsApp número" placeholder="+57 300 0000000" />
           </label>
         </div>
 
-        <label className="flex flex-col gap-1 text-[11px] text-muted-foreground">
+        <label className="flex flex-col gap-1 text-caption text-muted-foreground">
           Datos de packs (JSON, opcional) — p. ej. agenda/faq
           <textarea
             value={packsJson} onChange={(e) => setPacksJson(e.target.value)} aria-label="Datos de packs (JSON)"

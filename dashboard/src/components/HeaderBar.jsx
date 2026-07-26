@@ -6,7 +6,7 @@
  */
 import { useEffect, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { Command, RefreshCw, Sun, Moon, UserRound } from 'lucide-react'
+import { Command, RefreshCw, Sun, Moon, UserRound } from '@/lib/icons.jsx'
 import { findRoute } from '@/routes.jsx'
 import { useRealtimeStatus } from '@/components/RealtimeProvider.jsx'
 import { apiJson } from '@/lib/api'
@@ -114,7 +114,7 @@ function BotonPerfil({ activo, onClick }) {
         <img src={perfil.avatar_url} alt={perfil.nombre} className="size-full object-cover" />
       ) : perfil?.nombre ? (
         <span
-          className="size-full grid place-items-center text-[12px] font-bold text-white"
+          className="size-full grid place-items-center text-meta font-bold text-white"
           style={{ backgroundColor: perfil.color || '#C8200E' }}
         >
           {iniciales(perfil.nombre)}

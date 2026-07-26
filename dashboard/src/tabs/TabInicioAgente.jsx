@@ -23,7 +23,7 @@ import {
   CalendarClock, CalendarDays, Headset, BookText, Users, ArrowRight,
   Bot, MessageCircle, Monitor, TrendingUp, Star, HandCoins, ClipboardList, FileText,
   BedDouble, LogIn, LogOut,
-} from 'lucide-react'
+} from '@/lib/icons.jsx'
 import { useFetch, cop, num } from '@/components/shared.jsx'
 import { useRealtimeEvent } from '@/components/RealtimeProvider.jsx'
 import { useFeatures } from '@/lib/features.jsx'
@@ -117,7 +117,7 @@ function Saludo({ nombre }) {
       <h1 className="text-lg font-semibold tracking-tight text-foreground">
         {nombre ? `Hola, ${nombre}` : 'Tu agente hoy'}
       </h1>
-      <p className="text-[13px] text-muted-foreground">Lo que tu agente está atendiendo en este momento.</p>
+      <p className="text-body-sm text-muted-foreground">Lo que tu agente está atendiendo en este momento.</p>
     </div>
   )
 }
@@ -141,11 +141,11 @@ function BannerPendientes({ total, onAbrir }) {
             ? `${total} ${total === 1 ? 'cliente esperando' : 'clientes esperando'} asesor`
             : 'Sin clientes esperando asesor'}
         </div>
-        <div className="text-[12px] text-muted-foreground">
+        <div className="text-meta text-muted-foreground">
           {hay ? 'Atiéndelos en el inbox y devuélvelos al bot al terminar.' : 'El agente está atendiendo todo.'}
         </div>
       </div>
-      <span className="shrink-0 inline-flex items-center gap-1 text-[12px] font-medium text-primary">
+      <span className="shrink-0 inline-flex items-center gap-1 text-meta font-medium text-primary">
         Abrir inbox <ArrowRight className="size-3.5" aria-hidden="true" />
       </span>
     </Card>
@@ -222,10 +222,10 @@ function ProximasCitas({ citas, servicios, loading, onVerAgenda }) {
   return (
     <Card className="lg:col-span-2 p-3.5 shadow-sm">
       <div className="flex items-center justify-between mb-2.5">
-        <h2 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground inline-flex items-center gap-1.5">
+        <h2 className="text-caption font-semibold uppercase tracking-wider text-muted-foreground inline-flex items-center gap-1.5">
           <CalendarClock className="size-3.5" /> Próximas citas de hoy
         </h2>
-        <button onClick={onVerAgenda} className="text-[11px] text-muted-foreground hover:text-foreground inline-flex items-center gap-1">
+        <button onClick={onVerAgenda} className="text-caption text-muted-foreground hover:text-foreground inline-flex items-center gap-1">
           ver agenda <ArrowRight className="size-3" />
         </button>
       </div>
@@ -241,15 +241,15 @@ function ProximasCitas({ citas, servicios, loading, onVerAgenda }) {
         <ul className="divide-y divide-border-subtle">
           {proximas.map(c => (
             <li key={c.id} className="py-2 flex items-center gap-3">
-              <span className="font-display text-[13px] font-bold tabular-nums text-primary w-12 shrink-0">{fmtHora(c.inicio)}</span>
+              <span className="font-display text-body-sm font-bold tabular-nums text-primary w-12 shrink-0">{fmtHora(c.inicio)}</span>
               <div className="min-w-0 flex-1">
-                <div className="text-[13px] font-medium truncate flex items-center gap-1.5">
+                <div className="text-body-sm font-medium truncate flex items-center gap-1.5">
                   {c.origen === 'whatsapp'
                     ? <MessageCircle className="size-3 shrink-0 text-success" aria-label="Por WhatsApp" />
                     : <Monitor className="size-3 shrink-0 text-muted-foreground" aria-label="Por dashboard" />}
                   <span className="truncate">{c.cliente_nombre}</span>
                 </div>
-                <div className="text-[11px] text-muted-foreground truncate">
+                <div className="text-caption text-muted-foreground truncate">
                   {nombreServicio[c.servicio_id] || `Servicio #${c.servicio_id}`}
                 </div>
               </div>
@@ -314,10 +314,10 @@ function ReservasHoy({ citas, recursos, loading, hoy, onVerAgenda }) {
   return (
     <Card className="lg:col-span-2 p-3.5 shadow-sm">
       <div className="flex items-center justify-between mb-2.5">
-        <h2 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground inline-flex items-center gap-1.5">
+        <h2 className="text-caption font-semibold uppercase tracking-wider text-muted-foreground inline-flex items-center gap-1.5">
           <BedDouble className="size-3.5" /> Reservas de hoy
         </h2>
-        <button onClick={onVerAgenda} className="text-[11px] text-muted-foreground hover:text-foreground inline-flex items-center gap-1">
+        <button onClick={onVerAgenda} className="text-caption text-muted-foreground hover:text-foreground inline-flex items-center gap-1">
           ver agenda <ArrowRight className="size-3" />
         </button>
       </div>
@@ -355,10 +355,10 @@ function SeccionReservas({ label, tone, icon: Icon, total, citas, usarFin, nombr
   return (
     <div>
       <div className="flex items-center gap-1.5 mb-1">
-        <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ${TONO_SECCION[tone] || TONO_SECCION.muted}`}>
+        <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-caption font-semibold ${TONO_SECCION[tone] || TONO_SECCION.muted}`}>
           <Icon className="size-3" /> {label}
         </span>
-        <span className="text-[11px] text-muted-foreground tabular-nums">{total}</span>
+        <span className="text-caption text-muted-foreground tabular-nums">{total}</span>
       </div>
       <ul className="divide-y divide-border-subtle">
         {citas.map(c => (
@@ -373,15 +373,15 @@ function SeccionReservas({ label, tone, icon: Icon, total, citas, usarFin, nombr
 function FilaReserva({ cita, hora, habitacion }) {
   return (
     <li className="py-2 flex items-center gap-3">
-      <span className="font-display text-[13px] font-bold tabular-nums text-primary w-12 shrink-0">{fmtHora(hora)}</span>
+      <span className="font-display text-body-sm font-bold tabular-nums text-primary w-12 shrink-0">{fmtHora(hora)}</span>
       <div className="min-w-0 flex-1">
-        <div className="text-[13px] font-medium truncate flex items-center gap-1.5">
+        <div className="text-body-sm font-medium truncate flex items-center gap-1.5">
           {cita.origen === 'whatsapp'
             ? <MessageCircle className="size-3 shrink-0 text-success" aria-label="Por WhatsApp" />
             : <Monitor className="size-3 shrink-0 text-muted-foreground" aria-label="Por dashboard" />}
           <span className="truncate">{cita.cliente_nombre}</span>
         </div>
-        <div className="text-[11px] text-muted-foreground truncate">{habitacion}</div>
+        <div className="text-caption text-muted-foreground truncate">{habitacion}</div>
       </div>
       <EstadoBadge estado={cita.estado} />
     </li>
@@ -407,7 +407,7 @@ function AccionesRapidas({ features, navigate }) {
   return (
     <Card className="p-3.5 shadow-sm">
       <div className="flex items-center justify-between mb-2.5">
-        <h2 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground inline-flex items-center gap-1.5">
+        <h2 className="text-caption font-semibold uppercase tracking-wider text-muted-foreground inline-flex items-center gap-1.5">
           <TrendingUp className="size-3.5" /> Acciones rápidas
         </h2>
       </div>
@@ -421,7 +421,7 @@ function AccionesRapidas({ features, navigate }) {
               <span className={`grid place-items-center rounded-md size-8 shrink-0 ${t.bg}`} style={{ color: t.color }}>
                 <Icon className="size-4" />
               </span>
-              <span className="text-[13px] font-medium truncate">{a.label}</span>
+              <span className="text-body-sm font-medium truncate">{a.label}</span>
               <ArrowRight className="size-3.5 ml-auto text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
             </button>
           )

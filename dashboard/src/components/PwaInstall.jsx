@@ -7,7 +7,7 @@
  * iOS/Safari no dispara el evento: ahí el banner simplemente no se muestra (sin ruido).
  */
 import { useEffect, useState } from 'react'
-import { Download, X } from 'lucide-react'
+import { Download, X } from '@/lib/icons.jsx'
 import { useBranding } from '../lib/branding.jsx'
 
 const DISMISS_KEY = 'ferrebot_pwa_install_dismissed'

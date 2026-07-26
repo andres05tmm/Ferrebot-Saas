@@ -6,7 +6,7 @@
  */
 import { useState } from 'react'
 import { toast } from 'sonner'
-import { Percent, Plus } from 'lucide-react'
+import { Percent, Plus } from '@/lib/icons.jsx'
 import { useRetencionesConfig, useGuardarRetencion } from '@/lib/queries'
 import { useAuth } from '@/hooks/useAuth.js'
 import { Card } from '@/components/ui/card.jsx'
@@ -56,25 +56,25 @@ function FormRegla() {
       </h3>
       <div className="space-y-2.5">
         <label className="flex flex-col gap-1">
-          <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Tipo</span>
+          <span className="text-caption uppercase tracking-wider text-muted-foreground">Tipo</span>
           <select value={f.tipo} onChange={set('tipo')} aria-label="Tipo"
             className="h-9 rounded-md border border-border bg-surface px-2 text-sm">
             {TIPOS.map(t => <option key={t} value={t}>{t}</option>)}
           </select>
         </label>
         <label className="flex flex-col gap-1">
-          <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Concepto</span>
+          <span className="text-caption uppercase tracking-wider text-muted-foreground">Concepto</span>
           <Input value={f.concepto} onChange={set('concepto')} placeholder="p. ej. Compras generales"
             aria-label="Concepto" className="h-9" />
         </label>
         <div className="grid grid-cols-2 gap-2.5">
           <label className="flex flex-col gap-1">
-            <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Base mínima (UVT)</span>
+            <span className="text-caption uppercase tracking-wider text-muted-foreground">Base mínima (UVT)</span>
             <Input type="number" value={f.base_minima_uvt} onChange={set('base_minima_uvt')}
               aria-label="Base mínima (UVT)" className="h-9" />
           </label>
           <label className="flex flex-col gap-1">
-            <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Tarifa (%)</span>
+            <span className="text-caption uppercase tracking-wider text-muted-foreground">Tarifa (%)</span>
             <Input type="number" step="0.01" value={f.tarifa} onChange={set('tarifa')}
               aria-label="Tarifa (%)" className="h-9" />
           </label>
@@ -88,7 +88,7 @@ function FormRegla() {
       <div className="mt-3 flex justify-end">
         <Button disabled={enviando} onClick={guardar}>{enviando ? 'Guardando…' : 'Guardar regla'}</Button>
       </div>
-      <p className="mt-2 text-[11px] text-muted-foreground">
+      <p className="mt-2 text-caption text-muted-foreground">
         Se guarda por (tipo, concepto): repetir el par edita la regla existente. Aplicar el motor a un
         documento NO cambia su total; solo calcula el neto a recibir.
       </p>
@@ -121,7 +121,7 @@ function RetencionesContenido() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
         <Card className="lg:col-span-2 p-0 overflow-hidden">
           <div className="px-3.5 py-2.5 border-b border-border-subtle">
-            <h2 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Catálogo tributario</h2>
+            <h2 className="text-caption font-semibold uppercase tracking-wider text-muted-foreground">Catálogo tributario</h2>
           </div>
           {configQ.isLoading ? (
             <p className="py-10 text-center text-sm text-muted-foreground">Cargando…</p>
@@ -132,11 +132,11 @@ function RetencionesContenido() {
           ) : (
             <ul className="divide-y divide-border-subtle">
               {reglas.map(r => (
-                <li key={r.id} className={`px-3.5 py-2.5 flex items-center gap-3 text-[13px] ${r.activo ? '' : 'opacity-60'}`}>
-                  <Badge variant="outline" className={`h-5 text-[10px] shrink-0 ${TIPO_TONO[r.tipo] || ''}`}>{r.tipo}</Badge>
+                <li key={r.id} className={`px-3.5 py-2.5 flex items-center gap-3 text-body-sm ${r.activo ? '' : 'opacity-60'}`}>
+                  <Badge variant="outline" className={`h-5 text-micro shrink-0 ${TIPO_TONO[r.tipo] || ''}`}>{r.tipo}</Badge>
                   <div className="min-w-0 flex-1">
                     <div className="font-medium truncate">{r.concepto}</div>
-                    <div className="text-[11px] text-muted-foreground tabular-nums">
+                    <div className="text-caption text-muted-foreground tabular-nums">
                       base ≥ {Number(r.base_minima_uvt)} UVT{!r.activo && ' · inactiva'}
                     </div>
                   </div>

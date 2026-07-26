@@ -6,7 +6,7 @@
  */
 import { useState } from 'react'
 import { toast } from 'sonner'
-import { Armchair, Plus, Receipt } from 'lucide-react'
+import { Armchair, Plus, Receipt } from '@/lib/icons.jsx'
 import { api } from '@/lib/api'
 import { cop, useFetch } from '@/components/shared.jsx'
 import { useRealtimeEvent } from '@/components/RealtimeProvider.jsx'
@@ -68,12 +68,12 @@ function PanelMesa({ mesa, onCambio }) {
     <Card className="p-4 space-y-3">
       <div className="font-semibold">{mesa.nombre} — orden #{mesa.pedido_id}</div>
       {/* Precuenta en vivo */}
-      <ul className="text-[13px] text-muted-foreground space-y-0.5">
+      <ul className="text-body-sm text-muted-foreground space-y-0.5">
         {(pre?.items || []).map(i => (
           <li key={i.id}>
             {Number(i.cantidad)}× {i.nombre} — {cop(i.subtotal)}
             {i.modificadores?.length > 0 && (
-              <span className="block pl-3 text-[11px] italic">
+              <span className="block pl-3 text-caption italic">
                 {i.modificadores.map(m => m.opcion).join(', ')}
               </span>
             )}
@@ -121,15 +121,15 @@ export default function TabMesas() {
           <Card key={m.id}
             className={`p-3 cursor-pointer space-y-1 ${m.id === seleccion ? 'ring-2 ring-primary' : ''}`}
             onClick={() => setSeleccion(m.id)} role="button" aria-label={`Mesa ${m.nombre}`}>
-            <div className="font-semibold text-[13px]">{m.nombre}</div>
-            <div className="text-[12px] text-muted-foreground">{m.zona || ''}</div>
+            <div className="font-semibold text-body-sm">{m.nombre}</div>
+            <div className="text-meta text-muted-foreground">{m.zona || ''}</div>
             {m.pedido_id != null
-              ? <div className="text-[13px] font-semibold tabular-nums text-primary">{cop(m.total)}</div>
-              : <div className="text-[12px] text-emerald-600">Libre</div>}
+              ? <div className="text-body-sm font-semibold tabular-nums text-primary">{cop(m.total)}</div>
+              : <div className="text-meta text-emerald-600">Libre</div>}
           </Card>
         ))}
         {mesas.length === 0 && (
-          <Card className="p-3 col-span-full text-center text-[13px] text-muted-foreground">
+          <Card className="p-3 col-span-full text-center text-body-sm text-muted-foreground">
             Sin mesas configuradas (créalas desde administración).
           </Card>
         )}

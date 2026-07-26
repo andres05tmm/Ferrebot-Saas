@@ -8,7 +8,7 @@
  */
 import { useState } from 'react'
 import { toast } from 'sonner'
-import { Lock } from 'lucide-react'
+import { Lock } from '@/lib/icons.jsx'
 import { api } from '@/lib/api'
 import { Button } from '@/components/ui/button.jsx'
 import { Input } from '@/components/ui/input.jsx'

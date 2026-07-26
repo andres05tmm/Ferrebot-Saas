@@ -23,7 +23,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import { toast } from 'sonner'
-import { ChevronDown, Package, Pencil, Plus, Search, SlidersHorizontal, Trash2 } from 'lucide-react'
+import { ChevronDown, Package, Pencil, Plus, Search, SlidersHorizontal, Trash2 } from '@/lib/icons.jsx'
 import { api, apiJson } from '@/lib/api'
 import { useFetch, cop, num } from '@/components/shared.jsx'
 import { useFeatures, esConstruccion } from '@/lib/features.jsx'
@@ -138,7 +138,7 @@ export default function TabInventario() {
             </button>
           )}
         </div>
-        <p className="text-[11px] text-muted-foreground inline-flex items-center gap-1.5">
+        <p className="text-caption text-muted-foreground inline-flex items-center gap-1.5">
           <Package className="size-3.5" />
           <strong className="text-foreground font-semibold">{visibles.length}</strong>
           {buscando ? ' resultados' : ' productos'} en{' '}
@@ -183,7 +183,7 @@ export default function TabInventario() {
       )}
 
       {parcial && (
-        <p className="text-[11px] text-muted-foreground text-center">
+        <p className="text-caption text-muted-foreground text-center">
           Catálogo muy grande: se está mostrando solo una parte. Usa la búsqueda para encontrar un producto.
         </p>
       )}
@@ -213,13 +213,13 @@ function CategoriaCard({
           <Icono className="size-4" />
         </span>
         <span className="min-w-0 flex-1">
-          <span className="block text-[13px] font-semibold truncate">{etiquetaCategoria(categoria)}</span>
-          <span className="block text-[11px] text-muted-foreground">
+          <span className="block text-body-sm font-semibold truncate">{etiquetaCategoria(categoria)}</span>
+          <span className="block text-caption text-muted-foreground">
             {productos.length} {productos.length === 1 ? 'producto' : 'productos'}
           </span>
         </span>
         {porRevisar > 0 && (
-          <Badge variant="outline" className="h-5 text-[10px] text-warning border-warning/30 shrink-0">
+          <Badge variant="outline" className="h-5 text-micro text-warning border-warning/30 shrink-0">
             {porRevisar} por revisar
           </Badge>
         )}
@@ -236,7 +236,7 @@ function CategoriaCard({
                 const activo = subcatSel === s.key
                 return (
                   <button key={s.key} onClick={() => onSubcat(s.key)} aria-pressed={activo}
-                    className={`inline-flex items-center gap-1.5 h-7 px-2 rounded-full text-[11px] border transition-colors ${
+                    className={`inline-flex items-center gap-1.5 h-7 px-2 rounded-full text-caption border transition-colors ${
                       activo
                         ? 'bg-primary text-primary-foreground border-primary'
                         : 'bg-surface border-border text-muted-foreground hover:bg-surface-2'}`}>
@@ -283,25 +283,25 @@ function ProductoRow({ producto, stock, admin, construccion, onAjustado, onEdita
       <div className="flex items-center gap-3">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <span className="text-[13px] font-medium truncate">{producto.nombre}</span>
-            {!producto.activo && <Badge variant="outline" className="h-4 text-[9px] text-muted-foreground">inactivo</Badge>}
+            <span className="text-body-sm font-medium truncate">{producto.nombre}</span>
+            {!producto.activo && <Badge variant="outline" className="h-4 text-micro text-muted-foreground">inactivo</Badge>}
           </div>
           {/* Sin la categoría: la card que contiene la fila ya la dice (era ruido repetido 200 veces). */}
-          <div className="text-[11px] text-muted-foreground truncate">{producto.codigo || '—'}</div>
+          <div className="text-caption text-muted-foreground truncate">{producto.codigo || '—'}</div>
         </div>
         <div className="text-right shrink-0">
-          <div className="text-[13px] font-semibold tabular">{cop(Number(producto.precio_venta))}</div>
+          <div className="text-body-sm font-semibold tabular">{cop(Number(producto.precio_venta))}</div>
           {stockActual !== null && (
             negativo ? (
-              <div className="inline-flex items-center justify-end gap-1 text-[11px] tabular text-warning/80"
+              <div className="inline-flex items-center justify-end gap-1 text-caption tabular text-warning/80"
                 title={tooltipCuadrar}>
                 <span>{num(stockActual)} {producto.unidad_medida}</span>
-                <span className="text-[9px] font-normal px-1 py-px rounded bg-warning/10 border border-warning/20 text-warning/80">
+                <span className="text-micro font-normal px-1 py-px rounded bg-warning/10 border border-warning/20 text-warning/80">
                   por cuadrar
                 </span>
               </div>
             ) : (
-              <div className={`text-[11px] tabular ${bajo ? 'text-warning font-semibold' : 'text-muted-foreground'}`}>
+              <div className={`text-caption tabular ${bajo ? 'text-warning font-semibold' : 'text-muted-foreground'}`}>
                 {num(stockActual)} {producto.unidad_medida}
               </div>
             )
@@ -390,14 +390,14 @@ function AjusteForm({ producto, onDone }) {
   return (
     <div className="mt-2.5 space-y-2 bg-surface-2/50 rounded-md p-2">
       {granel && (
-        <label className="flex items-center gap-2 text-[11px] text-muted-foreground">
+        <label className="flex items-center gap-2 text-caption text-muted-foreground">
           <input type="checkbox" checked={porPaquete} aria-label="Contar por paquete"
             onChange={(e) => setPorPaquete(e.target.checked)} />
           Contar por {granel.paquete} ({granel.factor} {granel.sub} cada una) — se vende por {granel.sub}
         </label>
       )}
       <div>
-        <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Conteo físico · ajustar a cantidad real</p>
+        <p className="text-micro uppercase tracking-wider text-muted-foreground mb-1">Conteo físico · ajustar a cantidad real</p>
         <div className="flex flex-wrap items-center gap-2">
           <Input type="number" value={contada} onChange={(e) => setContada(e.target.value)}
             placeholder="Cantidad real contada" aria-label="Cantidad real contada" className="w-40 h-8" />
@@ -409,7 +409,7 @@ function AjusteForm({ producto, onDone }) {
       </div>
 
       <div className="pt-2 border-t border-border-subtle">
-        <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Ajuste por delta (+/−)</p>
+        <p className="text-micro uppercase tracking-wider text-muted-foreground mb-1">Ajuste por delta (+/−)</p>
         <div className="flex flex-wrap items-center gap-2">
           <Input type="number" value={delta} onChange={(e) => setDelta(e.target.value)}
             placeholder="Delta (+/-)" aria-label="Delta de ajuste" className="w-28 h-8" />
@@ -422,7 +422,7 @@ function AjusteForm({ producto, onDone }) {
         </div>
       </div>
 
-      {error && <span className="block text-[11px] text-destructive">{error}</span>}
+      {error && <span className="block text-caption text-destructive">{error}</span>}
     </div>
   )
 }
@@ -579,7 +579,7 @@ function ProductoForm({ producto, construccion = false, onClose, onSaved }) {
               {proveedores.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
             </select>
             {proveedores.length === 0 && !proveedoresQ.loading && (
-              <p className="text-[10px] text-muted-foreground">Registra proveedores en el tab Proveedores.</p>
+              <p className="text-micro text-muted-foreground">Registra proveedores en el tab Proveedores.</p>
             )}
           </div>
 
@@ -589,10 +589,10 @@ function ProductoForm({ producto, construccion = false, onClose, onSaved }) {
 
         {/* Empaque de compra: lo que permite comprar por bulto y vender menudeado sin descuadrar. */}
         <div className="pt-2 border-t border-border-subtle">
-          <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-2">
+          <p className="text-micro uppercase tracking-wider text-muted-foreground mb-2">
             ¿Se compra por empaque?
           </p>
-          <div className="flex flex-wrap items-center gap-2 text-[12px]">
+          <div className="flex flex-wrap items-center gap-2 text-meta">
             <Input value={f.nombre_paquete} onChange={set('nombre_paquete')} placeholder="bolsa, caja, bulto…"
               aria-label="Nombre del empaque" className="h-9 w-40" />
             <span className="text-muted-foreground">de</span>
@@ -603,14 +603,14 @@ function ProductoForm({ producto, construccion = false, onClose, onSaved }) {
               {f.unidad_medida || 'unidad'} — se vende por {f.unidad_medida || 'unidad'}
             </span>
           </div>
-          <p className="mt-1 text-[10px] text-muted-foreground">
+          <p className="mt-1 text-micro text-muted-foreground">
             Ejemplo: la cal se compra por <strong>bolsa</strong> de <strong>25</strong> Kg y se vende
             por kilo. Déjalo vacío si el producto se compra y se vende igual.
           </p>
         </div>
 
         <div className="pt-2 border-t border-border-subtle">
-          <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-2">
+          <p className="text-micro uppercase tracking-wider text-muted-foreground mb-2">
             {construccion ? 'Precio y costo' : 'Precios'}
           </p>
           {/* Construcción: sin "Especial" (precio de venta escalonado por cliente). El precio queda como
@@ -629,13 +629,13 @@ function ProductoForm({ producto, construccion = false, onClose, onSaved }) {
               de obra. Se oculta para construcción. */}
           {!construccion && (!escalonado ? (
             <button type="button" onClick={() => setEscalonado(true)}
-              className="mt-3 text-[11px] text-primary hover:underline">+ Añadir precio escalonado</button>
+              className="mt-3 text-caption text-primary hover:underline">+ Añadir precio escalonado</button>
           ) : (
             <div className="mt-3">
               <div className="flex items-center justify-between mb-2">
-                <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Precio escalonado (por cantidad)</p>
+                <p className="text-micro uppercase tracking-wider text-muted-foreground">Precio escalonado (por cantidad)</p>
                 <button type="button" onClick={() => setEscalonado(false)}
-                  className="text-[11px] text-destructive hover:underline">Quitar</button>
+                  className="text-caption text-destructive hover:underline">Quitar</button>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 <Input type="number" value={f.precio_umbral} onChange={set('precio_umbral')} placeholder="Umbral (cantidad)" aria-label="Umbral de cantidad" className="h-9" />
@@ -650,13 +650,13 @@ function ProductoForm({ producto, construccion = false, onClose, onSaved }) {
         {(!construccion || esEdicion) && (
           <div className="flex flex-wrap items-center gap-4 pt-1">
             {!construccion && (
-              <label className="flex items-center gap-2 text-[13px]">
+              <label className="flex items-center gap-2 text-body-sm">
                 <input type="checkbox" checked={f.permite_fraccion} onChange={setBool('permite_fraccion')} aria-label="Permite fracción" />
                 Permite fracción
               </label>
             )}
             {esEdicion && (
-              <label className="flex items-center gap-2 text-[13px]">
+              <label className="flex items-center gap-2 text-body-sm">
                 <input type="checkbox" checked={f.activo} onChange={setBool('activo')} aria-label="Activo" />
                 Activo
               </label>
@@ -667,8 +667,8 @@ function ProductoForm({ producto, construccion = false, onClose, onSaved }) {
         {!construccion && f.permite_fraccion && (
           <div className="pt-2 border-t border-border-subtle">
             <div className="flex items-center justify-between mb-2">
-              <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Fracciones</p>
-              <button onClick={agregarFraccion} className="text-[11px] text-primary hover:underline">+ Añadir fracción</button>
+              <p className="text-micro uppercase tracking-wider text-muted-foreground">Fracciones</p>
+              <button onClick={agregarFraccion} className="text-caption text-primary hover:underline">+ Añadir fracción</button>
             </div>
             <div className="space-y-2">
               {f.fracciones.map((fr, i) => (
@@ -679,7 +679,7 @@ function ProductoForm({ producto, construccion = false, onClose, onSaved }) {
                     placeholder="Decimal (0.5)" aria-label={`Decimal fracción ${i + 1}`} className="w-28 h-8" />
                   <Input type="number" value={fr.precio_total} onChange={(e) => setFraccion(i, 'precio_total', e.target.value)}
                     placeholder="Precio total" aria-label={`Precio total fracción ${i + 1}`} className="w-32 h-8" />
-                  <button onClick={() => quitarFraccion(i)} className="text-[11px] text-destructive hover:underline">Quitar</button>
+                  <button onClick={() => quitarFraccion(i)} className="text-caption text-destructive hover:underline">Quitar</button>
                 </div>
               ))}
             </div>

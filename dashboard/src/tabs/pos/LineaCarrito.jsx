@@ -2,7 +2,7 @@
  * LineaCarrito — una línea del carrito del POS. El precio de catálogo viene del SERVIDOR
  * (prop `precio` = respuesta de GET /productos/{id}/precio); varia/especial son explícitos del cliente.
  */
-import { Trash2 } from 'lucide-react'
+import { Trash2 } from '@/lib/icons.jsx'
 import { cop } from '@/components/shared.jsx'
 import { Input } from '@/components/ui/input.jsx'
 import { Seg } from './piezas.jsx'
@@ -32,9 +32,9 @@ export default function LineaCarrito({ it, precio, onCantidad, onQuitar, onEspec
           <div className="text-caption text-muted-foreground tabular flex items-center gap-1.5">
             {cargando ? 'calculando…' : unit != null ? `${cop(unit)} c/u` : '—'}
             {precio?.regla && precio.regla !== 'simple' && !it.usarEspecial && (
-              <span className="rounded bg-info/15 text-info px-1 text-[10px] uppercase">{precio.regla}</span>
+              <span className="rounded bg-info/15 text-info px-1 text-micro uppercase">{precio.regla}</span>
             )}
-            {granel && <span className="text-[10px] uppercase">/{granel}</span>}
+            {granel && <span className="text-micro uppercase">/{granel}</span>}
           </div>
         </div>
         <Input type="number" min="0" step="any" value={it.cantidad}

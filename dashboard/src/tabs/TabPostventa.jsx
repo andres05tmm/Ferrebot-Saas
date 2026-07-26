@@ -7,7 +7,7 @@
  */
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
-import { Star, MessageSquareHeart } from 'lucide-react'
+import { Star, MessageSquareHeart } from '@/lib/icons.jsx'
 import {
   usePostventaSatisfaccion, usePostventaRespuestas, usePostventaConfig, useGuardarPostventaConfig,
 } from '@/lib/queries'
@@ -37,9 +37,9 @@ function Estrellas({ n }) {
 function Kpi({ label, value, hint }) {
   return (
     <Card className="p-3">
-      <div className="text-[11px] uppercase tracking-wider text-muted-foreground">{label}</div>
+      <div className="text-caption uppercase tracking-wider text-muted-foreground">{label}</div>
       <div className="text-lg font-semibold tabular-nums">{value}</div>
-      {hint && <div className="text-[11px] text-muted-foreground">{hint}</div>}
+      {hint && <div className="text-caption text-muted-foreground">{hint}</div>}
     </Card>
   )
 }
@@ -73,18 +73,18 @@ function SeccionConfig({ config }) {
       <h3 className="text-sm font-semibold mb-3">Seguimiento postventa</h3>
       <div className="grid grid-cols-2 gap-2.5">
         <label className="flex flex-col gap-1">
-          <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Horas tras el evento</span>
+          <span className="text-caption uppercase tracking-wider text-muted-foreground">Horas tras el evento</span>
           <Input type="number" value={f.horas_tras_evento ?? ''} onChange={set('horas_tras_evento')}
             aria-label="Horas tras el evento" className="h-9" />
         </label>
         <label className="flex flex-col gap-1">
-          <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Calificación mín. reseña</span>
+          <span className="text-caption uppercase tracking-wider text-muted-foreground">Calificación mín. reseña</span>
           <Input type="number" min="1" max="5" value={f.calificacion_minima_resena ?? ''} onChange={set('calificacion_minima_resena')}
             aria-label="Calificación mínima para reseña" className="h-9" />
         </label>
       </div>
       <label className="flex flex-col gap-1 mt-2.5">
-        <span className="text-[11px] uppercase tracking-wider text-muted-foreground">URL de Google Maps</span>
+        <span className="text-caption uppercase tracking-wider text-muted-foreground">URL de Google Maps</span>
         <Input value={f.google_maps_url ?? ''} onChange={set('google_maps_url')}
           placeholder="https://maps.google.com/…" aria-label="URL de Google Maps" className="h-9" />
       </label>
@@ -108,7 +108,7 @@ function SeccionConfig({ config }) {
       <div className="mt-3 flex justify-end">
         <Button onClick={guardar}>Guardar</Button>
       </div>
-      <p className="mt-2 text-[11px] text-muted-foreground">
+      <p className="mt-2 text-caption text-muted-foreground">
         Tras cada cita/pedido el agente pregunta la satisfacción (1-5). Si la calificación llega al
         umbral, invita a dejar una reseña en Google Maps; si es baja, la registra como feedback interno.
       </p>
@@ -146,12 +146,12 @@ function PostventaAdmin() {
 
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
         <Card className="p-3">
-          <div className="text-[11px] uppercase tracking-wider text-muted-foreground">Satisfacción</div>
+          <div className="text-caption uppercase tracking-wider text-muted-foreground">Satisfacción</div>
           <div className="text-lg font-semibold tabular-nums inline-flex items-center gap-2">
             {satQ.isLoading ? '…' : (total > 0 ? promedio.toFixed(1) : '—')}
             {total > 0 && <Estrellas n={promedio} />}
           </div>
-          <div className="text-[11px] text-muted-foreground">promedio 1-5</div>
+          <div className="text-caption text-muted-foreground">promedio 1-5</div>
         </Card>
         <Kpi label="Respuestas" value={satQ.isLoading ? '…' : total} />
         <Kpi label="Comentarios" value={respuestasQ.isLoading ? '…' : respuestas.filter(r => r.comentario).length} />
@@ -175,9 +175,9 @@ function PostventaAdmin() {
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
                       <Estrellas n={r.calificacion} />
-                      <span className="text-[11px] text-muted-foreground">{fechaCorta(r.creado_en)}</span>
+                      <span className="text-caption text-muted-foreground">{fechaCorta(r.creado_en)}</span>
                     </div>
-                    <div className="text-[12px] text-muted-foreground mt-0.5">
+                    <div className="text-meta text-muted-foreground mt-0.5">
                       {r.telefono} · {r.comentario || 'sin comentario'}
                     </div>
                   </div>

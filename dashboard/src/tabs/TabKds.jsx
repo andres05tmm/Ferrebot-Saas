@@ -5,7 +5,7 @@
  * siempre encendida, v1 simple — la reconexión la maneja useRealtime.
  */
 import { toast } from 'sonner'
-import { Flame, CheckCircle2 } from 'lucide-react'
+import { Flame, CheckCircle2 } from '@/lib/icons.jsx'
 import { api } from '@/lib/api'
 import { useFetch } from '@/components/shared.jsx'
 import { useRealtimeEvent } from '@/components/RealtimeProvider.jsx'
@@ -53,24 +53,24 @@ export default function TabKds() {
           const enZona = comandas.filter(c => c.zona_id === col.id)
           return (
             <div key={col.id ?? 'cocina'} className="flex flex-col min-h-0 rounded-lg border border-border-subtle p-2.5 bg-surface-2/40">
-              <div className="shrink-0 pb-2 text-[12px] font-semibold uppercase tracking-wider text-muted-foreground">
+              <div className="shrink-0 pb-2 text-meta font-semibold uppercase tracking-wider text-muted-foreground">
                 {col.nombre} ({enZona.length})
               </div>
               <div className="flex-1 min-h-0 overflow-y-auto space-y-2">
                 {enZona.length === 0 ? (
-                  <Card className="p-3 text-center text-[12px] text-muted-foreground">—</Card>
+                  <Card className="p-3 text-center text-meta text-muted-foreground">—</Card>
                 ) : enZona.map(c => (
                   <Card key={c.id} className={`p-2.5 space-y-1.5 ${c.estado === 'en_preparacion' ? 'ring-1 ring-amber-400' : ''}`}>
-                    <div className="flex items-center justify-between text-[12px]">
+                    <div className="flex items-center justify-between text-meta">
                       <span className="font-semibold">Pedido #{c.pedido_id}</span>
                       <span className="text-muted-foreground tabular-nums">{horaCorta(c.creada_en)}</span>
                     </div>
-                    <ul className="text-[13px] space-y-0.5">
+                    <ul className="text-body-sm space-y-0.5">
                       {c.items.map((i, k) => (
                         <li key={k}>
                           {Number(i.cantidad)}× {i.nombre}
                           {i.modificadores?.length > 0 && (
-                            <span className="block pl-3 text-[11px] italic text-muted-foreground">
+                            <span className="block pl-3 text-caption italic text-muted-foreground">
                               {i.modificadores.map(m => m.opcion).join(', ')}
                             </span>
                           )}
@@ -90,7 +90,7 @@ export default function TabKds() {
           )
         })}
         {columnas.length === 0 && (
-          <Card className="p-4 text-center text-[13px] text-muted-foreground col-span-full">
+          <Card className="p-4 text-center text-body-sm text-muted-foreground col-span-full">
             Sin comandas activas.
           </Card>
         )}

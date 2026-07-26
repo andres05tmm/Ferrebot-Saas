@@ -6,7 +6,7 @@
  */
 import { useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { BookOpen, Search, PackageSearch } from 'lucide-react'
+import { BookOpen, Search, PackageSearch } from '@/lib/icons.jsx'
 import { cop } from '@/components/shared.jsx'
 import { useProductos, useKardex, keyPrefix } from '@/lib/queries'
 import { useRealtimeEvent } from '@/components/RealtimeProvider.jsx'
@@ -35,17 +35,17 @@ function Movimiento({ m }) {
   const esSalida = SALIDAS.has(m.tipo) || cant < 0
   const signo = esSalida ? '−' : '+'
   return (
-    <li className="px-3.5 py-2.5 flex items-center gap-3 text-[13px]">
-      <Badge variant="outline" className={`h-5 text-[10px] shrink-0 ${TIPO_TONO[m.tipo] || 'text-muted-foreground'}`}>
+    <li className="px-3.5 py-2.5 flex items-center gap-3 text-body-sm">
+      <Badge variant="outline" className={`h-5 text-micro shrink-0 ${TIPO_TONO[m.tipo] || 'text-muted-foreground'}`}>
         {m.tipo}
       </Badge>
       <div className="min-w-0 flex-1">
-        <div className="text-[12px] text-muted-foreground truncate">
+        <div className="text-meta text-muted-foreground truncate">
           {m.referencia || 'sin referencia'} · {fecha(m.creado_en)}
         </div>
       </div>
       {m.costo_unitario != null && (
-        <span className="text-[11px] text-muted-foreground tabular-nums shrink-0">c/u {cop(m.costo_unitario)}</span>
+        <span className="text-caption text-muted-foreground tabular-nums shrink-0">c/u {cop(m.costo_unitario)}</span>
       )}
       <span className={`tabular-nums font-semibold shrink-0 ${esSalida ? 'text-destructive' : 'text-success'}`}>
         {signo}{Math.abs(cant).toLocaleString('es-CO')}
@@ -93,10 +93,10 @@ export default function TabKardex() {
                 {productos.map(p => (
                   <li key={p.id}>
                     <button onClick={() => setSel({ id: p.id, nombre: p.nombre })}
-                      className="w-full text-left px-1 py-2 hover:bg-surface-2 rounded-md flex items-center gap-2 text-[13px]">
+                      className="w-full text-left px-1 py-2 hover:bg-surface-2 rounded-md flex items-center gap-2 text-body-sm">
                       <PackageSearch className="size-4 text-muted-foreground shrink-0" />
                       <span className="flex-1 truncate">{p.nombre}</span>
-                      {p.codigo && <span className="text-[11px] text-muted-foreground">{p.codigo}</span>}
+                      {p.codigo && <span className="text-caption text-muted-foreground">{p.codigo}</span>}
                     </button>
                   </li>
                 ))}
@@ -115,7 +115,7 @@ export default function TabKardex() {
           <div className="px-3.5 py-2.5 border-b border-border-subtle flex items-center gap-2">
             <h2 className="text-sm font-semibold truncate">{sel.nombre}</h2>
             <button onClick={() => { setSel(null); setQ('') }}
-              className="ml-auto text-[11px] text-primary hover:underline shrink-0">cambiar</button>
+              className="ml-auto text-caption text-primary hover:underline shrink-0">cambiar</button>
           </div>
           {kardexQ.isLoading ? (
             <p className="py-10 text-center text-sm text-muted-foreground">Cargando kárdex…</p>

@@ -8,7 +8,7 @@
 import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { CheckCircle2, Pencil, Plus, Timer, Truck, XCircle } from 'lucide-react'
+import { CheckCircle2, Pencil, Plus, Timer, Truck, XCircle } from '@/lib/icons.jsx'
 import { api, apiJson } from '@/lib/api'
 import { cop } from '@/components/shared.jsx'
 import { useRealtimeEvent } from '@/components/RealtimeProvider.jsx'
@@ -113,17 +113,17 @@ export default function PanelPedidos({ esAdmin = false }) {
 
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
         <Card className="p-3">
-          <div className="text-[11px] uppercase tracking-wider text-muted-foreground">En camino</div>
+          <div className="text-caption uppercase tracking-wider text-muted-foreground">En camino</div>
           <div className="text-lg font-semibold tabular-nums">{metricasQ.isLoading ? '…' : enCamino}</div>
         </Card>
         <Card className="p-3">
-          <div className="text-[11px] uppercase tracking-wider text-muted-foreground">Más vieja esperando</div>
+          <div className="text-caption uppercase tracking-wider text-muted-foreground">Más vieja esperando</div>
           <div className="text-lg font-semibold tabular-nums">
             {metricasQ.isLoading ? '…' : (enCamino ? horasATexto(masViejo) : '—')}
           </div>
         </Card>
         <Card className="p-3 hidden lg:block">
-          <div className="text-[11px] uppercase tracking-wider text-muted-foreground">Proveedores con historial</div>
+          <div className="text-caption uppercase tracking-wider text-muted-foreground">Proveedores con historial</div>
           <div className="text-lg font-semibold tabular-nums">
             {metricasQ.isLoading ? '…' : metricas.filter(m => m.pedidos_recibidos > 0).length}
           </div>
@@ -159,7 +159,7 @@ export default function PanelPedidos({ esAdmin = false }) {
                     {p.proveedor_nombre || `Proveedor #${p.proveedor_id}`}
                   </span>
                   {p.condicion_pago && (
-                    <Badge variant="outline" className="text-[10px]">
+                    <Badge variant="outline" className="text-micro">
                       {PAGO_LABEL[p.condicion_pago] || p.condicion_pago}
                       {p.condicion_pago === 'anticipado' && p.anticipo
                         ? ` ${cop(Number(p.anticipo))}` : ''}

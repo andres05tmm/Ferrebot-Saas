@@ -6,7 +6,7 @@
  * ruta (bandeja de gastos, cartera, cotizaciones, maquinaria). Sin alertas → un verde tranquilizador.
  */
 import { Link } from 'react-router-dom'
-import { BellRing, ChevronRight, ShieldCheck } from 'lucide-react'
+import { BellRing, ChevronRight, ShieldCheck } from '@/lib/icons.jsx'
 import { Semaforo } from '../comunes.jsx'
 import { SeccionPanel, n } from './piezas.jsx'
 
@@ -48,11 +48,11 @@ export default function ListaAlertas({ alertas = [], conteos = {} }) {
     <SeccionPanel
       icon={BellRing}
       titulo="Alertas"
-      accion={todas.length > 0 ? <span className="text-[11px] tabular-nums text-muted-foreground">{todas.length}</span> : null}
+      accion={todas.length > 0 ? <span className="text-caption tabular-nums text-muted-foreground">{todas.length}</span> : null}
       aria-label="Alertas accionables"
     >
       {todas.length === 0 ? (
-        <div className="flex items-center gap-2.5 px-4 py-4 text-[13px] text-success">
+        <div className="flex items-center gap-2.5 px-4 py-4 text-body-sm text-success">
           <ShieldCheck className="size-4 shrink-0" aria-hidden="true" />
           <span className="font-medium">Sin alertas — todo en orden.</span>
         </div>
@@ -75,8 +75,8 @@ function FilaAlerta({ alerta }) {
       >
         <Semaforo tono={sev.tono} className="mt-0.5 shrink-0 self-start">{sev.label}</Semaforo>
         <div className="min-w-0 flex-1">
-          <div className="truncate text-[13px] font-medium text-foreground">{alerta.titulo}</div>
-          {alerta.detalle && <div className="truncate text-[12px] text-muted-foreground">{alerta.detalle}</div>}
+          <div className="truncate text-body-sm font-medium text-foreground">{alerta.titulo}</div>
+          {alerta.detalle && <div className="truncate text-meta text-muted-foreground">{alerta.detalle}</div>}
         </div>
         <ChevronRight className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
       </Link>

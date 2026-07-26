@@ -4,7 +4,7 @@
  * con las acciones Rotar operador / Finalizar. Presentación + el hook de reloj; las mutaciones van en los
  * modales del padre.
  */
-import { Truck, Building2, User, RotateCw, Square } from 'lucide-react'
+import { Truck, Building2, User, RotateCw, Square } from '@/lib/icons.jsx'
 import { Card } from '@/components/ui/card.jsx'
 import { hoyStrCO } from '@/lib/fechas'
 import { Semaforo, BTN_PRIMARY, BTN_OUTLINE } from '../comunes.jsx'
@@ -25,11 +25,11 @@ export default function TarjetaOperacion({ sesion, onRotar, onFinalizar, onAnula
     <Card className="flex flex-col gap-3 p-4">
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <div className="flex items-center gap-1.5 text-[14px] font-semibold text-foreground">
+          <div className="flex items-center gap-1.5 text-base font-semibold text-foreground">
             <Truck className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
             <span className="truncate">{sesion.maquina}</span>
           </div>
-          <div className="mt-1 flex items-center gap-1 text-[12px] text-muted-foreground">
+          <div className="mt-1 flex items-center gap-1 text-meta text-muted-foreground">
             <Building2 className="size-3 shrink-0" aria-hidden="true" />
             <span className="truncate">{sesion.obra}</span>
           </div>
@@ -43,10 +43,10 @@ export default function TarjetaOperacion({ sesion, onRotar, onFinalizar, onAnula
         <div className="font-mono text-2xl font-semibold tabular-nums text-foreground" aria-live="off">
           {total}
         </div>
-        <div className="mt-0.5 text-[11px] text-muted-foreground">tiempo de máquina activa</div>
+        <div className="mt-0.5 text-caption text-muted-foreground">tiempo de máquina activa</div>
       </div>
 
-      <div className="flex items-center gap-1.5 text-[12px]">
+      <div className="flex items-center gap-1.5 text-meta">
         <User className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
         <span className="truncate text-foreground">{sesion.operador || 'Sin operador'}</span>
         <span className="ml-auto font-mono tabular-nums text-muted-foreground">{tramo}</span>
@@ -73,7 +73,7 @@ export default function TarjetaOperacion({ sesion, onRotar, onFinalizar, onAnula
         <button
           type="button"
           onClick={() => onAnular(sesion)}
-          className="self-end text-[11px] font-medium text-muted-foreground cursor-pointer hover:text-destructive"
+          className="self-end text-caption font-medium text-muted-foreground cursor-pointer hover:text-destructive"
         >
           Anular sin cobrar
         </button>

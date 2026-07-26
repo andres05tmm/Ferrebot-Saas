@@ -51,8 +51,14 @@ function normalizarRegimen(valor) {
   return ''
 }
 
-/** Persona jurídica = NIT (mismo criterio que ubl.armar_customer para el tipo de organización). */
-const esJuridica = (cliente) => cliente?.tipo_documento === 'NIT'
+const PERSONAS = ['Natural', 'Jurídica']
+
+/** Derivado del documento (NIT → jurídica), que es el criterio de ubl.armar_customer. */
+const personaDerivada = (tipoDoc) => (tipoDoc === 'NIT' ? 'Jurídica' : 'Natural')
+
+/** Tipo de persona a mostrar: manda el dato guardado (0066) y, si el cliente es viejo y no lo tiene,
+ * se cae al derivado del documento — en el catálogo migrado hay S.A.S cargadas con CC. */
+const personaDe = (cliente) => cliente?.tipo_persona || personaDerivada(cliente?.tipo_documento)
 
 function iniciales(nombre) {
   const w = String(nombre || '').trim().split(/\s+/)
@@ -281,9 +287,7 @@ function FilaEscritorio({ cliente, admin, onEditar, onEliminar }) {
           <span className="text-[11px] text-muted-foreground tabular-nums">{cliente.documento || '—'}</span>
         </div>
       </td>
-      <td className="px-3.5 py-2.5 text-[11px] text-muted-foreground">
-        {esJuridica(cliente) ? 'Jurídica' : 'Natural'}
-      </td>
+      <td className="px-3.5 py-2.5 text-[11px] text-muted-foreground">{personaDe(cliente)}</td>
       <td className="px-3.5 py-2.5 text-[11px] tabular-nums">
         {cliente.telefono || <span className="text-muted-foreground">—</span>}
       </td>
@@ -320,6 +324,7 @@ function ModalCliente({ cliente, fiscal, onClose, onGuardado }) {
   const [f, setF] = useState({
     nombre: cliente?.nombre || '',
     tipo_documento: cliente?.tipo_documento || 'CC',
+    tipo_persona: personaDe(cliente),
     documento: cliente?.documento || '',
     telefono: cliente?.telefono || '',
     correo: cliente?.correo || '',
@@ -329,7 +334,15 @@ function ModalCliente({ cliente, fiscal, onClose, onGuardado }) {
   })
   const [enviando, setEnviando] = useState(false)
   const [error, setError] = useState('')
+  // Mientras nadie toque el tipo de persona, sigue al documento (NIT → jurídica); apenas se elige a
+  // mano, manda la elección (una S.A.S cargada con CC tiene que poder quedar jurídica).
+  const personaManual = useRef(!!cliente?.tipo_persona)
   const set = (k) => (e) => setF(prev => ({ ...prev, [k]: e.target.value }))
+  const setTipoDoc = (e) => setF(prev => ({
+    ...prev,
+    tipo_documento: e.target.value,
+    tipo_persona: personaManual.current ? prev.tipo_persona : personaDerivada(e.target.value),
+  }))
 
   async function guardar() {
     if (!f.nombre.trim()) { setError('El nombre es obligatorio'); return }
@@ -337,6 +350,7 @@ function ModalCliente({ cliente, fiscal, onClose, onGuardado }) {
     const payload = {
       nombre: f.nombre.trim(),
       tipo_documento: f.tipo_documento,
+      tipo_persona: f.tipo_persona,
       documento: f.documento.trim() || null,
       telefono: f.telefono.trim() || null,
       correo: f.correo.trim() || null,
@@ -384,7 +398,7 @@ function ModalCliente({ cliente, fiscal, onClose, onGuardado }) {
           <div className="grid grid-cols-[110px_1fr] gap-2">
             <div>
               <Label htmlFor="cli-tipo">Tipo ID</Label>
-              <select id="cli-tipo" value={f.tipo_documento} onChange={set('tipo_documento')}
+              <select id="cli-tipo" value={f.tipo_documento} onChange={setTipoDoc}
                 aria-label="Tipo de documento"
                 className="h-9 w-full px-2 rounded-md border border-border bg-surface text-sm">
                 {TIPOS_DOC.map(t => <option key={t} value={t}>{t}</option>)}
@@ -397,12 +411,23 @@ function ModalCliente({ cliente, fiscal, onClose, onGuardado }) {
             </div>
           </div>
 
-          {/* Derivado, no editable: la facturación arma el customer a partir del tipo de documento. */}
-          <p className="text-[11px] text-muted-foreground">
-            Tipo de persona: <strong className="text-foreground">
-              {f.tipo_documento === 'NIT' ? 'Jurídica' : 'Natural'}
-            </strong> (según el tipo de identificación)
-          </p>
+          <div>
+            <Label>Tipo de persona</Label>
+            <div className="flex gap-2">
+              {PERSONAS.map(tp => (
+                <button key={tp} type="button" aria-pressed={f.tipo_persona === tp}
+                  onClick={() => { personaManual.current = true; setF(prev => ({ ...prev, tipo_persona: tp })) }}
+                  className={cn(
+                    'flex-1 h-9 rounded-md text-xs font-semibold border transition-colors',
+                    f.tipo_persona === tp
+                      ? 'bg-primary/10 text-primary border-primary'
+                      : 'border-border text-muted-foreground hover:bg-surface-2',
+                  )}>
+                  {tp}
+                </button>
+              ))}
+            </div>
+          </div>
 
           <div className="grid grid-cols-2 gap-2">
             <div>

@@ -7,7 +7,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules.clientes.repository import SqlClientesRepository
-from modules.clientes.schemas import ClienteCrear
+from modules.clientes.schemas import ClienteActualizar, ClienteCrear
 from modules.clientes.service import ClientesService
 
 
@@ -54,3 +54,46 @@ async def test_obtener_y_listar_con_filtro_ilike(tenant):
         # q filtra por nombre (case-insensitive) y por documento
         assert [c.documento for c in await repo.listar("ana")] == ["111"]
         assert [c.nombre for c in await repo.listar("222")] == ["Carlos Gómez"]
+
+
+async def test_editar_es_parcial_y_persiste_tipo_persona(tenant):
+    """PUT parcial contra Postgres real: `tipo_persona` (0066) se guarda y editar el teléfono no
+    borra los datos fiscales que el form no mandó."""
+    async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
+        creado = await ClientesService(SqlClientesRepository(s)).crear(
+            ClienteCrear(
+                nombre="Baby Retail S.A.S", tipo_documento="CC", documento="901236390",
+                tipo_persona="Jurídica", ciudad_dane="13001", regimen="responsable_iva",
+            )
+        )
+        await s.commit()
+        cid = creado.cliente.id
+        assert creado.cliente.tipo_persona == "Jurídica"   # S.A.S con CC: manda lo elegido
+
+    async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
+        actualizado = await ClientesService(SqlClientesRepository(s)).actualizar(
+            cid, ClienteActualizar(telefono="3001112233")
+        )
+        await s.commit()
+        assert actualizado is not None
+        assert actualizado.telefono == "3001112233"
+        assert actualizado.tipo_persona == "Jurídica"      # intactos los campos no enviados
+        assert actualizado.ciudad_dane == "13001"
+        assert actualizado.regimen == "responsable_iva"
+
+
+async def test_eliminar_borra_la_fila(tenant):
+    async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
+        creado = await ClientesService(SqlClientesRepository(s)).crear(ClienteCrear(nombre="Efímero"))
+        await s.commit()
+        cid = creado.cliente.id
+
+    async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
+        assert await ClientesService(SqlClientesRepository(s)).eliminar(cid) is True
+        await s.commit()
+
+    async with AsyncSession(tenant.engine) as s:
+        total = (
+            await s.execute(text("SELECT count(*) FROM clientes WHERE id = :c"), {"c": cid})
+        ).scalar_one()
+        assert total == 0

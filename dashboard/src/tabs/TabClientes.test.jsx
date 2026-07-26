@@ -17,8 +17,11 @@ import { FeaturesProvider } from '@/lib/features.jsx'
 import TabClientes from './TabClientes.jsx'
 
 const CLIENTES = [
-  { id: 1, nombre: 'Ana Gómez', tipo_documento: 'CC', documento: '111', telefono: '300', correo: null, direccion: 'Calle 1', ciudad_dane: null, regimen: null },
-  { id: 2, nombre: 'Ferre La 80 SAS', tipo_documento: 'NIT', documento: '900123', telefono: null, correo: 'a@b.co', direccion: null, ciudad_dane: '5001', regimen: '1' },
+  // Sin `tipo_persona` (cliente viejo) → se deriva del documento: CC → Natural.
+  { id: 1, nombre: 'Ana Gómez', tipo_documento: 'CC', documento: '111', telefono: '300', correo: null, direccion: 'Calle 1', ciudad_dane: null, regimen: null, tipo_persona: null },
+  { id: 2, nombre: 'Ferre La 80 SAS', tipo_documento: 'NIT', documento: '900123', telefono: null, correo: 'a@b.co', direccion: null, ciudad_dane: '5001', regimen: '1', tipo_persona: null },
+  // S.A.S cargada con CC pero marcada a mano como jurídica: manda el dato guardado.
+  { id: 3, nombre: 'Baby Retail S.A.S', tipo_documento: 'CC', documento: '901236390', telefono: null, correo: null, direccion: null, ciudad_dane: null, regimen: null, tipo_persona: 'Jurídica' },
 ]
 
 function jsonResp(data, status = 200) { return { ok: status < 400, status, json: async () => data } }
@@ -58,9 +61,10 @@ describe('TabClientes — listado', () => {
     const fetchMock = instalarFetch()
     renderTab([])
     expect(await screen.findByText('Ana Gómez')).toBeInTheDocument()
-    // NIT → Jurídica; el resto → Natural (mismo criterio que la facturación).
-    expect(screen.getByText('Jurídica')).toBeInTheDocument()
-    expect(screen.getByText('Natural')).toBeInTheDocument()
+    // Sin dato guardado se deriva (NIT → Jurídica, CC → Natural) y el guardado manda: la S.A.S con
+    // CC sale Jurídica igual → dos filas jurídicas y una natural.
+    expect(screen.getAllByText('Jurídica')).toHaveLength(2)
+    expect(screen.getAllByText('Natural')).toHaveLength(1)
 
     fireEvent.change(screen.getByLabelText('Buscar cliente'), { target: { value: 'an' } })
     await waitFor(() => {
@@ -91,7 +95,9 @@ describe('TabClientes — modal de alta/edición', () => {
 
     await waitFor(() => expect(toast.message).toHaveBeenCalled())
     const call = fetchMock.mock.calls.find(c => String(c[0]).includes('/clientes') && c[1]?.method === 'POST')
-    expect(JSON.parse(call[1].body)).toMatchObject({ nombre: 'Beto', documento: '222', tipo_documento: 'CC' })
+    expect(JSON.parse(call[1].body)).toMatchObject({
+      nombre: 'Beto', documento: '222', tipo_documento: 'CC', tipo_persona: 'Natural',
+    })
   })
 
   it('editar precarga el cliente y guarda con PUT /clientes/{id}', async () => {
@@ -156,6 +162,40 @@ describe('TabClientes — modal de alta/edición', () => {
 
     await new Promise(r => setTimeout(r, 400))
     expect(fetchMock.mock.calls.some(c => String(c[0]).includes('/clientes/ciudades'))).toBe(false)
+  })
+})
+
+describe('TabClientes — tipo de persona', () => {
+  it('sigue al documento (NIT → Jurídica) hasta que se elige a mano, y ahí manda la elección', async () => {
+    const fetchMock = instalarFetch()
+    renderTab([])
+    await screen.findByText('Ana Gómez')
+
+    fireEvent.click(screen.getByText('Nuevo cliente'))
+    fireEvent.change(await screen.findByLabelText('Nombre'), { target: { value: 'Ferre X' } })
+    fireEvent.change(screen.getByLabelText('Tipo de documento'), { target: { value: 'NIT' } })
+    expect(screen.getByRole('button', { name: 'Jurídica' })).toHaveAttribute('aria-pressed', 'true')
+
+    // Elección manual: vuelve a natural y ya no la pisa el cambio de documento.
+    fireEvent.click(screen.getByRole('button', { name: 'Natural' }))
+    fireEvent.change(screen.getByLabelText('Tipo de documento'), { target: { value: 'CE' } })
+    expect(screen.getByRole('button', { name: 'Natural' })).toHaveAttribute('aria-pressed', 'true')
+
+    fireEvent.click(screen.getByText('Crear cliente'))
+    await waitFor(() => {
+      const call = fetchMock.mock.calls.find(c => String(c[0]).includes('/clientes') && c[1]?.method === 'POST')
+      expect(JSON.parse(call[1].body)).toMatchObject({ tipo_documento: 'CE', tipo_persona: 'Natural' })
+    })
+  })
+
+  it('al editar precarga el tipo de persona guardado', async () => {
+    instalarFetch()
+    renderTab([])
+    await screen.findByText('Baby Retail S.A.S')
+
+    fireEvent.click(screen.getAllByTitle('Editar cliente')[2])
+    await screen.findByLabelText('Nombre')
+    expect(screen.getByRole('button', { name: 'Jurídica' })).toHaveAttribute('aria-pressed', 'true')
   })
 })
 

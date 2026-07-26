@@ -17,6 +17,8 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 TipoDocumento = Literal["CC", "NIT", "CE", "TI", "PAS", "NUIP"]
+# Tipo de persona (tenant 0066). NULL = sin dato → el dashboard lo deriva del tipo de documento.
+TipoPersona = Literal["Natural", "Jurídica"]
 # Literales EXACTOS al enum `estatus_cliente` (tenant 0046). Solo para la ENTRADA (validación de
 # `ClienteCrear`); la lectura usa `str | None` (el valor viene de la BD, ya válido) — mismo criterio
 # que `TipoDocumento`, que valida al crear pero se lee como `str | None`.
@@ -26,6 +28,7 @@ EstatusCliente = Literal["PROSPECTO", "ACTIVO", "RECURRENTE", "INACTIVO", "MOROS
 class ClienteCrear(BaseModel):
     nombre: str = Field(min_length=1)
     tipo_documento: TipoDocumento | None = None
+    tipo_persona: TipoPersona | None = None
     documento: str | None = None
     telefono: str | None = None
     correo: str | None = None
@@ -50,6 +53,7 @@ class ClienteActualizar(BaseModel):
 
     nombre: str | None = Field(default=None, min_length=1)
     tipo_documento: TipoDocumento | None = None
+    tipo_persona: TipoPersona | None = None
     documento: str | None = None
     telefono: str | None = None
     correo: str | None = None
@@ -71,6 +75,7 @@ class ClienteLeer(BaseModel):
     id: int
     nombre: str
     tipo_documento: str | None
+    tipo_persona: str | None = None
     documento: str | None
     telefono: str | None
     correo: str | None

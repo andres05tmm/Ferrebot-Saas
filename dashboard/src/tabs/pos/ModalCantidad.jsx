@@ -18,7 +18,7 @@ import { Button } from '@/components/ui/button.jsx'
 import { Label } from '@/components/ui/label.jsx'
 import { Seg } from './piezas.jsx'
 import {
-  fraccionQueCasa, fraccionesOrdenadas, paqueteDe, precioSubunidad, previewMotor,
+  fraccionQueCasa, fraccionesOrdenadas, paqueteCompleto, paqueteDe, precioSubunidad, previewMotor,
   subunidadesDesdePesos, tipoVenta,
 } from './cantidad.js'
 
@@ -215,6 +215,15 @@ function FormCantidad({ prod, tipo, onConfirmar, onCancelar }) {
 
         {tipo === 'kg' && (
           <>
+            {/* Empaque completo (la bolsa de cal de 25 kg): un toque para venderla entera. */}
+            {paqueteCompleto(prod) && (
+              <BotonKpi
+                activo={Number(kgVal) === paqueteCompleto(prod).factor}
+                onClick={() => setKgVal(String(paqueteCompleto(prod).factor))}
+                titulo={`${paqueteCompleto(prod).nombre} completa (${paqueteCompleto(prod).factor} kg)`}
+                precio={previewMotor(prod, paqueteCompleto(prod).factor)}
+              />
+            )}
             <div className="grid grid-cols-3 gap-1.5">
               {KG_RAPIDOS.map(([et, q]) => (
                 <BotonKpi key={et} activo={Number(kgVal) === q} onClick={() => setKgVal(String(q))}

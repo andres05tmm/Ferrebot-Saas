@@ -19,7 +19,11 @@ Formato basado en Keep a Changelog. Versionado semántico.
   gramo, lija por cm, tintilla por ml) se compran y se cuentan por caja/rollo/tarro; el backend
   convierte a la sub-unidad en la que vive el stock, así el inventario y el costo cuadran con la
   venta. `GET /compras/{id}` expone el detalle real para corregir la compra.
-- Migraciones tenant **0067** y **0068**.
+- **El empaque es dato del producto** (migración **0069**): `contenido_paquete` + `nombre_paquete`
+  (la bolsa de cal trae 25 kg, el bulto de cemento 50). Antes el divisor era una convención por
+  unidad y solo servía para puntilla/lija/tintilla. Con esto se compra por bulto, se cuenta por
+  bulto y se vende por kilo sin descuadrar; el POS gana el botón "bolsa completa".
+- Migraciones tenant **0067**, **0068** y **0069**.
 
 ## [Unreleased]
 

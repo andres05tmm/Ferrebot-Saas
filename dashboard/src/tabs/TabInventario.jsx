@@ -437,6 +437,7 @@ const FORM_VACIO = {
   precio_venta: '', precio_compra: '', precio_especial: '',
   precio_umbral: '', precio_bajo_umbral: '', precio_sobre_umbral: '',
   iva: '19', permite_fraccion: false, activo: true, fracciones: [],
+  contenido_paquete: '', nombre_paquete: '',
 }
 
 function desdeProducto(p) {
@@ -450,6 +451,8 @@ function desdeProducto(p) {
     precio_umbral: s(p.precio_umbral), precio_bajo_umbral: s(p.precio_bajo_umbral),
     precio_sobre_umbral: s(p.precio_sobre_umbral), iva: s(p.iva) || '19',
     permite_fraccion: !!p.permite_fraccion, activo: p.activo !== false, fracciones: [],
+    contenido_paquete: p.contenido_paquete != null ? String(p.contenido_paquete) : '',
+    nombre_paquete: s(p.nombre_paquete),
   }
 }
 
@@ -469,6 +472,10 @@ function construirPayload(f, { incluirEscalonado }) {
     precio_especial: dec(f.precio_especial),
     iva: Number(f.iva || 0),
     permite_fraccion: !!f.permite_fraccion,
+    // Empaque con que se compra y se puede vender entero (bolsa de cal de 25 kg): con esto la
+    // compra en bultos entra al inventario en la unidad de venta.
+    contenido_paquete: f.contenido_paquete !== '' ? Number(f.contenido_paquete) : null,
+    nombre_paquete: f.nombre_paquete.trim() || null,
     activo: !!f.activo,
     fracciones: f.fracciones
       .filter(fr => fr.fraccion.trim())
@@ -578,6 +585,28 @@ function ProductoForm({ producto, construccion = false, onClose, onSaved }) {
 
           <Input value={f.unidad_medida} onChange={set('unidad_medida')} placeholder="Unidad" aria-label="Unidad de medida" className="h-9" />
           <Input type="number" value={f.iva} onChange={set('iva')} placeholder="IVA %" aria-label="IVA" className="h-9" />
+        </div>
+
+        {/* Empaque de compra: lo que permite comprar por bulto y vender menudeado sin descuadrar. */}
+        <div className="pt-2 border-t border-border-subtle">
+          <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-2">
+            ¿Se compra por empaque?
+          </p>
+          <div className="flex flex-wrap items-center gap-2 text-[12px]">
+            <Input value={f.nombre_paquete} onChange={set('nombre_paquete')} placeholder="bolsa, caja, bulto…"
+              aria-label="Nombre del empaque" className="h-9 w-40" />
+            <span className="text-muted-foreground">de</span>
+            <Input type="number" min="0" step="any" value={f.contenido_paquete}
+              onChange={set('contenido_paquete')} placeholder="25"
+              aria-label="Contenido del empaque" className="h-9 w-28" />
+            <span className="text-muted-foreground">
+              {f.unidad_medida || 'unidad'} — se vende por {f.unidad_medida || 'unidad'}
+            </span>
+          </div>
+          <p className="mt-1 text-[10px] text-muted-foreground">
+            Ejemplo: la cal se compra por <strong>bolsa</strong> de <strong>25</strong> Kg y se vende
+            por kilo. Déjalo vacío si el producto se compra y se vende igual.
+          </p>
         </div>
 
         <div className="pt-2 border-t border-border-subtle">

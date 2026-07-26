@@ -42,6 +42,10 @@ class Producto(TenantBase):
     precio_sobre_umbral: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
     iva: Mapped[int] = mapped_column(SmallInteger, nullable=False)
     permite_fraccion: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    # Empaque con que se COMPRA y se puede vender entero (0069): cuántas unidades de venta trae
+    # (bolsa de cal = 25 kg) y cómo lo llama el negocio ('bolsa', 'bulto', 'caja'…).
+    contenido_paquete: Mapped[Decimal | None] = mapped_column(Numeric(12, 3))
+    nombre_paquete: Mapped[str | None] = mapped_column(Text)
     activo: Mapped[bool] = mapped_column(Boolean, nullable=False)
     # Zona de comandas KDS (0062, ADR 0032 D5): rutea el producto a parrilla/bar/…; NULL = cocina.
     zona_comanda_id: Mapped[int | None] = mapped_column(BigInteger)

@@ -112,7 +112,9 @@ class SqlInventarioRepository:
             precio_venta=datos.precio_venta, precio_compra=datos.precio_compra,
             precio_especial=datos.precio_especial, precio_umbral=datos.precio_umbral,
             precio_bajo_umbral=datos.precio_bajo_umbral, precio_sobre_umbral=datos.precio_sobre_umbral,
-            iva=datos.iva, permite_fraccion=datos.permite_fraccion, activo=datos.activo,
+            iva=datos.iva, permite_fraccion=datos.permite_fraccion,
+            contenido_paquete=datos.contenido_paquete, nombre_paquete=datos.nombre_paquete,
+            activo=datos.activo,
             fracciones=[
                 ProductoFraccion(
                     fraccion=fr.fraccion, decimal=fr.decimal,
@@ -163,6 +165,8 @@ class SqlInventarioRepository:
         producto.precio_sobre_umbral = datos.precio_sobre_umbral
         producto.iva = datos.iva
         producto.permite_fraccion = datos.permite_fraccion
+        producto.contenido_paquete = datos.contenido_paquete
+        producto.nombre_paquete = datos.nombre_paquete
         producto.activo = datos.activo
         # Reasignar la colección (cargada por selectin) borra las fracciones huérfanas en el flush.
         producto.fracciones = [

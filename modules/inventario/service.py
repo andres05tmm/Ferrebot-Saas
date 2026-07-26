@@ -42,6 +42,8 @@ def esquema_de(producto: Producto) -> EsquemaPrecio:
         # calcular_precio → el endpoint GET /productos/{id}/precio (que el POS consulta por línea)
         # cobraría la sub-unidad como precio_venta*cantidad. La señal granel la da unidad_medida.
         unidad_medida=producto.unidad_medida,
+        # Tamaño del empaque como dato del producto (0069): manda sobre la convención por unidad.
+        contenido_paquete=producto.contenido_paquete,
     )
 
 
@@ -132,6 +134,7 @@ class InventarioService:
         # Ajuste capturado en paquetes (p. ej. "sobró media caja"): a la sub-unidad del stock.
         delta, _ = convertir_a_subunidad(
             delta, None, unidad=unidad, unidad_medida=producto.unidad_medida,
+            contenido_paquete=producto.contenido_paquete,
         )
 
         # Lock primero: serializa los ajustes concurrentes del mismo producto. Así el chequeo de
@@ -185,6 +188,7 @@ class InventarioService:
             raise ProductoInexistente(producto_id)
         cantidad_contada, _ = convertir_a_subunidad(
             cantidad_contada, None, unidad=unidad, unidad_medida=producto.unidad_medida,
+            contenido_paquete=producto.contenido_paquete,
         )
 
         # Lock antes de la idempotencia (igual que `ajustar`): serializa conteos concurrentes y deja el

@@ -40,6 +40,7 @@ class SqlClientesRepository:
         cliente = Cliente(
             nombre=datos.nombre,
             tipo_documento=datos.tipo_documento,
+            tipo_persona=datos.tipo_persona,
             documento=datos.documento,
             telefono=datos.telefono,
             correo=datos.correo,

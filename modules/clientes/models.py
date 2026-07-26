@@ -30,6 +30,8 @@ class Cliente(TenantBase):
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     nombre: Mapped[str] = mapped_column(Text, nullable=False)
     tipo_documento: Mapped[str | None] = mapped_column(Text)
+    # 'Natural' | 'Jurídica' (0066). NULL = sin dato: el dashboard lo deriva del tipo de documento.
+    tipo_persona: Mapped[str | None] = mapped_column(Text)
     documento: Mapped[str | None] = mapped_column(Text)
     telefono: Mapped[str | None] = mapped_column(Text)
     correo: Mapped[str | None] = mapped_column(Text)

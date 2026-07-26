@@ -36,6 +36,7 @@ from modules.pedidos_proveedor.errors import (
 )
 from modules.pedidos_proveedor.models import PedidoProveedor
 from modules.pedidos_proveedor.repository import SqlPedidosProveedorRepository
+from modules.proveedores.pagos import etiqueta_origen, monto_de_caja, normalizar_partes
 from modules.pedidos_proveedor.schemas import (
     CuadreLinea,
     MetricasProveedor,
@@ -200,22 +201,32 @@ class PedidosProveedorService:
             monto_estimado=datos.monto_estimado or valor_pedido,
             anticipo=anticipo,
             condicion_pago=datos.condicion_pago,
-            origen_anticipo=datos.origen_fondos if anticipo else None,
+            origen_anticipo=None,   # lo sella el pago (puede ser 'mixto')
             usuario_id=usuario_id, notas=datos.notas, idempotency_key=datos.idempotency_key,
             lineas=[(ln.producto_id, ln.descripcion, ln.cantidad, ln.costo_estimado)
                     for ln in datos.lineas],
         )
-        if anticipo and datos.origen_fondos == "caja":
-            # La plata sale del cajón AHORA (exige caja abierta). Key natural por pedido: un solo
-            # egreso aunque el alta se reintente (además el alta misma ya es idempotente por su key).
-            concepto = "Pago de contado" if datos.condicion_pago == "contado" else "Anticipo"
-            res = await self._caja.registrar_movimiento(
-                usuario_id=usuario_id, tipo="egreso", monto=anticipo,
-                concepto=f"{concepto} pedido proveedor #{pedido.id}",
-                referencia=f"pedido:{pedido.id}",
-                idempotency_key=f"pedido-anticipo:{pedido.id}", modo_empresa=modo_empresa,
+        if anticipo:
+            # Cómo se reparte lo que se paga ahora: solo la parte del cajón mueve la caja (y exige
+            # caja abierta); lo demás queda registrado como plata que salió sin pasar por ella.
+            partes = normalizar_partes(datos.pagos, datos.origen_fondos, anticipo)
+            desde_caja = monto_de_caja(partes)
+            movimiento_id = None
+            if desde_caja > 0:
+                concepto = "Pago de contado" if datos.condicion_pago == "contado" else "Anticipo"
+                res = await self._caja.registrar_movimiento(
+                    usuario_id=usuario_id, tipo="egreso", monto=desde_caja,
+                    concepto=f"{concepto} pedido proveedor #{pedido.id}",
+                    referencia=f"pedido:{pedido.id}",
+                    idempotency_key=f"pedido-anticipo:{pedido.id}", modo_empresa=modo_empresa,
+                )
+                movimiento_id = res.movimiento.id
+                await self._repo.set_anticipo_movimiento(pedido, movimiento_id)
+            await self._proveedores.registrar_partes_pago(
+                ref_tipo="pedido", ref_id=pedido.id, partes=partes,
+                caja_movimiento_id=movimiento_id,
             )
-            await self._repo.set_anticipo_movimiento(pedido, res.movimiento.id)
+            await self._repo.set_origen_anticipo(pedido, etiqueta_origen(partes))
         return ResultadoPedido(await self._leer(pedido), replay=False)
 
     @staticmethod
@@ -368,12 +379,22 @@ class PedidosProveedorService:
             egreso = remanente if anticipo > 0 else total
         elif condicion == "anticipado" and datos.pago_ahora and remanente > 0:
             egreso = remanente
-        if egreso is not None and egreso > 0 and datos.origen_fondos == "caja":
-            await self._caja.registrar_movimiento(
-                usuario_id=usuario_id, tipo="egreso", monto=egreso,
-                concepto=f"Pedido proveedor #{pedido.id} — pago mercancía",
-                referencia=f"compra:{res_compra.compra.id}",
-                idempotency_key=key_natural, modo_empresa=modo_empresa,
+        partes_pago: list = []
+        if egreso is not None and egreso > 0:
+            partes_pago = normalizar_partes(datos.pagos, datos.origen_fondos, egreso)
+            desde_caja = monto_de_caja(partes_pago)
+            movimiento_id = None
+            if desde_caja > 0:
+                res_mov = await self._caja.registrar_movimiento(
+                    usuario_id=usuario_id, tipo="egreso", monto=desde_caja,
+                    concepto=f"Pedido proveedor #{pedido.id} — pago mercancía",
+                    referencia=f"compra:{res_compra.compra.id}",
+                    idempotency_key=key_natural, modo_empresa=modo_empresa,
+                )
+                movimiento_id = res_mov.movimiento.id
+            await self._proveedores.registrar_partes_pago(
+                ref_tipo="compra", ref_id=res_compra.compra.id, partes=partes_pago,
+                caja_movimiento_id=movimiento_id,
             )
 
         # 4) Cuadre de inventario progresivo: fija el stock al físico contado (sella cuadrado_at).
@@ -390,7 +411,7 @@ class PedidosProveedorService:
         pedido = await self._repo.marcar_recibido(
             pedido, fecha_recepcion=now_co(), compra_id=res_compra.compra.id,
             factura_proveedor_id=factura_id, condicion_pago=condicion,
-            origen_pago=datos.origen_fondos if egreso else None,
+            origen_pago=etiqueta_origen(partes_pago),
             notas=datos.notas,
         )
         lineas = [

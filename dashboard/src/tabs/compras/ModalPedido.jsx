@@ -16,7 +16,9 @@ import { Label } from '@/components/ui/label.jsx'
 import {
   Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog.jsx'
-import { BuscadorProducto, LineasEditor, OrigenFondos, nuevaIdemKey, totalLineas } from './comunes.jsx'
+import {
+  BuscadorProducto, LineasEditor, OrigenFondos, nuevaIdemKey, pagoCuadra, partesPago, totalLineas,
+} from './comunes.jsx'
 
 const FORMAS = [
   { id: 'contado', label: 'De contado (pago ahora)' },
@@ -32,6 +34,7 @@ export default function ModalPedido({ abierto, onCerrar, onCreado }) {
   const [forma, setForma] = useState('contado')
   const [anticipo, setAnticipo] = useState('')
   const [origen, setOrigen] = useState('caja')
+  const [pagos, setPagos] = useState([])       // partes del pago mixto ([] = un solo medio)
   const [enviando, setEnviando] = useState(false)
 
   const total = totalLineas(lineas, 'costo_estimado')
@@ -39,11 +42,14 @@ export default function ModalPedido({ abierto, onCerrar, onCreado }) {
     && lineas.every(l => Number(l.cantidad) > 0 && l.costo_estimado !== '' && Number(l.costo_estimado) >= 0)
   const anticipoValido = forma !== 'anticipado'
     || (Number(anticipo) > 0 && Number(anticipo) < total)
+  // Lo que se paga ahora: todo (contado), el anticipo (parcial) o nada (crédito).
+  const montoAhora = forma === 'contado' ? total : forma === 'anticipado' ? Number(anticipo || 0) : 0
   const valido = proveedor.trim() && lineasCompletas && anticipoValido
+    && pagoCuadra(pagos, montoAhora)
 
   function limpiar() {
     setProveedor(''); setDescripcion(''); setFechaEstimada(''); setLineas([])
-    setForma('contado'); setAnticipo(''); setOrigen('caja')
+    setForma('contado'); setAnticipo(''); setOrigen('caja'); setPagos([])
   }
 
   async function crear(e) {
@@ -62,6 +68,7 @@ export default function ModalPedido({ abierto, onCerrar, onCreado }) {
       })),
     }
     if (forma === 'anticipado') payload.anticipo = Number(anticipo)
+    if (pagos.length > 0) payload.pagos = partesPago(pagos)
     setEnviando(true)
     try {
       const res = await api('/pedidos-proveedor', {
@@ -154,7 +161,8 @@ export default function ModalPedido({ abierto, onCerrar, onCreado }) {
           {forma !== 'credito' && (
             <div className="space-y-1.5">
               <Label>¿De dónde sale la plata?</Label>
-              <OrigenFondos valor={origen} onCambio={setOrigen} />
+              <OrigenFondos valor={origen} onCambio={setOrigen} pagos={pagos} onPagos={setPagos}
+                monto={montoAhora} />
               <p className="text-caption text-muted-foreground">
                 Solo el efectivo de la caja mueve el arqueo del día; lo demás queda registrado con su
                 procedencia.

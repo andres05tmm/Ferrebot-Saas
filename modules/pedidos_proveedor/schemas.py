@@ -12,6 +12,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from modules.caja.schemas import OrigenFondos
+from modules.proveedores.pagos import PartePago
 
 CondicionPago = Literal["contado", "credito", "anticipado"]
 
@@ -59,6 +60,9 @@ class PedidoCrear(BaseModel):
     condicion_pago: CondicionPago
     anticipo: Decimal | None = Field(default=None, gt=0, le=MAX_MONTO)
     origen_fondos: OrigenFondos = "caja"
+    # Pago MIXTO (0068): reparte lo que se paga AHORA entre medios (una parte del cajón, otra por
+    # transferencia…). Vacío = todo por `origen_fondos`. La suma debe dar el monto que se paga.
+    pagos: list[PartePago] = Field(default_factory=list)
     idempotency_key: str | None = None
 
 
@@ -97,6 +101,7 @@ class RecibirPedido(BaseModel):
     # Contado: si el pago sale AHORA y de dónde. `caja` exige caja abierta y postea el egreso.
     pago_ahora: bool = False
     origen_fondos: OrigenFondos = "caja"
+    pagos: list[PartePago] = Field(default_factory=list)   # pago mixto (0068)
     notas: str | None = Field(default=None, max_length=1000)
     idempotency_key: str | None = None
 

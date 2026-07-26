@@ -14,12 +14,15 @@ import { Label } from '@/components/ui/label.jsx'
 import {
   Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog.jsx'
+import { OrigenFondos, pagoCuadra, partesPago } from '@/tabs/compras/comunes.jsx'
 
 export default function ModalAbonoProveedor({ abierto, onCerrar, onRegistrado }) {
   const [facturas, setFacturas] = useState([])
   const [facturaId, setFacturaId] = useState('')
   const [monto, setMonto] = useState('')
   const [fecha, setFecha] = useState('')   // opcional: abono con fecha distinta a hoy
+  const [origen, setOrigen] = useState('caja')
+  const [pagos, setPagos] = useState([])   // partes del pago mixto ([] = un solo medio)
   const [enviando, setEnviando] = useState(false)
 
   useEffect(() => {
@@ -31,11 +34,13 @@ export default function ModalAbonoProveedor({ abierto, onCerrar, onRegistrado })
 
   const factura = facturas.find(f => f.id === facturaId)
   const valido = factura && Number(monto) > 0 && Number(monto) <= Number(factura.pendiente)
+    && pagoCuadra(pagos, Number(monto))
 
   async function abonar(e) {
     e?.preventDefault?.()
     if (!valido || enviando) return
-    const payload = { factura_id: facturaId, monto: Number(monto) }
+    const payload = { factura_id: facturaId, monto: Number(monto), origen_fondos: origen }
+    if (pagos.length > 0) payload.pagos = partesPago(pagos)
     if (fecha) payload.fecha = fecha
     setEnviando(true)
     try {
@@ -49,11 +54,12 @@ export default function ModalAbonoProveedor({ abierto, onCerrar, onRegistrado })
         toast.success(factura
           ? `Abono registrado · pendiente ${cop(Number(factura.pendiente))} (${factura.estado})`
           : 'Abono registrado')
-        setMonto(''); setFacturaId(''); setFecha('')
+        setMonto(''); setFacturaId(''); setFecha(''); setOrigen('caja'); setPagos([])
         onRegistrado?.()
         onCerrar()
       } else if (res.status === 422) {
-        toast.error('El abono excede el saldo pendiente')
+        const err = await res.json().catch(() => ({}))
+        toast.error(typeof err?.detail === 'string' ? err.detail : 'El abono excede el saldo pendiente')
       } else if (res.status === 404) {
         toast.error('La factura no existe')
       } else {
@@ -98,6 +104,14 @@ export default function ModalAbonoProveedor({ abierto, onCerrar, onRegistrado })
                 El abono no puede superar el pendiente ({cop(Number(factura.pendiente))}).
               </p>
             )}
+          </div>
+          <div className="space-y-1.5">
+            <Label>¿De dónde sale la plata?</Label>
+            <OrigenFondos valor={origen} onCambio={setOrigen} pagos={pagos} onPagos={setPagos}
+              monto={Number(monto || 0)} id="abono-origen" />
+            <p className="text-caption text-muted-foreground">
+              Solo el efectivo de la caja mueve el arqueo del día.
+            </p>
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="ap-fecha">Fecha (opcional)</Label>

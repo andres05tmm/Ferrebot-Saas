@@ -101,7 +101,10 @@ describe('TabProveedores', () => {
     await waitFor(() => {
       const call = fetchMock.mock.calls.find(c => String(c[0]).includes('/proveedores/abonos') && c[1]?.method === 'POST')
       expect(call).toBeTruthy()
-      expect(JSON.parse(call[1].body)).toEqual({ factura_id: 'A', monto: 30000 })
+      // El abono declara de dónde sale la plata (default: efectivo de la caja).
+      expect(JSON.parse(call[1].body)).toEqual({
+        factura_id: 'A', monto: 30000, origen_fondos: 'caja',
+      })
     })
     expect(await screen.findByText('$70.000')).toBeInTheDocument()    // saldo recalculado tras el refetch
   })

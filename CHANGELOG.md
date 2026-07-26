@@ -12,7 +12,10 @@ Formato basado en Keep a Changelog. Versionado semántico.
 - **De dónde sale la plata** en cada pago (caja / efectivo guardado / banco). Los abonos a
   proveedor por fin postean su egreso cuando salen del cajón, y `flujo-dinero` desglosa los egresos
   por procedencia.
-- Migración tenant **0067**.
+- **Pago mixto a proveedor** (migración **0068**): una parte en efectivo y otra por transferencia, al
+  pedir, al recibir o al abonar. Solo la parte del cajón mueve la caja; el flujo de dinero muestra
+  aparte lo pagado por fuera de ella.
+- Migraciones tenant **0067** y **0068**.
 
 ## [Unreleased]
 

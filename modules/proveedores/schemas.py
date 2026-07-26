@@ -6,6 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from core.config.timezone import today_co
 from modules.caja.schemas import OrigenFondos
+from modules.proveedores.pagos import PartePago
 
 
 def _no_futura(v: date | None) -> date | None:
@@ -80,6 +81,9 @@ class AbonoCrear(BaseModel):
     monto: Decimal = Field(gt=0)
     fecha: date | None = None   # default hoy Colombia en el servicio
     origen_fondos: OrigenFondos = "caja"
+    # Pago MIXTO (0068): parte en efectivo del cajón, parte por transferencia. Vacío = todo por
+    # `origen_fondos`; con partes, deben sumar el monto del abono.
+    pagos: list[PartePago] = Field(default_factory=list)
 
     _fecha_no_futura = field_validator("fecha")(_no_futura)
 

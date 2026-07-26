@@ -22,6 +22,7 @@ from modules.proveedores.errors import (
     FacturaProveedorDuplicada,
     FacturaProveedorInexistente,
 )
+from modules.proveedores.pagos import PagoInvalido
 from modules.proveedores.repository import SqlProveedoresRepository
 from modules.proveedores.schemas import (
     AbonoCrear,
@@ -94,7 +95,7 @@ async def crear_abono(
         )
     except FacturaProveedorInexistente as exc:
         raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
-    except AbonoInvalido as exc:
+    except (AbonoInvalido, PagoInvalido) as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
     except CajaNoAbierta as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc

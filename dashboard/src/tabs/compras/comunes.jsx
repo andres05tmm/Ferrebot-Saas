@@ -104,23 +104,85 @@ export function LineasEditor({ lineas, setLineas, campoCosto = 'costo', etiqueta
   )
 }
 
-/** Selector de dónde sale la plata: solo la caja mueve el arqueo del día. */
-export function OrigenFondos({ valor, onCambio, id = 'origen-fondos' }) {
-  const opciones = [
-    { id: 'caja', label: 'Efectivo de la caja' },
-    { id: 'efectivo_externo', label: 'Efectivo guardado' },
-    { id: 'banco', label: 'Transferencia / banco' },
-  ]
+export const MEDIOS = [
+  { id: 'caja', label: 'Efectivo de la caja' },
+  { id: 'efectivo_externo', label: 'Efectivo guardado' },
+  { id: 'banco', label: 'Transferencia / banco' },
+]
+
+/**
+ * De dónde sale la plata. Caso normal: un solo medio (botones). Caso mixto: se reparte el monto
+ * entre medios y las partes tienen que sumar exactamente lo que se paga — solo la parte de la caja
+ * mueve el arqueo del día.
+ *
+ * `onCambio(origen)` para el medio único y `onPagos(partes)` para la repartición ([] = sin mixto).
+ */
+export function OrigenFondos({ valor, onCambio, pagos = [], onPagos, monto = 0, id = 'origen-fondos' }) {
+  const mixto = pagos.length > 0
+  const suma = pagos.reduce((acc, p) => acc + Number(p.monto || 0), 0)
+  const cuadra = Math.abs(suma - Number(monto || 0)) < 0.005
+
+  function alternarMixto() {
+    if (!onPagos) return
+    // Al abrir, la primera parte arranca con todo el monto en el medio ya elegido: solo hay que
+    // mover lo que se pagó por el otro lado.
+    onPagos(mixto ? [] : [{ origen: valor, monto: String(monto || '') }])
+  }
+
   return (
-    <div className="flex gap-2 flex-wrap" role="group" aria-label="De dónde sale la plata">
-      {opciones.map(o => (
-        <button key={o.id} type="button" id={`${id}-${o.id}`} aria-pressed={valor === o.id}
-          onClick={() => onCambio(o.id)}
-          className={`px-2.5 py-1 rounded-md border text-body-sm ${
-            valor === o.id ? 'border-primary bg-primary/10 text-primary' : 'border-border'}`}>
-          {o.label}
+    <div className="space-y-2">
+      {!mixto && (
+        <div className="flex gap-2 flex-wrap" role="group" aria-label="De dónde sale la plata">
+          {MEDIOS.map(o => (
+            <button key={o.id} type="button" id={`${id}-${o.id}`} aria-pressed={valor === o.id}
+              onClick={() => onCambio(o.id)}
+              className={`px-2.5 py-1 rounded-md border text-body-sm ${
+                valor === o.id ? 'border-primary bg-primary/10 text-primary' : 'border-border'}`}>
+              {o.label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {mixto && (
+        <div className="space-y-1.5">
+          {MEDIOS.map(o => {
+            const parte = pagos.find(p => p.origen === o.id)
+            return (
+              <div key={o.id} className="flex items-center gap-2 text-body-sm">
+                <span className="flex-1">{o.label}</span>
+                <Input type="number" inputMode="numeric" min="0" className="w-32 h-8"
+                  aria-label={`Monto ${o.label}`} value={parte?.monto ?? ''}
+                  onChange={(e) => {
+                    const v = e.target.value
+                    const resto = pagos.filter(p => p.origen !== o.id)
+                    onPagos(v === '' || Number(v) <= 0 ? resto : [...resto, { origen: o.id, monto: v }])
+                  }} />
+              </div>
+            )
+          })}
+          <p className={`text-caption ${cuadra ? 'text-muted-foreground' : 'text-warning'}`}>
+            Repartido {cop(suma)} de {cop(Number(monto || 0))}
+            {!cuadra && ' — las partes tienen que sumar el total'}
+          </p>
+        </div>
+      )}
+
+      {onPagos && (
+        <button type="button" onClick={alternarMixto}
+          className="text-caption text-primary hover:underline">
+          {mixto ? 'Pagar con un solo medio' : 'Pago mixto (parte en efectivo, parte por transferencia)'}
         </button>
-      ))}
+      )}
     </div>
   )
 }
+
+/** Las partes listas para el backend (números), o [] si no hay pago mixto. */
+export const partesPago = (pagos) =>
+  pagos.filter(p => Number(p.monto) > 0).map(p => ({ origen: p.origen, monto: Number(p.monto) }))
+
+/** ¿La repartición cuadra con lo que se paga? (sin mixto siempre cuadra). */
+export const pagoCuadra = (pagos, monto) =>
+  pagos.length === 0
+  || Math.abs(pagos.reduce((a, p) => a + Number(p.monto || 0), 0) - Number(monto || 0)) < 0.005

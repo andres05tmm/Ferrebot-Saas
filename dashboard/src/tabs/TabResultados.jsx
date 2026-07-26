@@ -208,10 +208,17 @@ function PanelFlujo({ rango }) {
     ['Otros ingresos de caja', d.ingresos_caja],
   ].filter(([, v]) => Number(v) > 0)
 
+  // Las salidas de CAJA se desglosan por su procedencia (`egresos_por_origen`); si el backend es
+  // viejo y no la manda, se cae al total agrupado de siempre.
+  const egresosDetallados = Object.entries(d.egresos_por_origen || {})
   const filaSalidas = [
     ...Object.entries(d.gastos_por_categoria || {}).map(([c, v]) => [`Gastos · ${CATEGORIA_LABEL[c] || c}`, v]),
     ['Abonos a proveedores', d.abonos_proveedores],
-    ['Otros egresos de caja', d.egresos_caja],
+    ...(egresosDetallados.length > 0
+      ? egresosDetallados
+      : [['Otros egresos de caja', d.egresos_caja]]),
+    // Plata que salió del negocio sin pasar por el cajón (pago mixto / transferencia).
+    ...Object.entries(d.fuera_de_caja_por_medio || {}).map(([m, v]) => [`Pagado por fuera de caja · ${m}`, v]),
   ].filter(([, v]) => Number(v) > 0)
 
   return (

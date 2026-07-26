@@ -122,6 +122,11 @@ class SqlPedidosProveedorRepository:
         pedido.anticipo_movimiento_id = movimiento_id
         await self._s.flush()
 
+    async def set_origen_anticipo(self, pedido: PedidoProveedor, origen: str | None) -> None:
+        """Cómo se pagó lo que se entregó al pedir ('caja', 'banco', 'mixto'…)."""
+        pedido.origen_anticipo = origen
+        await self._s.flush()
+
     async def reemplazar_lineas(
         self,
         pedido: PedidoProveedor,

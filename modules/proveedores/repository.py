@@ -81,6 +81,29 @@ class SqlProveedoresRepository:
         ).scalars().all()
         return {f.id: FacturaProveedorLeer.model_validate(f) for f in filas}
 
+    async def registrar_partes_pago(
+        self,
+        *,
+        ref_tipo: str,
+        ref_id: int,
+        partes,
+        caja_movimiento_id: int | None = None,
+    ) -> None:
+        """Guarda cómo se repartió un pago al proveedor (0068). La parte que salió del cajón queda
+        enlazada a su movimiento de caja; las otras son la plata que salió sin pasar por la caja."""
+        for parte in partes:
+            await self._s.execute(
+                text(
+                    "INSERT INTO pagos_proveedor (ref_tipo, ref_id, origen, monto, caja_movimiento_id) "
+                    "VALUES (:t, :r, :o, :m, :cm)"
+                ),
+                {
+                    "t": ref_tipo, "r": ref_id, "o": parte.origen, "m": parte.monto,
+                    "cm": caja_movimiento_id if parte.origen == "caja" else None,
+                },
+            )
+        await self._s.flush()
+
     async def set_origen_abono(
         self, abono_id: int, *, origen_fondos: str, caja_movimiento_id: int | None
     ) -> None:

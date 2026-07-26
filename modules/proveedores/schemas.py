@@ -31,12 +31,49 @@ class ProveedorLeer(BaseModel):
     id: int
     nombre: str
     nit: str | None
+    telefono: str | None = None
+    correo: str | None = None
 
     # --- Mini-CRM construcción (spec 10 / tenant 0046). OPCIONALES, backward-compatible. ---
     tipo: str | None = None
     contacto_nombre: str | None = None
     contacto_telefono: str | None = None
     contacto_email: str | None = None
+
+
+class ProveedorGuardar(BaseModel):
+    """Alta o edición de un proveedor desde el tab.
+
+    Hasta ahora los proveedores solo nacían de rebote al registrar una compra (`get_or_create` por
+    nombre), así que una ferretería que apenas arranca veía el tab vacío y sin datos de contacto que
+    llenar. Solo el nombre es obligatorio: el resto se completa cuando se sepa.
+    """
+
+    nombre: str = Field(min_length=1, max_length=200)
+    nit: str | None = None
+    telefono: str | None = None
+    correo: str | None = None
+    contacto_nombre: str | None = None
+    contacto_telefono: str | None = None
+    contacto_email: str | None = None
+
+    @field_validator("nombre")
+    @classmethod
+    def _limpio(cls, v: str) -> str:
+        nombre = v.strip()
+        if not nombre:
+            raise ValueError("El nombre del proveedor no puede estar vacío")
+        return nombre
+
+    @field_validator(
+        "nit", "telefono", "correo", "contacto_nombre", "contacto_telefono", "contacto_email"
+    )
+    @classmethod
+    def _vacio_es_nulo(cls, v: str | None) -> str | None:
+        """Un campo que el formulario manda en blanco es "no sé", no la cadena vacía."""
+        if v is None:
+            return None
+        return v.strip() or None
 
 
 class FacturaProveedorCrear(BaseModel):

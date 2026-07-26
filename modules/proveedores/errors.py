@@ -27,3 +27,11 @@ class ProveedorInexistente(Exception):
     def __init__(self, proveedor_id: int) -> None:
         super().__init__(f"El proveedor {proveedor_id} no existe")
         self.proveedor_id = proveedor_id
+
+
+class ProveedorDuplicado(ProveedoresError):
+    """Ya hay un proveedor con ese nombre: dos fichas del mismo partirían la deuda en dos."""
+
+    def __init__(self, nombre: str) -> None:
+        super().__init__(f"Ya existe un proveedor llamado {nombre!r}")
+        self.nombre = nombre

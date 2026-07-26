@@ -12,17 +12,19 @@
 import { useMemo, useState } from 'react'
 import { useNavigate, useOutletContext } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { AlertTriangle, Building2, Search, Truck, Wallet } from 'lucide-react'
+import { AlertTriangle, Building2, Plus, Search, Truck, Wallet } from 'lucide-react'
 import { apiJson } from '@/lib/api'
 import { cop } from '@/components/shared.jsx'
 import { useRealtimeEvent } from '@/components/RealtimeProvider.jsx'
 import { useAuth } from '@/hooks/useAuth.js'
 import { Card } from '@/components/ui/card.jsx'
+import { Button } from '@/components/ui/button.jsx'
 import { Input } from '@/components/ui/input.jsx'
 import ModalAbonoProveedor from '@/components/ModalAbonoProveedor.jsx'
 import FichaProveedor from './proveedores/FichaProveedor.jsx'
 import HuerfanasFacturas from './proveedores/HuerfanasFacturas.jsx'
 import ModalFactura from './proveedores/ModalFactura.jsx'
+import ModalProveedor from './proveedores/ModalProveedor.jsx'
 import PanelAvisos from './proveedores/PanelAvisos.jsx'
 
 const arr = (d) => (Array.isArray(d) ? d : [])
@@ -47,6 +49,7 @@ function Contenido() {
   const [seleccionId, setSeleccionId] = useState(null)
   const [abonoAbierto, setAbonoAbierto] = useState(false)
   const [facturaPara, setFacturaPara] = useState(null)
+  const [editando, setEditando] = useState(null)   // null = cerrado · {} = alta · proveedor = edición
 
   const estadoQ = useQuery({
     queryKey: ['proveedores', 'estado', refreshKey],
@@ -85,10 +88,16 @@ function Contenido() {
 
       <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,20rem)_minmax(0,1fr)] gap-3 items-start">
         <Card className="p-0 overflow-hidden">
-          <div className="p-2.5 border-b border-border-subtle relative">
-            <Search className="size-4 absolute left-4.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
-            <Input value={busca} onChange={(e) => setBusca(e.target.value)}
-              aria-label="Buscar proveedor" placeholder="Buscar proveedor…" className="h-9 pl-8" />
+          <div className="p-2.5 border-b border-border-subtle flex items-center gap-2">
+            <div className="relative flex-1">
+              <Search className="size-4 absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+              <Input value={busca} onChange={(e) => setBusca(e.target.value)}
+                aria-label="Buscar proveedor" placeholder="Buscar proveedor…" className="h-9 pl-8" />
+            </div>
+            <Button size="sm" variant="outline" className="h-9 gap-1 shrink-0"
+              onClick={() => setEditando({})}>
+              <Plus className="size-4" /> Nuevo
+            </Button>
           </div>
           {estadoQ.isLoading ? (
             <p className="py-10 text-center text-sm text-muted-foreground">Cargando…</p>
@@ -129,7 +138,8 @@ function Contenido() {
             <FichaProveedor key={seleccion.id} proveedor={seleccion}
               onAbonar={() => setAbonoAbierto(true)}
               onFactura={(p) => setFacturaPara(p)}
-              onComprar={() => navigate('/compras')} />
+              onComprar={() => navigate('/compras')}
+              onEditar={(p) => setEditando(p)} />
           ) : (
             <Card className="p-8 text-center text-sm text-muted-foreground">
               Elige un proveedor para ver su estado de cuenta.
@@ -142,6 +152,15 @@ function Contenido() {
 
       <ModalAbonoProveedor abierto={abonoAbierto} onCerrar={() => setAbonoAbierto(false)}
         onRegistrado={recargar} />
+      {editando && (
+        <ModalProveedor proveedor={editando.id ? editando : null}
+          onCerrar={() => setEditando(null)}
+          onGuardado={(creado) => {
+            setEditando(null)
+            if (creado?.id) setSeleccionId(creado.id)
+            recargar()
+          }} />
+      )}
       {facturaPara && (
         <ModalFactura proveedor={facturaPara} onCerrar={() => setFacturaPara(null)}
           onCreada={() => { setFacturaPara(null); recargar() }} />

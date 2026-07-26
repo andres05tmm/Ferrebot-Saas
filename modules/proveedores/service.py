@@ -11,6 +11,7 @@ from core.config.timezone import today_co
 from core.money import cuantizar
 from modules.proveedores.errors import (
     AbonoInvalido,
+    ProveedorDuplicado,
     ProveedorInexistente,
     FacturaProveedorDuplicada,
     FacturaProveedorInexistente,
@@ -22,6 +23,7 @@ from modules.proveedores.schemas import (
     EstadoCuentaProveedor,
     MovimientoCuenta,
     ProveedorEstado,
+    ProveedorGuardar,
     FacturaProveedorCrear,
     FacturaProveedorLeer,
     ProveedorLeer,
@@ -44,6 +46,24 @@ class ProveedoresService:
     async def listar_proveedores(self) -> list[ProveedorLeer]:
         """Lista de proveedores registrados (id/nombre/nit) para los desplegables del modal."""
         return await self._repo.listar_proveedores()
+
+    async def crear_proveedor(self, datos: ProveedorGuardar) -> ProveedorLeer:
+        """Da de alta un proveedor. Nombre repetido → 409: dos fichas del mismo partirían su deuda."""
+        if await self._repo.resolver_proveedor_por_nombre(datos.nombre) is not None:
+            raise ProveedorDuplicado(datos.nombre)
+        return await self._repo.crear_proveedor(datos)
+
+    async def actualizar_proveedor(
+        self, proveedor_id: int, datos: ProveedorGuardar
+    ) -> ProveedorLeer:
+        """Corrige los datos del proveedor. Renombrarlo hacia un nombre ya usado → 409."""
+        otro = await self._repo.resolver_proveedor_por_nombre(datos.nombre)
+        if otro is not None and otro != proveedor_id:
+            raise ProveedorDuplicado(datos.nombre)
+        actualizado = await self._repo.actualizar_proveedor(proveedor_id, datos)
+        if actualizado is None:
+            raise ProveedorInexistente(proveedor_id)
+        return actualizado
 
     async def estado_proveedores(self) -> list[ProveedorEstado]:
         """Cómo va cada proveedor: cuánto se le debe, cuánto está vencido, qué viene en camino y

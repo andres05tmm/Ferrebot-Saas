@@ -175,6 +175,53 @@ describe('TabProveedores', () => {
     })
   })
 
+  it('"Nuevo" da de alta un proveedor con sus datos de contacto', async () => {
+    const fetchMock = mockApi((u, opts) => {
+      if (u.endsWith('/proveedores') && opts?.method === 'POST') {
+        return Promise.resolve(jsonResp({ id: 3, nombre: 'Distribuidora X' }, 201))
+      }
+      return null
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    renderTab()
+
+    fireEvent.click(await screen.findByRole('button', { name: /Nuevo/ }))
+    fireEvent.change(await screen.findByLabelText('Nombre del proveedor'), { target: { value: 'Distribuidora X' } })
+    fireEvent.change(screen.getByLabelText('Teléfono (opcional)'), { target: { value: '3001234567' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Registrar proveedor' }))
+
+    await waitFor(() => {
+      const call = fetchMock.mock.calls.find(c => String(c[0]).endsWith('/proveedores') && c[1]?.method === 'POST')
+      expect(call).toBeTruthy()
+      expect(JSON.parse(call[1].body)).toEqual({
+        nombre: 'Distribuidora X', nit: null, telefono: '3001234567', correo: null,
+        contacto_nombre: null, contacto_telefono: null,
+      })
+    })
+  })
+
+  it('"Editar" en la ficha corrige los datos del proveedor (PUT)', async () => {
+    const fetchMock = mockApi((u, opts) => {
+      if (u.includes('/proveedores/1') && opts?.method === 'PUT') {
+        return Promise.resolve(jsonResp({ id: 1, nombre: 'Ferre Mayorista' }, 200))
+      }
+      return null
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    renderTab()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Editar' }))
+    fireEvent.change(await screen.findByLabelText('Teléfono (opcional)'), { target: { value: '3009999999' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar cambios' }))
+
+    await waitFor(() => {
+      const call = fetchMock.mock.calls.find(c => String(c[0]).includes('/proveedores/1') && c[1]?.method === 'PUT')
+      expect(call).toBeTruthy()
+      expect(JSON.parse(call[1].body).telefono).toBe('3009999999')
+      expect(JSON.parse(call[1].body).nombre).toBe('Ferre Mayorista')   // prellenado, no se pierde
+    })
+  })
+
   it('vendedor: sin acceso al tab', async () => {
     authState.admin = false
     const fetchMock = mockApi()

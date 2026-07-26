@@ -18,6 +18,7 @@ from modules.caja.service import CajaService
 from modules.proveedores.cloudinary_client import CloudinaryClient
 from modules.proveedores.cloudinary_config import cargar_config_cloudinary
 from modules.proveedores.errors import (
+    ProveedorDuplicado,
     ProveedorInexistente,
     AbonoInvalido,
     FacturaProveedorDuplicada,
@@ -29,6 +30,7 @@ from modules.proveedores.schemas import (
     AsignarProveedor,
     EstadoCuentaProveedor,
     ProveedorEstado,
+    ProveedorGuardar,
     AbonoCrear,
     FacturaProveedorCrear,
     FacturaProveedorLeer,
@@ -63,6 +65,35 @@ async def listar_proveedores(
 ) -> list[ProveedorLeer]:
     """Proveedores registrados (id/nombre/nit) — alimenta el select de proveedor del modal de producto."""
     return await _service(session).listar_proveedores()
+
+
+@router.post("/proveedores", response_model=ProveedorLeer, status_code=status.HTTP_201_CREATED)
+async def crear_proveedor(
+    payload: ProveedorGuardar,
+    session: AsyncSession = Depends(get_tenant_db),
+    _user: Principal = Depends(require_role("admin")),
+) -> ProveedorLeer:
+    """Da de alta un proveedor con sus datos de contacto (antes solo nacían de rebote en una compra)."""
+    try:
+        return await _service(session).crear_proveedor(payload)
+    except ProveedorDuplicado as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+
+
+@router.put("/proveedores/{proveedor_id}", response_model=ProveedorLeer)
+async def actualizar_proveedor(
+    proveedor_id: int,
+    payload: ProveedorGuardar,
+    session: AsyncSession = Depends(get_tenant_db),
+    _user: Principal = Depends(require_role("admin")),
+) -> ProveedorLeer:
+    """Corrige los datos del proveedor (teléfono, contacto, NIT)."""
+    try:
+        return await _service(session).actualizar_proveedor(proveedor_id, payload)
+    except ProveedorDuplicado as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+    except ProveedorInexistente as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
 
 
 @router.post(

@@ -67,7 +67,7 @@ function Aging({ aging }) {
   )
 }
 
-export default function FichaProveedor({ proveedor, onAbonar, onFactura, onComprar }) {
+export default function FichaProveedor({ proveedor, onAbonar, onFactura, onComprar, onEditar }) {
   const [descargando, setDescargando] = useState(false)
   // Disponibilidad de fotos: optimista; si una subida responde 503, se apaga con aviso.
   const [fotos, setFotos] = useState(true)
@@ -141,6 +141,7 @@ export default function FichaProveedor({ proveedor, onAbonar, onFactura, onCompr
             <Button size="sm" variant="outline" onClick={() => onComprar(proveedor)}>
               Nueva compra
             </Button>
+            <Button size="sm" variant="ghost" onClick={() => onEditar(proveedor)}>Editar</Button>
           </div>
         </div>
 

@@ -6,15 +6,29 @@ y debe crear cuando no hay documento (sin clave natural). Sin BD.
 from decimal import Decimal
 
 from modules.clientes.models import Cliente
-from modules.clientes.schemas import ClienteCrear
+from modules.clientes.schemas import ClienteActualizar, ClienteCrear
 from modules.clientes.service import ClientesService, ResultadoCliente
 
 
 class FakeClientesRepo:
     def __init__(self, existentes: list[Cliente] | None = None) -> None:
         self._por_doc = {c.documento: c for c in (existentes or []) if c.documento}
+        self._por_id = {c.id: c for c in (existentes or [])}
         self.creados: list[ClienteCrear] = []
+        self.borrados: list[int] = []
         self._next_id = 100
+
+    async def obtener(self, cliente_id: int) -> Cliente | None:
+        return self._por_id.get(cliente_id)
+
+    async def actualizar(self, cliente: Cliente, datos: ClienteActualizar) -> Cliente:
+        for campo, valor in datos.model_dump(exclude_unset=True).items():
+            setattr(cliente, campo, valor)
+        return cliente
+
+    async def eliminar(self, cliente: Cliente) -> None:
+        self.borrados.append(cliente.id)
+        self._por_id.pop(cliente.id, None)
 
     async def buscar_por_documento(self, documento: str) -> Cliente | None:
         return self._por_doc.get(documento)
@@ -59,3 +73,30 @@ async def test_sin_documento_siempre_crea():
     r2 = await ClientesService(repo).crear(ClienteCrear(nombre="Cliente mostrador"))
     assert r1.creado is True and r2.creado is True
     assert len(repo.creados) == 2           # sin clave natural → no deduplica
+
+
+async def test_actualizar_solo_toca_los_campos_enviados():
+    """Patch parcial: editar el teléfono no puede borrar los datos fiscales que el form no mandó."""
+    previo = Cliente(
+        id=7, nombre="Juan", documento="1088", telefono="300", ciudad_dane="13001",
+        regimen="responsable_iva", saldo_fiado=Decimal("0"),
+    )
+    repo = FakeClientesRepo([previo])
+    actualizado = await ClientesService(repo).actualizar(7, ClienteActualizar(telefono="311"))
+
+    assert actualizado is not None
+    assert actualizado.telefono == "311"
+    assert actualizado.ciudad_dane == "13001"      # intacto
+    assert actualizado.regimen == "responsable_iva"
+
+
+async def test_actualizar_cliente_inexistente_devuelve_none():
+    assert await ClientesService(FakeClientesRepo()).actualizar(9, ClienteActualizar(nombre="X")) is None
+
+
+async def test_eliminar_devuelve_si_existia():
+    previo = Cliente(id=7, nombre="Juan", documento="1088", saldo_fiado=Decimal("0"))
+    repo = FakeClientesRepo([previo])
+    assert await ClientesService(repo).eliminar(7) is True
+    assert repo.borrados == [7]
+    assert await ClientesService(repo).eliminar(7) is False    # ya no está

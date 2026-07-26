@@ -364,16 +364,30 @@ def _parsear_evento(data: dict) -> EventoResultado:
     return EventoResultado(False, error_msg=error_msg)
 
 
+def _codigo_dane(city: dict) -> str | None:
+    """Código DANE de una ciudad de MATIAS. El campo real es `city_code` ("05001"); los otros nombres
+    quedan como respaldo por si la cuenta responde con otro esquema."""
+    return (
+        city.get("city_code")
+        or city.get("code")
+        or city.get("dane_code")
+        or city.get("municipality_code")
+    )
+
+
 def _parsear_ciudades(data: dict) -> dict[int, str]:
     """Construye {dane_code:int → matias_id:str} desde `/cities` (§5). PURO.
 
-    Códigos en `dataRecords.data` o `data`; cada `code`|`dane_code`|`municipality_code` mapea a
-    `str(id)`. Entradas inválidas (code no numérico, sin `id`, None) se saltan.
+    Códigos en `dataRecords.data` o `data`; cada `city_code`|`code`|`dane_code`|`municipality_code`
+    mapea a `str(id)`. Entradas inválidas (code no numérico, sin `id`, None) se saltan.
+
+    `city_code` va PRIMERO porque es el campo real de MATIAS ("05001"): sin él el mapa salía vacío y
+    NINGUNA ciudad de cliente se resolvía (toda factura caía a la ciudad por defecto de la empresa).
     """
     cities = (data.get("dataRecords", {}) or {}).get("data", []) or data.get("data", []) or []
     resultado: dict[int, str] = {}
     for city in cities:
-        code = city.get("code") or city.get("dane_code") or city.get("municipality_code")
+        code = _codigo_dane(city)
         try:
             resultado[int(str(code))] = str(city["id"])
         except (ValueError, KeyError, TypeError):
@@ -398,7 +412,7 @@ def _parsear_ciudades_full(data: dict, pais_id: int) -> list[dict]:
             matias_id = str(city["id"])
         except (KeyError, TypeError):
             continue
-        code = city.get("code") or city.get("dane_code") or city.get("municipality_code")
+        code = _codigo_dane(city)
         try:
             dane = int(str(code)) if code else 0
         except (ValueError, TypeError):

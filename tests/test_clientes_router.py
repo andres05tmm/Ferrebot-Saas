@@ -1,4 +1,4 @@
-"""E2 Parte 1 — router de clientes (B2): GET lista, POST (crea/dedup), GET por id.
+"""E2 Parte 1 — router de clientes (B2): GET lista, POST (crea/dedup), GET por id, PUT y DELETE.
 
 Patrón test_facturacion_router: app mínima + ASGITransport + dependency_overrides. El servicio se
 inyecta como fake (CERO red, CERO Postgres); el filtrado ILIKE real del repo se cubre en integración.
@@ -13,9 +13,11 @@ import httpx
 from fastapi import FastAPI
 from httpx import ASGITransport
 
+from sqlalchemy.exc import IntegrityError
+
 from core.auth import Principal, get_current_user
 from modules.clientes.router import get_clientes_service, router
-from modules.clientes.schemas import ClienteCrear
+from modules.clientes.schemas import ClienteActualizar, ClienteCrear
 from modules.clientes.service import ResultadoCliente
 
 
@@ -37,6 +39,7 @@ class _FakeClientes:
         self._por_id: dict[int, object] = {}
         self._next = 1
         self.ultimo_q = "UNSET"
+        self._conflicto: set[int] = set()   # ids que "tienen ventas" (la FK reventaría)
 
     async def listar(self, q: str | None = None):
         self.ultimo_q = q
@@ -54,6 +57,19 @@ class _FakeClientes:
 
     async def obtener(self, cliente_id: int):
         return self._por_id.get(cliente_id)
+
+    async def actualizar(self, cliente_id: int, datos: ClienteActualizar):
+        c = self._por_id.get(cliente_id)
+        if c is None:
+            return None
+        for campo, valor in datos.model_dump(exclude_unset=True).items():
+            setattr(c, campo, valor)
+        return c
+
+    async def eliminar(self, cliente_id: int) -> bool:
+        if cliente_id in self._conflicto:
+            raise IntegrityError("ventas", None, Exception("FK"))
+        return self._por_id.pop(cliente_id, None) is not None
 
 
 def _app(service: _FakeClientes, *, rol: str = "vendedor") -> FastAPI:
@@ -110,3 +126,40 @@ async def test_obtener_200_y_404():
     assert ok.status_code == 200, ok.text
     assert ok.json()["nombre"] == "Ana"
     assert falta.status_code == 404
+
+
+async def test_actualizar_200_parcial_y_404():
+    service = _FakeClientes()
+    app = _app(service)
+    async with _cliente(app) as c:
+        creado = (await c.post("/api/v1/clientes", json={"nombre": "Ana", "documento": "1"})).json()
+        ok = await c.put(f"/api/v1/clientes/{creado['id']}", json={"telefono": "311"})
+        falta = await c.put("/api/v1/clientes/9999", json={"telefono": "311"})
+    assert ok.status_code == 200, ok.text
+    assert ok.json()["telefono"] == "311"
+    assert ok.json()["nombre"] == "Ana"          # lo no enviado queda intacto
+    assert falta.status_code == 404
+
+
+async def test_eliminar_204_404_y_409_con_ventas():
+    service = _FakeClientes()
+    app = _app(service, rol="admin")
+    async with _cliente(app) as c:
+        creado = (await c.post("/api/v1/clientes", json={"nombre": "Ana", "documento": "1"})).json()
+        conflictivo = (await c.post("/api/v1/clientes", json={"nombre": "Beto", "documento": "2"})).json()
+        service._conflicto.add(conflictivo["id"])
+        con_ventas = await c.delete(f"/api/v1/clientes/{conflictivo['id']}")
+        ok = await c.delete(f"/api/v1/clientes/{creado['id']}")
+        falta = await c.delete("/api/v1/clientes/9999")
+    assert con_ventas.status_code == 409, con_ventas.text     # FK: no se pierde histórico
+    assert ok.status_code == 204
+    assert falta.status_code == 404
+
+
+async def test_eliminar_es_de_admin():
+    service = _FakeClientes()
+    app = _app(service, rol="vendedor")
+    async with _cliente(app) as c:
+        creado = (await c.post("/api/v1/clientes", json={"nombre": "Ana", "documento": "1"})).json()
+        r = await c.delete(f"/api/v1/clientes/{creado['id']}")
+    assert r.status_code == 403

@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from typing import Protocol
 
 from modules.clientes.models import Cliente
-from modules.clientes.schemas import ClienteCrear
+from modules.clientes.schemas import ClienteActualizar, ClienteCrear
 
 
 @dataclass(frozen=True, slots=True)
@@ -25,6 +25,8 @@ class ClientesRepo(Protocol):
     async def crear(self, datos: ClienteCrear) -> Cliente: ...
     async def obtener(self, cliente_id: int) -> Cliente | None: ...
     async def listar(self, q: str | None = None) -> list[Cliente]: ...
+    async def actualizar(self, cliente: Cliente, datos: ClienteActualizar) -> Cliente: ...
+    async def eliminar(self, cliente: Cliente) -> None: ...
 
 
 class ClientesService:
@@ -44,3 +46,17 @@ class ClientesService:
 
     async def listar(self, q: str | None = None) -> list[Cliente]:
         return await self._repo.listar(q)
+
+    async def actualizar(self, cliente_id: int, datos: ClienteActualizar) -> Cliente | None:
+        cliente = await self._repo.obtener(cliente_id)
+        if cliente is None:
+            return None
+        return await self._repo.actualizar(cliente, datos)
+
+    async def eliminar(self, cliente_id: int) -> bool:
+        """True si lo borró; False si no existía. Si tiene ventas, la FK revienta y el error sube."""
+        cliente = await self._repo.obtener(cliente_id)
+        if cliente is None:
+            return False
+        await self._repo.eliminar(cliente)
+        return True

@@ -69,6 +69,48 @@ export function Spinner() {
   )
 }
 
+// ── SKELETON — el hueco con la FORMA de lo que viene ─────────────────────────
+// Un "Cargando…" centrado deja el layout vacío y luego lo empuja de golpe cuando llegan los datos.
+// El skeleton ocupa el mismo sitio desde el primer frame: la pantalla no salta.
+export function Skeleton({ className = '' }) {
+  return <div aria-hidden className={`animate-pulse rounded-md bg-surface-2 ${className}`} />
+}
+
+/** Filas fantasma para listas y tablas mientras carga. */
+export function SkeletonFilas({ filas = 5, className = '' }) {
+  return (
+    <div className={`divide-y divide-border-subtle ${className}`} role="status" aria-label="Cargando">
+      {Array.from({ length: filas }, (_, i) => (
+        <div key={i} className="py-2.5 flex items-center gap-3">
+          <div className="min-w-0 flex-1 space-y-1.5">
+            <Skeleton className="h-3.5 w-2/3" />
+            <Skeleton className="h-2.5 w-1/3" />
+          </div>
+          <Skeleton className="h-3.5 w-16 shrink-0" />
+        </div>
+      ))}
+    </div>
+  )
+}
+
+// ── ESTADO VACÍO — con la salida adentro ─────────────────────────────────────
+// "Sin datos" en gris es un callejón sin salida: el usuario ve el vacío y la acción que lo llena
+// está en otra esquina de la pantalla. Aquí van juntos.
+export function EstadoVacio({ icon: Icon, titulo, detalle, accion }) {
+  return (
+    <div className="py-10 px-4 flex flex-col items-center text-center gap-2">
+      {Icon && (
+        <span className="size-10 grid place-items-center rounded-full bg-surface-2 text-muted-foreground">
+          <Icon className="size-5" />
+        </span>
+      )}
+      <p className="text-sm font-medium">{titulo}</p>
+      {detalle && <p className="text-caption text-muted-foreground max-w-[34ch]">{detalle}</p>}
+      {accion && <div className="mt-1.5">{accion}</div>}
+    </div>
+  )
+}
+
 export function ErrorMsg({ msg }) {
   return (
     <div className="bg-destructive/10 border border-destructive/40 rounded-md px-4 py-3 text-sm text-destructive flex items-center gap-2">

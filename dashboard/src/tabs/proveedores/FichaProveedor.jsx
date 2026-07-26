@@ -15,7 +15,7 @@ import { useQuery } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { Download, FileText, ImagePlus, Package, Receipt, Truck, Wallet } from 'lucide-react'
 import { api, apiJson } from '@/lib/api'
-import { cop } from '@/components/shared.jsx'
+import { cop, SkeletonFilas } from '@/components/shared.jsx'
 import { Badge } from '@/components/ui/badge.jsx'
 import { Button } from '@/components/ui/button.jsx'
 import { Card } from '@/components/ui/card.jsx'
@@ -184,7 +184,7 @@ export default function FichaProveedor({ proveedor, onAbonar, onFactura, onCompr
               </Button>
             </div>
             {cuentaQ.isLoading ? (
-              <p className="text-body-sm text-muted-foreground">Cargando…</p>
+              <SkeletonFilas filas={6} />
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-body-sm">
@@ -345,7 +345,7 @@ export default function FichaProveedor({ proveedor, onAbonar, onFactura, onCompr
 
 /** Lista simple de dos columnas: la misma forma para pedidos, compras, facturas y pagos. */
 function Listado({ cargando, filas, vacio, render }) {
-  if (cargando) return <p className="text-body-sm text-muted-foreground">Cargando…</p>
+  if (cargando) return <SkeletonFilas filas={4} />
   if (filas.length === 0) return <p className="py-4 text-center text-body-sm text-muted-foreground">{vacio}</p>
   return (
     <ul className="divide-y divide-border-subtle">

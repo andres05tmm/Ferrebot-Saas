@@ -146,6 +146,32 @@ describe('Tab Compras — ciclo del pedido', () => {
     expect(screen.getByRole('button', { name: 'Registrar compra' })).not.toBeDisabled()
   })
 
+  it('pago MIXTO: reparte el monto entre medios y exige que las partes sumen el total', async () => {
+    const fetchMock = instalarFetch()
+    renderTab()
+    await abrirModalNuevaCompra()
+    fireEvent.change(screen.getByLabelText('Cantidad Martillo'), { target: { value: '10' } })
+    fireEvent.change(screen.getByLabelText('Costo unitario Martillo'), { target: { value: '7000' } })
+
+    fireEvent.click(screen.getByText(/Pago mixto/))
+    // Arranca con todo en el medio elegido (caja): repartir 30.000 al banco deja 40.000 en caja.
+    fireEvent.change(screen.getByLabelText('Monto Efectivo de la caja'), { target: { value: '40000' } })
+    expect(screen.getByRole('button', { name: 'Registrar compra' })).toBeDisabled()   // 40k de 70k
+
+    fireEvent.change(screen.getByLabelText('Monto Transferencia / banco'), { target: { value: '30000' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Registrar compra' }))
+
+    await waitFor(() => {
+      const call = fetchMock.mock.calls.find(
+        c => String(c[0]).includes('/pedidos-proveedor') && c[1]?.method === 'POST',
+      )
+      expect(JSON.parse(call[1].body).pagos).toEqual([
+        { origen: 'caja', monto: 40000 },
+        { origen: 'banco', monto: 30000 },
+      ])
+    })
+  })
+
   it('«Llegó» abre la recepción con las líneas del pedido prellenadas', async () => {
     const fetchMock = instalarFetch()
     renderTab()

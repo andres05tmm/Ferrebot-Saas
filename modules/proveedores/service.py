@@ -12,6 +12,7 @@ from modules.proveedores.errors import (
     FacturaProveedorDuplicada,
     FacturaProveedorInexistente,
 )
+from modules.proveedores.pagos import etiqueta_origen, monto_de_caja, normalizar_partes
 from modules.proveedores.repository import SqlProveedoresRepository
 from modules.proveedores.schemas import (
     AbonoCrear,
@@ -64,20 +65,26 @@ class ProveedoresService:
         leer, abono_id = await self._repo.crear_abono_devolver_id(
             factura_id=datos.factura_id, monto=datos.monto, fecha=datos.fecha or today_co(),
         )
+        # Cómo se reparte el abono entre medios (puede ser mixto): solo la parte del cajón mueve
+        # la caja; el resto es plata que salió del negocio sin pasar por ella.
+        partes = normalizar_partes(datos.pagos, datos.origen_fondos, datos.monto)
+        desde_caja = monto_de_caja(partes)
         movimiento_id = None
-        if datos.origen_fondos == "caja":
-            # Sale del cajón AHORA (exige caja abierta): sin esto el abono era plata fantasma.
+        if desde_caja > 0:
             if self._caja is None:
                 raise RuntimeError("un abono desde caja requiere el servicio de caja cableado")
             res = await self._caja.registrar_movimiento(
-                usuario_id=usuario_id, tipo="egreso", monto=datos.monto,
+                usuario_id=usuario_id, tipo="egreso", monto=desde_caja,
                 concepto=f"Abono factura {datos.factura_id}",
                 referencia=f"abono:{abono_id}",
                 idempotency_key=f"abono:{abono_id}", modo_empresa=modo_empresa,
             )
             movimiento_id = res.movimiento.id
+        await self._repo.registrar_partes_pago(
+            ref_tipo="abono", ref_id=abono_id, partes=partes, caja_movimiento_id=movimiento_id,
+        )
         await self._repo.set_origen_abono(
-            abono_id, origen_fondos=datos.origen_fondos, caja_movimiento_id=movimiento_id
+            abono_id, origen_fondos=etiqueta_origen(partes), caja_movimiento_id=movimiento_id
         )
         return leer
 

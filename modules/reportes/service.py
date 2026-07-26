@@ -90,6 +90,12 @@ _ETIQUETA_ORIGEN = {
     "manual": "Movimientos manuales de caja",
 }
 
+# Medios por los que sale plata sin pasar por el cajón (pago mixto, 0068).
+_ETIQUETA_MEDIO = {
+    "efectivo_externo": "Efectivo guardado",
+    "banco": "Transferencia / banco",
+}
+
 
 class ReportesService:
     def __init__(self, repo: ReportesRepo) -> None:
@@ -187,15 +193,22 @@ class ReportesService:
             sum(agg.ventas_por_metodo.values(), Decimal("0"))
             + agg.abonos_fiados + agg.ingresos_caja
         )
+        # Lo pagado por fuera de la caja también salió del negocio: entra al total (el arqueo del
+        # cajón es otro reporte y no se toca).
+        fuera_de_caja = sum(agg.fuera_de_caja_por_medio.values(), Decimal("0"))
         total_salidas = (
             sum(agg.gastos_por_categoria.values(), Decimal("0"))
-            + agg.abonos_proveedores + agg.egresos_caja
+            + agg.abonos_proveedores + agg.egresos_caja + fuera_de_caja
         )
         return FlujoDinero(
             desde=d, hasta=h,
             egresos_por_origen={
                 _ETIQUETA_ORIGEN.get(k, "Otros egresos de caja"): v
                 for k, v in agg.egresos_por_origen.items()
+            },
+            pagado_fuera_de_caja=fuera_de_caja,
+            fuera_de_caja_por_medio={
+                _ETIQUETA_MEDIO.get(k, k): v for k, v in agg.fuera_de_caja_por_medio.items()
             },
             ventas_por_metodo=agg.ventas_por_metodo, ventas_fiado=agg.ventas_fiado,
             abonos_fiados=agg.abonos_fiados, ingresos_caja=agg.ingresos_caja,

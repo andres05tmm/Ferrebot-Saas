@@ -79,6 +79,10 @@ class AgregadoFlujo:
     # (`pedido:` pago al pedir, `compra:` pago/corrección de mercancía, `abono:` abono a proveedor,
     # sin referencia → movimiento manual). Es un desglose de lo ya contado, no un sumando nuevo.
     egresos_por_origen: dict[str, Decimal]
+    # Plata que salió del negocio SIN pasar por la caja (efectivo guardado, transferencia), por
+    # medio. Son las partes no-caja de los pagos a proveedor por pedido/compra; los abonos ya se
+    # cuentan enteros en `abonos_proveedores` (contarlos aquí los duplicaría).
+    fuera_de_caja_por_medio: dict[str, Decimal]
 
 
 @dataclass(frozen=True, slots=True)
@@ -435,6 +439,17 @@ class SqlReportesRepository:
                 )
             ).scalar_one()
         )
+        filas_fuera = (
+            await self._s.execute(
+                text(
+                    "SELECT origen, COALESCE(SUM(monto), 0) AS total FROM pagos_proveedor "
+                    "WHERE origen <> 'caja' AND ref_tipo IN ('pedido','compra') "
+                    "AND creado_en >= :desde AND creado_en <= :hasta GROUP BY origen"
+                ),
+                {"desde": inicio, "hasta": fin},
+            )
+        ).all()
+
         return AgregadoFlujo(
             ventas_por_metodo=por_metodo,
             ventas_fiado=ventas_fiado,
@@ -446,6 +461,7 @@ class SqlReportesRepository:
             egresos_por_origen={
                 (f.origen or "manual"): Decimal(f.total) for f in filas_origen if f.total
             },
+            fuera_de_caja_por_medio={f.origen: Decimal(f.total) for f in filas_fuera if f.total},
         )
 
     async def margen_productos(

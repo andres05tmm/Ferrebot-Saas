@@ -16,7 +16,9 @@ import { Label } from '@/components/ui/label.jsx'
 import {
   Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog.jsx'
-import { BuscadorProducto, LineasEditor, OrigenFondos, totalLineas } from './comunes.jsx'
+import {
+  BuscadorProducto, LineasEditor, OrigenFondos, pagoCuadra, partesPago, totalLineas,
+} from './comunes.jsx'
 
 export default function ModalRecibir({ pedido, onCerrar, onRecibido }) {
   const [lineas, setLineas] = useState(() =>
@@ -31,6 +33,7 @@ export default function ModalRecibir({ pedido, onCerrar, onRecibido }) {
   const [condicion, setCondicion] = useState(pedido?.condicion_pago || 'contado')
   const [pagoAhora, setPagoAhora] = useState(false)
   const [origen, setOrigen] = useState('caja')
+  const [pagos, setPagos] = useState([])       // partes del pago mixto ([] = un solo medio)
   const [numeroFactura, setNumeroFactura] = useState('')
   const [vencimiento, setVencimiento] = useState('')
   const [enviando, setEnviando] = useState(false)
@@ -41,7 +44,9 @@ export default function ModalRecibir({ pedido, onCerrar, onRecibido }) {
   const lineasValidas = lineas.length > 0 && lineas.every(l => Number(l.cantidad) > 0 && l.costo !== '')
   const necesitaDestinoRemanente = condicion === 'anticipado' && remanente > 0
     && !pagoAhora && !numeroFactura.trim()
-  const valido = lineasValidas && !necesitaDestinoRemanente
+  // Lo que se paga en la recepción: el remanente si hubo anticipo, si no el total.
+  const montoAhora = pagoAhora ? (anticipo > 0 ? remanente : total) : 0
+  const valido = lineasValidas && !necesitaDestinoRemanente && pagoCuadra(pagos, montoAhora)
 
   async function recibir(e) {
     e?.preventDefault?.()
@@ -54,6 +59,7 @@ export default function ModalRecibir({ pedido, onCerrar, onRecibido }) {
       condicion_pago: condicion,
       pago_ahora: pagoAhora,
       origen_fondos: origen,
+      pagos: pagos.length > 0 ? partesPago(pagos) : [],
       numero_factura: numeroFactura.trim() || null,
       fecha_vencimiento: vencimiento || null,
     }
@@ -148,7 +154,10 @@ export default function ModalRecibir({ pedido, onCerrar, onRecibido }) {
                   ? 'Se paga ahora'
                   : `El resto (${cop(remanente)}) se paga ahora`}
               </label>
-              {pagoAhora && <OrigenFondos valor={origen} onCambio={setOrigen} id="recibir-origen" />}
+              {pagoAhora && (
+                <OrigenFondos valor={origen} onCambio={setOrigen} pagos={pagos} onPagos={setPagos}
+                  monto={montoAhora} id="recibir-origen" />
+              )}
             </div>
           )}
           {(condicion === 'credito' || (condicion === 'anticipado' && remanente > 0 && !pagoAhora)) && (

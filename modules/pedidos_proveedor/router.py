@@ -20,6 +20,7 @@ from modules.compras.service import ComprasService
 from modules.inventario.errors import ProductoInexistente
 from modules.inventario.repository import SqlInventarioRepository
 from modules.inventario.service import InventarioService
+from modules.proveedores.pagos import PagoInvalido
 from modules.pedidos_proveedor.errors import (
     IdempotenciaConflicto,
     PedidoInexistente,
@@ -78,7 +79,7 @@ async def crear_pedido(
         )
     except IdempotenciaConflicto as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
-    except PedidoInvalido as exc:
+    except (PedidoInvalido, PagoInvalido) as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
     except CajaNoAbierta as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
@@ -163,7 +164,7 @@ async def recibir_pedido(
         raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
     except (PedidoNoEditable, CajaNoAbierta) as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
-    except RecepcionInvalida as exc:
+    except (RecepcionInvalida, PagoInvalido) as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
     if res.replay:
         response.status_code = status.HTTP_200_OK

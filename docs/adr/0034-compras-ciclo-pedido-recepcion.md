@@ -32,6 +32,13 @@
    arqueo**. Aplica al pago del pedido, al de la recepción y a los abonos a cuentas por pagar — que
    hasta hoy NUNCA movían caja aunque se pagaran con el efectivo del cajón.
 
+4.b **Pago MIXTO** (2026-07-26, tras el uso real): un pago puede repartirse entre medios — parte del
+   cajón, parte por transferencia. `pagos_proveedor` (0068) guarda las partes (`origen` + `monto`)
+   colgadas del hecho que las originó (pedido / compra / abono), espejando `ventas_pagos` (0053) del
+   lado del dinero que sale. Solo la parte `caja` postea movimiento de caja; las partes deben sumar
+   exactamente lo que se paga (si no, 422). El reporte de flujo separa lo pagado por fuera de la caja
+   en su propia línea: salió del negocio, pero no del cajón.
+
 5. **Corrección por diferencia** (`POST /compras/{id}/corregir`, admin): se manda el detalle final
    correcto y el servicio aplica solo los deltas. Cada cambio de cantidad deja su movimiento
    **AJUSTE** en el kárdex (regla #7), el costo del producto se re-pondera revirtiendo la línea vieja

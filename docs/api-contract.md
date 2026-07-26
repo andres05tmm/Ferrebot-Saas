@@ -85,7 +85,9 @@
 El ciclo completo de la compra (pedido → recepción) vive en `/pedidos-proveedor*` (ADR 0031/0034):
 el alta exige líneas con `producto_id`+`cantidad`+`costo_estimado`, `condicion_pago`
 (`contado`|`credito`|`anticipado`) y `origen_fondos` (`caja`|`efectivo_externo`|`banco`; solo `caja`
-postea egreso). En `POST /proveedores/abonos`, `origen_fondos` decide igual si el abono mueve caja.
+postea egreso). En `POST /proveedores/abonos`, `origen_fondos` decide igual si el abono mueve caja. Los tres pagos
+(al pedir, al recibir, al abonar) aceptan además `pagos: [{origen, monto}]` para el **pago mixto**
+(0068): las partes deben sumar el monto a pagar y solo la de `caja` postea movimiento de caja.
 
 ## Clientes / Proveedores / Fiados
 

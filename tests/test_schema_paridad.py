@@ -62,6 +62,8 @@ _TABLAS_ESPERADAS: frozenset[str] = frozenset({
     "turnos_horas_maquina",
     # operación de máquina en vivo: sesión con cronómetro + tramos de operador (0055)
     "sesiones_maquina", "tramos_operador",
+    # partes de un pago MIXTO a proveedor: al pedir, al recibir o al abonar (0068)
+    "pagos_proveedor",
 })
 
 

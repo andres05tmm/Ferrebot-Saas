@@ -122,6 +122,10 @@ class FlujoDinero(BaseModel):
     # Desglose de los egresos de caja por su procedencia, con la etiqueta que entiende el dueño
     # ("Pago de mercancía", "Anticipos y pagos al pedir", …). Es un detalle de `egresos_caja`.
     egresos_por_origen: dict[str, Decimal] = {}
+    # Lo pagado a proveedores POR FUERA de la caja (efectivo guardado, transferencia): salió del
+    # negocio pero no del cajón, así que va como línea aparte y no descuadra el arqueo.
+    pagado_fuera_de_caja: Decimal = Decimal("0")
+    fuera_de_caja_por_medio: dict[str, Decimal] = {}
     total_salidas: Decimal
     neto: Decimal
 

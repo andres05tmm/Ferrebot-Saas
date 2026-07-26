@@ -12,7 +12,13 @@ from core.auth import Principal, require_role
 from core.auth.features import require_feature
 from core.db.session import get_tenant_db
 from modules.caja.config import get_caja_obligatoria
-from modules.caja.errors import CajaNoAbierta, GastoInexistente, GastoNoPendiente, ObraNoImputable
+from modules.caja.errors import (
+    CajaNoAbierta,
+    GastoInexistente,
+    GastoNoPendiente,
+    ObraNoImputable,
+    RecurrenteInexistente,
+)
 from modules.caja.repository import SqlCajaRepository
 from modules.caja.schemas import (
     AperturaCrear,
@@ -26,6 +32,8 @@ from modules.caja.schemas import (
     GastoRechazar,
     MovimientoCrear,
     MovimientoLeer,
+    RecurrenteGuardar,
+    RecurrenteLeer,
 )
 from modules.caja.service import CajaService
 from modules.proveedores.errors import AbonoInvalido, FacturaProveedorInexistente
@@ -171,6 +179,7 @@ async def registrar_gasto(
             modo_empresa=modo_empresa,
             usuario_id=user.user_id, categoria=payload.categoria, monto=payload.monto,
             concepto=payload.concepto, idempotency_key=idempotency_key,
+            tipo_egreso=payload.tipo_egreso, recurrente_id=payload.recurrente_id,
             proveedor_id=payload.proveedor_id, factura_proveedor_id=payload.factura_proveedor_id,
             obra_id=payload.obra_id, maquina_id=payload.maquina_id,
             categoria_gasto=payload.categoria_gasto, metodo_pago=payload.metodo_pago,
@@ -183,7 +192,7 @@ async def registrar_gasto(
     except ObraNoImputable as exc:
         codigo = status.HTTP_404_NOT_FOUND if exc.motivo == "inexistente" else status.HTTP_409_CONFLICT
         raise HTTPException(codigo, str(exc)) from exc
-    except FacturaProveedorInexistente as exc:
+    except (FacturaProveedorInexistente, RecurrenteInexistente) as exc:
         raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
     except AbonoInvalido as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
@@ -267,16 +276,99 @@ async def editar_imputacion_gasto(
     return GastoLeer.model_validate(gasto)
 
 
+@gastos_router.post("/gastos/{gasto_id}/anular", response_model=GastoLeer)
+async def anular_gasto(
+    gasto_id: int,
+    payload: GastoRechazar,
+    session: AsyncSession = Depends(get_tenant_db),
+    user: Principal = Depends(require_role("admin")),
+    modo_empresa: bool = Depends(get_caja_obligatoria),
+) -> GastoLeer:
+    """Anula un gasto YA REGISTRADO (0071): devuelve la plata a la caja con un movimiento inverso y lo
+    marca anulado. Es el arreglo de un gasto mal digitado — antes solo se podían rechazar los de la
+    bandeja del bot y un error del dueño quedaba en los números para siempre. Admin, idempotente.
+    404 si no existe; 409 si generó un abono a CxP o no hay caja abierta para la reversa."""
+    try:
+        gasto = await _service(session).rechazar_gasto(
+            gasto_id, usuario_id=user.user_id, motivo=payload.motivo,
+            modo_empresa=modo_empresa, exigir_pendiente=False,
+        )
+    except GastoInexistente as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
+    except (GastoNoPendiente, CajaNoAbierta) as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+    return GastoLeer.model_validate(gasto)
+
+
+@gastos_router.get("/gastos/recurrentes", response_model=list[RecurrenteLeer])
+async def listar_recurrentes(
+    desde: datetime,
+    hasta: datetime,
+    incluir_inactivos: bool = False,
+    session: AsyncSession = Depends(get_tenant_db),
+    _user: Principal = Depends(require_role("vendedor")),
+) -> list[RecurrenteLeer]:
+    """Checklist del mes: lo que se paga siempre, con el pago que ya lo saldó en la ventana (o nada).
+    El rango lo manda el cliente ya en hora Colombia (mismo contrato que `GET /gastos`)."""
+    filas = await _service(session).listar_recurrentes(
+        inicio=desde, fin=hasta, solo_activos=not incluir_inactivos
+    )
+    salida = []
+    for recurrente, pago in filas:
+        leer = RecurrenteLeer.model_validate(recurrente)
+        if pago is not None:
+            gasto_id, fecha, monto = pago
+            leer = leer.model_copy(
+                update={"gasto_id": gasto_id, "pagado_en": fecha, "monto_pagado": monto}
+            )
+        salida.append(leer)
+    return salida
+
+
+@gastos_router.post(
+    "/gastos/recurrentes", response_model=RecurrenteLeer, status_code=status.HTTP_201_CREATED
+)
+async def crear_recurrente(
+    payload: RecurrenteGuardar,
+    session: AsyncSession = Depends(get_tenant_db),
+    _user: Principal = Depends(require_role("admin")),
+) -> RecurrenteLeer:
+    """Da de alta un gasto que se repite todos los meses (arriendo, luz, nómina). Admin."""
+    recurrente = await _service(session).crear_recurrente(payload.model_dump())
+    return RecurrenteLeer.model_validate(recurrente)
+
+
+@gastos_router.put("/gastos/recurrentes/{recurrente_id}", response_model=RecurrenteLeer)
+async def actualizar_recurrente(
+    recurrente_id: int,
+    payload: RecurrenteGuardar,
+    session: AsyncSession = Depends(get_tenant_db),
+    _user: Principal = Depends(require_role("admin")),
+) -> RecurrenteLeer:
+    """Edita el recurrente (o lo baja con `activo=false` — nunca se borra: los gastos que ya lo
+    saldaron conservan su vínculo). Admin. 404 si no existe."""
+    try:
+        recurrente = await _service(session).actualizar_recurrente(
+            recurrente_id, payload.model_dump()
+        )
+    except RecurrenteInexistente as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
+    return RecurrenteLeer.model_validate(recurrente)
+
+
 @gastos_router.get("/gastos", response_model=list[GastoLeer])
 async def listar_gastos(
     desde: datetime | None = None,
     hasta: datetime | None = None,
+    categoria: str | None = None,
+    tipo_egreso: str | None = None,
     limite: int = Query(default=100, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
     session: AsyncSession = Depends(get_tenant_db),
     _user: Principal = Depends(require_role("vendedor")),
 ) -> list[GastoLeer]:
     gastos = await SqlCajaRepository(session).listar_gastos(
-        desde=desde, hasta=hasta, limite=limite, offset=offset
+        desde=desde, hasta=hasta, categoria=categoria, tipo_egreso=tipo_egreso,
+        limite=limite, offset=offset,
     )
     return [GastoLeer.model_validate(g) for g in gastos]

@@ -13,7 +13,7 @@ from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.events import publish
-from modules.caja.models import Caja, CajaMovimiento, Gasto
+from modules.caja.models import Caja, CajaMovimiento, Gasto, GastoRecurrente
 
 
 @dataclass(frozen=True, slots=True)
@@ -199,6 +199,8 @@ class SqlCajaRepository:
         monto: Decimal,
         concepto: str | None,
         idempotency_key: str | None = None,
+        tipo_egreso: str = "gasto",
+        recurrente_id: int | None = None,
         proveedor_id: int | None = None,
         factura_proveedor_id: str | None = None,
         obra_id: int | None = None,
@@ -234,6 +236,7 @@ class SqlCajaRepository:
             campos_vertical["requiere_revision"] = requiere_revision
         gasto = Gasto(
             categoria=categoria, monto=monto, concepto=concepto,
+            tipo_egreso=tipo_egreso, recurrente_id=recurrente_id,
             caja_id=caja_id, usuario_id=usuario_id, idempotency_key=idempotency_key,
             proveedor_id=proveedor_id, factura_proveedor_id=factura_proveedor_id,
             **campos_vertical,
@@ -262,8 +265,13 @@ class SqlCajaRepository:
         limite: int = 100, offset: int = 0,
         requiere_revision: bool | None = None, obra_id: int | None = None,
         origen_registro: str | None = None,
+        categoria: str | None = None, tipo_egreso: str | None = None,
     ) -> list[Gasto]:
         stmt = select(Gasto).where(Gasto.anulado_en.is_(None))   # los rechazados no existen para el negocio
+        if categoria is not None:
+            stmt = stmt.where(Gasto.categoria == categoria)
+        if tipo_egreso is not None:
+            stmt = stmt.where(Gasto.tipo_egreso == tipo_egreso)
         if desde is not None:
             stmt = stmt.where(Gasto.creado_en >= desde)
         if hasta is not None:
@@ -315,16 +323,65 @@ class SqlCajaRepository:
 
     # ---- Agregados del cockpit de construcción (Fase 2 del dashboard) ------------------------------
     async def suma_gastos(self, *, inicio: datetime, fin: datetime) -> Decimal:
-        """Σ `monto` de los gastos del mes (ventana sobre `creado_en`, TIMESTAMPTZ). KPI de gasto del mes."""
+        """Σ `monto` de los GASTOS del mes (ventana sobre `creado_en`, TIMESTAMPTZ). KPI de gasto del mes.
+
+        Excluye retiros e inversiones (0071): salen de la caja pero no son gasto del negocio — meterlos
+        aquí haría ver un mes malísimo cada vez que el dueño saca plata o compra una vitrina."""
         total = (
             await self._s.execute(
                 select(func.coalesce(func.sum(Gasto.monto), 0)).where(
                     Gasto.creado_en >= inicio, Gasto.creado_en <= fin,
-                    Gasto.anulado_en.is_(None),
+                    Gasto.anulado_en.is_(None), Gasto.tipo_egreso == "gasto",
                 )
             )
         ).scalar_one()
         return Decimal(total)
+
+    # ---- Gastos recurrentes (0071): la plantilla mensual + su estado del mes ----------------------
+    async def listar_recurrentes(self, *, solo_activos: bool = True) -> list[GastoRecurrente]:
+        stmt = select(GastoRecurrente)
+        if solo_activos:
+            stmt = stmt.where(GastoRecurrente.activo.is_(True))
+        stmt = stmt.order_by(GastoRecurrente.dia_mes.nulls_last(), GastoRecurrente.nombre)
+        return list((await self._s.execute(stmt)).scalars().all())
+
+    async def obtener_recurrente(self, recurrente_id: int) -> GastoRecurrente | None:
+        return (
+            await self._s.execute(
+                select(GastoRecurrente).where(GastoRecurrente.id == recurrente_id)
+            )
+        ).scalar_one_or_none()
+
+    async def crear_recurrente(self, datos: dict) -> GastoRecurrente:
+        recurrente = GastoRecurrente(**datos)
+        self._s.add(recurrente)
+        await self._s.flush()
+        return recurrente
+
+    async def actualizar_recurrente(self, recurrente: GastoRecurrente, datos: dict) -> GastoRecurrente:
+        for campo, valor in datos.items():
+            setattr(recurrente, campo, valor)
+        await self._s.flush()
+        return recurrente
+
+    async def pagos_de_recurrentes(
+        self, *, inicio: datetime, fin: datetime
+    ) -> dict[int, tuple[int, datetime, Decimal]]:
+        """Qué recurrentes ya se pagaron en la ventana → `{recurrente_id: (gasto_id, fecha, monto)}`.
+
+        Una consulta para todos (nada de N+1). Si un recurrente se pagó dos veces en el mes gana el
+        pago más reciente: el checklist solo responde "¿ya?", el detalle está en la lista de gastos."""
+        filas = (
+            await self._s.execute(
+                select(Gasto.recurrente_id, Gasto.id, Gasto.creado_en, Gasto.monto)
+                .where(
+                    Gasto.recurrente_id.is_not(None), Gasto.anulado_en.is_(None),
+                    Gasto.creado_en >= inicio, Gasto.creado_en <= fin,
+                )
+                .order_by(Gasto.creado_en.asc())
+            )
+        ).all()
+        return {f.recurrente_id: (f.id, f.creado_en, f.monto) for f in filas}
 
     async def contar_gastos_por_revisar(self) -> int:
         """Cuántos gastos siguen pendientes de revisión (bandeja del bot). Badge del dashboard: es el

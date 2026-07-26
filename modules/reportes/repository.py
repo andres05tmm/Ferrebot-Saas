@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 
-from sqlalchemy import case as sa_case, func, select, text
+from sqlalchemy import Text, case as sa_case, cast, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules.caja.models import CajaMovimiento, Gasto
@@ -109,6 +109,17 @@ class AgingProveedorFila:
     d90_mas: Decimal
     facturas: int
     mas_vieja_dias: int
+
+
+@dataclass(frozen=True, slots=True)
+class GastoAgrupado:
+    """Egresos de una (categoría, tipo) en el rango. `tipo_egreso` separa lo que es gasto de verdad
+    de lo que solo salió de la caja (retiro del dueño, inversión, pago de deuda) — 0071."""
+
+    categoria: str
+    tipo_egreso: str
+    total: Decimal
+    cantidad: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -297,6 +308,10 @@ class SqlReportesRepository:
             await self._s.execute(
                 select(func.coalesce(func.sum(Gasto.monto), 0)).where(
                     Gasto.creado_en >= inicio, Gasto.creado_en <= fin,
+                    # Anulados fuera (su reversa ya devolvió la plata) y SOLO `tipo_egreso='gasto'`:
+                    # un retiro del dueño reparte utilidad y una inversión compra un activo — restarlos
+                    # en el P&L mostraría pérdidas que no existen (0071).
+                    Gasto.anulado_en.is_(None), Gasto.tipo_egreso == "gasto",
                 )
             )
         ).scalar_one()
@@ -413,14 +428,18 @@ class SqlReportesRepository:
             )
         ).all()
 
+        # Flujo = PLATA, no utilidad: un retiro o una inversión sí salieron de la caja y cuentan. Pero
+        # van en su propio renglón (0071), no disfrazados de gasto dentro de su categoría.
+        # Los dos son ENUMs distintos en PG: sin el cast a texto, el CASE no compila.
+        renglon = sa_case(
+            (Gasto.tipo_egreso != "gasto", cast(Gasto.tipo_egreso, Text)),
+            else_=cast(Gasto.categoria, Text),
+        ).label("categoria")
         filas_gastos = (
             await self._s.execute(
-                select(
-                    Gasto.categoria,
-                    func.coalesce(func.sum(Gasto.monto), 0).label("total"),
-                )
+                select(renglon, func.coalesce(func.sum(Gasto.monto), 0).label("total"))
                 .where(Gasto.creado_en >= inicio, Gasto.creado_en <= fin, Gasto.anulado_en.is_(None))
-                .group_by(Gasto.categoria)
+                .group_by(renglon)
             )
         ).all()
 
@@ -593,15 +612,50 @@ class SqlReportesRepository:
             for f in filas
         ]
 
+    async def gastos_agrupados(
+        self, *, inicio: datetime, fin: datetime
+    ) -> list[GastoAgrupado]:
+        """Egresos del rango por (categoría, tipo) con su conteo — insumo del tab Gastos (0071).
+
+        Una sola consulta agrupada: el tab nunca baja las filas para sumarlas en el cliente."""
+        filas = (
+            await self._s.execute(
+                select(
+                    Gasto.categoria,
+                    Gasto.tipo_egreso,
+                    func.coalesce(func.sum(Gasto.monto), 0).label("total"),
+                    func.count().label("cantidad"),
+                )
+                .where(
+                    Gasto.creado_en >= inicio, Gasto.creado_en <= fin, Gasto.anulado_en.is_(None)
+                )
+                .group_by(Gasto.categoria, Gasto.tipo_egreso)
+            )
+        ).all()
+        return [
+            GastoAgrupado(
+                categoria=f.categoria, tipo_egreso=f.tipo_egreso,
+                total=Decimal(f.total), cantidad=int(f.cantidad),
+            )
+            for f in filas
+        ]
+
     async def gastos_por_dia(
         self, *, inicio: datetime, fin: datetime
     ) -> list[tuple[date, Decimal]]:
-        """Gastos agrupados por día Colombia del rango (para la proyección y el calendario)."""
+        """Gastos agrupados por día Colombia del rango (para la proyección y el calendario).
+
+        Solo GASTO vivo: los anulados no existen para el negocio y los retiros/inversiones (0071) no son
+        gasto — proyectar el mes con un retiro adentro daría una alarma falsa cada vez que el dueño saca
+        plata."""
         dia = func.date(func.timezone("America/Bogota", Gasto.creado_en)).label("dia")
         filas = (
             await self._s.execute(
                 select(dia, func.coalesce(func.sum(Gasto.monto), 0).label("total"))
-                .where(Gasto.creado_en >= inicio, Gasto.creado_en <= fin)
+                .where(
+                    Gasto.creado_en >= inicio, Gasto.creado_en <= fin,
+                    Gasto.anulado_en.is_(None), Gasto.tipo_egreso == "gasto",
+                )
                 .group_by(dia)
                 .order_by(dia)
             )

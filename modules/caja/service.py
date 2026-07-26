@@ -4,12 +4,19 @@ SQL en el repositorio; hora Colombia con now_co(). Las mutaciones serializan con
 caja abierta (FOR UPDATE) y el chequeo de idempotencia va DENTRO de esa sección crítica.
 """
 from dataclasses import dataclass
+from datetime import datetime
 from decimal import Decimal
 
 from core.config.timezone import now_co, today_co
 from modules.caja.arqueo import calcular_arqueo
-from modules.caja.errors import CajaNoAbierta, GastoInexistente, GastoNoPendiente, ObraNoImputable
-from modules.caja.models import Caja, CajaMovimiento, Gasto
+from modules.caja.errors import (
+    CajaNoAbierta,
+    GastoInexistente,
+    GastoNoPendiente,
+    ObraNoImputable,
+    RecurrenteInexistente,
+)
+from modules.caja.models import Caja, CajaMovimiento, Gasto, GastoRecurrente
 from modules.caja.repository import SqlCajaRepository
 from modules.proveedores.errors import (
     AbonoInvalido,
@@ -164,6 +171,8 @@ class CajaService:
         monto: Decimal,
         concepto: str | None,
         idempotency_key: str | None = None,
+        tipo_egreso: str = "gasto",
+        recurrente_id: int | None = None,
         proveedor_id: int | None = None,
         factura_proveedor_id: str | None = None,
         obra_id: int | None = None,
@@ -197,6 +206,10 @@ class CajaService:
             if previo is not None:
                 return ResultadoGasto(previo, replay=True)
 
+        # El recurrente imputado se valida ANTES de mover nada (inexistente → 404, no un FK con 500).
+        if recurrente_id is not None and await self._repo.obtener_recurrente(recurrente_id) is None:
+            raise RecurrenteInexistente(recurrente_id)
+
         # Validación de la obra imputada ANTES de mover nada: inexistente → 404 (antes: FK → 500);
         # LIQUIDADA → 409 (su gasto real es un snapshot congelado; no admite más imputaciones).
         if obra_id is not None:
@@ -222,6 +235,7 @@ class CajaService:
         gasto = await self._repo.insertar_gasto(
             caja_id=caja.id, usuario_id=usuario_id, categoria=categoria, monto=monto,
             concepto=concepto, idempotency_key=idempotency_key,
+            tipo_egreso=tipo_egreso, recurrente_id=recurrente_id,
             proveedor_id=proveedor_id, factura_proveedor_id=factura_proveedor_id,
             obra_id=obra_id, maquina_id=maquina_id, categoria_gasto=categoria_gasto,
             metodo_pago=metodo_pago, numero_referencia=numero_referencia,
@@ -260,33 +274,59 @@ class CajaService:
     _CAMPOS_IMPUTACION = frozenset({"obra_id", "maquina_id", "categoria_gasto", "concepto"})
 
     async def rechazar_gasto(
-        self, gasto_id: int, *, usuario_id: int, motivo: str | None = None, modo_empresa: bool = False
+        self, gasto_id: int, *, usuario_id: int, motivo: str | None = None,
+        modo_empresa: bool = False, exigir_pendiente: bool = True,
     ) -> Gasto:
-        """Rechaza un gasto PENDIENTE de la bandeja: postea el movimiento de caja INVERSO (ingreso por el
-        monto exacto — nunca delete: invariante «nada mueve caja sin movimiento») y marca `anulado_en`.
+        """Rechaza/anula un gasto: postea el movimiento de caja INVERSO (ingreso por el monto exacto —
+        nunca delete: invariante «nada mueve caja sin movimiento») y marca `anulado_en`.
 
-        IDEMPOTENTE por `anulado_en` (re-rechazar devuelve el gasto sin segunda reversa); el FOR UPDATE
-        sobre el gasto serializa rechazos concurrentes. 404 si no existe; 409 si no está pendiente
-        (aprobado/manual: definitivo) o si no hay caja abierta donde postear la reversa."""
+        `exigir_pendiente=True` es la bandeja del bot (solo lo que está en revisión). En `False` es la
+        anulación del dueño desde el tab (0071): un gasto mal digitado tenía que poder corregirse — la
+        única alternativa era dejar la plata mal contada para siempre. Sigue sin poder anularse el que
+        generó un abono a CxP: eso exigiría revertir también el abono.
+
+        IDEMPOTENTE por `anulado_en` (re-anular devuelve el gasto sin segunda reversa); el FOR UPDATE
+        sobre el gasto serializa anulaciones concurrentes. 404 si no existe; 409 si no procede o si no
+        hay caja abierta donde postear la reversa."""
         gasto = await self._repo.obtener_gasto(gasto_id, bloquear=True)
         if gasto is None:
             raise GastoInexistente(gasto_id)
         if gasto.anulado_en is not None:
             return gasto                                   # replay: la reversa ya está asentada
-        if not gasto.requiere_revision:
+        if exigir_pendiente and not gasto.requiere_revision:
             raise GastoNoPendiente(gasto_id, "rechazar")
         # Cinturón: un gasto vinculado a CxP generó SU abono (ADR 0028); revertirlo exigiría revertir
         # también el abono. Los gastos de bandeja (bot) nunca traen el vínculo — si aparece, no procede.
         if gasto.abono_proveedor_id is not None:
-            raise GastoNoPendiente(gasto_id, "rechazar (vinculado a cuenta por pagar)")
+            raise GastoNoPendiente(gasto_id, "anular (vinculado a cuenta por pagar)")
         caja = await self._abierta(usuario_id, modo_empresa=modo_empresa, lock=True)
         if caja is None:
             raise CajaNoAbierta(usuario_id)
         await self._repo.insertar_movimiento(
             caja_id=caja.id, tipo="ingreso", monto=gasto.monto,
-            concepto=f"Reversa gasto #{gasto.id} (rechazado)",
+            concepto=f"Reversa gasto #{gasto.id} ({'rechazado' if exigir_pendiente else 'anulado'})",
         )
         return await self._repo.anular_gasto(gasto, anulado_en=now_co(), motivo=motivo)
+
+    # ---- Gastos recurrentes (0071) ----------------------------------------------------------------
+    async def listar_recurrentes(
+        self, *, inicio: datetime, fin: datetime, solo_activos: bool = True
+    ) -> list[tuple[GastoRecurrente, tuple[int, datetime, Decimal] | None]]:
+        """Los recurrentes con su estado en la ventana: `(recurrente, pago | None)`.
+
+        Dos consultas fijas (la lista y los pagos del mes), nunca una por fila."""
+        recurrentes = await self._repo.listar_recurrentes(solo_activos=solo_activos)
+        pagos = await self._repo.pagos_de_recurrentes(inicio=inicio, fin=fin)
+        return [(r, pagos.get(r.id)) for r in recurrentes]
+
+    async def crear_recurrente(self, datos: dict) -> GastoRecurrente:
+        return await self._repo.crear_recurrente(datos)
+
+    async def actualizar_recurrente(self, recurrente_id: int, datos: dict) -> GastoRecurrente:
+        recurrente = await self._repo.obtener_recurrente(recurrente_id)
+        if recurrente is None:
+            raise RecurrenteInexistente(recurrente_id)
+        return await self._repo.actualizar_recurrente(recurrente, datos)
 
     async def editar_imputacion(self, gasto_id: int, cambios: dict) -> Gasto:
         """Re-imputa un gasto PENDIENTE de la bandeja antes de aprobarlo (obra/máquina/categoría/concepto).

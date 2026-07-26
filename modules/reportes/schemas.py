@@ -130,6 +130,46 @@ class FlujoDinero(BaseModel):
     neto: Decimal
 
 
+class RenglonGasto(BaseModel):
+    """Una categoría de gasto del rango, con su peso y si es fija o variable."""
+
+    categoria: str
+    total: Decimal
+    cantidad: int
+    fijo: bool
+    pct: Decimal          # % del gasto del período (0 si no hubo gasto)
+
+
+class ResumenGastos(BaseModel):
+    """Lo que el dueño necesita del tab Gastos (0071).
+
+    Separa lo que es GASTO (resta utilidad) de lo que solo salió de la caja: retiro del dueño
+    (reparte utilidad), inversión (compra un activo que se deprecia) y pago de deuda (su costo ya se
+    contó al recibir la mercancía). Sumarlos todos como gasto mostraría pérdidas que no existen.
+
+    El punto de equilibrio va SIEMPRE sobre el mes de `hasta`, no sobre el rango elegido: con el
+    filtro en "hoy" los gastos fijos del día son casi cero y el número saldría absurdo."""
+
+    desde: date
+    hasta: date
+    total_gasto: Decimal
+    total_retiro: Decimal
+    total_inversion: Decimal
+    total_pago_deuda: Decimal
+    fijos: Decimal
+    variables: Decimal
+    por_categoria: list[RenglonGasto]
+    # Mismo largo de ventana, inmediatamente anterior: el "¿voy peor o mejor?" sin pedir dos consultas.
+    gasto_periodo_anterior: Decimal
+    ventas: Decimal                       # subtotal sin IVA del rango (el IVA es traslado)
+    pct_ventas: Decimal | None            # gasto ÷ ventas × 100; None si no hubo ventas
+    # --- Punto de equilibrio (mes de `hasta`) ---
+    margen_bruto_pct: Decimal | None      # (ingresos − costo) ÷ ingresos × 100
+    fijos_mes: Decimal
+    punto_equilibrio_mes: Decimal | None  # fijos ÷ margen; None sin margen positivo
+    punto_equilibrio_dia: Decimal | None
+
+
 class MargenProducto(BaseModel):
     """Margen bruto por producto (o categoría) del rango, con cobertura de costo honesta."""
 

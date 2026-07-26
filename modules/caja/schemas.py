@@ -3,14 +3,27 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 CajaMovTipo = Literal["ingreso", "egreso"]
 # De dónde sale la plata de un pago: `caja` mueve el cajón del día (y exige caja abierta); los otros
 # dos son dinero que no estaba en la caja (efectivo guardado de días anteriores, o banco): se
 # registran con su procedencia pero no tocan el arqueo.
 OrigenFondos = Literal["caja", "efectivo_externo", "banco"]
-GastoCategoria = Literal["transporte", "papeleria", "servicios", "nomina", "mantenimiento", "otros"]
+GastoCategoria = Literal[
+    "transporte", "papeleria", "servicios", "nomina", "mantenimiento", "otros",
+    # 0071 (retail): arriendo del local, empaque (bolsas/potes/cinta), impuestos (ICA, predial),
+    # comisiones (datáfono, 4×1000) y aseo/cafetería. Antes todo esto caía en `otros`.
+    "arriendo", "empaque", "impuestos", "comisiones", "aseo",
+]
+# Naturaleza del egreso (0071). SOLO `gasto` resta en la utilidad: el `retiro` del dueño reparte
+# utilidad, la `inversion` compra un activo que se deprecia y el `pago_deuda` salda algo cuyo costo ya
+# se contó cuando llegó la mercancía. Los cuatro salen de la caja; contarlos todos como gasto haría
+# ver pérdidas que no existen.
+TipoEgreso = Literal["gasto", "inversion", "retiro", "pago_deuda"]
+# Fijos = se pagan igual vendas mucho o nada. Son los que fijan el punto de equilibrio; el resto sube
+# y baja con la venta. Mantenimiento queda variable a propósito: es esporádico, no mensual.
+CATEGORIAS_FIJAS: frozenset[str] = frozenset({"arriendo", "servicios", "nomina"})
 
 # --- Vertical construcción (spec 09). Literales EXACTOS a la spec 01_MODELO_DATOS y a los enums de la
 # migración 0048. La categoría del vertical (`categoria_gasto`) convive con la `categoria` del POS de
@@ -44,6 +57,9 @@ class GastoCrear(BaseModel):
     categoria: GastoCategoria
     monto: Decimal = Field(gt=0)
     concepto: str | None = None
+    # 0071. Default `gasto`: quien no lo mande (el bot, integraciones viejas) sigue registrando gasto.
+    tipo_egreso: TipoEgreso = "gasto"
+    recurrente_id: int | None = None       # qué recurrente del mes salda este gasto
     # Vínculo opcional a cuentas por pagar (ADR 0028): a quién se le pagó y qué factura salda este
     # gasto. Con `factura_proveedor_id`, el gasto genera SU único abono (no se registra otro aparte).
     proveedor_id: int | None = None
@@ -122,6 +138,8 @@ class GastoLeer(BaseModel):
 
     id: int
     categoria: str
+    tipo_egreso: str = "gasto"
+    recurrente_id: int | None = None
     monto: Decimal
     concepto: str | None
     caja_id: int | None
@@ -144,6 +162,40 @@ class GastoLeer(BaseModel):
     # Rechazo de la bandeja (0056): NULL = vivo. La reversa de caja está asentada como ingreso inverso.
     anulado_en: datetime | None = None
     motivo_rechazo: str | None = None
+
+
+class RecurrenteGuardar(BaseModel):
+    """Alta/edición de un gasto recurrente (0071): la plantilla de lo que se paga todos los meses."""
+
+    nombre: str = Field(min_length=1, max_length=120)
+    categoria: GastoCategoria
+    monto_estimado: Decimal | None = Field(default=None, ge=0)
+    dia_mes: int | None = Field(default=None, ge=1, le=31)
+    activo: bool = True
+
+    @field_validator("nombre")
+    @classmethod
+    def _limpio(cls, v: str) -> str:
+        limpio = v.strip()
+        if not limpio:
+            raise ValueError("El nombre no puede estar vacío")
+        return limpio
+
+
+class RecurrenteLeer(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    nombre: str
+    categoria: str
+    monto_estimado: Decimal | None
+    dia_mes: int | None
+    activo: bool
+    # Estado del MES consultado: lo resuelve el servicio cruzando con `gastos.recurrente_id` (no es
+    # columna de la tabla). `pagado_en is None` = pendiente este mes.
+    pagado_en: datetime | None = None
+    gasto_id: int | None = None
+    monto_pagado: Decimal | None = None
 
 
 class GastoRechazar(BaseModel):

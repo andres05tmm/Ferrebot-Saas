@@ -25,6 +25,7 @@ from modules.inventario.service import InventarioService
 from modules.pedidos_proveedor.errors import PedidoNoEditable, RecepcionInvalida
 from modules.pedidos_proveedor.repository import SqlPedidosProveedorRepository
 from modules.pedidos_proveedor.schemas import (
+    LineaPedidoCrear,
     LineaRecibir,
     PedidoCrear,
     ProveedorRef,
@@ -45,11 +46,16 @@ def _svc(s: AsyncSession) -> PedidosProveedorService:
     )
 
 
-def _pedido_rapido(**extra) -> PedidoCrear:
+def _pedido_rapido(pid: int, **extra) -> PedidoCrear:
+    """Pedido con la captura completa (líneas con producto/cantidad/costo + forma de pago)."""
+    extra.setdefault("condicion_pago", "credito")
     return PedidoCrear(
         proveedor=ProveedorRef(nombre="Ferrisariato"),
         descripcion="50 martillos y lo de siempre",
         monto_estimado=Decimal("500000"),
+        lineas=[LineaPedidoCrear(
+            producto_id=pid, cantidad=Decimal("10"), costo_estimado=Decimal("5000")
+        )],
         **extra,
     )
 
@@ -80,7 +86,7 @@ async def test_recibir_credito_crea_compra_y_cxp_y_es_replay_idempotente(tenant,
     async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
         uid, pid = await seed_producto(s, stock="0")
         await s.commit()
-        pedido = (await _svc(s).crear(_pedido_rapido(), usuario_id=uid)).pedido
+        pedido = (await _svc(s).crear(_pedido_rapido(pid), usuario_id=uid)).pedido
         await s.commit()
 
     recibo = _recibo(pid, condicion_pago="credito", numero_factura="F-77",
@@ -117,7 +123,7 @@ async def test_recibir_payload_distinto_tras_recibido_es_conflicto(tenant, seed_
     async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
         uid, pid = await seed_producto(s)
         await s.commit()
-        pedido = (await _svc(s).crear(_pedido_rapido(), usuario_id=uid)).pedido
+        pedido = (await _svc(s).crear(_pedido_rapido(pid), usuario_id=uid)).pedido
         await _svc(s).recibir(pedido.id, _recibo(pid, condicion_pago="credito"), usuario_id=uid)
         await s.commit()
 
@@ -135,7 +141,7 @@ async def test_recibir_tras_cancelado_falla_sin_efectos(tenant, seed_producto):
     async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
         uid, pid = await seed_producto(s)
         await s.commit()
-        pedido = (await _svc(s).crear(_pedido_rapido(), usuario_id=uid)).pedido
+        pedido = (await _svc(s).crear(_pedido_rapido(pid), usuario_id=uid)).pedido
         await _svc(s).cancelar(pedido.id, usuario_id=uid)
         await s.commit()
 
@@ -153,13 +159,13 @@ async def test_recibir_contado_sin_caja_abierta_falla_sin_efectos_parciales(tena
     async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
         uid, pid = await seed_producto(s)
         await s.commit()
-        pedido = (await _svc(s).crear(_pedido_rapido(), usuario_id=uid)).pedido
+        pedido = (await _svc(s).crear(_pedido_rapido(pid), usuario_id=uid)).pedido
         await s.commit()
 
     async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
         with pytest.raises(CajaNoAbierta):
             await _svc(s).recibir(
-                pedido.id, _recibo(pid, condicion_pago="contado", pago_desde_caja=True), usuario_id=uid
+                pedido.id, _recibo(pid, condicion_pago="contado", pago_ahora=True), usuario_id=uid
             )
         await s.rollback()
 
@@ -177,10 +183,10 @@ async def test_recibir_contado_con_caja_egresa_una_sola_vez(tenant, seed_product
         uid, pid = await seed_producto(s)
         await s.commit()
         await CajaService(SqlCajaRepository(s)).abrir(usuario_id=uid, saldo_inicial=Decimal("100000"))
-        pedido = (await _svc(s).crear(_pedido_rapido(), usuario_id=uid)).pedido
+        pedido = (await _svc(s).crear(_pedido_rapido(pid), usuario_id=uid)).pedido
         await s.commit()
 
-    recibo = _recibo(pid, condicion_pago="contado", pago_desde_caja=True)
+    recibo = _recibo(pid, condicion_pago="contado", pago_ahora=True)
     async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
         await _svc(s).recibir(pedido.id, recibo, usuario_id=uid)
         await s.commit()
@@ -200,16 +206,15 @@ async def test_recibir_contado_con_caja_egresa_una_sola_vez(tenant, seed_product
 
 # --- Anticipo (proveedores que cobran al pedir) ------------------------------
 
-async def test_anticipo_egresa_una_vez_y_recibo_anticipado_no_vuelve_a_cobrar(tenant, seed_producto):
+async def test_pago_al_pedir_egresa_una_vez_y_el_recibo_no_vuelve_a_cobrar(tenant, seed_producto):
     async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
         uid, pid = await seed_producto(s)
         await s.commit()
         await CajaService(SqlCajaRepository(s)).abrir(usuario_id=uid, saldo_inicial=Decimal("100000"))
         await s.commit()
 
-    datos = _pedido_rapido(
-        anticipo=Decimal("50000"), anticipo_desde_caja=True, idempotency_key="ped-ant-1"
-    )
+    # Contado al pedir: se paga el valor completo del pedido (10 × 5.000) al hacerlo.
+    datos = _pedido_rapido(pid, condicion_pago="contado", idempotency_key="ped-ant-1")
     async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
         r1 = await _svc(s).crear(datos, usuario_id=uid)
         await s.commit()
@@ -219,13 +224,11 @@ async def test_anticipo_egresa_una_vez_y_recibo_anticipado_no_vuelve_a_cobrar(te
 
     assert r1.replay is False and r2.replay is True and r2.pedido.id == r1.pedido.id
     c = await _counts(tenant.engine)
-    assert c["egresos"] == 1   # UN solo egreso de anticipo
+    assert c["egresos"] == 1   # UN solo egreso: el pago al pedir
 
-    # Recibo anticipado con costo == anticipo: NO genera egreso adicional ni deuda.
+    # La mercancía llega y cuesta lo mismo: NO genera egreso adicional ni deuda.
     async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
-        r = await _svc(s).recibir(
-            r1.pedido.id, _recibo(pid, condicion_pago="anticipado"), usuario_id=uid
-        )
+        r = await _svc(s).recibir(r1.pedido.id, _recibo(pid), usuario_id=uid)
         await s.commit()
     assert r.factura_proveedor_id is None
     c = await _counts(tenant.engine)
@@ -239,7 +242,7 @@ async def test_anticipado_con_remanente_a_credito_descuenta_el_anticipo(tenant, 
         uid, pid = await seed_producto(s)
         await s.commit()
         pedido = (
-            await _svc(s).crear(_pedido_rapido(anticipo=Decimal("20000")), usuario_id=uid)
+            await _svc(s).crear(_pedido_rapido(pid, condicion_pago="anticipado", anticipo=Decimal("20000"), origen_fondos="banco"), usuario_id=uid)
         ).pedido
         await s.commit()
 
@@ -270,7 +273,7 @@ async def test_anticipado_con_remanente_sin_destino_es_invalido(tenant, seed_pro
         uid, pid = await seed_producto(s)
         await s.commit()
         pedido = (
-            await _svc(s).crear(_pedido_rapido(anticipo=Decimal("20000")), usuario_id=uid)
+            await _svc(s).crear(_pedido_rapido(pid, condicion_pago="anticipado", anticipo=Decimal("20000"), origen_fondos="banco"), usuario_id=uid)
         ).pedido
         await s.commit()
 
@@ -296,7 +299,7 @@ async def test_cuadre_al_recibir_fija_stock_fisico_y_sella_cuadrado_at(tenant, s
             text("UPDATE inventario SET stock_actual = -25 WHERE producto_id=:p"), {"p": pid}
         )
         await s.commit()
-        pedido = (await _svc(s).crear(_pedido_rapido(), usuario_id=uid)).pedido
+        pedido = (await _svc(s).crear(_pedido_rapido(pid), usuario_id=uid)).pedido
         await s.commit()
 
     recibo = RecibirPedido(

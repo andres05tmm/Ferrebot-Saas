@@ -5,6 +5,7 @@ nada), el dedup por `ultimo_aviso_at` + cadencia, y que solo un envío EXITOSO s
 multi-tenant del worker es smoke manual (como los demás crons).
 """
 from datetime import timedelta
+from decimal import Decimal
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -19,7 +20,7 @@ from modules.compras.service import ComprasService
 from modules.inventario.repository import SqlInventarioRepository
 from modules.inventario.service import InventarioService
 from modules.pedidos_proveedor.repository import SqlPedidosProveedorRepository
-from modules.pedidos_proveedor.schemas import PedidoCrear, ProveedorRef
+from modules.pedidos_proveedor.schemas import LineaPedidoCrear, PedidoCrear, ProveedorRef
 from modules.pedidos_proveedor.service import (
     PedidosProveedorService,
     procesar_avisos_demorados,
@@ -48,9 +49,31 @@ class SpyEnviar:
         return self._ok
 
 
-async def _crear_pedido(s: AsyncSession, uid: int, *, proveedor="Ferrisariato", **extra) -> int:
+async def _producto(s: AsyncSession) -> int:
+    """Producto desechable: el motor de avisos no mira las líneas, pero el alta ya las exige."""
+    return (
+        await s.execute(
+            text(
+                "INSERT INTO productos (nombre, unidad_medida, precio_venta, iva, permite_fraccion, "
+                "activo) VALUES ('Item','unidad',1000,0,false,true) RETURNING id"
+            )
+        )
+    ).scalar_one()
+
+
+async def _crear_pedido(
+    s: AsyncSession, uid: int, *, proveedor="Ferrisariato", producto_id: int | None = None, **extra
+) -> int:
+    extra.setdefault("condicion_pago", "credito")
     res = await _svc(s).crear(
-        PedidoCrear(proveedor=ProveedorRef(nombre=proveedor), descripcion="lo de siempre", **extra),
+        PedidoCrear(
+            proveedor=ProveedorRef(nombre=proveedor), descripcion="lo de siempre",
+            lineas=[LineaPedidoCrear(
+                producto_id=producto_id or await _producto(s), cantidad=Decimal("1"),
+                costo_estimado=Decimal("1000"),
+            )],
+            **extra,
+        ),
         usuario_id=uid,
     )
     return res.pedido.id

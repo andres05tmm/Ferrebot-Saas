@@ -119,6 +119,9 @@ class FlujoDinero(BaseModel):
     gastos_por_categoria: dict[str, Decimal]
     abonos_proveedores: Decimal
     egresos_caja: Decimal
+    # Desglose de los egresos de caja por su procedencia, con la etiqueta que entiende el dueño
+    # ("Pago de mercancía", "Anticipos y pagos al pedir", …). Es un detalle de `egresos_caja`.
+    egresos_por_origen: dict[str, Decimal] = {}
     total_salidas: Decimal
     neto: Decimal
 

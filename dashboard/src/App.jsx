@@ -29,7 +29,6 @@ import TabResultados from './tabs/TabResultados.jsx'
 import TabTopProductos from './tabs/TabTopProductos.jsx'
 import TabFacturacion from './tabs/TabFacturacion.jsx'
 import TabCompras from './tabs/TabCompras.jsx'
-import TabPedidosProveedor from './tabs/TabPedidosProveedor.jsx'
 import TabProveedores from './tabs/TabProveedores.jsx'
 import TabComprasFiscal from './tabs/TabComprasFiscal.jsx'
 import TabFacturasRecibidas from './tabs/TabFacturasRecibidas.jsx'
@@ -80,7 +79,6 @@ const TABS = {
   '/top-productos': TabTopProductos,
   '/facturacion': TabFacturacion,
   '/compras': TabCompras,
-  '/pedidos-proveedor': TabPedidosProveedor,
   '/proveedores': TabProveedores,
   '/compras-fiscal': TabComprasFiscal,
   '/facturas-recibidas': TabFacturasRecibidas,

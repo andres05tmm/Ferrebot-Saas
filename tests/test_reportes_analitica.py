@@ -209,7 +209,7 @@ async def test_hoy_dashboard_agrega_las_senales_del_cockpit(tenant, seed_product
     from modules.inventario.repository import SqlInventarioRepository
     from modules.inventario.service import InventarioService
     from modules.pedidos_proveedor.repository import SqlPedidosProveedorRepository
-    from modules.pedidos_proveedor.schemas import PedidoCrear, ProveedorRef
+    from modules.pedidos_proveedor.schemas import LineaPedidoCrear, PedidoCrear, ProveedorRef
     from modules.pedidos_proveedor.service import PedidosProveedorService
     from modules.proveedores.repository import SqlProveedoresRepository
 
@@ -244,7 +244,13 @@ async def test_hoy_dashboard_agrega_las_senales_del_cockpit(tenant, seed_product
             inventario=InventarioService(SqlInventarioRepository(s)),
         )
         await pedidos.crear(
-            PedidoCrear(proveedor=ProveedorRef(nombre="Eternit"), descripcion="10 tejas"),
+            PedidoCrear(
+                proveedor=ProveedorRef(nombre="Eternit"), descripcion="10 tejas",
+                condicion_pago="credito",
+                lineas=[LineaPedidoCrear(
+                    producto_id=pid, cantidad=Decimal("10"), costo_estimado=Decimal("4000")
+                )],
+            ),
             usuario_id=uid,
         )
         await InventarioService(SqlInventarioRepository(s)).contar(

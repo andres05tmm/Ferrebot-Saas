@@ -212,7 +212,7 @@ function AlertasHoy({ datos, navigate }) {
   }
   if (datos.pedidos_demorados > 0) {
     alertas.push({
-      tono: 'destructive', icon: Timer, to: '/pedidos-proveedor',
+      tono: 'destructive', icon: Timer, to: '/compras',
       texto: `${datos.pedidos_demorados} pedido${datos.pedidos_demorados === 1 ? '' : 's'} a proveedor demorado${datos.pedidos_demorados === 1 ? '' : 's'} — revisa qué pasó.`,
     })
   }
@@ -594,7 +594,7 @@ function QuickActions({ navigate, onRefetch }) {
     { label: 'Nueva venta', icon: Plus, tone: 'primary', run: () => navigate('/ventas') },
     { label: 'Gasto', icon: Receipt, tone: 'warning', run: () => setGastoAbierto(true) },
     { label: 'Abono a proveedor', icon: Banknote, tone: 'info', run: () => setAbonoAbierto(true) },
-    { label: 'Pedido a proveedor', icon: PackageSearch, tone: 'success', run: () => navigate('/pedidos-proveedor') },
+    { label: 'Compra a proveedor', icon: PackageSearch, tone: 'success', run: () => navigate('/compras') },
   ]
   const toneStyles = {
     primary: { color: 'hsl(var(--accent))', bg: 'bg-primary/10' },

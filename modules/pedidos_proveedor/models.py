@@ -52,6 +52,10 @@ class PedidoProveedor(TenantBase):
         Text, ForeignKey("facturas_proveedores.id", ondelete="SET NULL")
     )
     condicion_pago: Mapped[str | None] = mapped_column(pedido_prov_condicion)
+    # De dónde salió cada pago (0067): 'caja' (movió el cajón del día) | 'efectivo_externo'
+    # (efectivo guardado de días anteriores) | 'banco'. NULL = sin pago por ese lado.
+    origen_anticipo: Mapped[str | None] = mapped_column(Text)
+    origen_pago: Mapped[str | None] = mapped_column(Text)
     # FK a usuarios existe en la BD (migración 0052); el ORM no la modela (no hay modelo Usuario),
     # como caja/ventas/facturas_proveedores.
     usuario_id: Mapped[int | None] = mapped_column(BigInteger)

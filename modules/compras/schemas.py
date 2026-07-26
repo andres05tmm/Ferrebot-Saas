@@ -141,3 +141,46 @@ class AnalisisPrecioProveedor(BaseModel):
     costo_unitario_max: Decimal
     variacion_pct: Decimal                    # (max − promedio) / promedio × 100 (derivado)
     alerta: bool                              # costo máximo > 15% sobre el promedio del proveedor (derivado)
+
+
+# --- Corrección de una compra ya registrada (reforma tab Compras) ---------------------------------
+
+class LineaCorreccion(BaseModel):
+    """Cómo DEBE quedar esa línea (estado final, no un delta): producto, cantidad y costo unitario."""
+
+    producto_id: int = Field(gt=0)
+    cantidad: Decimal = Field(gt=0)
+    costo: Decimal = Field(ge=0)
+
+
+class CompraCorregir(BaseModel):
+    """Corrección de una compra recibida: se manda el detalle COMPLETO ya corregido.
+
+    El servicio aplica solo las diferencias: cada cambio de cantidad deja su movimiento AJUSTE en el
+    kárdex (regla #7) y la plata se concilia (cuenta por pagar y/o caja). `ajustar_pago` pide que la
+    diferencia salga (o entre) de la caja ahora; si la compra fue a crédito, la deuda se recalcula
+    sola sin necesidad de ese flag.
+    """
+
+    lineas: list[LineaCorreccion] = Field(min_length=1, max_length=200)
+    motivo: str = Field(min_length=3, max_length=300)
+    ajustar_pago: bool = False
+    idempotency_key: str | None = None
+
+
+class AjusteLinea(BaseModel):
+    """Efecto de la corrección sobre una línea: cuánto stock se movió y con qué movimiento."""
+
+    producto_id: int
+    delta_cantidad: Decimal
+    stock_resultante: Decimal
+    movimiento_id: int | None = None    # None si solo cambió el costo (no hubo movimiento)
+
+
+class CorreccionLeer(BaseModel):
+    compra: CompraLeer
+    delta_total: Decimal
+    lineas: list[AjusteLinea] = []
+    factura_proveedor_id: str | None = None
+    movimiento_caja_id: int | None = None
+    replay: bool = False

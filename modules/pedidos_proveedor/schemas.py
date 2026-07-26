@@ -1,15 +1,17 @@
 """Contratos Pydantic de pedidos a proveedor (api-contract §pedidos-proveedor).
 
-Captura FLEXIBLE (decisión del dueño, ADR de la fase): el pedido se registra rápido (proveedor +
-descripción + monto estimado) o detallado (`lineas[]`); lo preciso —productos, cantidades y costos
-reales— se fija al RECIBIR la mercancía. El lead time viaja derivado (`horas_transcurridas` /
-`lead_time_horas`), nunca almacenado.
+Captura COMPLETA (decisión del dueño, 2026-07-25 — revoca la "captura flexible" del ADR 0031 §2):
+el pedido nace con sus productos, cantidades y COSTO UNITARIO, y con la forma de pago declarada.
+Al recibir se confirman los números reales (pueden diferir) y después se pueden corregir. El lead
+time viaja derivado (`horas_transcurridas` / `lead_time_horas`), nunca almacenado.
 """
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from modules.caja.schemas import OrigenFondos
 
 CondicionPago = Literal["contado", "credito", "anticipado"]
 
@@ -31,16 +33,17 @@ class ProveedorRef(BaseModel):
 
 
 class LineaPedidoCrear(BaseModel):
-    producto_id: int | None = Field(default=None, gt=0)
+    """Línea del pedido: qué se le está comprando al proveedor, cuánto y a qué costo unitario.
+
+    `costo_estimado` es el costo unitario ACORDADO al pedir; el real se confirma al recibir (y se
+    puede corregir después). Los tres campos son obligatorios: sin ellos el pedido no sirve para
+    saber cuánto se está comprometiendo ni para cuadrar el inventario al llegar.
+    """
+
+    producto_id: int = Field(gt=0)
     descripcion: str | None = Field(default=None, max_length=300)
     cantidad: Decimal = Field(gt=0)
-    costo_estimado: Decimal | None = Field(default=None, ge=0, le=MAX_MONTO)
-
-    @model_validator(mode="after")
-    def _identificable(self) -> "LineaPedidoCrear":
-        if self.producto_id is None and not self.descripcion:
-            raise ValueError("la línea requiere producto_id o descripcion")
-        return self
+    costo_estimado: Decimal = Field(ge=0, le=MAX_MONTO)
 
 
 class PedidoCrear(BaseModel):
@@ -48,19 +51,15 @@ class PedidoCrear(BaseModel):
     descripcion: str | None = Field(default=None, max_length=500)
     monto_estimado: Decimal | None = Field(default=None, gt=0, le=MAX_MONTO)
     fecha_estimada: date | None = None
-    lineas: list[LineaPedidoCrear] = Field(default_factory=list, max_length=200)
+    lineas: list[LineaPedidoCrear] = Field(min_length=1, max_length=200)
     notas: str | None = Field(default=None, max_length=1000)
-    # Pago por adelantado: monto entregado al proveedor al hacer el pedido. `anticipo_desde_caja`
-    # postea el egreso en la caja abierta (exige caja); False = salió de otra fuente (solo registra).
+    # Cómo se paga, declarado AL PEDIR: `contado` (se paga todo ahora), `credito` (se paga después,
+    # nace la cuenta por pagar al recibir) o `anticipado` (se entrega una parte ahora y el resto al
+    # recibir). El servicio deriva el `anticipo` de `contado` y valida el parcial de `anticipado`.
+    condicion_pago: CondicionPago
     anticipo: Decimal | None = Field(default=None, gt=0, le=MAX_MONTO)
-    anticipo_desde_caja: bool = False
+    origen_fondos: OrigenFondos = "caja"
     idempotency_key: str | None = None
-
-    @model_validator(mode="after")
-    def _con_sustancia(self) -> "PedidoCrear":
-        if not self.lineas and not self.descripcion:
-            raise ValueError("el pedido requiere descripcion o al menos una línea")
-        return self
 
 
 class PedidoEditar(BaseModel):
@@ -89,12 +88,15 @@ class LineaRecibir(BaseModel):
 
 class RecibirPedido(BaseModel):
     lineas: list[LineaRecibir] = Field(min_length=1, max_length=200)
-    condicion_pago: CondicionPago
+    # Opcional: manda la condición declarada al pedir, pero se puede corregir aquí (la realidad
+    # gana: "iba a ser crédito y terminé pagando de contado").
+    condicion_pago: CondicionPago | None = None
     # Crédito: nº de factura del proveedor (PK de facturas_proveedores) y vencimiento opcionales.
     numero_factura: str | None = Field(default=None, min_length=1, max_length=100)
     fecha_vencimiento: date | None = None
-    # Contado: si el pago sale de la caja física ahora (exige caja abierta).
-    pago_desde_caja: bool = False
+    # Contado: si el pago sale AHORA y de dónde. `caja` exige caja abierta y postea el egreso.
+    pago_ahora: bool = False
+    origen_fondos: OrigenFondos = "caja"
     notas: str | None = Field(default=None, max_length=1000)
     idempotency_key: str | None = None
 
@@ -125,6 +127,8 @@ class PedidoLeer(BaseModel):
     compra_id: int | None
     factura_proveedor_id: str | None
     condicion_pago: str | None
+    origen_anticipo: str | None = None
+    origen_pago: str | None = None
     notas: str | None
     detalles: list[LineaPedidoLeer] = []
     # Derivados del cronómetro (nunca persistidos):

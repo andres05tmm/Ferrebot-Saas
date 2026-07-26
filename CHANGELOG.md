@@ -2,6 +2,18 @@
 
 Formato basado en Keep a Changelog. Versionado semántico.
 
+## Compras: el ciclo completo (2026-07-25)
+
+- Un solo tab **Compras**: la compra se registra al hacer el pedido (productos, cantidad y costo
+  unitario obligatorios) con su forma de pago; el cronómetro mide cuánto tarda cada proveedor. El
+  tab "Pedidos a proveedor" se fusionó aquí (ADR 0034).
+- **Corrección de una compra recibida** (`POST /compras/{id}/corregir`): aplica las diferencias como
+  movimientos AJUSTE, re-pondera el costo y concilia la deuda y la caja.
+- **De dónde sale la plata** en cada pago (caja / efectivo guardado / banco). Los abonos a
+  proveedor por fin postean su egreso cuando salen del cajón, y `flujo-dinero` desglosa los egresos
+  por procedencia.
+- Migración tenant **0067**.
+
 ## [Unreleased]
 
 ### Added

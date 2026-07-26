@@ -74,7 +74,11 @@ class AgregadoFlujo:
     ingresos_caja: Decimal
     gastos_por_categoria: dict[str, Decimal]
     abonos_proveedores: Decimal                # solo abonos SIN gasto asociado
-    egresos_caja: Decimal                      # egresos manuales (sin los de gastos)
+    egresos_caja: Decimal                      # egresos manuales (sin los de gastos ni abonos)
+    # De DÓNDE viene cada egreso de caja: se agrupa por el prefijo de `caja_movimientos.referencia`
+    # (`pedido:` pago al pedir, `compra:` pago/corrección de mercancía, `abono:` abono a proveedor,
+    # sin referencia → movimiento manual). Es un desglose de lo ya contado, no un sumando nuevo.
+    egresos_por_origen: dict[str, Decimal]
 
 
 @dataclass(frozen=True, slots=True)
@@ -366,8 +370,11 @@ class SqlReportesRepository:
         )
         # Movimientos manuales de caja: los egresos de GASTO llevan referencia 'gasto:{id}' — se
         # excluyen (ya cuentan en gastos); ingresos/egresos sin esa marca son plata real que entró/salió.
+        # Excluye los egresos que YA se cuentan en otro bucket: los de gastos (`gasto:%`) y los de
+        # abonos a proveedor (`abono:%`, desde que el abono postea su egreso).
         sin_gasto = (CajaMovimiento.referencia.is_(None)) | (
             ~CajaMovimiento.referencia.like("gasto:%")
+            & ~CajaMovimiento.referencia.like("abono:%")
         )
         ingresos_caja, egresos_caja = (
             await self._s.execute(
@@ -385,6 +392,22 @@ class SqlReportesRepository:
                 )
             )
         ).one()
+
+        filas_origen = (
+            await self._s.execute(
+                select(
+                    func.coalesce(
+                        func.split_part(CajaMovimiento.referencia, ":", 1), "manual"
+                    ).label("origen"),
+                    func.coalesce(func.sum(CajaMovimiento.monto), 0).label("total"),
+                ).where(
+                    sin_gasto,
+                    CajaMovimiento.tipo == "egreso",
+                    CajaMovimiento.creado_en >= inicio,
+                    CajaMovimiento.creado_en <= fin,
+                ).group_by("origen")
+            )
+        ).all()
 
         filas_gastos = (
             await self._s.execute(
@@ -420,6 +443,9 @@ class SqlReportesRepository:
             gastos_por_categoria={f.categoria: Decimal(f.total) for f in filas_gastos},
             abonos_proveedores=abonos_prov,
             egresos_caja=Decimal(egresos_caja),
+            egresos_por_origen={
+                (f.origen or "manual"): Decimal(f.total) for f in filas_origen if f.total
+            },
         )
 
     async def margen_productos(

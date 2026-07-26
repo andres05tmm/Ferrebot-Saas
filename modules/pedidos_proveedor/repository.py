@@ -40,6 +40,7 @@ class SqlPedidosProveedorRepository:
         monto_estimado: Decimal | None,
         anticipo: Decimal | None,
         condicion_pago: str | None,
+        origen_anticipo: str | None,
         usuario_id: int | None,
         notas: str | None,
         idempotency_key: str | None,
@@ -48,7 +49,8 @@ class SqlPedidosProveedorRepository:
         pedido = PedidoProveedor(
             proveedor_id=proveedor_id, fecha_pedido=fecha_pedido, fecha_estimada=fecha_estimada,
             estado="pedido", descripcion=descripcion, monto_estimado=monto_estimado,
-            anticipo=anticipo, condicion_pago=condicion_pago, usuario_id=usuario_id,
+            anticipo=anticipo, condicion_pago=condicion_pago, origen_anticipo=origen_anticipo,
+            usuario_id=usuario_id,
             notas=notas, idempotency_key=idempotency_key,
         )
         self._s.add(pedido)
@@ -66,6 +68,18 @@ class SqlPedidosProveedorRepository:
             "monto_estimado": str(monto_estimado) if monto_estimado is not None else None,
         })
         return pedido
+
+    async def productos_existentes(self, ids: list[int]) -> set[int]:
+        """Cuáles de esos productos existen (una sola consulta, sin N+1). Valida las líneas ANTES
+        del insert: si no, la FK revienta con 500 en vez de un error de dominio."""
+        if not ids:
+            return set()
+        filas = (
+            await self._s.execute(
+                text("SELECT id FROM productos WHERE id = ANY(:ids)"), {"ids": list(set(ids))}
+            )
+        ).scalars().all()
+        return set(filas)
 
     async def por_key(self, idempotency_key: str) -> PedidoProveedor | None:
         return (
@@ -131,9 +145,11 @@ class SqlPedidosProveedorRepository:
         compra_id: int,
         factura_proveedor_id: str | None,
         condicion_pago: str,
+        origen_pago: str | None,
         notas: str | None,
     ) -> PedidoProveedor:
         pedido.estado = "recibido"
+        pedido.origen_pago = origen_pago
         pedido.fecha_recepcion = fecha_recepcion
         pedido.compra_id = compra_id
         pedido.factura_proveedor_id = factura_proveedor_id

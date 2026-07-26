@@ -52,6 +52,9 @@ class AbonoProveedor(TenantBase):
     fecha: Mapped[date] = mapped_column(Date, nullable=False)
     foto_url: Mapped[str | None] = mapped_column(Text)
     foto_nombre: Mapped[str | None] = mapped_column(Text)
+    # De dónde salió la plata y, si fue del cajón, qué movimiento de caja la registró (0067).
+    origen_fondos: Mapped[str | None] = mapped_column(Text)
+    caja_movimiento_id: Mapped[int | None] = mapped_column(BigInteger)
     creado_en: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

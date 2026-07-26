@@ -11,14 +11,27 @@ from typing import Protocol
 
 from core.config.timezone import COLOMBIA_TZ, now_co, rango_dia_co, today_co
 from core.money import cuantizar
-from modules.compras.errors import IdempotenciaConflicto
+from modules.compras.errors import (
+    CompraInexistente,
+    CompraNoCorregible,
+    CorreccionInvalida,
+    IdempotenciaConflicto,
+)
 from modules.compras.repository import (
     AnalisisPrecioRow,
     CompraIdempotente,
     ItemCompra,
     SqlComprasRepository,
+    recalcular_promedio,
 )
-from modules.compras.schemas import AnalisisPrecioProveedor, CompraCrear, CompraLeer
+from modules.compras.schemas import (
+    AjusteLinea,
+    AnalisisPrecioProveedor,
+    CompraCorregir,
+    CompraCrear,
+    CompraLeer,
+    CorreccionLeer,
+)
 from services.calculations.resbalos import Resbalo, calcular_resbalo
 
 # Ventana por defecto del análisis de precios de proveedor (mismo semestre de la alerta de precio).
@@ -149,8 +162,14 @@ class ComprasService:
         *,
         retenciones: RetencionesAplicador | None = None,
         proveedores=None,   # SqlProveedoresRepository (puente compra→CxP); None = puente apagado
+        inventario=None,    # InventarioService (corrección: ajustes de stock); None = corrección off
+        caja=None,          # CajaService (corrección: diferencia de plata); None = sin ajuste de caja
     ) -> None:
         self._repo = repo
+        # Solo el router los cablea (misma sesión): la corrección de una compra necesita mover
+        # inventario (AJUSTE) y, si se pide, la caja.
+        self._inventario = inventario
+        self._caja = caja
         # Motor de retenciones inline (opt-in, ADR 0027): solo se inyecta con la feature `retenciones`.
         self._retenciones = retenciones
         # Puente a cuentas por pagar (reforma dashboard F2): una compra `a_credito` da de alta su
@@ -226,6 +245,9 @@ class ComprasService:
                 total=total, fecha=today_co(), fecha_vencimiento=datos.fecha_vencimiento,
                 usuario_id=usuario_id,
             )
+            # Deja el vínculo compra→CxP (0067): corregir la compra después necesita saber qué deuda
+            # mover, y adivinarla por el id 'COMPRA-{id}' fallaba con un número de factura propio.
+            await self._repo.set_factura_proveedor(compra.id, factura_id)
         # Derivados de salida (no persistidos): % y alertas para que el cliente/bot avise al dueño.
         compra = compra.model_copy(update={
             "resbalo_pct": resbalo.porcentaje if resbalo is not None else None,
@@ -257,6 +279,162 @@ class ComprasService:
         if promedio is None or promedio <= 0:
             return False
         return costo_unitario > promedio * _UMBRAL_PRECIO_PROVEEDOR
+
+    # --- Corrección de una compra ya registrada -------------------------------
+
+    async def corregir(
+        self,
+        compra_id: int,
+        datos: CompraCorregir,
+        *,
+        usuario_id: int | None,
+        modo_empresa: bool = False,
+    ) -> CorreccionLeer:
+        """Corrige cantidades/costos de una compra recibida aplicando SOLO las diferencias.
+
+        Cada cambio de cantidad deja su movimiento AJUSTE (regla #7: nada mueve stock sin movimiento)
+        con key natural `compra-correccion:{id}:{n}:{producto}` — el contador `n` evita que la
+        segunda corrección haga replay de la primera. El costo del producto se re-pondera revirtiendo
+        la línea vieja y re-aplicando la nueva (ADR 0025; el COGS ya grabado en ventas NO se toca).
+        La plata se concilia: la cuenta por pagar se recalcula sola y, con `ajustar_pago`, la
+        diferencia sale o entra de la caja.
+        """
+        if self._inventario is None:
+            raise RuntimeError("corregir una compra requiere el servicio de inventario cableado")
+
+        compra = await self._repo.obtener_para_corregir(compra_id)
+        if compra is None:
+            raise CompraInexistente(compra_id)
+        if not compra.mueve_stock:
+            raise CompraNoCorregible(
+                compra_id, "está imputada a una obra o es un viaje de material (nunca movió stock)"
+            )
+        if await self._repo.tiene_retenciones(compra_id):
+            raise CompraNoCorregible(
+                compra_id, "ya tiene retenciones practicadas: corrígela por nota de ajuste fiscal"
+            )
+
+        nuevas = {ln.producto_id: (ln.cantidad, ln.costo) for ln in datos.lineas}
+        viejas = {pid: (cant, costo) for pid, cant, costo in compra.lineas}
+
+        if datos.idempotency_key and datos.idempotency_key == compra.ultima_correccion_key:
+            # Doble clic / retry: misma sustancia → replay sin efectos; otra sustancia → conflicto.
+            if nuevas == viejas:
+                return CorreccionLeer(
+                    compra=await self._repo.leer(compra_id), delta_total=Decimal("0"), replay=True
+                )
+            raise IdempotenciaConflicto(datos.idempotency_key)
+
+        n = compra.correcciones + 1
+        ajustes: list[AjusteLinea] = []
+        for producto_id in sorted(nuevas.keys() | viejas.keys()):
+            cant_nueva, costo_nuevo = nuevas.get(producto_id, (Decimal("0"), Decimal("0")))
+            cant_vieja, costo_viejo = viejas.get(producto_id, (Decimal("0"), Decimal("0")))
+            delta = cant_nueva - cant_vieja
+            movimiento_id = None
+            if delta != 0:
+                res = await self._inventario.ajustar(
+                    producto_id=producto_id, delta=delta,
+                    motivo=f"Corrección compra #{compra_id}: {datos.motivo}",
+                    usuario_id=usuario_id,
+                    idempotency_key=f"compra-correccion:{compra_id}:{n}:{producto_id}",
+                )
+                movimiento_id = res.movimiento_id
+            if (delta, costo_nuevo) != (Decimal("0"), costo_viejo) and cant_nueva > 0:
+                await self._recalcular_costos(
+                    producto_id, compra_id,
+                    vieja=(cant_vieja, costo_viejo), nueva=(cant_nueva, costo_nuevo),
+                )
+            ajustes.append(AjusteLinea(
+                producto_id=producto_id, delta_cantidad=delta,
+                stock_resultante=await self._repo.stock_actual(producto_id),
+                movimiento_id=movimiento_id,
+            ))
+
+        total_nuevo = cuantizar(sum((c * v for c, v in nuevas.values()), Decimal("0")))
+        delta_total = cuantizar(total_nuevo - compra.total)
+
+        factura_id = await self._conciliar_cxp(compra_id, total_nuevo)
+        movimiento_caja_id = await self._conciliar_caja(
+            compra_id, delta_total, datos=datos, n=n, usuario_id=usuario_id,
+            modo_empresa=modo_empresa,
+        )
+
+        await self._repo.reemplazar_detalle(
+            compra_id, [(pid, c, v) for pid, (c, v) in nuevas.items()]
+        )
+        await self._repo.sellar_correccion(
+            compra_id, total=total_nuevo, motivo=datos.motivo, cuando=now_co(),
+            key=datos.idempotency_key,
+        )
+        return CorreccionLeer(
+            compra=await self._repo.leer(compra_id), delta_total=delta_total, lineas=ajustes,
+            factura_proveedor_id=factura_id, movimiento_caja_id=movimiento_caja_id, replay=False,
+        )
+
+    async def _recalcular_costos(
+        self,
+        producto_id: int,
+        compra_id: int,
+        *,
+        vieja: tuple[Decimal, Decimal],
+        nueva: tuple[Decimal, Decimal],
+    ) -> None:
+        """Re-pondera el costo del producto tras corregir su línea (ADR 0025).
+
+        `precio_compra` (el ÚLTIMO costo de compra) solo se toca si esta es la compra más reciente
+        del producto: si ya hubo otra después, la de después manda."""
+        stock = await self._repo.stock_actual(producto_id)
+        promedio = await self._repo.costo_promedio_actual(producto_id)
+        nuevo_promedio = recalcular_promedio(stock, promedio, vieja, nueva)
+        manda_precio = await self._repo.es_ultima_compra_del_producto(producto_id, compra_id)
+        await self._repo.set_costos_producto(
+            producto_id, precio_compra=nueva[1] if manda_precio else None,
+            costo_promedio=nuevo_promedio,
+        )
+
+    async def _conciliar_cxp(self, compra_id: int, total_nuevo: Decimal) -> str | None:
+        """La deuda con el proveedor sigue al nuevo total. Si ya se abonó MÁS que ese total, la
+        corrección se rechaza: no se inventa un saldo a favor."""
+        if self._proveedores is None:
+            return None
+        factura_id = await self._repo.factura_de_compra(compra_id)
+        if factura_id is None:
+            return None
+        factura = await self._proveedores.obtener(factura_id)
+        if factura is None:
+            return None
+        if factura.pagado > total_nuevo:
+            raise CorreccionInvalida(
+                f"La factura {factura_id} ya tiene abonos por {factura.pagado}: corrige o anula los "
+                f"abonos antes de bajar la compra a {total_nuevo}"
+            )
+        await self._proveedores.actualizar_total(factura_id, total=total_nuevo)
+        return factura_id
+
+    async def _conciliar_caja(
+        self,
+        compra_id: int,
+        delta_total: Decimal,
+        *,
+        datos: CompraCorregir,
+        n: int,
+        usuario_id: int | None,
+        modo_empresa: bool,
+    ) -> int | None:
+        """La diferencia de plata, cuando el dueño pide ajustarla: pagó de menos → egreso; pagó de
+        más → ingreso (el proveedor devuelve). Siempre con su movimiento de caja trazable."""
+        if not datos.ajustar_pago or delta_total == 0 or self._caja is None:
+            return None
+        tipo = "egreso" if delta_total > 0 else "ingreso"
+        res = await self._caja.registrar_movimiento(
+            usuario_id=usuario_id, tipo=tipo, monto=abs(delta_total),
+            concepto=f"Corrección compra #{compra_id}: {datos.motivo}",
+            referencia=f"compra:{compra_id}",
+            idempotency_key=f"compra-correccion:{compra_id}:{n}",
+            modo_empresa=modo_empresa,
+        )
+        return res.movimiento.id
 
     async def listar(self, *, desde: date | None, hasta: date | None) -> list[CompraLeer]:
         """Compras del rango (default mes en curso, hora Colombia)."""

@@ -11,6 +11,10 @@ from core.auth import Principal, require_role
 from core.auth.features import require_feature
 from core.config import get_settings
 from core.db.session import control_session, get_tenant_db
+from modules.caja.config import get_caja_obligatoria
+from modules.caja.errors import CajaNoAbierta
+from modules.caja.repository import SqlCajaRepository
+from modules.caja.service import CajaService
 from modules.proveedores.cloudinary_client import CloudinaryClient
 from modules.proveedores.cloudinary_config import cargar_config_cloudinary
 from modules.proveedores.errors import (
@@ -32,7 +36,10 @@ router = APIRouter(tags=["proveedores"], dependencies=[Depends(require_feature("
 
 
 def _service(session: AsyncSession) -> ProveedoresService:
-    return ProveedoresService(SqlProveedoresRepository(session))
+    # CajaService en la MISMA sesión: un abono pagado con el efectivo del cajón postea su egreso.
+    return ProveedoresService(
+        SqlProveedoresRepository(session), caja=CajaService(SqlCajaRepository(session))
+    )
 
 
 async def get_cloudinary_client(request: Request) -> CloudinaryClient | None:
@@ -74,15 +81,23 @@ async def crear_factura(
 async def crear_abono(
     payload: AbonoCrear,
     session: AsyncSession = Depends(get_tenant_db),
-    _user: Principal = Depends(require_role("admin")),
+    user: Principal = Depends(require_role("admin")),
+    modo_empresa: bool = Depends(get_caja_obligatoria),
 ) -> FacturaProveedorLeer:
-    """Registra un abono y devuelve la factura con el saldo recalculado. 404 / 422 según el caso."""
+    """Registra un abono y devuelve la factura con el saldo recalculado. 404 / 422 según el caso.
+
+    Con `origen_fondos='caja'` (default) el pago sale del cajón y deja su egreso: exige caja abierta
+    (409 si no la hay)."""
     try:
-        return await _service(session).registrar_abono(payload)
+        return await _service(session).registrar_abono(
+            payload, usuario_id=user.user_id, modo_empresa=modo_empresa
+        )
     except FacturaProveedorInexistente as exc:
         raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
     except AbonoInvalido as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
+    except CajaNoAbierta as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
 
 
 @router.get("/proveedores/facturas", response_model=list[FacturaProveedorLeer])

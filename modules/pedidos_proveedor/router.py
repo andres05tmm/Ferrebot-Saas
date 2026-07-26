@@ -23,6 +23,7 @@ from modules.inventario.service import InventarioService
 from modules.pedidos_proveedor.errors import (
     IdempotenciaConflicto,
     PedidoInexistente,
+    PedidoInvalido,
     PedidoNoEditable,
     RecepcionInvalida,
 )
@@ -66,9 +67,9 @@ async def crear_pedido(
 ) -> PedidoLeer:
     """Registra el pedido al proveedor — AQUÍ ARRANCA EL CRONÓMETRO de lead time.
 
-    Captura flexible: descripción + monto estimado bastan (el detalle preciso llega con la
-    mercancía). `anticipo` + `anticipo_desde_caja` egresa el pago adelantado del cajón (exige caja
-    abierta). Idempotente por `Idempotency-Key`."""
+    Captura completa: productos con cantidad y costo unitario, y la forma de pago declarada
+    (`contado` paga todo ahora, `anticipado` una parte, `credito` nada). Con `origen_fondos='caja'`
+    el pago egresa del cajón (exige caja abierta). Idempotente por `Idempotency-Key`."""
     if payload.idempotency_key is None and idempotency_key:
         payload = payload.model_copy(update={"idempotency_key": idempotency_key})
     try:
@@ -77,6 +78,8 @@ async def crear_pedido(
         )
     except IdempotenciaConflicto as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+    except PedidoInvalido as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
     except CajaNoAbierta as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
     if res.replay:

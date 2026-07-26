@@ -34,8 +34,28 @@ const TOKEN_A_CSS = {
   radius: '--radius-brand',
 }
 
+// Familias que ya viajan en el bundle (main.jsx). Fontsource nombra las variables con el sufijo
+// "Variable", así que el token del preset ("Fraunces") se traduce a la familia real self-host.
+const SELF_HOST = {
+  fraunces: 'Fraunces Variable',
+  'bricolage grotesque': 'Bricolage Grotesque Variable',
+  geist: 'Geist Variable',
+  archivo: 'Archivo',
+  inter: 'Inter',
+  nunito: 'Nunito',
+  figtree: 'Figtree',
+  sora: 'Sora',
+  'cormorant garamond': 'Cormorant Garamond',
+}
+
+function familiaLocal(family) {
+  return SELF_HOST[String(family).trim().toLowerCase()] || null
+}
+
 function fontStack(family) {
-  return `'${family}', ui-sans-serif, system-ui, sans-serif`
+  const local = familiaLocal(family)
+  const primera = local ? `'${local}', '${family}'` : `'${family}'`
+  return `${primera}, ui-sans-serif, system-ui, sans-serif`
 }
 
 // Carga una familia de Google Fonts una sola vez (link idempotente por id). No-op sin <head> (tests sin DOM).
@@ -68,11 +88,15 @@ export function applyTheming(branding) {
   // embebida (Inter). La UI font se carga igual si difiere de la default.
   if (tokens.font_display) {
     root.style.setProperty('--font-display', fontStack(tokens.font_display))
-    if (tokens.font_display !== DEFAULT_DISPLAY_FONT) cargarFuente(tokens.font_display)
+    if (!familiaLocal(tokens.font_display) && tokens.font_display !== DEFAULT_DISPLAY_FONT) {
+      cargarFuente(tokens.font_display)
+    }
   }
   if (tokens.font_ui) {
     root.style.setProperty('--font-ui', fontStack(tokens.font_ui))
-    if (tokens.font_ui !== DEFAULT_DISPLAY_FONT) cargarFuente(tokens.font_ui)
+    if (!familiaLocal(tokens.font_ui) && tokens.font_ui !== DEFAULT_DISPLAY_FONT) {
+      cargarFuente(tokens.font_ui)
+    }
   }
 
   // (3) Preset con nombre (= `data-tema`): activa el bloque de CSS vars [data-tema="navaja"] del index.css

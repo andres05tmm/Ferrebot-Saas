@@ -6,7 +6,7 @@
  */
 import { useState } from 'react'
 import { useOutletContext } from 'react-router-dom'
-import { ArrowDownCircle, ArrowUpCircle, Calculator, Scale } from 'lucide-react'
+import { ArrowDownCircle, ArrowUpCircle, Calculator, Scale } from '@/lib/icons.jsx'
 import { useFetch, cop, mesActualCO } from '@/components/shared.jsx'
 import { useRealtimeEvent } from '@/components/RealtimeProvider.jsx'
 import { useAuth } from '@/hooks/useAuth.js'
@@ -50,11 +50,11 @@ function LibroIVAContenido() {
           <h1 className="text-lg font-semibold tracking-tight mr-auto inline-flex items-center gap-2">
             <Calculator className="size-5 text-muted-foreground" /> Libro IVA
           </h1>
-          <label className="text-[11px] text-muted-foreground">
+          <label className="text-caption text-muted-foreground">
             Desde
             <Input type="date" value={rango.desde} onChange={setCampo('desde')} aria-label="Desde" className="h-9 mt-1" />
           </label>
-          <label className="text-[11px] text-muted-foreground">
+          <label className="text-caption text-muted-foreground">
             Hasta
             <Input type="date" value={rango.hasta} onChange={setCampo('hasta')} aria-label="Hasta" className="h-9 mt-1" />
           </label>
@@ -71,7 +71,7 @@ function LibroIVAContenido() {
           icon={Scale} tone={aPagar ? 'text-destructive' : 'text-success'} hero />
       </div>
 
-      <p className="text-[11px] text-muted-foreground px-1">
+      <p className="text-caption text-muted-foreground px-1">
         IVA generado = IVA de ventas (no anuladas) del periodo; IVA descontable = IVA de las compras
         fiscales del periodo. El saldo es soporte tributario: este reporte no emite ni consulta a la DIAN.
       </p>
@@ -82,11 +82,11 @@ function LibroIVAContenido() {
 function Metric({ label, value, sub, icon: Icon, tone, hero, className = '' }) {
   return (
     <Card className={`p-3.5 ${className}`}>
-      <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">
+      <div className="flex items-center gap-1.5 text-caption font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">
         <Icon className="size-3.5" /> {label}
       </div>
-      <div className={`tabular font-semibold ${hero ? 'text-2xl' : 'text-[15px]'} ${tone}`}>{value}</div>
-      {sub && <div className="text-[11px] text-muted-foreground mt-0.5 tabular">{sub}</div>}
+      <div className={`tabular font-semibold ${hero ? 'text-2xl' : 'text-base'} ${tone}`}>{value}</div>
+      {sub && <div className="text-caption text-muted-foreground mt-0.5 tabular">{sub}</div>}
     </Card>
   )
 }

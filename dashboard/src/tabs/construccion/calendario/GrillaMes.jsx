@@ -20,7 +20,7 @@
  * `maquinas_asignadas`/`trabajadores_asignados` NO son dots: alimentan el borde punteado "solo planeado".
  */
 import { useMemo } from 'react'
-import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { ChevronLeft, ChevronRight } from '@/lib/icons.jsx'
 import { Card } from '@/components/ui/card.jsx'
 import { DIAS_SEMANA, MESES, abreviarHoras } from './util.js'
 
@@ -117,19 +117,19 @@ function Celda({ celda, esHoy, hoy, seleccionada, onSeleccionar }) {
   return (
     <button type="button" onClick={() => onSeleccionar(celda.fecha)} title={titulo}
       aria-label={titulo} aria-pressed={seleccionada} className={cls}>
-      <span className="text-[11px] font-medium tabular">{celda.dia}</span>
+      <span className="text-caption font-medium tabular">{celda.dia}</span>
       <span className="flex min-h-[6px] items-center gap-0.5">
         {activos.slice(0, 4).map((t) => <span key={t.clave} className={`size-1.5 rounded-full ${t.punto}`} aria-hidden="true" />)}
-        {activos.length > 4 && <span className="text-[9px] leading-none text-muted-foreground">+{activos.length - 4}</span>}
+        {activos.length > 4 && <span className="text-micro leading-none text-muted-foreground">+{activos.length - 4}</span>}
       </span>
-      {horas && <span className="hidden text-[10px] leading-none tabular text-muted-foreground sm:block">{horas}</span>}
+      {horas && <span className="hidden text-micro leading-none tabular text-muted-foreground sm:block">{horas}</span>}
     </button>
   )
 }
 
 function Leyenda() {
   return (
-    <div className="mt-3 flex flex-wrap gap-x-3 gap-y-1 border-t border-border-subtle pt-2.5 text-[10px] text-muted-foreground">
+    <div className="mt-3 flex flex-wrap gap-x-3 gap-y-1 border-t border-border-subtle pt-2.5 text-micro text-muted-foreground">
       {TIPOS_DOT.map((t) => (
         <span key={t.clave} className="inline-flex items-center gap-1">
           <span className={`size-1.5 rounded-full ${t.punto}`} aria-hidden="true" /> {t.label}

@@ -7,7 +7,7 @@
  */
 import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
-import { Banknote, CalendarPlus, ChevronLeft, ChevronRight, MessageCircle, Monitor, Check, X, AlertTriangle, BellRing } from 'lucide-react'
+import { Banknote, CalendarPlus, ChevronLeft, ChevronRight, MessageCircle, Monitor, Check, X, AlertTriangle, BellRing } from '@/lib/icons.jsx'
 import { api } from '@/lib/api'
 import { useFeatures } from '@/lib/features.jsx'
 import { useFetch } from '@/components/shared.jsx'
@@ -174,7 +174,7 @@ function Calendario({ loading, recursos, citas, nombreServicio, dia, onCobrar })
           {recursos.map(r => (
             <div key={r.id} className="flex-1 min-w-[170px] px-3 py-2 border-l border-border-subtle text-center">
               <div className="font-display text-sm font-bold truncate">{r.nombre}</div>
-              <div className="text-[11px] text-muted-foreground capitalize">{r.tipo}</div>
+              <div className="text-caption text-muted-foreground capitalize">{r.tipo}</div>
             </div>
           ))}
         </div>
@@ -184,7 +184,7 @@ function Calendario({ loading, recursos, citas, nombreServicio, dia, onCobrar })
           {/* Columna de horas */}
           <div className="w-14 shrink-0 relative">
             {HORAS.map((h, i) => (
-              <div key={h} className="absolute right-2 -translate-y-1/2 text-[11px] text-muted-foreground tabular-nums"
+              <div key={h} className="absolute right-2 -translate-y-1/2 text-caption text-muted-foreground tabular-nums"
                 style={{ top: i * HORA_PX }}>
                 {String(h).padStart(2, '0')}:00
               </div>
@@ -245,31 +245,31 @@ function BloqueCita({ cita, servicio, onCobrar }) {
       title={`${fmtHora(cita.inicio)}–${fmtHora(cita.fin)} · ${cita.cliente_nombre}`}
     >
       <div className="flex items-center justify-between gap-1">
-        <span className="text-[11px] font-medium tabular-nums text-muted-foreground">
+        <span className="text-caption font-medium tabular-nums text-muted-foreground">
           {fmtHora(cita.inicio)}–{fmtHora(cita.fin)}
         </span>
         {atencion
-          ? <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-warning"><AlertTriangle className="size-3" /> Revisar</span>
+          ? <span className="inline-flex items-center gap-0.5 text-micro font-semibold text-warning"><AlertTriangle className="size-3" /> Revisar</span>
           : cita.estado === 'confirmada'
             ? <ConfirmacionBadge confirmacion={cita.confirmacion} />
             : <EstadoBadge estado={cita.estado} />}
       </div>
-      <div className="text-[13px] font-semibold leading-tight truncate flex items-center gap-1">
+      <div className="text-body-sm font-semibold leading-tight truncate flex items-center gap-1">
         {cita.origen === 'whatsapp'
           ? <MessageCircle className="size-3 shrink-0 text-success" aria-label="Por WhatsApp" />
           : <Monitor className="size-3 shrink-0 text-muted-foreground" aria-label="Por dashboard" />}
         <span className="truncate">{cita.cliente_nombre}</span>
       </div>
-      {alto > 52 && <div className="text-[11px] text-muted-foreground truncate">{servicio || `#${cita.servicio_id}`}</div>}
+      {alto > 52 && <div className="text-caption text-muted-foreground truncate">{servicio || `#${cita.servicio_id}`}</div>}
       {cita.venta_id ? (
-        <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-success">
+        <span className="inline-flex items-center gap-0.5 text-micro font-semibold text-success">
           <Check className="size-3" /> Cobrada
         </span>
       ) : (onCobrar && esCobrable(cita) && alto > 52 && (
         <button
           onClick={(e) => { e.stopPropagation(); onCobrar(cita) }}
           aria-label={`Cobrar cita ${cita.id}`}
-          className="mt-0.5 inline-flex items-center gap-1 rounded-sm bg-primary/10 text-primary px-1.5 py-0.5 text-[10px] font-semibold hover:bg-primary/20"
+          className="mt-0.5 inline-flex items-center gap-1 rounded-sm bg-primary/10 text-primary px-1.5 py-0.5 text-micro font-semibold hover:bg-primary/20"
         >
           <Banknote className="size-3" /> Cobrar
         </button>
@@ -312,7 +312,7 @@ function CobrarCitaForm({ cita, servicios, onClose, onCobrada }) {
   return (
     <Card className="p-3.5">
       <h3 className="text-sm font-semibold mb-1">Cobrar cita — {cita.cliente_nombre}</h3>
-      <p className="text-[12px] text-muted-foreground mb-3">
+      <p className="text-meta text-muted-foreground mb-3">
         {servicio?.nombre || `Servicio #${cita.servicio_id}`} · {fmtFechaCO(cita.inicio)}
       </p>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -356,8 +356,8 @@ function AccionRequerida({ pendientes, nombreServicio, refrescar }) {
           {pendientes.map(c => (
             <li key={c.id} className="rounded-md border border-border-subtle p-2.5">
               <div className="font-medium text-sm truncate">{c.cliente_nombre}</div>
-              <div className="text-[11px] text-muted-foreground mb-1">{fmtFechaCO(c.inicio)}</div>
-              <div className="text-[12px] text-muted-foreground truncate mb-2">{nombreServicio[c.servicio_id] || `Servicio #${c.servicio_id}`}</div>
+              <div className="text-caption text-muted-foreground mb-1">{fmtFechaCO(c.inicio)}</div>
+              <div className="text-meta text-muted-foreground truncate mb-2">{nombreServicio[c.servicio_id] || `Servicio #${c.servicio_id}`}</div>
               <div className="flex gap-2">
                 <Button size="sm" variant="outline" className="flex-1" aria-label={`Rechazar cita ${c.id}`}
                   onClick={() => postAccion(`/agenda/citas/${c.id}/cancelar`, null, 'Cita rechazada', refrescar)}>

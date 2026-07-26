@@ -3,7 +3,7 @@
  * Muestra la URL pública del menú del tenant y su QR (SVG generado en el backend) listo para
  * imprimir y pegar en la mesa. Read-only.
  */
-import { QrCode } from 'lucide-react'
+import { QrCode } from '@/lib/icons.jsx'
 import { useFetch } from '@/components/shared.jsx'
 import { Card } from '@/components/ui/card.jsx'
 
@@ -23,12 +23,12 @@ export default function TabMenuQr() {
             <div className="flex justify-center" dangerouslySetInnerHTML={{ __html: data.svg }} />
             <a className="text-sm text-primary underline break-all" href={data.url}
               target="_blank" rel="noreferrer">{data.url}</a>
-            <p className="text-[12px] text-muted-foreground">
+            <p className="text-meta text-muted-foreground">
               Imprime este QR y pégalo en las mesas: abre el menú público con botón de pedido por WhatsApp.
             </p>
           </>
         ) : (
-          <p className="text-[13px] text-muted-foreground">Cargando…</p>
+          <p className="text-body-sm text-muted-foreground">Cargando…</p>
         )}
       </Card>
     </div>

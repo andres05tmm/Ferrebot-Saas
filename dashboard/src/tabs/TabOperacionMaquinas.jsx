@@ -10,7 +10,7 @@
 import { useState } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import { toast } from 'sonner'
-import { Timer, Truck, PlayCircle } from 'lucide-react'
+import { Timer, Truck, PlayCircle } from '@/lib/icons.jsx'
 import { useFetch, ErrorMsg } from '@/components/shared.jsx'
 import { useRealtimeEvent } from '@/components/RealtimeProvider.jsx'
 import { useAuth } from '@/hooks/useAuth'
@@ -66,7 +66,7 @@ export default function TabOperacionMaquinas() {
         <h1 className="flex items-center gap-2 text-lg font-semibold text-foreground">
           <Timer className="size-5 text-primary" aria-hidden="true" /> Operación de máquinas
         </h1>
-        <p className="mt-0.5 text-[13px] text-muted-foreground">
+        <p className="mt-0.5 text-body-sm text-muted-foreground">
           Activa una máquina, corre el cronómetro y rota operadores. Al finalizar se registra el parte del día.
         </p>
       </header>
@@ -75,7 +75,7 @@ export default function TabOperacionMaquinas() {
 
       {/* En operación */}
       <section aria-label="Máquinas en operación">
-        <h2 className="mb-2 text-[11px] uppercase tracking-wider text-muted-foreground">
+        <h2 className="mb-2 text-caption uppercase tracking-wider text-muted-foreground">
           En operación {sesiones.length > 0 && <span className="tabular-nums">· {sesiones.length}</span>}
         </h2>
         {cargando ? (
@@ -103,11 +103,11 @@ export default function TabOperacionMaquinas() {
 
       {/* Disponibles para activar */}
       <section aria-label="Máquinas disponibles para activar" className="mt-6">
-        <h2 className="mb-2 text-[11px] uppercase tracking-wider text-muted-foreground">
+        <h2 className="mb-2 text-caption uppercase tracking-wider text-muted-foreground">
           Disponibles para activar {disponibles.length > 0 && <span className="tabular-nums">· {disponibles.length}</span>}
         </h2>
         {disponibles.length === 0 ? (
-          <p className="text-[13px] text-muted-foreground">No hay máquinas libres para activar.</p>
+          <p className="text-body-sm text-muted-foreground">No hay máquinas libres para activar.</p>
         ) : (
           <Card className="divide-y divide-border-subtle">
             {disponibles.map((m) => {
@@ -116,7 +116,7 @@ export default function TabOperacionMaquinas() {
                 <div key={m.id} className="flex items-center gap-3 px-4 py-2.5">
                   <Truck className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
                   <div className="min-w-0 flex-1">
-                    <div className="truncate text-[13px] font-medium text-foreground">{labelMaq(m)}</div>
+                    <div className="truncate text-body-sm font-medium text-foreground">{labelMaq(m)}</div>
                     <div className="mt-0.5"><Semaforo tono={est.tono}>{est.label}</Semaforo></div>
                   </div>
                   <button

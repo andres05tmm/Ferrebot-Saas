@@ -10,7 +10,7 @@
 import { useMemo, useState } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import { toast } from 'sonner'
-import { AlertTriangle, FileCog, Tag } from 'lucide-react'
+import { AlertTriangle, FileCog, Tag } from '@/lib/icons.jsx'
 import { api } from '@/lib/api'
 import { useFetch, cop, mesActualCO } from '@/components/shared.jsx'
 import { useRealtimeEvent } from '@/components/RealtimeProvider.jsx'
@@ -113,11 +113,11 @@ function ComprasFiscalContenido() {
       <Card className="p-0 overflow-hidden">
         <div className="px-3.5 py-2.5 border-b border-border-subtle flex items-center gap-2">
           <FileCog className="size-4 text-muted-foreground" />
-          <h2 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mr-auto">Compras fiscales · FE recibidas</h2>
-          <Input type="date" value={rango.desde} onChange={setCampoRango('desde')} aria-label="Desde" className="h-7 w-[8.5rem] text-[11px]" />
-          <Input type="date" value={rango.hasta} onChange={setCampoRango('hasta')} aria-label="Hasta" className="h-7 w-[8.5rem] text-[11px]" />
+          <h2 className="text-caption font-semibold uppercase tracking-wider text-muted-foreground mr-auto">Compras fiscales · FE recibidas</h2>
+          <Input type="date" value={rango.desde} onChange={setCampoRango('desde')} aria-label="Desde" className="h-7 w-[8.5rem] text-caption" />
+          <Input type="date" value={rango.hasta} onChange={setCampoRango('hasta')} aria-label="Hasta" className="h-7 w-[8.5rem] text-caption" />
         </div>
-        <p className="px-3.5 py-1.5 text-[11px] text-muted-foreground bg-surface-2/50 border-b border-border-subtle">
+        <p className="px-3.5 py-1.5 text-caption text-muted-foreground bg-surface-2/50 border-b border-border-subtle">
           Eventos DIAN — ambiente: <strong className="text-foreground">{ambiente}</strong>
         </p>
         {fiscalesQ.loading ? (
@@ -150,18 +150,18 @@ function FiscalRow({ fiscal, onAccion }) {
   const importado = !!fiscal.cufe_proveedor
 
   return (
-    <li className="px-3.5 py-2.5 space-y-2 text-[13px]">
+    <li className="px-3.5 py-2.5 space-y-2 text-body-sm">
       <div className="flex items-center gap-3">
         <div className="min-w-0 flex-1">
           <div className="font-medium truncate">{fiscal.proveedor_nit ? `NIT ${fiscal.proveedor_nit}` : 'Sin NIT'}</div>
-          <div className="text-[11px] text-muted-foreground tabular">
+          <div className="text-caption text-muted-foreground tabular">
             base {cop(Number(fiscal.base))} · IVA {cop(Number(fiscal.iva))}
             {fiscal.creado_en ? ` · ${new Date(fiscal.creado_en).toLocaleDateString('es-CO', FECHA_CO)}` : ''}
           </div>
         </div>
         <span className="tabular font-semibold shrink-0">{cop(Number(fiscal.total))}</span>
         {fiscal.evento_estado && (
-          <Badge variant="outline" className={`h-5 text-[10px] capitalize shrink-0 ${ESTADO_BADGE[fiscal.evento_estado] || ''}`}>
+          <Badge variant="outline" className={`h-5 text-micro capitalize shrink-0 ${ESTADO_BADGE[fiscal.evento_estado] || ''}`}>
             {fiscal.evento_estado}
           </Badge>
         )}
@@ -170,16 +170,16 @@ function FiscalRow({ fiscal, onAccion }) {
       {!importado ? (
         <div className="flex gap-2">
           <Input value={cufe} onChange={(e) => setCufe(e.target.value)} placeholder="Pega el CUFE de la factura del proveedor"
-            aria-label={`CUFE ${fiscal.id}`} className="h-8 flex-1 text-[12px]" />
+            aria-label={`CUFE ${fiscal.id}`} className="h-8 flex-1 text-meta" />
           <button
             onClick={() => cufe.trim() ? onAccion({ accion: 'importar', fiscal, cufe: cufe.trim() }) : toast.error('Pega el CUFE primero')}
-            className="text-[11px] px-2.5 h-8 rounded-md bg-primary text-primary-foreground hover:bg-primary-hover shrink-0">
+            className="text-caption px-2.5 h-8 rounded-md bg-primary text-primary-foreground hover:bg-primary-hover shrink-0">
             Importar
           </button>
         </div>
       ) : (
         <div className="space-y-1.5">
-          <div className="text-[11px] text-muted-foreground truncate">
+          <div className="text-caption text-muted-foreground truncate">
             CUFE {String(fiscal.cufe_proveedor).slice(0, 16)}…
             {fiscal.evento_030_at ? ' · acuse ✓' : ''}
             {fiscal.evento_032_at ? ' · recibo ✓' : ''}
@@ -188,13 +188,13 @@ function FiscalRow({ fiscal, onAccion }) {
           </div>
           <div className="flex gap-2 items-center">
             <button onClick={() => onAccion({ accion: 'aceptar', fiscal })}
-              className="text-[11px] px-2.5 h-8 rounded-md bg-success/15 text-success border border-success/30 hover:bg-success/25 shrink-0">
+              className="text-caption px-2.5 h-8 rounded-md bg-success/15 text-success border border-success/30 hover:bg-success/25 shrink-0">
               Aceptar
             </button>
             <Input value={motivo} onChange={(e) => setMotivo(e.target.value)} placeholder="motivo del reclamo (opcional)"
-              aria-label={`Motivo ${fiscal.id}`} className="h-8 flex-1 text-[12px]" />
+              aria-label={`Motivo ${fiscal.id}`} className="h-8 flex-1 text-meta" />
             <button onClick={() => onAccion({ accion: 'reclamar', fiscal, motivo: motivo.trim() })}
-              className="text-[11px] px-2.5 h-8 rounded-md bg-warning/15 text-warning border border-warning/30 hover:bg-warning/25 shrink-0">
+              className="text-caption px-2.5 h-8 rounded-md bg-warning/15 text-warning border border-warning/30 hover:bg-warning/25 shrink-0">
               Reclamar
             </button>
           </div>
@@ -202,7 +202,7 @@ function FiscalRow({ fiscal, onAccion }) {
       )}
 
       {fiscal.evento_error && (
-        <div className="flex items-start gap-1.5 text-[11px] text-destructive">
+        <div className="flex items-start gap-1.5 text-caption text-destructive">
           <AlertTriangle className="size-3.5 mt-0.5 shrink-0" />
           <span>Último error DIAN: {fiscal.evento_error}</span>
         </div>
@@ -221,7 +221,7 @@ function ConfirmacionRadian({ accion, ambiente, ejecutando, onConfirmar, onCance
           </span>
           <div>
             <h2 className="text-base font-semibold">Confirmar evento DIAN</h2>
-            <p className="text-[13px] text-muted-foreground mt-1.5">
+            <p className="text-body-sm text-muted-foreground mt-1.5">
               Vas a enviar un evento DIAN REAL ({EVENTO_TEXTO[accion]}) sobre esta factura recibida.
               Es una acción ante la DIAN. Ambiente: <strong className="text-foreground">{ambiente}</strong>.
               ¿Continuar?
@@ -288,7 +288,7 @@ function RegistrarCompraFiscal({ onRegistrada }) {
           <Input type="number" value={f.total} onChange={set('total')} placeholder="Total *" aria-label="Total" className="h-9 flex-1" />
           {sugerido > 0 && (
             <button type="button" onClick={() => setF(prev => ({ ...prev, total: String(sugerido) }))}
-              className="text-[11px] px-2 h-9 rounded-md border border-border bg-surface hover:bg-surface-2 shrink-0 text-muted-foreground">
+              className="text-caption px-2 h-9 rounded-md border border-border bg-surface hover:bg-surface-2 shrink-0 text-muted-foreground">
               = {cop(sugerido)}
             </button>
           )}
@@ -308,7 +308,7 @@ function ComprasNormales({ compras, loading, yaFiscal, onMarcar }) {
     <Card className="p-0 overflow-hidden">
       <div className="px-3.5 py-2.5 border-b border-border-subtle flex items-center gap-2">
         <Tag className="size-4 text-muted-foreground" />
-        <h2 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Compras del periodo</h2>
+        <h2 className="text-caption font-semibold uppercase tracking-wider text-muted-foreground">Compras del periodo</h2>
       </div>
       {loading ? (
         <p className="py-8 text-center text-sm text-muted-foreground">Cargando…</p>
@@ -319,16 +319,16 @@ function ComprasNormales({ compras, loading, yaFiscal, onMarcar }) {
           {compras.map(c => {
             const fiscalizada = yaFiscal.has(c.id)
             return (
-              <li key={c.id} className="px-3.5 py-2.5 flex items-center gap-3 text-[13px]">
+              <li key={c.id} className="px-3.5 py-2.5 flex items-center gap-3 text-body-sm">
                 <div className="min-w-0 flex-1">
                   <div className="font-medium truncate">{c.proveedor_nombre || 'Proveedor'}</div>
-                  <div className="text-[11px] text-muted-foreground tabular">{cop(Number(c.total))}</div>
+                  <div className="text-caption text-muted-foreground tabular">{cop(Number(c.total))}</div>
                 </div>
                 {fiscalizada ? (
-                  <Badge variant="outline" className="h-5 text-[10px] shrink-0 bg-success/10 text-success border-success/20">fiscal</Badge>
+                  <Badge variant="outline" className="h-5 text-micro shrink-0 bg-success/10 text-success border-success/20">fiscal</Badge>
                 ) : (
                   <button onClick={() => onMarcar(c)}
-                    className="text-[11px] px-2.5 h-7 rounded-md border border-border bg-surface hover:bg-surface-2 shrink-0">
+                    className="text-caption px-2.5 h-7 rounded-md border border-border bg-surface hover:bg-surface-2 shrink-0">
                     marcar fiscal
                   </button>
                 )}

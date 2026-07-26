@@ -7,7 +7,7 @@
 import { useState } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
-import { Library, BookOpen, ListTree } from 'lucide-react'
+import { Library, BookOpen, ListTree } from '@/lib/icons.jsx'
 import { cop, mesActualCO } from '@/components/shared.jsx'
 import { useLibroMayor, useLibroAuxiliar, keyPrefix } from '@/lib/queries'
 import { useRealtimeEvent } from '@/components/RealtimeProvider.jsx'
@@ -60,24 +60,24 @@ function LibrosContenido() {
           <h1 className="text-lg font-semibold tracking-tight mr-auto inline-flex items-center gap-2">
             <Library className="size-5 text-muted-foreground" /> Libros contables
           </h1>
-          <label className="text-[11px] text-muted-foreground">
+          <label className="text-caption text-muted-foreground">
             Desde
             <Input type="date" value={rango.desde} onChange={setCampo('desde')} aria-label="Desde" className="h-9 mt-1" />
           </label>
-          <label className="text-[11px] text-muted-foreground">
+          <label className="text-caption text-muted-foreground">
             Hasta
             <Input type="date" value={rango.hasta} onChange={setCampo('hasta')} aria-label="Hasta" className="h-9 mt-1" />
           </label>
         </div>
         <div className="flex gap-1.5 mt-3">
           <button onClick={() => setVista('mayor')}
-            className={`text-[12px] px-3 h-8 rounded-md border inline-flex items-center gap-1.5 ${
+            className={`text-meta px-3 h-8 rounded-md border inline-flex items-center gap-1.5 ${
               vista === 'mayor' ? 'bg-primary text-primary-foreground border-primary' : 'bg-surface border-border hover:bg-surface-2'
             }`}>
             <BookOpen className="size-3.5" /> Mayor
           </button>
           <button onClick={() => setVista('auxiliar')}
-            className={`text-[12px] px-3 h-8 rounded-md border inline-flex items-center gap-1.5 ${
+            className={`text-meta px-3 h-8 rounded-md border inline-flex items-center gap-1.5 ${
               vista === 'auxiliar' ? 'bg-primary text-primary-foreground border-primary' : 'bg-surface border-border hover:bg-surface-2'
             }`}>
             <ListTree className="size-3.5" /> Auxiliar
@@ -95,10 +95,10 @@ function LibrosContenido() {
         ) : vista === 'mayor' ? (
           <ul className="divide-y divide-border-subtle">
             {filas.map((f, i) => (
-              <li key={i} className="px-3.5 py-2.5 flex items-center gap-3 text-[13px]">
+              <li key={i} className="px-3.5 py-2.5 flex items-center gap-3 text-body-sm">
                 <div className="min-w-0 flex-1">
                   <div className="font-medium truncate capitalize">{f.concepto}</div>
-                  <div className={`text-[11px] capitalize ${NATURALEZA_TONO[f.naturaleza] || 'text-muted-foreground'}`}>{f.naturaleza}</div>
+                  <div className={`text-caption capitalize ${NATURALEZA_TONO[f.naturaleza] || 'text-muted-foreground'}`}>{f.naturaleza}</div>
                 </div>
                 <span className="tabular-nums font-semibold shrink-0">{cop(f.total)}</span>
               </li>
@@ -107,11 +107,11 @@ function LibrosContenido() {
         ) : (
           <ul className="divide-y divide-border-subtle">
             {filas.map((f, i) => (
-              <li key={i} className="px-3.5 py-2.5 flex items-center gap-3 text-[13px]">
-                <span className="text-[11px] text-muted-foreground tabular-nums shrink-0 w-16">{fechaCorta(f.fecha)}</span>
+              <li key={i} className="px-3.5 py-2.5 flex items-center gap-3 text-body-sm">
+                <span className="text-caption text-muted-foreground tabular-nums shrink-0 w-16">{fechaCorta(f.fecha)}</span>
                 <div className="min-w-0 flex-1">
                   <div className="font-medium truncate capitalize">{f.concepto}</div>
-                  <div className="text-[11px] text-muted-foreground truncate">{f.referencia}</div>
+                  <div className="text-caption text-muted-foreground truncate">{f.referencia}</div>
                 </div>
                 <span className={`tabular-nums font-semibold shrink-0 ${NATURALEZA_TONO[f.naturaleza] || ''}`}>{cop(f.valor)}</span>
               </li>
@@ -120,7 +120,7 @@ function LibrosContenido() {
         )}
       </Card>
 
-      <p className="text-[11px] text-muted-foreground px-1">
+      <p className="text-caption text-muted-foreground px-1">
         Soporte contable de solo lectura, derivado de los documentos del periodo. Mientras no exista un
         PUC formal, la naturaleza (ingreso/egreso/impuesto/retención) agrupa cada concepto.
       </p>

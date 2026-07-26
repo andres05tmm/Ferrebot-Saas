@@ -14,7 +14,7 @@ import { useMemo, useState } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import {
   DollarSign, Boxes, Receipt, TrendingUp, Wallet, ArrowDownToLine, ArrowUpFromLine, CalendarClock,
-} from 'lucide-react'
+} from '@/lib/icons.jsx'
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Cell } from 'recharts'
 import { useFetch, cop, num, mesActualCO } from '@/components/shared.jsx'
 import { useRealtimeEvent } from '@/components/RealtimeProvider.jsx'
@@ -64,11 +64,11 @@ function ResultadosContenido() {
       <Card className="p-3">
         <div className="flex flex-wrap items-end gap-3">
           <h1 className="text-lg font-semibold tracking-tight mr-auto">Resultados financieros</h1>
-          <label className="text-[11px] text-muted-foreground">
+          <label className="text-caption text-muted-foreground">
             Desde
             <Input type="date" value={rango.desde} onChange={setCampo('desde')} aria-label="Desde" className="h-9 mt-1" />
           </label>
-          <label className="text-[11px] text-muted-foreground">
+          <label className="text-caption text-muted-foreground">
             Hasta
             <Input type="date" value={rango.hasta} onChange={setCampo('hasta')} aria-label="Hasta" className="h-9 mt-1" />
           </label>
@@ -130,7 +130,7 @@ function PanelPL({ rango }) {
       </div>
 
       <Card className="p-3.5">
-        <h2 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-3">
+        <h2 className="text-caption font-semibold uppercase tracking-wider text-muted-foreground mb-3">
           Composición del periodo
         </h2>
         <div style={{ width: '100%', height: 240 }}>
@@ -149,7 +149,7 @@ function PanelPL({ rango }) {
       </Card>
 
       <Card className="p-3.5">
-        <h2 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-2 inline-flex items-center gap-1.5">
+        <h2 className="text-caption font-semibold uppercase tracking-wider text-muted-foreground mb-2 inline-flex items-center gap-1.5">
           <CalendarClock className="size-3.5" aria-hidden="true" /> Proyección del cierre de mes
         </h2>
         {proyQ.loading ? (
@@ -180,7 +180,7 @@ function PanelPL({ rango }) {
         )}
       </Card>
 
-      <p className="text-[11px] text-muted-foreground px-1">
+      <p className="text-caption text-muted-foreground px-1">
         El costo de ventas es exacto desde que se registra por venta; las ventas anteriores a esa fecha
         (sin costo) cuentan como 0.
       </p>
@@ -232,7 +232,7 @@ function PanelFlujo({ rango }) {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
         <Card className="p-3.5">
-          <h2 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">
+          <h2 className="text-caption font-semibold uppercase tracking-wider text-muted-foreground mb-2">
             Entradas de dinero
           </h2>
           {q.loading ? <p className="text-body-sm text-muted-foreground">Cargando…</p> : (
@@ -246,7 +246,7 @@ function PanelFlujo({ rango }) {
           )}
         </Card>
         <Card className="p-3.5">
-          <h2 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">
+          <h2 className="text-caption font-semibold uppercase tracking-wider text-muted-foreground mb-2">
             Salidas de dinero
           </h2>
           {q.loading ? <p className="text-body-sm text-muted-foreground">Cargando…</p> : (
@@ -286,7 +286,7 @@ function PanelMargen({ rango }) {
   return (
     <Card className="p-3.5">
       <div className="flex items-center justify-between mb-2">
-        <h2 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+        <h2 className="text-caption font-semibold uppercase tracking-wider text-muted-foreground">
           Margen bruto (ingresos sin IVA − costo)
         </h2>
         <div className="flex gap-1.5">
@@ -322,7 +322,7 @@ function PanelMargen({ rango }) {
                   <td className="py-1.5 pr-2">
                     {f.clave}
                     {Number(f.cobertura_pct) < 100 && (
-                      <Badge variant="outline" className="ml-1.5 text-[10px] bg-warning/10 text-warning border-warning/20"
+                      <Badge variant="outline" className="ml-1.5 text-micro bg-warning/10 text-warning border-warning/20"
                         title="Parte de las unidades vendidas no tiene costo registrado: el margen real puede ser menor.">
                         costo incompleto ({num(Number(f.cobertura_pct))}%)
                       </Badge>
@@ -350,10 +350,10 @@ function PanelMargen({ rango }) {
 function Metric({ label, value, icon: Icon, tone, hero }) {
   return (
     <Card className="p-3.5">
-      <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">
+      <div className="flex items-center gap-1.5 text-caption font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">
         <Icon className="size-3.5" /> {label}
       </div>
-      <div className={`tabular font-semibold ${hero ? 'text-xl' : 'text-[15px]'} ${tone}`}>{value}</div>
+      <div className={`tabular font-semibold ${hero ? 'text-xl' : 'text-base'} ${tone}`}>{value}</div>
     </Card>
   )
 }

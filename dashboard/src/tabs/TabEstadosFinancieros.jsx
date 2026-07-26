@@ -6,7 +6,7 @@
  */
 import { useState } from 'react'
 import { useOutletContext } from 'react-router-dom'
-import { Scale, TrendingUp, Landmark, Droplets, CheckCircle2, AlertTriangle } from 'lucide-react'
+import { Scale, TrendingUp, Landmark, Droplets, CheckCircle2, AlertTriangle } from '@/lib/icons.jsx'
 import { useFetch, cop, mesActualCO } from '@/components/shared.jsx'
 import { useRealtimeEvent } from '@/components/RealtimeProvider.jsx'
 import { useAuth } from '@/hooks/useAuth.js'
@@ -222,7 +222,7 @@ function Metric({ label, value, tone, hero }) {
   return (
     <Card className="p-3.5">
       <div className="text-caption font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">{label}</div>
-      <div className={`tabular font-semibold ${hero ? 'text-xl' : 'text-[15px]'} ${tone}`}>{value}</div>
+      <div className={`tabular font-semibold ${hero ? 'text-xl' : 'text-base'} ${tone}`}>{value}</div>
     </Card>
   )
 }

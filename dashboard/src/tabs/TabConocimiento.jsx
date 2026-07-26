@@ -7,7 +7,7 @@
  */
 import { useState } from 'react'
 import { toast } from 'sonner'
-import { Trash2, Power, BookText, ClipboardList } from 'lucide-react'
+import { Trash2, Power, BookText, ClipboardList } from '@/lib/icons.jsx'
 import { api } from '@/lib/api'
 import { useFetch } from '@/components/shared.jsx'
 import { useAuth } from '@/hooks/useAuth.js'
@@ -56,7 +56,7 @@ function SeccionReglasPedidos() {
 
   const campo = (label, k, type = 'number') => (
     <label className="flex flex-col gap-1">
-      <span className="text-[11px] uppercase tracking-wider text-muted-foreground">{label}</span>
+      <span className="text-caption uppercase tracking-wider text-muted-foreground">{label}</span>
       <Input type={type} value={f[k] ?? ''} onChange={set(k)} aria-label={label} className="h-9" />
     </label>
   )
@@ -138,10 +138,10 @@ export default function TabConocimiento() {
             {entradas.map(e => (
               <li key={e.id} className={`py-2.5 flex items-start gap-2 ${!e.activo ? 'opacity-60' : ''}`}>
                 <div className="min-w-0 flex-1">
-                  <div className="font-medium text-[13px] truncate">
-                    {e.titulo} {!e.activo && <span className="text-[11px] text-muted-foreground">(inactiva)</span>}
+                  <div className="font-medium text-body-sm truncate">
+                    {e.titulo} {!e.activo && <span className="text-caption text-muted-foreground">(inactiva)</span>}
                   </div>
-                  <div className="text-[12px] text-muted-foreground line-clamp-2">{e.contenido}</div>
+                  <div className="text-meta text-muted-foreground line-clamp-2">{e.contenido}</div>
                 </div>
                 {admin && (
                   <div className="flex items-center gap-1 shrink-0">
@@ -174,7 +174,7 @@ export default function TabConocimiento() {
               placeholder="Información del negocio (horarios, dirección, formas de pago, parqueo, políticas…)" />
             <div className="flex items-end gap-3">
               <label className="flex flex-col gap-1 w-24">
-                <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Orden</span>
+                <span className="text-caption uppercase tracking-wider text-muted-foreground">Orden</span>
                 <Input type="number" value={f.orden} onChange={set('orden')} aria-label="Orden" className="h-9" />
               </label>
               <label className="inline-flex items-center gap-2 text-sm pb-2">

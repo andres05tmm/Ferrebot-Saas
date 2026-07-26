@@ -18,7 +18,7 @@ import { toast } from 'sonner'
 import {
   FileText, ChevronDown, ChevronRight, Plus, Search, Pencil, Trash2, Download,
   MapPin, Calculator, ArrowRightLeft, CalendarClock,
-} from 'lucide-react'
+} from '@/lib/icons.jsx'
 import { api } from '@/lib/api'
 import { useFetch } from '@/components/shared.jsx'
 import { cop } from '@/components/shared.jsx'
@@ -133,7 +133,7 @@ export default function TabCotizacionesObra() {
       <Card className="p-0 overflow-hidden">
         <div className="px-4 py-2.5 border-b border-border-subtle flex items-center gap-2">
           <FileText className="size-4 text-muted-foreground" aria-hidden="true" />
-          <h2 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+          <h2 className="text-caption font-semibold uppercase tracking-wider text-muted-foreground">
             Cotizaciones {cotizaciones.length > 0 && <span className="tabular">· {visibles.length}</span>}
           </h2>
         </div>
@@ -184,18 +184,18 @@ function CotizacionFila({ cotizacion, onEditar, onCambio }) {
         </span>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <span className="tabular text-[12px] font-semibold text-muted-foreground">{cotizacion.numero}</span>
-            <span className="truncate text-[14px] font-medium text-foreground">{cotizacion.nombre_obra}</span>
+            <span className="tabular text-meta font-semibold text-muted-foreground">{cotizacion.numero}</span>
+            <span className="truncate text-base font-medium text-foreground">{cotizacion.nombre_obra}</span>
             <Semaforo tono={est.tono}>{est.label}</Semaforo>
           </div>
-          <div className="mt-0.5 flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-[11px] text-muted-foreground">
+          <div className="mt-0.5 flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-caption text-muted-foreground">
             {/* F2.9: a QUIÉN se cotizó y hasta CUÁNDO vale — antes solo "N días" desde una emisión invisible. */}
             {cotizacion.cliente_nombre && <span className="truncate">{cotizacion.cliente_nombre}</span>}
             {cotizacion.ubicacion && <span className="inline-flex items-center gap-1 truncate"><MapPin className="size-3" aria-hidden="true" />{cotizacion.ubicacion}</span>}
             <Vencimiento cotizacion={cotizacion} />
           </div>
         </div>
-        <span className="tabular text-[13px] font-semibold text-foreground">{cop(cotizacion.total)}</span>
+        <span className="tabular text-body-sm font-semibold text-foreground">{cop(cotizacion.total)}</span>
         {abierta ? <ChevronDown className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" /> : <ChevronRight className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />}
       </button>
 
@@ -281,16 +281,16 @@ function CotizacionDetalle({ id, cotizacion, onEditar, onCambio }) {
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1.4fr_1fr]">
         {/* Ítems */}
         <div className="rounded-md border border-border-subtle bg-surface p-3">
-          <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Ítems</h3>
+          <h3 className="mb-2 text-caption font-semibold uppercase tracking-wider text-muted-foreground">Ítems</h3>
           {detalleQ.loading ? (
-            <p className="py-6 text-center text-[12px] text-muted-foreground">Cargando ítems…</p>
+            <p className="py-6 text-center text-meta text-muted-foreground">Cargando ítems…</p>
           ) : items.length === 0 ? (
-            <p className="py-6 text-center text-[12px] text-muted-foreground">Sin ítems.</p>
+            <p className="py-6 text-center text-meta text-muted-foreground">Sin ítems.</p>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-[12px]">
+              <table className="w-full text-meta">
                 <thead>
-                  <tr className="text-left text-[10px] uppercase tracking-wider text-muted-foreground">
+                  <tr className="text-left text-micro uppercase tracking-wider text-muted-foreground">
                     <th className="py-1 pr-2 font-medium">Descripción</th>
                     <th className="py-1 px-2 font-medium">Und</th>
                     <th className="py-1 px-2 text-right font-medium">Cant.</th>
@@ -319,7 +319,7 @@ function CotizacionDetalle({ id, cotizacion, onEditar, onCambio }) {
           <BloqueAIU totales={totales} pcts={detalle} />
           {transiciones.length > 0 && (
             <div className="flex flex-wrap items-center gap-1.5">
-              <span className="text-[11px] text-muted-foreground">Estado:</span>
+              <span className="text-caption text-muted-foreground">Estado:</span>
               {transiciones.map((t) => (
                 <button key={t.estado} onClick={() => transicionar(t)} disabled={ocupado} className={`${BTN_OUTLINE} h-8`}>{t.label}</button>
               ))}
@@ -381,18 +381,18 @@ function BloqueAIU({ totales, pcts, enVivo = false }) {
     <div className="rounded-md border border-border-subtle bg-surface p-3">
       <div className="mb-2 flex items-center gap-2">
         <Calculator className="size-4 text-muted-foreground" aria-hidden="true" />
-        <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Desglose AIU</h3>
+        <h3 className="text-caption font-semibold uppercase tracking-wider text-muted-foreground">Desglose AIU</h3>
       </div>
-      <dl className="space-y-1 text-[12px]">
+      <dl className="space-y-1 text-meta">
         {filas.map(([etiqueta, valor, frac]) => (
           <div key={etiqueta} className="flex items-center justify-between gap-2">
-            <dt className="text-muted-foreground">{etiqueta}{frac != null && <span className="text-[11px]">{pct(frac)}</span>}</dt>
+            <dt className="text-muted-foreground">{etiqueta}{frac != null && <span className="text-caption">{pct(frac)}</span>}</dt>
             <dd className="tabular text-secondary-foreground">{cop(valor)}</dd>
           </div>
         ))}
         <div className="mt-1 flex items-center justify-between gap-2 border-t border-border pt-1.5">
-          <dt className="text-[12px] font-semibold text-foreground">Total contrato</dt>
-          <dd className="tabular text-[14px] font-semibold text-primary">{cop(totales.total)}</dd>
+          <dt className="text-meta font-semibold text-foreground">Total contrato</dt>
+          <dd className="tabular text-base font-semibold text-primary">{cop(totales.total)}</dd>
         </div>
       </dl>
     </div>
@@ -514,13 +514,13 @@ function CotizacionForm({ cotizacion, onClose, onGuardada }) {
       {/* Ítems del builder */}
       <div className="mt-4">
         <div className="mb-2 flex items-center justify-between">
-          <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Ítems</h3>
+          <h3 className="text-caption font-semibold uppercase tracking-wider text-muted-foreground">Ítems</h3>
           <button onClick={addItem} className={`${BTN_OUTLINE} h-8`}><Plus className="size-3.5" /> Agregar ítem</button>
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[560px] text-[12px]">
+          <table className="w-full min-w-[560px] text-meta">
             <thead>
-              <tr className="text-left text-[10px] uppercase tracking-wider text-muted-foreground">
+              <tr className="text-left text-micro uppercase tracking-wider text-muted-foreground">
                 <th className="pb-1 pr-2 font-medium">Descripción</th>
                 <th className="pb-1 px-2 font-medium">Unidad</th>
                 <th className="pb-1 px-2 text-right font-medium">Cantidad</th>

@@ -19,7 +19,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import { toast } from 'sonner'
-import { Plus, Search, Trash2, Truck } from 'lucide-react'
+import { Plus, Search, Trash2, Truck } from '@/lib/icons.jsx'
 import { api, apiJson } from '@/lib/api'
 import { useFetch, cop, num, mesActualCO } from '@/components/shared.jsx'
 import { useRealtimeEvent } from '@/components/RealtimeProvider.jsx'
@@ -49,7 +49,7 @@ const CAT_LABEL = Object.fromEntries(CATEGORIAS)
 const RESBALO_MIN_PCT = 5
 
 // Chip neutro para metadatos de la fila (obra, categoría). Pill de token, sin color de estado.
-const CHIP = 'inline-flex items-center rounded-full border border-border bg-surface-2 px-2 py-0.5 text-[10px] font-medium text-muted-foreground'
+const CHIP = 'inline-flex items-center rounded-full border border-border bg-surface-2 px-2 py-0.5 text-micro font-medium text-muted-foreground'
 
 // Idempotencia (regla 8): la compra es una operación crítica. La key vive en un useMemo sobre el
 // payload: reintentar sin editar reusa la MISMA key (replay); editar el form la renueva.
@@ -97,9 +97,9 @@ function ComprasContenido() {
       <Card className="p-0 overflow-hidden">
         <div className="px-3.5 py-2.5 border-b border-border-subtle flex items-center gap-2">
           <Truck className="size-4 text-muted-foreground" />
-          <h2 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mr-auto">Compras</h2>
-          <Input type="date" value={rango.desde} onChange={setCampoRango('desde')} aria-label="Desde" className="h-7 w-[8.5rem] text-[11px]" />
-          <Input type="date" value={rango.hasta} onChange={setCampoRango('hasta')} aria-label="Hasta" className="h-7 w-[8.5rem] text-[11px]" />
+          <h2 className="text-caption font-semibold uppercase tracking-wider text-muted-foreground mr-auto">Compras</h2>
+          <Input type="date" value={rango.desde} onChange={setCampoRango('desde')} aria-label="Desde" className="h-7 w-[8.5rem] text-caption" />
+          <Input type="date" value={rango.hasta} onChange={setCampoRango('hasta')} aria-label="Hasta" className="h-7 w-[8.5rem] text-caption" />
         </div>
         {comprasQ.loading ? (
           <p className="py-10 text-center text-sm text-muted-foreground">Cargando…</p>
@@ -122,10 +122,10 @@ function ComprasContenido() {
  *  (nunca color solo: el texto lleva el monto y el %). Los chips envuelven para no romper el ancho móvil. */
 function CompraFila({ compra: c, construccion, obraNombre }) {
   return (
-    <li className={`px-3.5 py-2.5 flex gap-3 text-[13px] ${construccion ? 'items-start' : 'items-center'}`}>
+    <li className={`px-3.5 py-2.5 flex gap-3 text-body-sm ${construccion ? 'items-start' : 'items-center'}`}>
       <div className="min-w-0 flex-1">
         <div className="font-medium truncate">{c.proveedor_nombre || 'Proveedor'}</div>
-        <div className="text-[11px] text-muted-foreground">
+        <div className="text-caption text-muted-foreground">
           {c.fecha ? new Date(c.fecha).toLocaleDateString('es-CO', FECHA_CO) : '—'}
         </div>
         {construccion && (c.obra_id != null || c.categoria || c.es_viaje_material) && (
@@ -250,7 +250,7 @@ function RegistrarCompra({ construccion, obras, onRegistrada }) {
             {MODOS.map(m => (
               <button key={m.valor} type="button" onClick={() => cambiarModo(m.valor)}
                 aria-pressed={modo === m.valor}
-                className={`h-8 rounded px-3 text-[12px] font-medium transition-colors duration-fast ${
+                className={`h-8 rounded px-3 text-meta font-medium transition-colors duration-fast ${
                   modo === m.valor ? 'bg-primary-soft text-primary' : 'text-muted-foreground hover:text-foreground'
                 }`}>
                 {m.label}
@@ -278,7 +278,7 @@ function RegistrarCompra({ construccion, obras, onRegistrada }) {
       ) : (
         <>
           <ItemEditor conProducto onAgregar={agregarItem} />
-          <label className="mt-2 flex items-center gap-2 text-[12px] text-muted-foreground">
+          <label className="mt-2 flex items-center gap-2 text-meta text-muted-foreground">
             <input type="checkbox" checked={aCredito} onChange={(e) => setACredito(e.target.checked)} />
             A crédito (crea la cuenta por pagar al proveedor)
           </label>
@@ -296,7 +296,7 @@ function RegistrarCompra({ construccion, obras, onRegistrada }) {
       {items.length > 0 && (
         <ul className="mt-3 divide-y divide-border-subtle border-t border-border-subtle">
           {items.map((it, i) => (
-            <li key={i} className="py-2 flex items-center gap-2 text-[12px]">
+            <li key={i} className="py-2 flex items-center gap-2 text-meta">
               <span className="min-w-0 flex-1 truncate">{it.nombre || `Material · línea ${i + 1}`}</span>
               <span className="tabular text-muted-foreground">{num(Number(it.cantidad))} × {cop(Number(it.costo))}</span>
               <button onClick={() => quitarItem(i)} title="Quitar item"
@@ -309,7 +309,7 @@ function RegistrarCompra({ construccion, obras, onRegistrada }) {
       )}
 
       <div className="mt-3 flex items-center justify-between">
-        <span className="text-[12px] text-muted-foreground">{esViaje ? 'Costo del viaje' : 'Total'}</span>
+        <span className="text-meta text-muted-foreground">{esViaje ? 'Costo del viaje' : 'Total'}</span>
         <span className="tabular font-semibold">{cop(costoTotal)}</span>
       </div>
 
@@ -344,7 +344,7 @@ function ComprarObra({
         </Campo>
       </div>
 
-      <label className="flex items-center gap-2 text-[12px] text-secondary-foreground cursor-pointer">
+      <label className="flex items-center gap-2 text-meta text-secondary-foreground cursor-pointer">
         <input type="checkbox" checked={esViaje} onChange={(e) => setEsViaje(e.target.checked)}
           className="size-3.5 rounded border-border text-primary focus-visible:ring-2 focus-visible:ring-ring" />
         Es viaje de material (se revende al cliente)
@@ -371,7 +371,7 @@ function PreviewResbalo({ venta, costo }) {
   const resbalo = venta - costo
   const pct = venta > 0 ? (resbalo / venta) * 100 : 0
   if (!(venta > 0)) {
-    return <p className="text-[11px] text-muted-foreground">Ingresa el precio de venta para ver el resbalo.</p>
+    return <p className="text-caption text-muted-foreground">Ingresa el precio de venta para ver el resbalo.</p>
   }
   const tono = resbalo < 0
     ? { cls: 'text-destructive', etiqueta: 'Margen en pérdida' }
@@ -380,10 +380,10 @@ function PreviewResbalo({ venta, costo }) {
       : { cls: 'text-success', etiqueta: 'Margen sano' }
   return (
     <div className="flex items-baseline justify-between gap-2">
-      <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Resbalo</span>
+      <span className="text-caption uppercase tracking-wider text-muted-foreground">Resbalo</span>
       <span className={`inline-flex items-baseline gap-1.5 text-sm font-semibold tabular-nums ${tono.cls}`}>
         {cop(resbalo)}
-        <span className="text-[11px] font-medium">· {Math.round(pct)}% · {tono.etiqueta}</span>
+        <span className="text-caption font-medium">· {Math.round(pct)}% · {tono.etiqueta}</span>
       </span>
     </div>
   )
@@ -408,14 +408,14 @@ function ItemEditor({ conProducto = true, onAgregar }) {
 
   return (
     <div className="mt-3 pt-3 border-t border-border-subtle space-y-2">
-      <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
+      <p className="text-micro uppercase tracking-wider text-muted-foreground">
         {conProducto ? 'Item de compra' : 'Línea del viaje · no mueve inventario'}
       </p>
       {conProducto && (
         producto ? (
-          <div className="flex items-center gap-2 text-[12px] bg-surface-2/50 rounded-md px-2.5 py-1.5">
+          <div className="flex items-center gap-2 text-meta bg-surface-2/50 rounded-md px-2.5 py-1.5">
             <span className="flex-1 truncate font-medium">{producto.nombre}</span>
-            <button onClick={() => setProducto(null)} className="text-[11px] text-muted-foreground hover:text-foreground">cambiar</button>
+            <button onClick={() => setProducto(null)} className="text-caption text-muted-foreground hover:text-foreground">cambiar</button>
           </div>
         ) : (
           <BuscadorProducto onElegir={setProducto} />
@@ -457,7 +457,7 @@ function BuscadorProducto({ onElegir }) {
           {resultados.map(p => (
             <li key={p.id}>
               <button onClick={() => { onElegir(p); setQ(''); setResultados([]) }}
-                className="w-full text-left px-2.5 py-1.5 text-[12px] hover:bg-surface-2 truncate">
+                className="w-full text-left px-2.5 py-1.5 text-meta hover:bg-surface-2 truncate">
                 {p.nombre}
               </button>
             </li>

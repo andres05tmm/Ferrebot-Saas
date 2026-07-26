@@ -8,7 +8,7 @@
  */
 import { useState } from 'react'
 import { toast } from 'sonner'
-import { ChefHat, Bike, CheckCircle2, ClipboardList, Receipt, XCircle } from 'lucide-react'
+import { ChefHat, Bike, CheckCircle2, ClipboardList, Receipt, XCircle } from '@/lib/icons.jsx'
 import { api } from '@/lib/api'
 import { useFeatures } from '@/lib/features.jsx'
 import { cop, useFetch } from '@/components/shared.jsx'
@@ -52,7 +52,7 @@ function horaCorta(iso) {
 function InsigniaPagado() {
   // Chip verde consistente con los chips del tab; se muestra cuando el cobro del pedido está pagado.
   return (
-    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
+    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-1.5 py-0.5 text-micro font-semibold text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
       <CheckCircle2 className="size-3" /> Pagado
     </span>
   )
@@ -62,33 +62,33 @@ function TarjetaPedido({ p, col, pagado, onAvanzar, onCancelar, onConvertir }) {
   return (
     <Card className="p-2.5 space-y-1.5">
       <div className="flex items-center justify-between gap-2">
-        <span className="font-semibold text-[13px]">#{p.id} · {p.cliente_nombre || p.cliente_telefono}</span>
+        <span className="font-semibold text-body-sm">#{p.id} · {p.cliente_nombre || p.cliente_telefono}</span>
         <span className="inline-flex items-center gap-1.5">
           {pagado && <InsigniaPagado />}
-          <span className="text-[11px] text-muted-foreground tabular-nums">{horaCorta(p.creado_en)}</span>
+          <span className="text-caption text-muted-foreground tabular-nums">{horaCorta(p.creado_en)}</span>
         </span>
       </div>
-      <ul className="text-[12px] text-muted-foreground space-y-0.5">
+      <ul className="text-meta text-muted-foreground space-y-0.5">
         {p.items.map(i => (
           <li key={i.id}>
             {Number(i.cantidad)}× {i.nombre}
             {i.modificadores?.length > 0 && (
-              <span className="block pl-3 text-[11px] italic">
+              <span className="block pl-3 text-caption italic">
                 {i.modificadores.map(m => m.opcion).join(', ')}
               </span>
             )}
           </li>
         ))}
       </ul>
-      {p.direccion && <div className="text-[12px] truncate">{p.direccion}</div>}
+      {p.direccion && <div className="text-meta truncate">{p.direccion}</div>}
       {p.telefono_contacto && (
-        <div className="text-[12px] text-muted-foreground">📞 {p.telefono_contacto}</div>
+        <div className="text-meta text-muted-foreground">📞 {p.telefono_contacto}</div>
       )}
       <div className="flex items-center justify-between gap-2">
-        <span className="font-semibold tabular-nums text-[13px]">{cop(p.total)}</span>
-        <span className="text-[11px] text-muted-foreground">{p.metodo_pago || ''}</span>
+        <span className="font-semibold tabular-nums text-body-sm">{cop(p.total)}</span>
+        <span className="text-caption text-muted-foreground">{p.metodo_pago || ''}</span>
       </div>
-      {p.notas && <div className="text-[11px] italic text-muted-foreground">“{p.notas}”</div>}
+      {p.notas && <div className="text-caption italic text-muted-foreground">“{p.notas}”</div>}
       <div className="flex gap-1.5 pt-0.5">
         {col.siguiente && (
           <Button size="sm" className="flex-1" onClick={() => onAvanzar(p, col.siguiente)}>
@@ -157,14 +157,14 @@ export default function TabPedidos() {
                 col.apagada ? 'bg-surface-2/20 opacity-80' : 'bg-surface-2/40'
               }`}
             >
-              <div className={`shrink-0 pb-2 text-[12px] font-semibold uppercase tracking-wider inline-flex items-center gap-1.5 ${
+              <div className={`shrink-0 pb-2 text-meta font-semibold uppercase tracking-wider inline-flex items-center gap-1.5 ${
                 col.apagada ? 'text-muted-foreground/70' : 'text-muted-foreground'
               }`}>
                 <Icono className="size-3.5" /> {col.label} ({enColumna.length})
               </div>
               <div className="flex-1 min-h-0 overflow-y-auto space-y-2">
                 {enColumna.length === 0 ? (
-                  <Card className="p-3 text-center text-[12px] text-muted-foreground">—</Card>
+                  <Card className="p-3 text-center text-meta text-muted-foreground">—</Card>
                 ) : (
                   enColumna.map(p => (
                     <TarjetaPedido key={p.id} p={p} col={col}

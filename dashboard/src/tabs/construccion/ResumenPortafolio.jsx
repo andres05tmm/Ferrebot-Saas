@@ -14,7 +14,7 @@
  * Presentación tokenizada (design system del repo, comunes.jsx). Silencioso si el fetch falla o si no
  * hay obras: no estorba a la lista de abajo (degradación limpia).
  */
-import { Gauge, TriangleAlert, TrendingUp, TrendingDown, Minus, Building2 } from 'lucide-react'
+import { Gauge, TriangleAlert, TrendingUp, TrendingDown, Minus, Building2 } from '@/lib/icons.jsx'
 import { useFetch, cop } from '@/components/shared.jsx'
 import { Card } from '@/components/ui/card.jsx'
 import { Semaforo, Kpi } from './comunes.jsx'
@@ -46,10 +46,10 @@ export default function ResumenPortafolio({ refreshKey }) {
     <Card className="p-3.5" aria-label="Resumen del portafolio de obras">
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <Gauge className="size-4 text-muted-foreground" aria-hidden="true" />
-        <h2 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Portafolio de obras</h2>
-        <span className="text-[11px] text-muted-foreground">· {p.obras_activas} activas de {p.total_obras}</span>
+        <h2 className="text-caption font-semibold uppercase tracking-wider text-muted-foreground">Portafolio de obras</h2>
+        <span className="text-caption text-muted-foreground">· {p.obras_activas} activas de {p.total_obras}</span>
         {enAlerta > 0 && (
-          <span className="ml-auto inline-flex items-center gap-1 rounded-full border border-destructive/25 bg-destructive/10 px-2 py-0.5 text-[11px] font-semibold text-destructive">
+          <span className="ml-auto inline-flex items-center gap-1 rounded-full border border-destructive/25 bg-destructive/10 px-2 py-0.5 text-caption font-semibold text-destructive">
             <TriangleAlert className="size-3" aria-hidden="true" />
             {enAlerta} en alerta
           </span>
@@ -60,8 +60,8 @@ export default function ResumenPortafolio({ refreshKey }) {
         <Kpi label="Presupuestado" valor={cop(n(p.ingreso_presupuestado_total))} />
         <Kpi label="Gasto real" valor={cop(n(p.gasto_total))} />
         <div className="rounded-md bg-surface-2 px-3 py-2">
-          <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Utilidad real</div>
-          <div className={`tabular inline-flex items-center gap-1 text-[14px] font-semibold ${tonoUtil}`}>
+          <div className="text-micro uppercase tracking-wider text-muted-foreground">Utilidad real</div>
+          <div className={`tabular inline-flex items-center gap-1 text-base font-semibold ${tonoUtil}`}>
             <IconUtil className="size-3.5" aria-hidden="true" />{cop(utilidad)}
           </div>
         </div>
@@ -80,7 +80,7 @@ export default function ResumenPortafolio({ refreshKey }) {
       {Array.isArray(p.obras) && p.obras.some((o) => o.alerta_margen || o.semaforo === 'rojo') && (
         <ul className="mt-3 space-y-1 border-t border-border-subtle pt-2.5">
           {p.obras.filter((o) => o.alerta_margen || o.semaforo === 'rojo').slice(0, 4).map((o) => (
-            <li key={o.obra_id} className="flex items-center gap-2 text-[12px]">
+            <li key={o.obra_id} className="flex items-center gap-2 text-meta">
               <Building2 className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
               <span className="min-w-0 flex-1 truncate text-secondary-foreground">{o.nombre}</span>
               {o.alerta_margen && <TriangleAlert className="size-3.5 shrink-0 text-warning" aria-hidden="true" />}

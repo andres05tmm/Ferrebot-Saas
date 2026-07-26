@@ -5,7 +5,7 @@
  */
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
-import { Plus, Trash2, Power } from 'lucide-react'
+import { Plus, Trash2, Power } from '@/lib/icons.jsx'
 import { api } from '@/lib/api'
 import { useFetch } from '@/components/shared.jsx'
 import { Card } from '@/components/ui/card.jsx'
@@ -90,8 +90,8 @@ function AreaServicios() {
         {servicios.map(s => (
           <Item key={s.id} inactivo={!s.activo}>
             <div className="min-w-0 flex-1">
-              <div className="font-medium truncate">{s.nombre} {!s.activo && <span className="text-[11px] text-muted-foreground">(inactivo)</span>}</div>
-              <div className="text-[11px] text-muted-foreground">{s.duracion_min} min · {s.precio ? `$${Number(s.precio).toLocaleString('es-CO')}` : 'sin precio'} · buffers {s.buffer_antes_min}/{s.buffer_despues_min}</div>
+              <div className="font-medium truncate">{s.nombre} {!s.activo && <span className="text-caption text-muted-foreground">(inactivo)</span>}</div>
+              <div className="text-caption text-muted-foreground">{s.duracion_min} min · {s.precio ? `$${Number(s.precio).toLocaleString('es-CO')}` : 'sin precio'} · buffers {s.buffer_antes_min}/{s.buffer_despues_min}</div>
             </div>
             <Button size="sm" variant="ghost" onClick={() => { setF({ nombre: s.nombre, duracion_min: s.duracion_min, precio: s.precio ?? '', buffer_antes_min: s.buffer_antes_min, buffer_despues_min: s.buffer_despues_min, categoria: s.categoria ?? '' }); setEditId(s.id) }}>Editar</Button>
             {s.activo && (
@@ -146,8 +146,8 @@ function AreaRecursos() {
           {recursos.map(r => (
             <Item key={r.id} inactivo={!r.activo}>
               <div className="min-w-0 flex-1">
-                <div className="font-medium truncate">{r.nombre} {!r.activo && <span className="text-[11px] text-muted-foreground">(inactivo)</span>}</div>
-                <div className="text-[11px] text-muted-foreground capitalize">{r.tipo}</div>
+                <div className="font-medium truncate">{r.nombre} {!r.activo && <span className="text-caption text-muted-foreground">(inactivo)</span>}</div>
+                <div className="text-caption text-muted-foreground capitalize">{r.tipo}</div>
               </div>
               {r.activo && (
                 <Button size="sm" variant="ghost" aria-label={`Desactivar recurso ${r.id}`} className="text-destructive"
@@ -174,7 +174,7 @@ function AreaRecursos() {
 
       <Card className="p-3.5">
         <h3 className="text-sm font-semibold mb-1">Asignación de servicios</h3>
-        <p className="text-[11px] text-muted-foreground mb-3">Marca qué recursos prestan cada servicio.</p>
+        <p className="text-caption text-muted-foreground mb-3">Marca qué recursos prestan cada servicio.</p>
         {servicios.length === 0 ? (
           <p className="text-sm text-muted-foreground">Crea primero un servicio.</p>
         ) : (
@@ -204,7 +204,7 @@ function AsignacionServicio({ servicio, recursos }) {
       <div className="text-sm font-medium mb-1.5">{servicio.nombre}</div>
       <div className="flex flex-wrap gap-x-4 gap-y-1">
         {recursos.length === 0 ? <span className="text-xs text-muted-foreground">Sin recursos.</span> : recursos.map(r => (
-          <label key={r.id} className="inline-flex items-center gap-1.5 text-[13px]">
+          <label key={r.id} className="inline-flex items-center gap-1.5 text-body-sm">
             <input type="checkbox" checked={asignados.has(r.id)} aria-label={`${servicio.nombre} → ${r.nombre}`}
               onChange={e => toggle(r.id, e.target.checked)} />
             {r.nombre}
@@ -300,7 +300,7 @@ function AreaBloqueos() {
           <Item key={b.id}>
             <div className="min-w-0 flex-1">
               <div className="font-medium truncate">{b.motivo || 'Bloqueo'}</div>
-              <div className="text-[11px] text-muted-foreground">
+              <div className="text-caption text-muted-foreground">
                 {fmtFechaCO(b.inicio)} → {fmtFechaCO(b.fin)} · {b.recurso_id ? (nombreRecurso[b.recurso_id] || `#${b.recurso_id}`) : 'todo el negocio'}
               </div>
             </div>
@@ -315,9 +315,9 @@ function AreaBloqueos() {
       <Card className="p-3.5">
         <h3 className="text-sm font-semibold mb-3">Nuevo bloqueo</h3>
         <div className="space-y-2">
-          <label className="text-[11px] uppercase tracking-wider text-muted-foreground">Desde</label>
+          <label className="text-caption uppercase tracking-wider text-muted-foreground">Desde</label>
           <Input type="datetime-local" value={f.inicio} onChange={set('inicio')} aria-label="Inicio del bloqueo" className="h-9" />
-          <label className="text-[11px] uppercase tracking-wider text-muted-foreground">Hasta</label>
+          <label className="text-caption uppercase tracking-wider text-muted-foreground">Hasta</label>
           <Input type="datetime-local" value={f.fin} onChange={set('fin')} aria-label="Fin del bloqueo" className="h-9" />
           <select value={f.recurso_id} onChange={set('recurso_id')} aria-label="Recurso del bloqueo"
             className="h-9 px-2 rounded-md border border-border bg-surface text-sm w-full">
@@ -429,7 +429,7 @@ function AreaReglas() {
       <Campo label="Google Calendar ID (opcional)" className="mt-3">
         <Input value={f.google_calendar_id} onChange={set('google_calendar_id')} aria-label="Google Calendar ID"
           placeholder="negocio@group.calendar.google.com" className="h-9" />
-        <span className="text-[11px] text-muted-foreground">ID del Google Calendar del negocio; vacío = sin sync.</span>
+        <span className="text-caption text-muted-foreground">ID del Google Calendar del negocio; vacío = sin sync.</span>
       </Campo>
       <div className="flex justify-end mt-3"><Button onClick={guardar}>Guardar reglas</Button></div>
     </Card>
@@ -449,7 +449,7 @@ function ListaCard({ titulo, loading, vacio, children }) {
 }
 
 function Item({ children, inactivo }) {
-  return <li className={`py-2 flex items-center gap-2 text-[13px] ${inactivo ? 'opacity-60' : ''}`}>{children}</li>
+  return <li className={`py-2 flex items-center gap-2 text-body-sm ${inactivo ? 'opacity-60' : ''}`}>{children}</li>
 }
 
 function Num({ label, value, onChange, placeholder }) {
@@ -463,7 +463,7 @@ function Num({ label, value, onChange, placeholder }) {
 function Campo({ label, children, className = '' }) {
   return (
     <label className={`flex flex-col gap-1 ${className}`}>
-      <span className="text-[11px] uppercase tracking-wider text-muted-foreground">{label}</span>
+      <span className="text-caption uppercase tracking-wider text-muted-foreground">{label}</span>
       {children}
     </label>
   )

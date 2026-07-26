@@ -12,7 +12,7 @@
  * es marca, jamás semáforo: el riesgo del margen va con la píldora `Semaforo`.
  */
 import { motion } from 'framer-motion'
-import { TrendingUp, TrendingDown, Minus } from 'lucide-react'
+import { TrendingUp, TrendingDown, Minus } from '@/lib/icons.jsx'
 import { cop } from '@/components/shared.jsx'
 import { Card } from '@/components/ui/card.jsx'
 import { Semaforo } from '../comunes.jsx'
@@ -32,13 +32,13 @@ function calcDelta(actual, anterior) {
 function Delta({ delta, subirEsBueno = true }) {
   if (!delta) return null
   if (delta.dir === 'new') {
-    return <span className="text-[11px] font-medium text-muted-foreground">nuevo</span>
+    return <span className="text-caption font-medium text-muted-foreground">nuevo</span>
   }
   const Icon = delta.dir === 'up' ? TrendingUp : delta.dir === 'down' ? TrendingDown : Minus
   const bueno = delta.dir === 'flat' ? null : (delta.dir === 'up') === subirEsBueno
   const color = bueno == null ? 'text-muted-foreground' : bueno ? 'text-success' : 'text-destructive'
   return (
-    <span className={`inline-flex items-center gap-0.5 text-[11px] font-semibold tabular-nums ${color}`}>
+    <span className={`inline-flex items-center gap-0.5 text-caption font-semibold tabular-nums ${color}`}>
       <Icon className="size-3" aria-hidden="true" />
       {Math.abs(delta.pct)}%
     </span>
@@ -95,14 +95,14 @@ export default function KpisMes({ kpis }) {
       {tiles.map((t, i) => (
         <MotionCard key={t.label} custom={i} variants={TESELA} initial="hidden" animate="visible" className="flex flex-col gap-1.5 p-4">
           <div className="flex items-center gap-2">
-            <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">{t.label}</span>
+            <span className="text-caption font-medium uppercase tracking-wider text-muted-foreground">{t.label}</span>
             {t.pill && <span className="ml-auto">{t.pill}</span>}
           </div>
           <div className="flex items-baseline gap-2">
             {t.numeral}
             {t.tendencia}
           </div>
-          <div className="text-[11px] text-muted-foreground">{t.sub}</div>
+          <div className="text-caption text-muted-foreground">{t.sub}</div>
         </MotionCard>
       ))}
     </div>

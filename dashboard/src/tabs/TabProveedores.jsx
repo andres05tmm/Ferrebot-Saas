@@ -12,7 +12,7 @@
 import { useMemo, useState } from 'react'
 import { useNavigate, useOutletContext } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { AlertTriangle, Building2, Plus, Search, Truck, Wallet } from 'lucide-react'
+import { AlertTriangle, Building2, Plus, Search, Truck, Wallet } from '@/lib/icons.jsx'
 import { apiJson } from '@/lib/api'
 import { cop, EstadoVacio, SkeletonFilas } from '@/components/shared.jsx'
 import { useRealtimeEvent } from '@/components/RealtimeProvider.jsx'
@@ -123,15 +123,15 @@ function Contenido() {
                     <button onClick={() => setSeleccionId(p.id)} aria-current={activo || undefined}
                       className={`w-full px-3 py-2.5 text-left flex items-center gap-2 hover:bg-surface-2 ${activo ? 'bg-surface-2' : ''}`}>
                       <div className="min-w-0 flex-1">
-                        <div className="text-[13px] font-medium truncate">{p.nombre}</div>
-                        <div className="text-[11px] text-muted-foreground">
+                        <div className="text-body-sm font-medium truncate">{p.nombre}</div>
+                        <div className="text-caption text-muted-foreground">
                           {p.facturas_pendientes > 0
                             ? `${p.facturas_pendientes} factura(s) pendiente(s)`
                             : 'Sin deuda'}
                           {p.pedidos_en_camino > 0 && ` · ${p.pedidos_en_camino} en camino`}
                         </div>
                       </div>
-                      <span className={`text-[13px] font-semibold tabular-nums shrink-0 ${num(p.vencido) > 0 ? 'text-danger' : ''}`}>
+                      <span className={`text-body-sm font-semibold tabular-nums shrink-0 ${num(p.vencido) > 0 ? 'text-danger' : ''}`}>
                         {cop(num(p.saldo_pendiente))}
                       </span>
                     </button>
@@ -184,7 +184,7 @@ function Kpi({ label, valor, icon: Icon, tono = '' }) {
     <Card className="p-3.5">
       <div className="flex items-center gap-2">
         <Icon className="size-4 text-muted-foreground" />
-        <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{label}</span>
+        <span className="text-caption font-semibold uppercase tracking-wider text-muted-foreground">{label}</span>
       </div>
       <div className={`mt-1.5 text-2xl font-semibold tabular-nums ${tono}`}>{valor}</div>
     </Card>

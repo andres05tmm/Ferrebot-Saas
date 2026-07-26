@@ -36,7 +36,7 @@ export function Seg({ activo, onClick, children, ...props }) {
 
 export function Kbd({ children }) {
   return (
-    <kbd className="inline-flex items-center rounded border border-border bg-surface-2 px-1 text-[10px] font-medium text-muted-foreground">
+    <kbd className="inline-flex items-center rounded border border-border bg-surface-2 px-1 text-micro font-medium text-muted-foreground">
       {children}
     </kbd>
   )

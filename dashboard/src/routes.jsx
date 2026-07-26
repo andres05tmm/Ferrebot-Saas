@@ -17,7 +17,7 @@ import {
   CreditCard, Star, BedDouble, Undo2, Percent, Library, Landmark, Scale,
   HardHat, Wrench, ClipboardList, TrendingDown, Gauge, Timer, Armchair, Flame, QrCode,
   UserRound,
-} from 'lucide-react'
+} from '@/lib/icons.jsx'
 import { esConstruccion, isRouteEnabled } from './lib/features.jsx'
 
 export const ROUTES = [

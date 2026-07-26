@@ -3,7 +3,7 @@
  * (producto + cantidad + costo unitario) y los formatos del cronómetro.
  */
 import { useState } from 'react'
-import { Search, Trash2 } from 'lucide-react'
+import { Search, Trash2 } from '@/lib/icons.jsx'
 import { apiJson } from '@/lib/api'
 import { cop } from '@/components/shared.jsx'
 import { Input } from '@/components/ui/input.jsx'

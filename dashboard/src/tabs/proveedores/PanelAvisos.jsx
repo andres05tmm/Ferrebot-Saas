@@ -7,7 +7,7 @@
  */
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
-import { AlertTriangle, CalendarClock, ChevronDown } from 'lucide-react'
+import { AlertTriangle, CalendarClock, ChevronDown } from '@/lib/icons.jsx'
 import { api } from '@/lib/api'
 import { cop, useFetch } from '@/components/shared.jsx'
 import { useRealtimeEvent } from '@/components/RealtimeProvider.jsx'

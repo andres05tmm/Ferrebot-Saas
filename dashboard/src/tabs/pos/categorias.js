@@ -6,7 +6,7 @@
  */
 import {
   Blocks, Cog, Package, Palette, Wrench, Zap,
-} from 'lucide-react'
+} from '@/lib/icons.jsx'
 
 const MAPA = [
   { re: /ferreter/i, icono: Wrench, color: 'text-slate-500' },

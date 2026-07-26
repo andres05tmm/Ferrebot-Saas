@@ -9,7 +9,7 @@
 import { useState } from 'react'
 import {
   ShoppingCart, Receipt, HandCoins, FileText, Banknote, Landmark, Activity, Truck,
-} from 'lucide-react'
+} from '@/lib/icons.jsx'
 import { useRealtimeEvent } from '@/components/RealtimeProvider.jsx'
 import { cop } from '@/components/shared.jsx'
 import { Card } from '@/components/ui/card.jsx'

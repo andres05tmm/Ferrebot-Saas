@@ -6,7 +6,7 @@
  */
 import { useState } from 'react'
 import { toast } from 'sonner'
-import { BedDouble, CalendarClock } from 'lucide-react'
+import { BedDouble, CalendarClock } from '@/lib/icons.jsx'
 import { cop } from '@/components/shared.jsx'
 import { hoyStrCO as hoyCO } from '@/lib/fechas'
 import { useHabitaciones, useCrearReserva } from '@/lib/queries'
@@ -61,12 +61,12 @@ function FormReserva({ hab, checkin, noches, onHecho }) {
 function Habitacion({ hab, checkin, noches }) {
   const [abierto, setAbierto] = useState(false)
   return (
-    <li className="px-3.5 py-2.5 text-[13px]">
+    <li className="px-3.5 py-2.5 text-body-sm">
       <div className="flex items-center gap-3">
         <BedDouble className="size-4 text-muted-foreground shrink-0" />
         <div className="min-w-0 flex-1">
           <div className="font-medium truncate">{hab.nombre}</div>
-          <div className="text-[11px] text-muted-foreground tabular-nums">
+          <div className="text-caption text-muted-foreground tabular-nums">
             {hab.precio_noche != null ? `${cop(hab.precio_noche)}/noche` : 'sin tarifa'}
           </div>
         </div>
@@ -104,12 +104,12 @@ export default function TabReservas() {
 
       <Card className="p-3">
         <div className="flex flex-wrap items-end gap-3">
-          <label className="text-[11px] text-muted-foreground">
+          <label className="text-caption text-muted-foreground">
             Check-in
             <Input type="date" min={hoyCO()} value={checkin} onChange={e => setCheckin(e.target.value)}
               aria-label="Check-in" className="h-9 mt-1" />
           </label>
-          <label className="text-[11px] text-muted-foreground">
+          <label className="text-caption text-muted-foreground">
             Noches
             <Input type="number" min="1" max="30" value={noches} onChange={e => setNoches(e.target.value)}
               aria-label="Noches" className="h-9 mt-1 w-24" />
@@ -127,7 +127,7 @@ export default function TabReservas() {
       ) : (
         <Card className="p-0 overflow-hidden">
           <div className="px-3.5 py-2.5 border-b border-border-subtle">
-            <h2 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+            <h2 className="text-caption font-semibold uppercase tracking-wider text-muted-foreground">
               Habitaciones libres · check-in {buscado.checkin} · {buscado.noches} noche{buscado.noches === 1 ? '' : 's'}
             </h2>
           </div>

@@ -21,7 +21,7 @@ export default function TurnosSublineas({ turnos }) {
       {lista.map((t, i) => {
         const franja = franjaTurno(t.hora_inicio, t.hora_fin)
         return (
-          <li key={t.id ?? i} className="flex flex-wrap items-baseline gap-x-1.5 text-[11px] text-muted-foreground">
+          <li key={t.id ?? i} className="flex flex-wrap items-baseline gap-x-1.5 text-caption text-muted-foreground">
             <span className="text-secondary-foreground">{t.operador || 'Sin operador'}</span>
             {franja && <span className="tabular">· {franja}</span>}
             <span className="tabular">· {h(t.horas)}</span>

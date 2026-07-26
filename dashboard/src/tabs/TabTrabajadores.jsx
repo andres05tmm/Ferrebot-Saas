@@ -14,7 +14,7 @@
 import { useState } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import { toast } from 'sonner'
-import { Users, UserPlus, Search, Pencil, Power } from 'lucide-react'
+import { Users, UserPlus, Search, Pencil, Power } from '@/lib/icons.jsx'
 import { api } from '@/lib/api'
 import { useFetch, cop } from '@/components/shared.jsx'
 import { useRealtimeEvent } from '@/components/RealtimeProvider.jsx'
@@ -74,7 +74,7 @@ export default function TabTrabajadores() {
         </div>
         <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2">
           <Chips opciones={chips} valor={tipo} onChange={setTipo} ariaLabel="Filtrar por tipo de vinculación" />
-          <label className="inline-flex cursor-pointer items-center gap-2 text-[12px] text-muted-foreground">
+          <label className="inline-flex cursor-pointer items-center gap-2 text-meta text-muted-foreground">
             <input type="checkbox" checked={soloActivos} onChange={(e) => setSoloActivos(e.target.checked)}
               className="size-3.5 rounded border-border text-primary focus-visible:ring-2 focus-visible:ring-ring" />
             Solo activos
@@ -93,7 +93,7 @@ export default function TabTrabajadores() {
       <Card className="p-0 overflow-hidden">
         <div className="px-4 py-2.5 border-b border-border-subtle flex items-center gap-2">
           <Users className="size-4 text-muted-foreground" aria-hidden="true" />
-          <h2 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+          <h2 className="text-caption font-semibold uppercase tracking-wider text-muted-foreground">
             Personal {trabajadores.length > 0 && <span className="tabular">· {activos} activos</span>}
           </h2>
         </div>
@@ -143,16 +143,16 @@ function TrabajadorFila({ trabajador, onEditar, onCambio }) {
 
   return (
     <li className={`flex items-center gap-3 px-4 py-2.5 ${!trabajador.activo ? 'opacity-60' : ''}`}>
-      <span className="grid size-9 shrink-0 place-items-center rounded-full bg-surface-2 text-[11px] font-semibold text-muted-foreground">
+      <span className="grid size-9 shrink-0 place-items-center rounded-full bg-surface-2 text-caption font-semibold text-muted-foreground">
         {`${trabajador.nombres?.[0] || ''}${trabajador.apellidos?.[0] || ''}`.toUpperCase() || '?'}
       </span>
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          <span className="truncate text-[13px] font-medium text-foreground">{trabajador.nombres} {trabajador.apellidos}</span>
+          <span className="truncate text-body-sm font-medium text-foreground">{trabajador.nombres} {trabajador.apellidos}</span>
           <Semaforo tono={t.tono}>{t.label}</Semaforo>
           {!trabajador.activo && <Semaforo tono="gris">Inactivo</Semaforo>}
         </div>
-        <div className="mt-0.5 flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-[11px] text-muted-foreground">
+        <div className="mt-0.5 flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-caption text-muted-foreground">
           <span className="truncate text-secondary-foreground">{trabajador.cargo}</span>
           <span className="tabular">· {trabajador.tipo_documento || 'CC'} {trabajador.documento}</span>
         </div>
@@ -160,8 +160,8 @@ function TrabajadorFila({ trabajador, onEditar, onCambio }) {
 
       <div className="hidden shrink-0 text-right sm:block">
         {patacaliente
-          ? trabajador.tarifa_hora != null && <div className="tabular text-[13px] font-semibold text-foreground">{cop(Number(trabajador.tarifa_hora))}<span className="text-[10px] font-normal text-muted-foreground">/h</span></div>
-          : trabajador.salario_base != null && <div className="tabular text-[13px] font-semibold text-foreground">{cop(Number(trabajador.salario_base))}<span className="text-[10px] font-normal text-muted-foreground">/mes</span></div>}
+          ? trabajador.tarifa_hora != null && <div className="tabular text-body-sm font-semibold text-foreground">{cop(Number(trabajador.tarifa_hora))}<span className="text-micro font-normal text-muted-foreground">/h</span></div>
+          : trabajador.salario_base != null && <div className="tabular text-body-sm font-semibold text-foreground">{cop(Number(trabajador.salario_base))}<span className="text-micro font-normal text-muted-foreground">/mes</span></div>}
       </div>
 
       <button onClick={onEditar} aria-label={`Editar ${trabajador.nombres} ${trabajador.apellidos}`}
@@ -250,12 +250,12 @@ function TrabajadorForm({ trabajador, onClose, onGuardado }) {
 
       {/* Tipo de vinculación: segmentado (define qué campo económico se pide). */}
       <div className="mb-3">
-        <span className="mb-1 block text-[11px] font-medium text-secondary-foreground">Tipo de vinculación</span>
+        <span className="mb-1 block text-caption font-medium text-secondary-foreground">Tipo de vinculación</span>
         <div role="group" aria-label="Tipo de vinculación" className="inline-flex rounded-md border border-border p-0.5">
           {Object.entries(VINCULACION).map(([valor, meta]) => (
             <button key={valor} type="button" onClick={() => setF((prev) => ({ ...prev, tipo_vinculacion: valor }))}
               aria-pressed={f.tipo_vinculacion === valor}
-              className={`h-8 rounded px-3 text-[12px] font-medium transition-colors duration-fast ${
+              className={`h-8 rounded px-3 text-meta font-medium transition-colors duration-fast ${
                 f.tipo_vinculacion === valor ? 'bg-primary-soft text-primary' : 'text-muted-foreground hover:text-foreground'
               }`}>
               {meta.label}

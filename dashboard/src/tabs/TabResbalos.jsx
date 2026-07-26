@@ -19,7 +19,7 @@
  */
 import { useState } from 'react'
 import { useOutletContext } from 'react-router-dom'
-import { Truck, TrendingDown, Route, TriangleAlert, ArrowUpNarrowWide } from 'lucide-react'
+import { Truck, TrendingDown, Route, TriangleAlert, ArrowUpNarrowWide } from '@/lib/icons.jsx'
 import { useFetch, cop, num } from '@/components/shared.jsx'
 import { useRealtimeEvent } from '@/components/RealtimeProvider.jsx'
 import { Card } from '@/components/ui/card.jsx'
@@ -59,11 +59,11 @@ export default function TabResbalos() {
           </div>
           <div className="ml-auto flex items-end gap-2">
             <label className="flex flex-col gap-1">
-              <span className="text-[11px] font-medium text-secondary-foreground">Desde</span>
+              <span className="text-caption font-medium text-secondary-foreground">Desde</span>
               <Input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} className="h-9" aria-label="Desde" />
             </label>
             <label className="flex flex-col gap-1">
-              <span className="text-[11px] font-medium text-secondary-foreground">Hasta</span>
+              <span className="text-caption font-medium text-secondary-foreground">Hasta</span>
               <Input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} className="h-9" aria-label="Hasta" />
             </label>
           </div>
@@ -86,7 +86,7 @@ function ReporteResbalos({ query }) {
     <Card className="p-0 overflow-hidden">
       <SeccionCabecera icono={TrendingDown} titulo="Reporte de resbalos" conteo={filas.length}>
         {filas.length > 0 && (
-          <span className="ml-auto flex items-center gap-2 text-[11px] text-muted-foreground">
+          <span className="ml-auto flex items-center gap-2 text-caption text-muted-foreground">
             <span>Margen total <span className="tabular font-medium text-foreground">{cop(totalMargen)}</span></span>
             {enAlerta > 0 && (
               <span className="inline-flex items-center gap-1 text-destructive">
@@ -139,7 +139,7 @@ function AnalisisPrecios({ query }) {
     <Card className="p-0 overflow-hidden">
       <SeccionCabecera icono={ArrowUpNarrowWide} titulo="Análisis de precios de proveedor" conteo={filas.length}>
         {enAlerta > 0 && (
-          <span className="ml-auto inline-flex items-center gap-1 text-[11px] text-destructive">
+          <span className="ml-auto inline-flex items-center gap-1 text-caption text-destructive">
             <TriangleAlert className="size-3" aria-hidden="true" />{enAlerta} con sobreprecio
           </span>
         )}
@@ -181,7 +181,7 @@ function SeccionCabecera({ icono: Icono, titulo, conteo, children }) {
   return (
     <div className="flex flex-wrap items-center gap-2 border-b border-border-subtle px-4 py-2.5">
       <Icono className="size-4 text-muted-foreground" aria-hidden="true" />
-      <h2 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+      <h2 className="text-caption font-semibold uppercase tracking-wider text-muted-foreground">
         {titulo} {conteo > 0 && <span className="tabular">· {conteo}</span>}
       </h2>
       {children}
@@ -192,9 +192,9 @@ function SeccionCabecera({ icono: Icono, titulo, conteo, children }) {
 function TablaScroll({ cabeceras, children }) {
   return (
     <div className="overflow-x-auto">
-      <table className="w-full text-[12px]">
+      <table className="w-full text-meta">
         <thead>
-          <tr className="text-left text-[10px] uppercase tracking-wider text-muted-foreground">
+          <tr className="text-left text-micro uppercase tracking-wider text-muted-foreground">
             {cabeceras.map((h, i) => (
               <th key={i} className={`px-3 py-2 font-medium ${i >= 2 && i < cabeceras.length - 1 ? 'text-right' : ''}`}>{h}</th>
             ))}
@@ -213,5 +213,5 @@ function TdNum({ children, className = '' }) {
   return <td className={`tabular px-3 py-2 text-right align-middle ${className}`}>{children}</td>
 }
 function ErrorLinea({ children }) {
-  return <p className="px-4 py-6 text-center text-[12px] text-destructive">{children}</p>
+  return <p className="px-4 py-6 text-center text-meta text-destructive">{children}</p>
 }

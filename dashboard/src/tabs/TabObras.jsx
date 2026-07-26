@@ -16,7 +16,7 @@ import { toast } from 'sonner'
 import {
   Building2, ChevronDown, ChevronRight, Plus, Search, Pencil, Trash2,
   CalendarDays, MapPin, ClipboardList, Camera, TriangleAlert, Ruler,
-} from 'lucide-react'
+} from '@/lib/icons.jsx'
 import { api } from '@/lib/api'
 import { useFetch, cop } from '@/components/shared.jsx'
 import { useRealtimeEvent } from '@/components/RealtimeProvider.jsx'
@@ -124,7 +124,7 @@ export default function TabObras() {
       <Card className="p-0 overflow-hidden">
         <div className="px-4 py-2.5 border-b border-border-subtle flex items-center gap-2">
           <Building2 className="size-4 text-muted-foreground" aria-hidden="true" />
-          <h2 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+          <h2 className="text-caption font-semibold uppercase tracking-wider text-muted-foreground">
             Obras {obras.length > 0 && <span className="tabular">· {visibles.length}</span>}
           </h2>
         </div>
@@ -175,10 +175,10 @@ function ObraFila({ obra, onEditar, onCambio }) {
         </span>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <span className="truncate text-[14px] font-medium text-foreground">{obra.nombre}</span>
+            <span className="truncate text-base font-medium text-foreground">{obra.nombre}</span>
             <Semaforo tono={est.tono}>{est.label}</Semaforo>
           </div>
-          <div className="mt-0.5 flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-[11px] text-muted-foreground">
+          <div className="mt-0.5 flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-caption text-muted-foreground">
             <span className="truncate">{obra.cliente_nombre || `Cliente #${obra.cliente_id}`}</span>
             {obra.ubicacion && <span className="inline-flex items-center gap-1 truncate"><MapPin className="size-3" aria-hidden="true" />{obra.ubicacion}</span>}
             {obra.fecha_inicio && <span className="inline-flex items-center gap-1"><CalendarDays className="size-3" aria-hidden="true" />{obra.fecha_inicio}{obra.fecha_fin_estimada ? ` → ${obra.fecha_fin_estimada}` : ''}</span>}
@@ -236,7 +236,7 @@ function ObraDetalle({ id, obra, onEditar, onCambio }) {
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_1.2fr]">
         {/* Metadatos + acciones */}
         <div className="space-y-3">
-          <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-[12px]">
+          <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-meta">
             <Dato etiqueta="Cliente" valor={detalle.cliente_nombre || `#${detalle.cliente_id}`} />
             <Dato etiqueta="Ubicación" valor={detalle.ubicacion} />
             <Dato etiqueta="Inicio" valor={detalle.fecha_inicio} />
@@ -244,11 +244,11 @@ function ObraDetalle({ id, obra, onEditar, onCambio }) {
             {detalle.fecha_fin_real && <Dato etiqueta="Fin real" valor={detalle.fecha_fin_real} />}
             {detalle.cotizacion_numero && <Dato etiqueta="Cotización" valor={detalle.cotizacion_numero} />}
           </dl>
-          {detalle.notas && <p className="rounded-md bg-surface px-3 py-2 text-[12px] leading-relaxed text-secondary-foreground">{detalle.notas}</p>}
+          {detalle.notas && <p className="rounded-md bg-surface px-3 py-2 text-meta leading-relaxed text-secondary-foreground">{detalle.notas}</p>}
 
           {transiciones.length > 0 && (
             <div className="flex flex-wrap items-center gap-1.5">
-              <span className="text-[11px] text-muted-foreground">Cambiar estado:</span>
+              <span className="text-caption text-muted-foreground">Cambiar estado:</span>
               {transiciones.map((t) => (
                 <button key={t.estado} disabled={ocupado} className={`${BTN_OUTLINE} h-8`}
                   onClick={() => (t.confirmar ? setConfirmando({ tipo: 'liquidar', dest: t }) : transicionar(t))}>
@@ -296,14 +296,14 @@ function ObraDetalle({ id, obra, onEditar, onCambio }) {
         <div className="rounded-md border border-border-subtle bg-surface p-3">
           <div className="mb-2.5 flex items-center gap-2">
             <ClipboardList className="size-4 text-muted-foreground" aria-hidden="true" />
-            <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Reportes diarios</h3>
+            <h3 className="text-caption font-semibold uppercase tracking-wider text-muted-foreground">Reportes diarios</h3>
           </div>
           {reportesQ.loading ? (
-            <p className="py-6 text-center text-[12px] text-muted-foreground">Cargando reportes…</p>
+            <p className="py-6 text-center text-meta text-muted-foreground">Cargando reportes…</p>
           ) : reportes.length === 0 ? (
             <div className="py-6 text-center">
-              <p className="text-[12px] font-medium text-foreground">Sin reportes de campo todavía</p>
-              <p className="mt-0.5 text-[11px] text-muted-foreground">Llegan del bot de Telegram o se registran en obra: avance, m² / m³ e incidentes del día.</p>
+              <p className="text-meta font-medium text-foreground">Sin reportes de campo todavía</p>
+              <p className="mt-0.5 text-caption text-muted-foreground">Llegan del bot de Telegram o se registran en obra: avance, m² / m³ e incidentes del día.</p>
             </div>
           ) : (
             <ol className="space-y-2.5">
@@ -322,18 +322,18 @@ function ReporteItem({ reporte }) {
     <li className="relative border-l border-border pl-3.5">
       <span className="absolute -left-[3px] top-1.5 size-1.5 rounded-full bg-primary" aria-hidden="true" />
       <div className="flex items-center gap-2">
-        <span className="tabular text-[12px] font-medium text-foreground">{reporte.fecha}</span>
-        {reporte.reportado_por && <span className="text-[11px] text-muted-foreground">· {reporte.reportado_por}</span>}
-        {reporte.origen_registro === 'TELEGRAM_BOT' && <span className="text-[10px] text-muted-foreground">(bot)</span>}
+        <span className="tabular text-meta font-medium text-foreground">{reporte.fecha}</span>
+        {reporte.reportado_por && <span className="text-caption text-muted-foreground">· {reporte.reportado_por}</span>}
+        {reporte.origen_registro === 'TELEGRAM_BOT' && <span className="text-micro text-muted-foreground">(bot)</span>}
       </div>
-      {reporte.avance_descripcion && <p className="mt-0.5 text-[12px] leading-relaxed text-secondary-foreground">{reporte.avance_descripcion}</p>}
-      <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-muted-foreground">
+      {reporte.avance_descripcion && <p className="mt-0.5 text-meta leading-relaxed text-secondary-foreground">{reporte.avance_descripcion}</p>}
+      <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-caption text-muted-foreground">
         {reporte.m2_ejecutados != null && <span className="inline-flex items-center gap-1"><Ruler className="size-3" aria-hidden="true" />{reporte.m2_ejecutados} m²</span>}
         {reporte.m3_ejecutados != null && <span className="inline-flex items-center gap-1"><Ruler className="size-3" aria-hidden="true" />{reporte.m3_ejecutados} m³</span>}
         {fotos.length > 0 && <span className="inline-flex items-center gap-1"><Camera className="size-3" aria-hidden="true" />{fotos.length} foto(s)</span>}
       </div>
       {reporte.incidentes && (
-        <p className="mt-1 inline-flex items-start gap-1 text-[11px] text-warning">
+        <p className="mt-1 inline-flex items-start gap-1 text-caption text-warning">
           <TriangleAlert className="mt-0.5 size-3 shrink-0" aria-hidden="true" />{reporte.incidentes}
         </p>
       )}
@@ -374,7 +374,7 @@ function DialogoArchivar({ obra, onConfirmar }) {
 function Dato({ etiqueta, valor }) {
   return (
     <div className="min-w-0">
-      <dt className="text-[10px] uppercase tracking-wider text-muted-foreground">{etiqueta}</dt>
+      <dt className="text-micro uppercase tracking-wider text-muted-foreground">{etiqueta}</dt>
       <dd className="truncate text-secondary-foreground">{valor || '—'}</dd>
     </div>
   )

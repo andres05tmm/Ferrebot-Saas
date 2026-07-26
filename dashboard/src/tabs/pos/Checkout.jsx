@@ -5,7 +5,7 @@
  * caja, la Idempotency-Key y el flujo mixto no se duplican. Alt+1..5 setea el mismo estado.
  */
 import { useState } from 'react'
-import { Banknote, CreditCard, HandCoins, Landmark, ShoppingCart, SplitSquareHorizontal } from 'lucide-react'
+import { Banknote, CreditCard, HandCoins, Landmark, ShoppingCart, SplitSquareHorizontal } from '@/lib/icons.jsx'
 import { cop } from '@/components/shared.jsx'
 import { Input } from '@/components/ui/input.jsx'
 import { Button } from '@/components/ui/button.jsx'
@@ -33,7 +33,7 @@ export default function Checkout({
           return (
             <button key={m} type="button" onClick={() => setMetodoPago(m)}
               aria-label={`Pago ${m}`} aria-pressed={metodoPago === m}
-              className={`flex flex-col items-center gap-0.5 py-2 rounded-md border text-[10px] capitalize transition-colors ${
+              className={`flex flex-col items-center gap-0.5 py-2 rounded-md border text-micro capitalize transition-colors ${
                 metodoPago === m ? 'border-primary bg-primary/10 text-primary font-semibold'
                   : 'border-border bg-surface text-muted-foreground hover:bg-surface-2'}`}>
               <Icono className="size-4" aria-hidden="true" />

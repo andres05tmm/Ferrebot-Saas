@@ -5,7 +5,7 @@
  * (total, # ventas, gastos) va en el title y en la lista de abajo. Live: venta_registrada / reconnected.
  */
 import { useMemo, useState } from 'react'
-import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { ChevronLeft, ChevronRight } from '@/lib/icons.jsx'
 import { anioMesCO as hoyCO } from '@/lib/fechas'
 import { useFetch, cop, num } from '@/components/shared.jsx'
 import { useRealtimeEvent } from '@/components/RealtimeProvider.jsx'
@@ -95,7 +95,7 @@ export default function VistaMes() {
                 ? `${c.fecha}: ${cop(Number(c.datos.total))} en ${num(c.datos.num_ventas)} venta(s)`
                   + (Number(c.datos.gastos) > 0 ? ` · gastos ${cop(Number(c.datos.gastos))}` : '')
                 : `${c.fecha}: sin movimiento`}
-              className={`rounded-md py-1.5 text-[11px] tabular ${NIVEL_CLS[nivel(Number(c.datos?.total || 0), max)]}`}>
+              className={`rounded-md py-1.5 text-caption tabular ${NIVEL_CLS[nivel(Number(c.datos?.total || 0), max)]}`}>
               {c.dia}
             </div>
           ))}
@@ -104,8 +104,8 @@ export default function VistaMes() {
 
       <Card className="p-0 overflow-hidden">
         <div className="flex items-center justify-between px-3.5 py-2.5 border-b border-border-subtle">
-          <h2 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Detalle por día</h2>
-          <span className="text-[12px] tabular font-semibold">{cop(total)}</span>
+          <h2 className="text-caption font-semibold uppercase tracking-wider text-muted-foreground">Detalle por día</h2>
+          <span className="text-meta tabular font-semibold">{cop(total)}</span>
         </div>
         {q.loading ? (
           <p className="py-10 text-center text-sm text-muted-foreground">Cargando…</p>
@@ -114,9 +114,9 @@ export default function VistaMes() {
         ) : (
           <ul className="divide-y divide-border-subtle">
             {[...conVentas].reverse().map(d => (
-              <li key={d.fecha} className="flex items-center gap-2 px-3.5 py-2 text-[13px]">
+              <li key={d.fecha} className="flex items-center gap-2 px-3.5 py-2 text-body-sm">
                 <span className="tabular text-muted-foreground w-28 shrink-0">{d.fecha}</span>
-                <span className="flex-1 text-[12px] text-muted-foreground">
+                <span className="flex-1 text-meta text-muted-foreground">
                   {num(d.num_ventas)} {d.num_ventas === 1 ? 'venta' : 'ventas'}
                   {Number(d.gastos) > 0 ? ` · gastos ${cop(Number(d.gastos))}` : ''}
                 </span>

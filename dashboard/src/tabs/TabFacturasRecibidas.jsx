@@ -11,7 +11,7 @@
  */
 import { useState } from 'react'
 import { toast } from 'sonner'
-import { AlertTriangle, FileCheck, ScanLine } from 'lucide-react'
+import { AlertTriangle, FileCheck, ScanLine } from '@/lib/icons.jsx'
 import { cop } from '@/components/shared.jsx'
 import { useAuth } from '@/hooks/useAuth.js'
 import { useFacturasRecibidas, useEscanearQR } from '@/lib/queries'
@@ -92,14 +92,14 @@ function EscanearQR() {
       <h2 className="text-sm font-semibold inline-flex items-center gap-1.5">
         <ScanLine className="size-4" /> Escanear factura recibida
       </h2>
-      <p className="text-[11px] text-muted-foreground">
+      <p className="text-caption text-muted-foreground">
         Pega el contenido del QR de la factura del proveedor (la URL DIAN o el CUFE). Se registra la cuenta
         por pagar con su vencimiento y se acusa recibo ante la DIAN. No mueve inventario.
       </p>
       <textarea
         value={f.qr} onChange={set('qr')} rows={2} aria-label="Contenido del QR"
         placeholder="https://catalogo-vpfe.dian.gov.co/document/searchqr?documentkey=… o el CUFE"
-        className="w-full rounded-md border border-border bg-surface px-2.5 py-1.5 text-[12px] resize-y" />
+        className="w-full rounded-md border border-border bg-surface px-2.5 py-1.5 text-meta resize-y" />
       <Input value={f.proveedor_nit} onChange={set('proveedor_nit')} placeholder="NIT del proveedor *" aria-label="NIT del proveedor" className="h-9" />
       <Input value={f.proveedor_nombre} onChange={set('proveedor_nombre')} placeholder="Nombre del proveedor (opcional)" aria-label="Nombre del proveedor" className="h-9" />
       <Input value={f.numero_factura} onChange={set('numero_factura')} placeholder="Nº de factura (opcional)" aria-label="Número de factura" className="h-9" />
@@ -109,11 +109,11 @@ function EscanearQR() {
       </div>
       <Input type="number" value={f.total} onChange={set('total')} placeholder="Total *" aria-label="Total" className="h-9" />
       <div className="flex gap-2">
-        <label className="flex-1 text-[11px] text-muted-foreground">
+        <label className="flex-1 text-caption text-muted-foreground">
           Fecha
           <Input type="date" value={f.fecha} onChange={set('fecha')} aria-label="Fecha de la factura" className="h-9 mt-0.5" />
         </label>
-        <label className="flex-1 text-[11px] text-muted-foreground">
+        <label className="flex-1 text-caption text-muted-foreground">
           Vencimiento
           <Input type="date" value={f.fecha_vencimiento} onChange={set('fecha_vencimiento')} aria-label="Fecha de vencimiento" className="h-9 mt-0.5" />
         </label>
@@ -131,7 +131,7 @@ function ListaRecibidas({ recibidas, loading, error }) {
     <Card className="p-0 overflow-hidden self-start">
       <div className="px-3.5 py-2.5 border-b border-border-subtle flex items-center gap-2">
         <FileCheck className="size-4 text-muted-foreground" />
-        <h2 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Facturas recibidas</h2>
+        <h2 className="text-caption font-semibold uppercase tracking-wider text-muted-foreground">Facturas recibidas</h2>
       </div>
       {loading ? (
         <p className="py-10 text-center text-sm text-muted-foreground">Cargando…</p>
@@ -150,31 +150,31 @@ function ListaRecibidas({ recibidas, loading, error }) {
 
 function RecibidaRow({ r }) {
   return (
-    <li className="px-3.5 py-2.5 space-y-1 text-[13px]">
+    <li className="px-3.5 py-2.5 space-y-1 text-body-sm">
       <div className="flex items-center gap-3">
         <div className="min-w-0 flex-1">
           <div className="font-medium truncate">
             {r.proveedor_nit ? `NIT ${r.proveedor_nit}` : 'Proveedor'}
             {r.descripcion ? ` · ${r.descripcion}` : ''}
           </div>
-          <div className="text-[11px] text-muted-foreground truncate">
+          <div className="text-caption text-muted-foreground truncate">
             CUFE {String(r.cufe).slice(0, 16)}…
             {r.evento_030_at ? ' · acuse ✓' : ''}
           </div>
         </div>
         <span className="tabular font-semibold shrink-0">{cop(Number(r.total))}</span>
         {r.evento_estado && (
-          <Badge variant="outline" className={`h-5 text-[10px] capitalize shrink-0 ${ESTADO_BADGE[r.evento_estado] || ''}`}>
+          <Badge variant="outline" className={`h-5 text-micro capitalize shrink-0 ${ESTADO_BADGE[r.evento_estado] || ''}`}>
             {r.evento_estado}
           </Badge>
         )}
       </div>
-      <div className="text-[11px] text-muted-foreground tabular">
+      <div className="text-caption text-muted-foreground tabular">
         {r.pendiente != null ? `pendiente ${cop(Number(r.pendiente))}` : ''}
         {r.fecha_vencimiento ? ` · vence ${new Date(r.fecha_vencimiento).toLocaleDateString('es-CO', FECHA_CO)}` : ' · sin vencimiento'}
       </div>
       {r.evento_error && (
-        <div className="flex items-start gap-1.5 text-[11px] text-destructive">
+        <div className="flex items-start gap-1.5 text-caption text-destructive">
           <AlertTriangle className="size-3.5 mt-0.5 shrink-0" />
           <span>Acuse DIAN pendiente: {r.evento_error}</span>
         </div>

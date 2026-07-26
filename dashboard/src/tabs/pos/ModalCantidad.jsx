@@ -48,7 +48,7 @@ function BotonKpi({ activo, onClick, titulo, precio, sub }) {
       <span className={`text-body-sm font-semibold leading-none ${activo ? 'text-primary' : 'text-foreground'}`}>{titulo}</span>
       {precio != null
         ? <span className="text-caption tabular leading-none text-muted-foreground">{cop(precio)}</span>
-        : sub ? <span className="text-[11px] leading-none text-muted-foreground">{sub}</span> : null}
+        : sub ? <span className="text-caption leading-none text-muted-foreground">{sub}</span> : null}
     </button>
   )
 }

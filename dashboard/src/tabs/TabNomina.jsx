@@ -20,7 +20,7 @@ import { toast } from 'sonner'
 import {
   Wallet, ChevronDown, ChevronRight, Plus, CalendarDays, Users, Coins, HandCoins,
   Lock, CheckCircle2, Building2, SlidersHorizontal, Play,
-} from 'lucide-react'
+} from '@/lib/icons.jsx'
 import { api } from '@/lib/api'
 import { useFetch, cop, num } from '@/components/shared.jsx'
 import { useRealtimeEvent } from '@/components/RealtimeProvider.jsx'
@@ -68,7 +68,7 @@ export default function TabNomina() {
             <h2 className="inline-flex items-center gap-1.5 text-sm font-semibold text-foreground">
               <Wallet className="size-4" aria-hidden="true" /> Nómina
             </h2>
-            <p className="mt-0.5 text-[11px] text-muted-foreground">
+            <p className="mt-0.5 text-caption text-muted-foreground">
               Cada periodo congela los parámetros legales al crearse y reparte el costo por obra.
             </p>
           </div>
@@ -90,7 +90,7 @@ export default function TabNomina() {
       <Card className="p-0 overflow-hidden">
         <div className="px-4 py-2.5 border-b border-border-subtle flex items-center gap-2">
           <CalendarDays className="size-4 text-muted-foreground" aria-hidden="true" />
-          <h2 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+          <h2 className="text-caption font-semibold uppercase tracking-wider text-muted-foreground">
             Periodos {periodos.length > 0 && <span className="tabular">· {visibles.length}</span>}
           </h2>
         </div>
@@ -141,13 +141,13 @@ function PeriodoFila({ periodo, onCambio }) {
         </span>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <span className="truncate text-[14px] font-medium text-foreground">
+            <span className="truncate text-base font-medium text-foreground">
               {periodo.nombre || `Periodo #${periodo.id}`}
             </span>
             <Semaforo tono={est.tono}>{est.label}</Semaforo>
           </div>
-          <div className="mt-0.5 flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-[11px] text-muted-foreground">
-            <span className="rounded bg-surface-2 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide">
+          <div className="mt-0.5 flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-caption text-muted-foreground">
+            <span className="rounded bg-surface-2 px-1.5 py-0.5 text-micro font-medium uppercase tracking-wide">
               {TIPO_LABEL[periodo.tipo] || periodo.tipo}
             </span>
             <span className="tabular inline-flex items-center gap-1">
@@ -216,9 +216,9 @@ function PeriodoDetalle({ id, periodo, onCambio }) {
       )}
 
       {detalleQ.loading ? (
-        <p className="py-6 text-center text-[12px] text-muted-foreground">Cargando liquidación…</p>
+        <p className="py-6 text-center text-meta text-muted-foreground">Cargando liquidación…</p>
       ) : !detalle ? (
-        <p className="py-6 text-center text-[12px] text-muted-foreground">No se pudo cargar la liquidación.</p>
+        <p className="py-6 text-center text-meta text-muted-foreground">No se pudo cargar la liquidación.</p>
       ) : (
         <>
           <TotalesStrip totales={detalle.totales} />
@@ -243,10 +243,10 @@ function TotalesStrip({ totales }) {
     <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
       {items.map((it) => (
         <div key={it.label} className={`rounded-md border p-2.5 ${it.destacado ? 'border-primary/30 bg-primary-soft' : 'border-border-subtle bg-surface'}`}>
-          <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-muted-foreground">
+          <div className="flex items-center gap-1.5 text-micro uppercase tracking-wider text-muted-foreground">
             <it.icono className="size-3" aria-hidden="true" /> {it.label}
           </div>
-          <div className={`tabular mt-1 text-[15px] font-semibold ${it.destacado ? 'text-primary' : 'text-foreground'}`}>
+          <div className={`tabular mt-1 text-base font-semibold ${it.destacado ? 'text-primary' : 'text-foreground'}`}>
             {it.valor}
           </div>
         </div>
@@ -260,16 +260,16 @@ function TablaLiquidacion({ periodoId, detalles, pagado }) {
   if (!Array.isArray(detalles) || detalles.length === 0) {
     return (
       <div className="rounded-md border border-border-subtle bg-surface py-8 text-center">
-        <p className="text-[12px] font-medium text-foreground">Sin liquidación todavía</p>
-        <p className="mt-0.5 text-[11px] text-muted-foreground">Pulsa «Liquidar» para calcular la nómina de los trabajadores con asistencia en el rango.</p>
+        <p className="text-meta font-medium text-foreground">Sin liquidación todavía</p>
+        <p className="mt-0.5 text-caption text-muted-foreground">Pulsa «Liquidar» para calcular la nómina de los trabajadores con asistencia en el rango.</p>
       </div>
     )
   }
   return (
     <div className="overflow-x-auto rounded-md border border-border-subtle bg-surface">
-      <table className="w-full min-w-[560px] text-[12px]">
+      <table className="w-full min-w-[560px] text-meta">
         <thead>
-          <tr className="border-b border-border-subtle text-[10px] uppercase tracking-wider text-muted-foreground">
+          <tr className="border-b border-border-subtle text-micro uppercase tracking-wider text-muted-foreground">
             <th className="px-3 py-2 text-left font-semibold">Trabajador</th>
             <th className="px-3 py-2 text-right font-semibold">Días</th>
             <th className="px-3 py-2 text-right font-semibold">Devengado</th>
@@ -285,7 +285,7 @@ function TablaLiquidacion({ periodoId, detalles, pagado }) {
         </tbody>
       </table>
       {pagado && (
-        <div className="flex items-center gap-1.5 border-t border-border-subtle px-3 py-1.5 text-[11px] text-success">
+        <div className="flex items-center gap-1.5 border-t border-border-subtle px-3 py-1.5 text-caption text-success">
           <CheckCircle2 className="size-3.5" aria-hidden="true" /> Periodo pagado
         </div>
       )}
@@ -306,7 +306,7 @@ function TrabajadorFila({ periodoId, detalle }) {
             {abierta ? <ChevronDown className="size-3.5 text-muted-foreground" aria-hidden="true" /> : <ChevronRight className="size-3.5 text-muted-foreground" aria-hidden="true" />}
             <div className="min-w-0">
               <div className="truncate font-medium text-foreground">{detalle.trabajador_nombre}</div>
-              <div className="text-[10px] text-muted-foreground">
+              <div className="text-micro text-muted-foreground">
                 {detalle.tipo_vinculacion === 'DIRECTO' ? 'Directo' : 'Patacaliente'} · {detalle.trabajador_documento}
               </div>
             </div>
@@ -337,7 +337,7 @@ function DesglosePersonal({ periodoId, detalle }) {
   return (
     <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
       {/* Desglose de conceptos */}
-      <dl className="grid grid-cols-2 gap-x-4 gap-y-1.5 rounded-md border border-border-subtle bg-surface p-3 text-[12px]">
+      <dl className="grid grid-cols-2 gap-x-4 gap-y-1.5 rounded-md border border-border-subtle bg-surface p-3 text-meta">
         <Concepto etiqueta="Salario devengado" valor={detalle.salario_devengado} />
         <Concepto etiqueta="Auxilio transporte" valor={detalle.auxilio_transporte} />
         <Concepto etiqueta="Horas extra" valor={detalle.valor_horas_extra} />
@@ -353,20 +353,20 @@ function DesglosePersonal({ periodoId, detalle }) {
       <div className="rounded-md border border-border-subtle bg-surface p-3">
         <div className="mb-2 flex items-center gap-1.5">
           <Building2 className="size-3.5 text-muted-foreground" aria-hidden="true" />
-          <h4 className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Prorrateo por obra</h4>
+          <h4 className="text-micro font-semibold uppercase tracking-wider text-muted-foreground">Prorrateo por obra</h4>
         </div>
         {q.loading ? (
-          <p className="py-3 text-center text-[11px] text-muted-foreground">Cargando…</p>
+          <p className="py-3 text-center text-caption text-muted-foreground">Cargando…</p>
         ) : prorrateos.length === 0 ? (
-          <p className="py-3 text-center text-[11px] text-muted-foreground">Sin prorrateo (aún no liquidado).</p>
+          <p className="py-3 text-center text-caption text-muted-foreground">Sin prorrateo (aún no liquidado).</p>
         ) : (
           <ul className="space-y-1.5">
             {prorrateos.map((pr, i) => (
-              <li key={i} className="flex items-center justify-between gap-2 text-[12px]">
+              <li key={i} className="flex items-center justify-between gap-2 text-meta">
                 <span className="inline-flex min-w-0 items-center gap-1.5">
                   <span className={`size-1.5 shrink-0 rounded-full ${pr.obra_nombre ? 'bg-primary' : 'bg-muted-foreground'}`} aria-hidden="true" />
                   <span className="truncate text-secondary-foreground">{pr.obra_nombre || 'Administrativo'}</span>
-                  <span className="tabular shrink-0 text-[10px] text-muted-foreground">{num(pr.dias_imputados)} d</span>
+                  <span className="tabular shrink-0 text-micro text-muted-foreground">{num(pr.dias_imputados)} d</span>
                 </span>
                 <span className="tabular shrink-0 font-medium text-foreground">{cop(pr.costo_imputado)}</span>
               </li>
@@ -415,11 +415,11 @@ function ParametrosSnapshot({ parametros }) {
         className="flex w-full items-center gap-1.5 px-3 py-2 text-left"
       >
         <SlidersHorizontal className="size-3.5 text-muted-foreground" aria-hidden="true" />
-        <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Parámetros congelados</span>
+        <span className="text-micro font-semibold uppercase tracking-wider text-muted-foreground">Parámetros congelados</span>
         {abierto ? <ChevronDown className="ml-auto size-3.5 text-muted-foreground" aria-hidden="true" /> : <ChevronRight className="ml-auto size-3.5 text-muted-foreground" aria-hidden="true" />}
       </button>
       {abierto && (
-        <dl className="grid grid-cols-1 gap-x-4 gap-y-1 border-t border-border-subtle px-3 py-2.5 text-[11px] sm:grid-cols-2">
+        <dl className="grid grid-cols-1 gap-x-4 gap-y-1 border-t border-border-subtle px-3 py-2.5 text-caption sm:grid-cols-2">
           {filas.map(([k, v]) => (
             <div key={k} className="flex items-baseline justify-between gap-2">
               <dt className="text-muted-foreground">{k}</dt>
@@ -486,7 +486,7 @@ function PeriodoForm({ onClose, onCreado }) {
           <Input type="date" value={f.fecha_fin} onChange={set('fecha_fin')} className="h-9" />
         </Campo>
       </div>
-      <p className="mt-2 text-[11px] text-muted-foreground">
+      <p className="mt-2 text-caption text-muted-foreground">
         Al crear el periodo se congelan los parámetros legales vigentes: la liquidación usará esos valores aunque cambien después.
       </p>
       <div className="mt-4 flex items-center justify-end gap-2">

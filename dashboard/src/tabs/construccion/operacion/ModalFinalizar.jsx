@@ -60,14 +60,14 @@ export default function ModalFinalizar({ sesion, onCerrar, onExito }) {
         {detalleQ.loading ? (
           <Esqueleto filas={2} />
         ) : tramos.length === 0 ? (
-          <p className="py-4 text-[13px] text-muted-foreground">Esta sesión no tiene tramos.</p>
+          <p className="py-4 text-body-sm text-muted-foreground">Esta sesión no tiene tramos.</p>
         ) : (
           <ul className="divide-y divide-border-subtle">
             {tramos.map((t) => (
               <li key={t.id} className="flex items-center gap-3 py-2.5">
                 <div className="min-w-0 flex-1">
-                  <div className="truncate text-[13px] text-foreground">{t.operador || 'Sin operador'}</div>
-                  <div className="text-[11px] tabular-nums text-muted-foreground">
+                  <div className="truncate text-body-sm text-foreground">{t.operador || 'Sin operador'}</div>
+                  <div className="text-caption tabular-nums text-muted-foreground">
                     {horaIso(t.iniciado_en)}{t.finalizado_en ? `–${horaIso(t.finalizado_en)}` : ' · en curso'}
                   </div>
                 </div>
@@ -86,20 +86,20 @@ export default function ModalFinalizar({ sesion, onCerrar, onExito }) {
 
         {/* Sesión olvidada: el reloj propone horas absurdas → advertir ANTES de facturar (F2.6). */}
         {sesionSospechosa && (
-          <p className="rounded-md bg-warning/10 px-3 py-2 text-[12px] text-warning">
+          <p className="rounded-md bg-warning/10 px-3 py-2 text-meta text-warning">
             El reloj propone más de {HORAS_SOSPECHOSAS} h en un tramo: ¿la sesión quedó abierta por
             error? Ajusta las horas reales, o pide a un administrador «Anular sin cobrar».
           </p>
         )}
 
-        <div className="mt-1 space-y-1 border-t border-border-subtle pt-2 text-[13px]">
+        <div className="mt-1 space-y-1 border-t border-border-subtle pt-2 text-body-sm">
           <div className="flex items-center justify-between">
             <span className="text-muted-foreground">Total del día</span>
             <span className="font-semibold tabular-nums text-foreground">{num(total)} h</span>
           </div>
           {/* El mínimo pactado manda (F2.6): que el 3h→5h no sorprenda en el toast de después. */}
           {aplicaMinimo && (
-            <div className="flex items-center justify-between text-[12px]">
+            <div className="flex items-center justify-between text-meta">
               <span className="text-muted-foreground">Se factura el mínimo pactado</span>
               <span className="font-semibold tabular-nums text-foreground">{num(minimo)} h</span>
             </div>

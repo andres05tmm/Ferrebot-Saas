@@ -8,7 +8,7 @@
 import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { useQueryClient } from '@tanstack/react-query'
-import { CreditCard, ExternalLink, CheckCircle2, XCircle } from 'lucide-react'
+import { CreditCard, ExternalLink, CheckCircle2, XCircle } from '@/lib/icons.jsx'
 import { cop } from '@/components/shared.jsx'
 import { useCobros, useAccionCobro, keyPrefix } from '@/lib/queries'
 import { useRealtimeEvent } from '@/components/RealtimeProvider.jsx'
@@ -44,9 +44,9 @@ function fechaCorta(iso) {
 function Kpi({ label, value, hint }) {
   return (
     <Card className="p-3">
-      <div className="text-[11px] uppercase tracking-wider text-muted-foreground">{label}</div>
+      <div className="text-caption uppercase tracking-wider text-muted-foreground">{label}</div>
       <div className="text-lg font-semibold tabular-nums">{value}</div>
-      {hint && <div className="text-[11px] text-muted-foreground">{hint}</div>}
+      {hint && <div className="text-caption text-muted-foreground">{hint}</div>}
     </Card>
   )
 }
@@ -103,7 +103,7 @@ export default function TabCobros() {
       <div className="flex flex-wrap gap-1.5">
         {FILTROS.map(f => (
           <button key={f.id || 'todos'} onClick={() => setFiltro(f.id)}
-            className={`text-[12px] px-2.5 h-8 rounded-md border transition-colors ${
+            className={`text-meta px-2.5 h-8 rounded-md border transition-colors ${
               filtro === f.id ? 'bg-primary text-primary-foreground border-primary' : 'bg-surface border-border hover:bg-surface-2'
             }`}>
             {f.label}
@@ -123,10 +123,10 @@ export default function TabCobros() {
         ) : (
           <ul className="divide-y divide-border-subtle">
             {cobros.map(c => (
-              <li key={c.id} className="px-3.5 py-2.5 flex items-center gap-3 text-[13px]">
+              <li key={c.id} className="px-3.5 py-2.5 flex items-center gap-3 text-body-sm">
                 <div className="min-w-0 flex-1">
                   <div className="font-medium truncate">{c.descripcion || c.referencia}</div>
-                  <div className="text-[11px] text-muted-foreground tabular-nums">
+                  <div className="text-caption text-muted-foreground tabular-nums">
                     {c.cliente_telefono || 'sin teléfono'} · {c.proveedor || 'manual'} · {fechaCorta(c.creado_en)}
                     {c.url && (
                       <a href={c.url} target="_blank" rel="noopener noreferrer"
@@ -137,7 +137,7 @@ export default function TabCobros() {
                   </div>
                 </div>
                 <span className="tabular-nums font-semibold shrink-0">{cop(c.monto)}</span>
-                <Badge variant="outline" className={`h-5 text-[10px] capitalize shrink-0 ${ESTADO_BADGE[c.estado] || ''}`}>
+                <Badge variant="outline" className={`h-5 text-micro capitalize shrink-0 ${ESTADO_BADGE[c.estado] || ''}`}>
                   {c.estado}
                 </Badge>
                 {admin && c.estado === 'pendiente' && (
@@ -161,7 +161,7 @@ export default function TabCobros() {
       </Card>
 
       {!admin && (
-        <p className="text-[11px] text-muted-foreground px-1">
+        <p className="text-caption text-muted-foreground px-1">
           Cerrar un cobro a mano (marcar pagado / cancelar) es solo para administradores.
         </p>
       )}

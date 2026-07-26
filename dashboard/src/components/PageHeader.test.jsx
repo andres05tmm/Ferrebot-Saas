@@ -4,7 +4,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import { render, screen } from '@testing-library/react'
-import { HardHat } from 'lucide-react'
+import { HardHat } from '@/lib/icons.jsx'
 
 import PageHeader from './PageHeader.jsx'
 

@@ -4,7 +4,7 @@
  * (CRUD de catálogo/reglas, solo admin). La vista de calendario diseñada llega después.
  */
 import { useState } from 'react'
-import { CalendarClock, Settings } from 'lucide-react'
+import { CalendarClock, Settings } from '@/lib/icons.jsx'
 import { useAuth } from '@/hooks/useAuth.js'
 import SeccionCitas from './agenda/SeccionCitas.jsx'
 import SeccionConfig from './agenda/SeccionConfig.jsx'

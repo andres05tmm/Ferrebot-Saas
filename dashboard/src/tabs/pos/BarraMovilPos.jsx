@@ -3,7 +3,7 @@
  * Vive ENCIMA del bottom nav de la app (72px + safe-area): el cajero vende desde el celular
  * sin perder de vista cuánto va. Solo se monta en modo móvil (useIsMobile en el tab).
  */
-import { ShoppingCart } from 'lucide-react'
+import { ShoppingCart } from '@/lib/icons.jsx'
 import { cop } from '@/components/shared.jsx'
 
 export default function BarraMovilPos({ total, numItems, onAbrir }) {
@@ -14,7 +14,7 @@ export default function BarraMovilPos({ total, numItems, onAbrir }) {
       role="region" aria-label="Resumen de la venta"
     >
       <div className="flex-1 min-w-0">
-        <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
+        <div className="text-micro uppercase tracking-wider text-muted-foreground">
           {numItems} {numItems === 1 ? 'ítem' : 'ítems'}
         </div>
         <div className="text-lg font-semibold tabular leading-tight">{cop(total)}</div>

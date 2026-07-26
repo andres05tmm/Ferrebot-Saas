@@ -7,7 +7,7 @@
 import { useState } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import { toast } from 'sonner'
-import { ChevronDown, ChevronRight, Pencil, Trash2 } from 'lucide-react'
+import { ChevronDown, ChevronRight, Pencil, Trash2 } from '@/lib/icons.jsx'
 import { api } from '@/lib/api'
 import { hoyStrCO } from '@/lib/fechas'
 import { useFetch, cop } from '@/components/shared.jsx'
@@ -63,15 +63,15 @@ export default function VistaDia() {
   return (
     <div className="space-y-3">
       <Card className="p-3 flex flex-wrap items-end gap-3">
-        <label className="flex flex-col gap-1 text-[11px] text-muted-foreground">
+        <label className="flex flex-col gap-1 text-caption text-muted-foreground">
           Desde
           <Input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} aria-label="Desde" className="h-9 w-40" />
         </label>
-        <label className="flex flex-col gap-1 text-[11px] text-muted-foreground">
+        <label className="flex flex-col gap-1 text-caption text-muted-foreground">
           Hasta
           <Input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} aria-label="Hasta" className="h-9 w-40" />
         </label>
-        <span className="ml-auto text-[12px] text-muted-foreground tabular">
+        <span className="ml-auto text-meta text-muted-foreground tabular">
           {ventas.length} {ventas.length === 1 ? 'venta' : 'ventas'} · {cop(total)}
         </span>
       </Card>
@@ -93,16 +93,16 @@ export default function VistaDia() {
                   >
                     {expandido === v.id ? <ChevronDown className="size-4 shrink-0 text-muted-foreground" />
                       : <ChevronRight className="size-4 shrink-0 text-muted-foreground" />}
-                    <span className="text-[11px] text-muted-foreground tabular w-12 shrink-0">
+                    <span className="text-caption text-muted-foreground tabular w-12 shrink-0">
                       {new Date(v.fecha).toLocaleTimeString('es-CO', HORA_CO)}
                     </span>
-                    <span className="text-[13px] shrink-0">N.º {v.consecutivo}</span>
-                    <Badge variant="outline" className="text-[10px] h-5 px-1.5 capitalize shrink-0">{v.metodo_pago}</Badge>
-                    <BadgeFiscal fiscal={v.fiscal} className="text-[10px] h-5 px-1.5 shrink-0" />
+                    <span className="text-body-sm shrink-0">N.º {v.consecutivo}</span>
+                    <Badge variant="outline" className="text-micro h-5 px-1.5 capitalize shrink-0">{v.metodo_pago}</Badge>
+                    <BadgeFiscal fiscal={v.fiscal} className="text-micro h-5 px-1.5 shrink-0" />
                     {v.estado === 'anulada' && (
-                      <Badge variant="outline" className="text-[10px] h-5 px-1.5 bg-destructive/10 text-destructive border-destructive/20 shrink-0">anulada</Badge>
+                      <Badge variant="outline" className="text-micro h-5 px-1.5 bg-destructive/10 text-destructive border-destructive/20 shrink-0">anulada</Badge>
                     )}
-                    <span className="ml-auto text-[13px] font-semibold tabular shrink-0">{cop(Number(v.total))}</span>
+                    <span className="ml-auto text-body-sm font-semibold tabular shrink-0">{cop(Number(v.total))}</span>
                   </button>
                   {/* Editar/borrar: solo ventas de HOY propias (o admin). Días anteriores/ajenas: sin botón. */}
                   {puedoModificar(v) && (
@@ -191,13 +191,13 @@ function EditarVentaForm({ venta, onClose, onSaved }) {
   return (
     <div className="px-9 py-3 bg-surface-2/40 border-t border-border-subtle space-y-2.5">
       <div className="flex flex-wrap items-center gap-2">
-        <label className="text-[10px] uppercase tracking-wider text-muted-foreground">Método</label>
+        <label className="text-micro uppercase tracking-wider text-muted-foreground">Método</label>
         <select value={metodo} onChange={(e) => setMetodo(e.target.value)} aria-label="Método de pago"
           className="h-8 px-2 rounded-md border border-border bg-surface text-sm capitalize">
           {METODOS.map(m => <option key={m} value={m}>{m}</option>)}
         </select>
         {clienteId != null && (
-          <button onClick={() => setClienteId(null)} className="text-[11px] text-muted-foreground hover:text-foreground">
+          <button onClick={() => setClienteId(null)} className="text-caption text-muted-foreground hover:text-foreground">
             Quitar cliente
           </button>
         )}
@@ -206,19 +206,19 @@ function EditarVentaForm({ venta, onClose, onSaved }) {
       <ul className="space-y-1.5">
         {lineas.map((l, i) => (
           <li key={i} className="flex flex-wrap items-center gap-2">
-            <span className="flex-1 min-w-[120px] truncate text-[12px]">{l.descripcion || `Producto ${l.producto_id}`}</span>
+            <span className="flex-1 min-w-[120px] truncate text-meta">{l.descripcion || `Producto ${l.producto_id}`}</span>
             <Input type="number" min="0" step="any" value={l.cantidad} onChange={(e) => setLinea(i, 'cantidad', e.target.value)}
               aria-label={`Cantidad línea ${i + 1}`} className="w-20 h-8 text-center" />
             <Input type="number" min="0" step="any" value={l.precio_unitario} onChange={(e) => setLinea(i, 'precio_unitario', e.target.value)}
               aria-label={`Precio línea ${i + 1}`} className="w-28 h-8" />
             <button onClick={() => quitarLinea(i)} aria-label={`Quitar línea ${i + 1}`}
-              className="text-[11px] text-destructive hover:underline">Quitar</button>
+              className="text-caption text-destructive hover:underline">Quitar</button>
           </li>
         ))}
       </ul>
 
       <div className="flex items-center gap-3 pt-1">
-        <span className="text-[12px] text-muted-foreground">Total <span className="tabular font-semibold text-foreground">{cop(total)}</span></span>
+        <span className="text-meta text-muted-foreground">Total <span className="tabular font-semibold text-foreground">{cop(total)}</span></span>
         <div className="ml-auto flex items-center gap-2">
           <button onClick={onClose} className="text-xs text-muted-foreground hover:text-foreground px-2 h-8">Cancelar</button>
           <button onClick={guardar} disabled={enviando}
@@ -239,7 +239,7 @@ function DetalleVenta({ ventaId }) {
     <div className="px-9 py-2.5 bg-surface-2/40 border-t border-border-subtle">
       <ul className="space-y-1">
         {data.lineas.map((l, i) => (
-          <li key={i} className="flex items-center gap-2 text-[12px]">
+          <li key={i} className="flex items-center gap-2 text-meta">
             <span className="flex-1 truncate">{l.descripcion || `Producto ${l.producto_id}`}</span>
             <span className="tabular text-muted-foreground shrink-0">
               {Number(l.cantidad)} × {cop(Number(l.precio_unitario))}
@@ -257,9 +257,9 @@ function DetalleVenta({ ventaId }) {
 function DetalleFiscal({ fiscal }) {
   const tieneNumero = fiscal.numero != null || fiscal.prefijo
   return (
-    <div className="mt-2 pt-2 border-t border-border-subtle space-y-1 text-[11px] text-muted-foreground">
+    <div className="mt-2 pt-2 border-t border-border-subtle space-y-1 text-caption text-muted-foreground">
       <div className="flex items-center gap-2 flex-wrap">
-        <BadgeFiscal fiscal={fiscal} className="text-[10px] h-5 px-1.5" />
+        <BadgeFiscal fiscal={fiscal} className="text-micro h-5 px-1.5" />
         {tieneNumero && (
           <span className="tabular">N.º {fiscal.prefijo ? `${fiscal.prefijo}-` : ''}{fiscal.numero ?? '—'}</span>
         )}

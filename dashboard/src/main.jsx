@@ -1,6 +1,16 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
-// Inter via @fontsource — sin <link> externo (evitar FOUT)
+// Tipografía base, self-host vía @fontsource (sin <link> externo → sin FOUT).
+// Cuerpo: Geist variable — hecha para interfaces densas, con cifras tabulares de verdad.
+// Títulos y cifras grandes: Archivo — grotesca con carácter, aguanta bien el peso 700/800.
+// (Inter se conserva solo como fallback en el stack; ya no es la familia por defecto.)
+import '@fontsource-variable/geist'
+import '@fontsource/archivo/500.css'
+// Las familias de los presets por vertical (branding.tokens.font_ui/font_display). Antes se pedían a
+// Google Fonts con un <link> en caliente: petición externa, parpadeo de fuente y nada funcionaba sin
+// red — en una PWA que se instala eso no se sostiene. Ahora viajan en el bundle como las demás.
+import '@fontsource-variable/bricolage-grotesque'
+import '@fontsource-variable/fraunces'
 import '@fontsource/inter/400.css'
 import '@fontsource/inter/500.css'
 import '@fontsource/inter/600.css'

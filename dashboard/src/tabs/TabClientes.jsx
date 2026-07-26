@@ -20,7 +20,7 @@ import { useOutletContext } from 'react-router-dom'
 import { toast } from 'sonner'
 import {
   AlertCircle, ChevronLeft, ChevronRight, MapPin, Pencil, Plus, Search, Trash2, Users,
-} from 'lucide-react'
+} from '@/lib/icons.jsx'
 import { api, apiJson } from '@/lib/api'
 import { useFetch, useIsMobile } from '@/components/shared.jsx'
 import { useRealtimeEvent } from '@/components/RealtimeProvider.jsx'
@@ -87,7 +87,7 @@ function TipoDocBadge({ tipo }) {
   if (!tipo) return null
   return (
     <span className={cn(
-      'inline-block text-[10px] font-bold px-1.5 py-0.5 rounded border',
+      'inline-block text-micro font-bold px-1.5 py-0.5 rounded border',
       tipo === 'NIT' ? 'bg-info/10 text-info border-info/30'
         : tipo === 'CE' ? 'bg-warning/10 text-warning border-warning/30'
           : 'bg-primary/10 text-primary border-primary/30',
@@ -190,7 +190,7 @@ export default function TabClientes() {
                     <tr>
                       {['Cliente', 'Identificación', 'Tipo persona', 'Teléfono', 'Correo', ''].map((h, i) => (
                         <th key={h || `acc-${i}`}
-                          className="px-3.5 py-2 text-left text-[10px] uppercase tracking-wider font-semibold text-muted-foreground border-b border-border">
+                          className="px-3.5 py-2 text-left text-micro uppercase tracking-wider font-semibold text-muted-foreground border-b border-border">
                           {h}
                         </th>
                       ))}
@@ -207,7 +207,7 @@ export default function TabClientes() {
             )}
 
             <div className="flex items-center justify-between gap-2 flex-wrap px-3.5 py-2 border-t border-border-subtle bg-surface-2/30">
-              <span className="text-[11px] text-muted-foreground">
+              <span className="text-caption text-muted-foreground">
                 Mostrando {visibles.length} de {clientes.length} clientes
               </span>
               {paginas > 1 && (
@@ -216,7 +216,7 @@ export default function TabClientes() {
                     onClick={() => setPagina(p => Math.max(0, p - 1))} className="gap-1">
                     <ChevronLeft className="size-3.5" /> Anterior
                   </Button>
-                  <span className="text-[11px] text-muted-foreground tabular-nums">
+                  <span className="text-caption text-muted-foreground tabular-nums">
                     {paginaActual + 1} / {paginas}
                   </span>
                   <Button size="sm" variant="outline" disabled={paginaActual >= paginas - 1}
@@ -272,9 +272,9 @@ function FilaEscritorio({ cliente, admin, onEditar, onEliminar }) {
         <div className="flex items-center gap-2.5">
           <Avatar nombre={cliente.nombre} />
           <div className="min-w-0">
-            <div className="text-[13px] font-semibold truncate">{cliente.nombre}</div>
+            <div className="text-body-sm font-semibold truncate">{cliente.nombre}</div>
             {cliente.direccion && (
-              <div className="text-[10px] text-muted-foreground flex items-center gap-1 mt-0.5 truncate">
+              <div className="text-micro text-muted-foreground flex items-center gap-1 mt-0.5 truncate">
                 <MapPin className="size-3 shrink-0" /><span className="truncate">{cliente.direccion}</span>
               </div>
             )}
@@ -284,14 +284,14 @@ function FilaEscritorio({ cliente, admin, onEditar, onEliminar }) {
       <td className="px-3.5 py-2.5">
         <div className="flex items-center gap-2">
           <TipoDocBadge tipo={cliente.tipo_documento} />
-          <span className="text-[11px] text-muted-foreground tabular-nums">{cliente.documento || '—'}</span>
+          <span className="text-caption text-muted-foreground tabular-nums">{cliente.documento || '—'}</span>
         </div>
       </td>
-      <td className="px-3.5 py-2.5 text-[11px] text-muted-foreground">{personaDe(cliente)}</td>
-      <td className="px-3.5 py-2.5 text-[11px] tabular-nums">
+      <td className="px-3.5 py-2.5 text-caption text-muted-foreground">{personaDe(cliente)}</td>
+      <td className="px-3.5 py-2.5 text-caption tabular-nums">
         {cliente.telefono || <span className="text-muted-foreground">—</span>}
       </td>
-      <td className="px-3.5 py-2.5 text-[11px] max-w-44 truncate">
+      <td className="px-3.5 py-2.5 text-caption max-w-44 truncate">
         {cliente.correo || <span className="text-muted-foreground">—</span>}
       </td>
       <td className="px-3.5 py-2.5">
@@ -306,8 +306,8 @@ function FilaMovil({ cliente, admin, onEditar, onEliminar }) {
     <div className="flex items-center gap-2.5 px-3.5 py-2.5 border-b border-border-subtle last:border-0">
       <Avatar nombre={cliente.nombre} size="lg" />
       <div className="flex-1 min-w-0">
-        <div className="text-[13px] font-semibold truncate">{cliente.nombre}</div>
-        <div className="flex items-center gap-1.5 mt-1 flex-wrap text-[11px] text-muted-foreground">
+        <div className="text-body-sm font-semibold truncate">{cliente.nombre}</div>
+        <div className="flex items-center gap-1.5 mt-1 flex-wrap text-caption text-muted-foreground">
           <TipoDocBadge tipo={cliente.tipo_documento} />
           {cliente.documento && <span>{cliente.documento}</span>}
           {cliente.telefono && <span>· {cliente.telefono}</span>}
@@ -450,7 +450,7 @@ function ModalCliente({ cliente, fiscal, onClose, onGuardado }) {
 
           {fiscal && (
             <div className="pt-2 border-t border-border-subtle space-y-3">
-              <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Datos fiscales</p>
+              <p className="text-micro uppercase tracking-wider text-muted-foreground">Datos fiscales</p>
 
               <CiudadPicker
                 daneInicial={f.ciudad_dane}
@@ -467,7 +467,7 @@ function ModalCliente({ cliente, fiscal, onClose, onGuardado }) {
                     <button key={valor} type="button" aria-pressed={f.regimen === valor}
                       onClick={() => setF(prev => ({ ...prev, regimen: prev.regimen === valor ? '' : valor }))}
                       className={cn(
-                        'flex-1 h-9 rounded-md text-[11px] font-semibold border transition-colors',
+                        'flex-1 h-9 rounded-md text-caption font-semibold border transition-colors',
                         f.regimen === valor
                           ? 'bg-info/10 text-info border-info'
                           : 'border-border text-muted-foreground hover:bg-surface-2',
@@ -481,7 +481,7 @@ function ModalCliente({ cliente, fiscal, onClose, onGuardado }) {
           )}
 
           {error && (
-            <div className="flex items-center gap-2 p-2.5 rounded-md bg-destructive/10 border border-destructive/30 text-destructive text-[11px]">
+            <div className="flex items-center gap-2 p-2.5 rounded-md bg-destructive/10 border border-destructive/30 text-destructive text-caption">
               <AlertCircle className="size-3.5 shrink-0" />{error}
             </div>
           )}
@@ -507,11 +507,11 @@ function ModalEliminar({ cliente, onClose, onConfirmar }) {
         </DialogHeader>
         <div>
           <p className="text-sm font-medium">{cliente.nombre}</p>
-          <p className="text-[11px] text-muted-foreground mt-0.5">
+          <p className="text-caption text-muted-foreground mt-0.5">
             {[cliente.tipo_documento, cliente.documento].filter(Boolean).join(' ') || 'Sin identificación'}
           </p>
         </div>
-        <div className="flex items-start gap-2 p-2.5 rounded-md bg-warning/10 border border-warning/30 text-warning text-[11px]">
+        <div className="flex items-start gap-2 p-2.5 rounded-md bg-warning/10 border border-warning/30 text-warning text-caption">
           <AlertCircle className="size-3.5 shrink-0 mt-px" />
           <span>Si el cliente tiene ventas o fiados registrados, no podrá eliminarse.</span>
         </div>
@@ -591,17 +591,17 @@ function CiudadPicker({ daneInicial, onSelect }) {
         {abierto && (buscando || opciones.length > 0) && (
           <div className="absolute top-full left-0 right-0 mt-1 z-50 bg-surface border border-border rounded-md max-h-48 overflow-y-auto shadow-md">
             {buscando ? (
-              <p className="px-3 py-2 text-[11px] text-muted-foreground">Buscando…</p>
+              <p className="px-3 py-2 text-caption text-muted-foreground">Buscando…</p>
             ) : opciones.map(c => (
               <button key={c.matias_id} type="button" onMouseDown={() => elegir(c)}
-                className="w-full text-left px-3 py-2 text-[12px] hover:bg-surface-2 border-b border-border-subtle last:border-0">
+                className="w-full text-left px-3 py-2 text-meta hover:bg-surface-2 border-b border-border-subtle last:border-0">
                 <span className="font-semibold">{c.nombre}</span>
                 {c.departamento && <span className="text-muted-foreground"> — {c.departamento}</span>}
               </button>
             ))}
           </div>
         )}
-        {elegida && <p className="mt-1 text-[11px] text-muted-foreground">Ciudad: {elegida}</p>}
+        {elegida && <p className="mt-1 text-caption text-muted-foreground">Ciudad: {elegida}</p>}
       </div>
     </div>
   )

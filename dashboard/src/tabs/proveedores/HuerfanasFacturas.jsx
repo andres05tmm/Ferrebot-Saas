@@ -8,7 +8,7 @@
 import { useState } from 'react'
 import { toast } from 'sonner'
 import { useQuery } from '@tanstack/react-query'
-import { AlertTriangle } from 'lucide-react'
+import { AlertTriangle } from '@/lib/icons.jsx'
 import { api, apiJson } from '@/lib/api'
 import { cop } from '@/components/shared.jsx'
 import { Card } from '@/components/ui/card.jsx'

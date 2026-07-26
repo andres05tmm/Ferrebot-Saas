@@ -10,7 +10,7 @@
  * El precio de la card es REFERENCIA del catálogo — el real lo pone el servidor al agregar.
  */
 import { memo, useEffect, useMemo, useState } from 'react'
-import { Flame, Hash, LayoutGrid, Percent, Star } from 'lucide-react'
+import { Flame, Hash, LayoutGrid, Percent, Star } from '@/lib/icons.jsx'
 import { cop } from '@/components/shared.jsx'
 import { guardarLS, leerLS } from './piezas.jsx'
 import { etiquetaCategoria, iconoCategoria } from './categorias.js'
@@ -39,7 +39,7 @@ const CardProducto = memo(function CardProducto({ p, enCarrito, esFav, resaltado
         <span className="text-body-sm font-semibold tabular text-foreground">{cop(Number(p.precio_venta))}</span>
       </button>
       {enCarrito > 0 && (
-        <span className="absolute -top-1.5 -left-1.5 min-w-5 h-5 px-1 grid place-items-center rounded-full bg-primary text-primary-foreground text-[10px] font-bold tabular"
+        <span className="absolute -top-1.5 -left-1.5 min-w-5 h-5 px-1 grid place-items-center rounded-full bg-primary text-primary-foreground text-micro font-bold tabular"
           aria-label={`${enCarrito} en el carrito`}>
           {enCarrito}
         </span>
@@ -56,7 +56,7 @@ const CardProducto = memo(function CardProducto({ p, enCarrito, esFav, resaltado
         aria-label={esFav ? `Quitar ${p.nombre} de favoritos` : `Marcar ${p.nombre} como favorito`}
         aria-pressed={esFav}
         className="absolute top-1 right-1 size-7 grid place-items-center rounded touch-manipulation text-muted-foreground/60 hover:text-warning">
-        <Star className={`size-4 ${esFav ? 'fill-warning text-warning' : ''}`} />
+        <Star className={`size-4 ${esFav ? 'text-warning' : ''}`} weight={esFav ? 'fill' : 'regular'} />
       </button>
       {/* Cantidad de un golpe (unitarios): abre el modal para vender "400 tornillos" sin 400 taps.
           Los de fracción/granel no lo necesitan: su tap ya abre modal. */}

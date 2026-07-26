@@ -50,6 +50,52 @@ def _promedio_ponderado(
     return cuantizar((stock_eff * base + cantidad * costo) / denom)
 
 
+def _revertir_ponderado(
+    stock_actual: Decimal, promedio_actual: Decimal | None, cantidad: Decimal, costo: Decimal
+) -> Decimal | None:
+    """Inversa de `_promedio_ponderado`: el promedio ANTES de que esa línea entrara. Función pura.
+
+    (stock·promedio − cantidad·costo) / (stock − cantidad). Si al quitar la línea no queda stock
+    base (denominador <= 0) no hay promedio previo que reconstruir → None (el llamador arranca de
+    cero con el costo nuevo). Exacta mientras no se haya vendido entre la compra y la corrección;
+    con ventas de por medio es una aproximación del mismo orden que cualquier promedio móvil.
+    """
+    if promedio_actual is None:
+        return None
+    base = stock_actual if stock_actual > 0 else Decimal("0")
+    denom = base - cantidad
+    if denom <= 0:
+        return None
+    return cuantizar((base * promedio_actual - cantidad * costo) / denom)
+
+
+def recalcular_promedio(
+    stock_actual: Decimal,
+    promedio_actual: Decimal | None,
+    vieja: tuple[Decimal, Decimal],
+    nueva: tuple[Decimal, Decimal],
+) -> Decimal:
+    """Costo promedio tras corregir una línea: revierte la vieja y re-aplica la nueva. Función pura."""
+    cant_vieja, costo_viejo = vieja
+    cant_nueva, costo_nuevo = nueva
+    previo = _revertir_ponderado(stock_actual, promedio_actual, cant_vieja, costo_viejo)
+    stock_base = (stock_actual if stock_actual > 0 else Decimal("0")) - cant_vieja
+    return _promedio_ponderado(stock_base, previo, cant_nueva, costo_nuevo)
+
+
+@dataclass(frozen=True, slots=True)
+class CompraParaCorregir:
+    """Snapshot bloqueado de la compra + su detalle actual (para aplicar la corrección por diferencia)."""
+
+    id: int
+    total: Decimal
+    mueve_stock: bool
+    correcciones: int
+    ultima_correccion_key: str | None
+    nota_correccion: str | None
+    lineas: tuple[tuple[int, Decimal, Decimal], ...]
+
+
 @dataclass(frozen=True, slots=True)
 class AnalisisPrecioRow:
     """Una fila del análisis de precios de proveedor (Fase 8): agregado por (proveedor, categoría).
@@ -127,6 +173,147 @@ class SqlComprasRepository:
         ).all()
         items = tuple((f.producto_id, f.cantidad, f.costo) for f in filas)
         return CompraIdempotente(compra=compra, total=compra.total, items=items)
+
+    # --- Corrección de una compra ya registrada ------------------------------
+
+    async def obtener_para_corregir(self, compra_id: int) -> CompraParaCorregir | None:
+        """Cabecera bloqueada (FOR UPDATE) + su detalle, para corregir sin carreras."""
+        fila = (
+            await self._s.execute(
+                select(
+                    Compra.id, Compra.total, Compra.obra_id, Compra.es_viaje_material,
+                    Compra.correcciones, Compra.ultima_correccion_key, Compra.nota_correccion,
+                ).where(Compra.id == compra_id).with_for_update()
+            )
+        ).one_or_none()
+        if fila is None:
+            return None
+        detalle = (
+            await self._s.execute(
+                select(CompraDetalle.producto_id, CompraDetalle.cantidad, CompraDetalle.costo)
+                .where(CompraDetalle.compra_id == compra_id)
+            )
+        ).all()
+        return CompraParaCorregir(
+            id=fila.id,
+            total=Decimal(fila.total) if fila.total is not None else Decimal("0"),
+            mueve_stock=(fila.obra_id is None and not fila.es_viaje_material),
+            correcciones=fila.correcciones or 0,
+            ultima_correccion_key=fila.ultima_correccion_key,
+            nota_correccion=fila.nota_correccion,
+            lineas=tuple((d.producto_id, Decimal(d.cantidad), Decimal(d.costo)) for d in detalle),
+        )
+
+    async def leer(self, compra_id: int) -> CompraLeer:
+        """Cabecera de la compra ya persistida (para devolver el estado tras corregirla)."""
+        return await self._leer(compra_id)
+
+    async def set_factura_proveedor(self, compra_id: int, factura_id: str) -> None:
+        await self._s.execute(
+            text("UPDATE compras SET factura_proveedor_id = :f WHERE id = :c"),
+            {"f": factura_id, "c": compra_id},
+        )
+
+    async def reemplazar_detalle(
+        self, compra_id: int, lineas: list[tuple[int, Decimal, Decimal]]
+    ) -> None:
+        await self._s.execute(
+            text("DELETE FROM compras_detalle WHERE compra_id = :c"), {"c": compra_id}
+        )
+        for producto_id, cantidad, costo in lineas:
+            self._s.add(CompraDetalle(
+                compra_id=compra_id, producto_id=producto_id, cantidad=cantidad, costo=costo
+            ))
+        await self._s.flush()
+
+    async def sellar_correccion(
+        self, compra_id: int, *, total: Decimal, motivo: str, cuando: datetime, key: str | None
+    ) -> None:
+        """Nuevo total + auditoría: incrementa el contador (entra en la key natural del n-ésimo
+        ajuste), sella la fecha y acumula el motivo."""
+        await self._s.execute(
+            text(
+                "UPDATE compras SET total = :t, correcciones = correcciones + 1, "
+                "corregida_en = :cuando, ultima_correccion_key = :key, "
+                "nota_correccion = concat_ws(' | ', nota_correccion, cast(:motivo AS text)) "
+                "WHERE id = :c"
+            ),
+            {"t": total, "cuando": cuando, "key": key, "motivo": motivo, "c": compra_id},
+        )
+        await publish(self._s, "compra_corregida", {"compra_id": compra_id, "total": str(total)})
+
+    async def es_ultima_compra_del_producto(self, producto_id: int, compra_id: int) -> bool:
+        """¿Esta es la compra más reciente de ese producto? Solo entonces su costo manda en
+        `productos.precio_compra` (que guarda el ÚLTIMO costo de compra)."""
+        ultima = (
+            await self._s.execute(
+                text(
+                    "SELECT d.compra_id FROM compras_detalle d JOIN compras c ON c.id = d.compra_id "
+                    "WHERE d.producto_id = :p ORDER BY c.fecha DESC, c.id DESC LIMIT 1"
+                ),
+                {"p": producto_id},
+            )
+        ).scalar_one_or_none()
+        return ultima is None or ultima == compra_id
+
+    async def set_costos_producto(
+        self, producto_id: int, *, precio_compra: Decimal | None, costo_promedio: Decimal
+    ) -> None:
+        if precio_compra is not None:
+            await self._s.execute(
+                text("UPDATE productos SET precio_compra = :pc, costo_promedio = :cp WHERE id = :p"),
+                {"pc": precio_compra, "cp": costo_promedio, "p": producto_id},
+            )
+        else:
+            await self._s.execute(
+                text("UPDATE productos SET costo_promedio = :cp WHERE id = :p"),
+                {"cp": costo_promedio, "p": producto_id},
+            )
+
+    async def costo_promedio_actual(self, producto_id: int) -> Decimal | None:
+        return await self._lock_costo_promedio(producto_id)
+
+    async def stock_actual(self, producto_id: int) -> Decimal:
+        valor = (
+            await self._s.execute(
+                text("SELECT stock_actual FROM inventario WHERE producto_id = :p"), {"p": producto_id}
+            )
+        ).scalar_one_or_none()
+        return Decimal(valor) if valor is not None else Decimal("0")
+
+    async def tiene_retenciones(self, compra_id: int) -> bool:
+        """Retenciones ya practicadas sobre la compra (ADR 0027): corregirla cambiaría la base
+        fiscal — eso se corrige por nota de ajuste, no aquí."""
+        total = (
+            await self._s.execute(
+                text(
+                    "SELECT count(*) FROM retenciones_documento "
+                    "WHERE doc_tipo = 'compra' AND doc_id = :c"
+                ),
+                {"c": compra_id},
+            )
+        ).scalar_one()
+        return bool(total)
+
+    async def factura_de_compra(self, compra_id: int) -> str | None:
+        """Cuenta por pagar asociada: la creada por el puente `a_credito` (`COMPRA-{id}`) o la que
+        ancló la recepción de un pedido a proveedor."""
+        directa = (
+            await self._s.execute(
+                text("SELECT factura_proveedor_id FROM compras WHERE id = :c"), {"c": compra_id}
+            )
+        ).scalar_one_or_none()
+        if directa:
+            return directa
+        return (
+            await self._s.execute(
+                text(
+                    "SELECT factura_proveedor_id FROM pedidos_proveedor "
+                    "WHERE compra_id = :c AND factura_proveedor_id IS NOT NULL"
+                ),
+                {"c": compra_id},
+            )
+        ).scalar_one_or_none()
 
     async def crear_compra(
         self,

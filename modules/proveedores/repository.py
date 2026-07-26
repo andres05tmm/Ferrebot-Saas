@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.money import cuantizar
@@ -80,6 +80,36 @@ class SqlProveedoresRepository:
             )
         ).scalars().all()
         return {f.id: FacturaProveedorLeer.model_validate(f) for f in filas}
+
+    async def set_origen_abono(
+        self, abono_id: int, *, origen_fondos: str, caja_movimiento_id: int | None
+    ) -> None:
+        """Deja en el abono de dónde salió la plata y, si fue del cajón, con qué movimiento."""
+        await self._s.execute(
+            text(
+                "UPDATE facturas_abonos SET origen_fondos = :o, caja_movimiento_id = :m "
+                "WHERE id = :a"
+            ),
+            {"o": origen_fondos, "m": caja_movimiento_id, "a": abono_id},
+        )
+        await self._s.flush()
+
+    async def actualizar_total(self, factura_id: str, *, total: Decimal) -> FacturaProveedorLeer:
+        """Cambia el total de la factura y recalcula pendiente/estado desde los abonos ya hechos.
+
+        Lo usa la corrección de una compra a crédito: si la mercancía costó otra cosa, la deuda tiene
+        que seguirla. El servicio ya rechazó el caso de abonos por encima del total nuevo."""
+        orm = (
+            await self._s.execute(
+                select(FacturaProveedor).where(FacturaProveedor.id == factura_id).with_for_update()
+            )
+        ).scalar_one()
+        orm.total = cuantizar(total)
+        pendiente = cuantizar(orm.total - orm.pagado)
+        orm.pendiente = pendiente if pendiente > 0 else Decimal("0.00")
+        orm.estado = "pagada" if orm.pendiente <= 0 else "pendiente"
+        await self._s.flush()
+        return FacturaProveedorLeer.model_validate(orm)
 
     async def crear_abono_y_recalcular(
         self, *, factura_id: str, monto: Decimal, fecha: date

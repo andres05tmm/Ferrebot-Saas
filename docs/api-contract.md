@@ -79,6 +79,13 @@
 | POST | `/compras` | admin | compra + detalle (ENTRADA de inventario) | `compra_registrada`, `inventario_actualizado` |
 | GET | `/compras` | admin | `?desde=&hasta=&proveedor_id=` | — |
 | POST | `/compras/{id}/factura` | admin | foto (Cloudinary) o datos fiscales | — |
+| POST | `/compras/{id}/corregir` | admin | detalle final correcto + `motivo` (+`ajustar_pago`); aplica los deltas como AJUSTE y concilia CxP/caja. **Idempotency-Key** | `compra_corregida`, `inventario_actualizado` |
+
+`GET /compras` es de `vendedor` (todos ven el tab); registrar y corregir siguen siendo de admin.
+El ciclo completo de la compra (pedido → recepción) vive en `/pedidos-proveedor*` (ADR 0031/0034):
+el alta exige líneas con `producto_id`+`cantidad`+`costo_estimado`, `condicion_pago`
+(`contado`|`credito`|`anticipado`) y `origen_fondos` (`caja`|`efectivo_externo`|`banco`; solo `caja`
+postea egreso). En `POST /proveedores/abonos`, `origen_fondos` decide igual si el abono mueve caja.
 
 ## Clientes / Proveedores / Fiados
 

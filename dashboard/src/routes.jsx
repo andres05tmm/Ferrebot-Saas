@@ -15,7 +15,7 @@ import {
   FileText, FileCheck, Calculator, FileCog,
   CalendarDays, Headset, BookText, HandCoins, ChefHat, Banknote,
   CreditCard, Star, BedDouble, Undo2, Percent, Library, Landmark, Scale,
-  HardHat, Wrench, ClipboardList, TrendingDown, Gauge, PackageSearch, Timer, Armchair, Flame, QrCode,
+  HardHat, Wrench, ClipboardList, TrendingDown, Gauge, Timer, Armchair, Flame, QrCode,
   UserRound,
 } from 'lucide-react'
 import { esConstruccion, isRouteEnabled } from './lib/features.jsx'
@@ -64,8 +64,9 @@ export const ROUTES = [
   { path: '/clientes',            label: 'Clientes',            icon: Users,           group: 'gestion', grupoObra: 'comercial', ordenObra: 2 },
   { path: '/cartera',             label: 'Cartera',             icon: HandCoins,       group: 'gestion', grupoObra: 'plata', ordenObra: 1 },
   { path: '/cobros',              label: 'Cobros',              icon: CreditCard,      group: 'gestion', grupoObra: 'plata' },
+  // Compras es el ciclo completo pedido→recepción→corrección (el tab de "Pedidos a proveedor" se
+  // fusionó aquí en la reforma 2026-07).
   { path: '/compras',             label: 'Compras',             icon: Truck,           group: 'gestion', grupoObra: 'materiales', labelObra: 'Compras de obra' },
-  { path: '/pedidos-proveedor',   label: 'Pedidos a proveedor', icon: PackageSearch,   group: 'gestion', grupoObra: 'materiales' },
   { path: '/proveedores',         label: 'Proveedores',         icon: Building2,       group: 'gestion', grupoObra: 'materiales' },
   { path: '/cuentas-por-pagar',   label: 'Cuentas por pagar',   icon: Banknote,        group: 'gestion', grupoObra: 'plata' },
   { path: '/gastos',              label: 'Gastos',              icon: Receipt,         group: 'gestion', grupoObra: 'plata', labelObra: 'Gastos de obra', ordenObra: 2 },

@@ -136,9 +136,13 @@ class CajaService:
         tipo: str,
         monto: Decimal,
         concepto: str | None,
+        referencia: str | None = None,
         idempotency_key: str | None = None,
         modo_empresa: bool = False,
     ) -> ResultadoMovimiento:
+        """`referencia` marca DE DÓNDE viene el movimiento (`pedido:{id}`, `compra:{id}`,
+        `abono:{id}`; los gastos ya usan `gasto:{id}`): es lo que permite reportar el origen de
+        cada egreso sin adivinar por el concepto."""
         caja = await self._abierta(usuario_id, modo_empresa=modo_empresa, lock=True)
         if caja is None:
             raise CajaNoAbierta(usuario_id)
@@ -147,7 +151,7 @@ class CajaService:
             if previo is not None:
                 return ResultadoMovimiento(previo, replay=True)
         movimiento = await self._repo.insertar_movimiento(
-            caja_id=caja.id, tipo=tipo, monto=monto, concepto=concepto,
+            caja_id=caja.id, tipo=tipo, monto=monto, concepto=concepto, referencia=referencia,
             idempotency_key=idempotency_key,
         )
         return ResultadoMovimiento(movimiento, replay=False)

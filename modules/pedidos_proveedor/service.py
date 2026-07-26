@@ -30,6 +30,7 @@ from modules.inventario.service import InventarioService
 from modules.pedidos_proveedor.errors import (
     IdempotenciaConflicto,
     PedidoInexistente,
+    PedidoInvalido,
     PedidoNoEditable,
     RecepcionInvalida,
 )
@@ -176,36 +177,73 @@ class PedidosProveedorService:
                     raise IdempotenciaConflicto(datos.idempotency_key)
                 return ResultadoPedido(await self._leer(previo), replay=True)
 
+        faltantes = set(ln.producto_id for ln in datos.lineas) - await self._repo.productos_existentes(
+            [ln.producto_id for ln in datos.lineas]
+        )
+        if faltantes:
+            raise PedidoInvalido(
+                f"Estos productos no existen en el catálogo: {sorted(faltantes)}"
+            )
+
+        valor_pedido = cuantizar(
+            sum((ln.cantidad * ln.costo_estimado for ln in datos.lineas), Decimal("0"))
+        )
+        anticipo = self._anticipo_de(datos, valor_pedido)
+
         proveedor_id = await self._compras_repo.get_or_create_proveedor(
             proveedor_id=datos.proveedor.id, nombre=datos.proveedor.nombre, nit=datos.proveedor.nit,
         )
         pedido = await self._repo.crear(
             proveedor_id=proveedor_id, fecha_pedido=now_co(), fecha_estimada=datos.fecha_estimada,
-            descripcion=datos.descripcion, monto_estimado=datos.monto_estimado,
-            anticipo=datos.anticipo,
-            condicion_pago="anticipado" if datos.anticipo else None,
+            descripcion=datos.descripcion,
+            # Sin monto explícito, el valor del pedido sale de sus líneas (plata comprometida).
+            monto_estimado=datos.monto_estimado or valor_pedido,
+            anticipo=anticipo,
+            condicion_pago=datos.condicion_pago,
+            origen_anticipo=datos.origen_fondos if anticipo else None,
             usuario_id=usuario_id, notas=datos.notas, idempotency_key=datos.idempotency_key,
             lineas=[(ln.producto_id, ln.descripcion, ln.cantidad, ln.costo_estimado)
                     for ln in datos.lineas],
         )
-        if datos.anticipo and datos.anticipo_desde_caja:
-            # El anticipo sale del cajón AHORA (exige caja abierta). Key natural por pedido: un solo
+        if anticipo and datos.origen_fondos == "caja":
+            # La plata sale del cajón AHORA (exige caja abierta). Key natural por pedido: un solo
             # egreso aunque el alta se reintente (además el alta misma ya es idempotente por su key).
+            concepto = "Pago de contado" if datos.condicion_pago == "contado" else "Anticipo"
             res = await self._caja.registrar_movimiento(
-                usuario_id=usuario_id, tipo="egreso", monto=datos.anticipo,
-                concepto=f"Anticipo pedido proveedor #{pedido.id}",
+                usuario_id=usuario_id, tipo="egreso", monto=anticipo,
+                concepto=f"{concepto} pedido proveedor #{pedido.id}",
+                referencia=f"pedido:{pedido.id}",
                 idempotency_key=f"pedido-anticipo:{pedido.id}", modo_empresa=modo_empresa,
             )
             await self._repo.set_anticipo_movimiento(pedido, res.movimiento.id)
         return ResultadoPedido(await self._leer(pedido), replay=False)
 
     @staticmethod
+    def _anticipo_de(datos: PedidoCrear, valor_pedido: Decimal) -> Decimal | None:
+        """Plata que se le entrega al proveedor AL PEDIR, según la forma de pago declarada."""
+        if datos.condicion_pago == "contado":
+            return valor_pedido                      # se paga todo ahora
+        if datos.condicion_pago == "anticipado":
+            if not datos.anticipo or datos.anticipo >= valor_pedido:
+                raise PedidoInvalido(
+                    "El anticipo debe ser mayor que 0 y menor que el valor del pedido "
+                    f"({valor_pedido}); si se paga completo, usa contado"
+                )
+            return datos.anticipo
+        if datos.anticipo:                           # credito
+            raise PedidoInvalido(
+                "Un pedido a crédito no lleva anticipo: usa 'anticipo parcial' o 'contado'"
+            )
+        return None
+
+    @staticmethod
     def _misma_alta(previo: PedidoProveedor, datos: PedidoCrear) -> bool:
-        """Sustancia del alta: descripción, monto estimado y anticipo (no re-resuelve proveedor)."""
+        """Sustancia del alta: descripción, monto estimado y condición de pago (no re-resuelve
+        proveedor). El anticipo se deriva de la condición, así que no se compara aparte."""
         return (
             (previo.descripcion or None) == (datos.descripcion or None)
-            and previo.monto_estimado == datos.monto_estimado
-            and previo.anticipo == datos.anticipo
+            and (datos.monto_estimado is None or previo.monto_estimado == datos.monto_estimado)
+            and previo.condicion_pago == datos.condicion_pago
         )
 
     # --- Edición / cancelación (solo en camino) -------------------------------
@@ -269,14 +307,16 @@ class PedidosProveedorService:
             # Reintento (doble clic / retry de red): misma sustancia → replay; distinta → conflicto.
             return await self._replay_recepcion(pedido, datos, key_natural)
 
+        # La condición se declaró AL PEDIR; la recepción puede corregirla (la realidad manda).
+        condicion = datos.condicion_pago or pedido.condicion_pago or "contado"
         anticipo = pedido.anticipo or Decimal("0")
         remanente = cuantizar(total - anticipo) if anticipo > 0 else total
-        if datos.condicion_pago == "anticipado":
+        if condicion == "anticipado":
             if anticipo <= 0:
                 raise RecepcionInvalida(
                     f"El pedido {pedido.id} no registró anticipo: usa contado o crédito"
                 )
-            if remanente > 0 and not datos.pago_desde_caja and not datos.numero_factura:
+            if remanente > 0 and not datos.pago_ahora and not datos.numero_factura:
                 raise RecepcionInvalida(
                     f"La mercancía costó {total} y el anticipo fue {anticipo}: indica cómo se paga "
                     "el remanente (desde caja o a crédito con número de factura)"
@@ -300,8 +340,8 @@ class PedidosProveedorService:
         # 2) La deuda: crédito (total) o anticipado con remanente a crédito. El anticipo ya entregado
         # nace como abono automático → pendiente = lo que de verdad se debe.
         factura_id: str | None = None
-        crea_factura = datos.condicion_pago == "credito" or (
-            datos.condicion_pago == "anticipado" and datos.numero_factura and remanente > 0
+        crea_factura = condicion == "credito" or (
+            condicion == "anticipado" and datos.numero_factura and remanente > 0
         )
         if crea_factura:
             factura_id = datos.numero_factura or f"PED-{pedido.id}"
@@ -321,15 +361,18 @@ class PedidosProveedorService:
 
         # 3) El pago desde el cajón: contado (total) o remanente del anticipado. Exige caja abierta;
         # si no la hay, la excepción revierte TODO (compra incluida) — sin efectos parciales.
+        # Si el pedido ya se pagó al pedir (contado con anticipo == total), aquí no queda nada por
+        # pagar: `remanente` es 0 y no se postea un segundo egreso.
         egreso = None
-        if datos.condicion_pago == "contado" and datos.pago_desde_caja:
-            egreso = total
-        elif datos.condicion_pago == "anticipado" and datos.pago_desde_caja and remanente > 0:
+        if condicion == "contado" and datos.pago_ahora:
+            egreso = remanente if anticipo > 0 else total
+        elif condicion == "anticipado" and datos.pago_ahora and remanente > 0:
             egreso = remanente
-        if egreso is not None and egreso > 0:
+        if egreso is not None and egreso > 0 and datos.origen_fondos == "caja":
             await self._caja.registrar_movimiento(
                 usuario_id=usuario_id, tipo="egreso", monto=egreso,
                 concepto=f"Pedido proveedor #{pedido.id} — pago mercancía",
+                referencia=f"compra:{res_compra.compra.id}",
                 idempotency_key=key_natural, modo_empresa=modo_empresa,
             )
 
@@ -346,7 +389,8 @@ class PedidosProveedorService:
         # 5) El pedido queda recibido: para el cronómetro.
         pedido = await self._repo.marcar_recibido(
             pedido, fecha_recepcion=now_co(), compra_id=res_compra.compra.id,
-            factura_proveedor_id=factura_id, condicion_pago=datos.condicion_pago,
+            factura_proveedor_id=factura_id, condicion_pago=condicion,
+            origen_pago=datos.origen_fondos if egreso else None,
             notas=datos.notas,
         )
         lineas = [

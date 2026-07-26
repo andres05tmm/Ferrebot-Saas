@@ -12,6 +12,8 @@ from httpx import ASGITransport
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+import modules.maquinaria.models  # noqa: F401  (registra `maquinas`: FK de gastos)
+import modules.obra.models  # noqa: F401  (registra `obras`: FK de compras/gastos)
 from core.auth import Principal, get_current_user
 from core.auth.features import get_capacidades
 from core.db.session import get_tenant_db

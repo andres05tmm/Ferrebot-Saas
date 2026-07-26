@@ -12,10 +12,28 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.auth import Principal, require_role
 from core.auth.features import get_capacidades, require_feature
 from core.db.session import get_tenant_db
-from modules.compras.errors import IdempotenciaConflicto
+from modules.compras.errors import (
+    CompraInexistente,
+    CompraNoCorregible,
+    CorreccionInvalida,
+    IdempotenciaConflicto,
+)
 from modules.compras.repository import SqlComprasRepository
-from modules.compras.schemas import AnalisisPrecioProveedor, CompraCrear, CompraLeer
+from modules.compras.schemas import (
+    AnalisisPrecioProveedor,
+    CompraCorregir,
+    CompraCrear,
+    CompraLeer,
+    CorreccionLeer,
+)
 from modules.compras.service import ComprasService, RetencionesAplicador
+from modules.caja.config import get_caja_obligatoria
+from modules.caja.errors import CajaNoAbierta
+from modules.caja.repository import SqlCajaRepository
+from modules.caja.service import CajaService
+from modules.inventario.errors import AjusteDejaStockNegativo, ProductoInexistente
+from modules.inventario.repository import SqlInventarioRepository
+from modules.inventario.service import InventarioService
 from modules.proveedores.errors import FacturaProveedorDuplicada
 from modules.proveedores.repository import SqlProveedoresRepository
 from modules.retenciones.repository import SqlRetencionesRepository
@@ -43,6 +61,10 @@ def _service(
         # Puente compra→CxP (reforma dashboard F2): una compra `a_credito` da de alta su deuda en
         # `facturas_proveedores` en la misma transacción (misma sesión del tenant).
         proveedores=SqlProveedoresRepository(session),
+        # Corrección de una compra: mueve inventario (AJUSTE) y, si se pide, la caja. Todo sobre la
+        # MISMA sesión del tenant: la corrección es una transacción.
+        inventario=InventarioService(SqlInventarioRepository(session)),
+        caja=CajaService(SqlCajaRepository(session)),
     )
 
 
@@ -106,7 +128,44 @@ async def listar_compras(
     desde: date | None = Query(default=None),
     hasta: date | None = Query(default=None),
     session: AsyncSession = Depends(get_tenant_db),
-    _user: Principal = Depends(require_role("admin")),
+    _user: Principal = Depends(require_role("vendedor")),
 ) -> list[CompraLeer]:
     """Historial de compras del rango (default mes en curso, hora Colombia)."""
     return await _service(session).listar(desde=desde, hasta=hasta)
+
+
+@router.post("/compras/{compra_id}/corregir", response_model=CorreccionLeer)
+async def corregir_compra(
+    compra_id: int,
+    payload: CompraCorregir,
+    response: Response,
+    session: AsyncSession = Depends(get_tenant_db),
+    user: Principal = Depends(require_role("admin")),
+    capacidades: frozenset[str] = Depends(get_capacidades),
+    modo_empresa: bool = Depends(get_caja_obligatoria),
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+) -> CorreccionLeer:
+    """Corrige cantidades/costos de una compra ya registrada (el dueño digitó mal).
+
+    Aplica SOLO las diferencias: cada cambio de cantidad deja su movimiento AJUSTE en el kárdex y la
+    plata se concilia (la cuenta por pagar sigue al nuevo total; con `ajustar_pago` la diferencia
+    sale o entra de la caja). Idempotente por `Idempotency-Key`: misma key y mismas líneas → replay;
+    misma key con otras líneas → 409.
+    """
+    if payload.idempotency_key is None and idempotency_key:
+        payload = payload.model_copy(update={"idempotency_key": idempotency_key})
+    try:
+        res = await _service(session, capacidades).corregir(
+            compra_id, payload, usuario_id=user.user_id, modo_empresa=modo_empresa
+        )
+    except CompraInexistente as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
+    except ProductoInexistente as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
+    except (CompraNoCorregible, IdempotenciaConflicto, AjusteDejaStockNegativo, CajaNoAbierta) as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+    except CorreccionInvalida as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
+    if res.replay:
+        response.status_code = status.HTTP_200_OK
+    return res

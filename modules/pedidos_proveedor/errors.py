@@ -24,3 +24,8 @@ class IdempotenciaConflicto(Exception):
     def __init__(self, key: str) -> None:
         super().__init__(f"Idempotency-Key {key!r} ya fue usada con un payload distinto")
         self.key = key
+
+
+class PedidoInvalido(Exception):
+    """El alta no cumple una regla de dominio: producto inexistente, anticipo incoherente con la
+    condición de pago, etc. (el router lo mapea a 422)."""

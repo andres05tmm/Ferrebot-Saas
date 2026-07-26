@@ -6,6 +6,10 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 CajaMovTipo = Literal["ingreso", "egreso"]
+# De dónde sale la plata de un pago: `caja` mueve el cajón del día (y exige caja abierta); los otros
+# dos son dinero que no estaba en la caja (efectivo guardado de días anteriores, o banco): se
+# registran con su procedencia pero no tocan el arqueo.
+OrigenFondos = Literal["caja", "efectivo_externo", "banco"]
 GastoCategoria = Literal["transporte", "papeleria", "servicios", "nomina", "mantenimiento", "otros"]
 
 # --- Vertical construcción (spec 09). Literales EXACTOS a la spec 01_MODELO_DATOS y a los enums de la

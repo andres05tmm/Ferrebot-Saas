@@ -13,7 +13,17 @@ que solo tiene cuentas por pagar), así que la extensión del ORM vive en este a
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Numeric, Text, func, text
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    DateTime,
+    ForeignKey,
+    Integer,
+    Numeric,
+    Text,
+    func,
+    text,
+)
 from sqlalchemy.dialects.postgresql import ENUM as PgEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -69,6 +79,14 @@ class Compra(TenantBase):
     # Idempotencia estructural (ai-tools.md §4): UNIQUE parcial (WHERE NOT NULL) creado en la migración
     # 0025. Un reintento con la misma key no duplica la compra ni sus ENTRADAS de inventario.
     idempotency_key: Mapped[str | None] = mapped_column(Text)
+    # Corrección de una compra ya registrada (0067): cuándo, cuántas veces (el contador entra en la
+    # key natural del n-ésimo ajuste), el motivo acumulado y la última key de idempotencia usada.
+    corregida_en: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    correcciones: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    nota_correccion: Mapped[str | None] = mapped_column(Text)
+    ultima_correccion_key: Mapped[str | None] = mapped_column(Text)
+    # Cuenta por pagar que nació de esta compra (puente `a_credito`), para corregirla después.
+    factura_proveedor_id: Mapped[str | None] = mapped_column(Text)
     # --- Vertical construcción (spec 11 / tenant 0048). Columnas nullable salvo `es_viaje_material`.
     # El dinero nuevo va en MONEY4 (18,4, construcción) aunque `total`/`costo` sigan en MONEY (12,2, POS):
     # divergencia DOCUMENTADA en core/money.py. La compra imputada a obra NO mueve stock (solo imputa);

@@ -5,6 +5,7 @@ from decimal import Decimal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from core.config.timezone import today_co
+from modules.caja.schemas import OrigenFondos
 
 
 def _no_futura(v: date | None) -> date | None:
@@ -68,11 +69,17 @@ class FacturaProveedorCrear(BaseModel):
 
 
 class AbonoCrear(BaseModel):
-    """Registro de un abono a una factura de proveedor."""
+    """Registro de un abono a una factura de proveedor.
+
+    `origen_fondos` dice de dónde sale la plata: `caja` postea el egreso en el cajón del día (exige
+    caja abierta); `efectivo_externo` (efectivo guardado de días anteriores) y `banco` bajan la deuda
+    y dejan registrado el medio, sin tocar el arqueo.
+    """
 
     factura_id: str = Field(min_length=1)
     monto: Decimal = Field(gt=0)
     fecha: date | None = None   # default hoy Colombia en el servicio
+    origen_fondos: OrigenFondos = "caja"
 
     _fecha_no_futura = field_validator("fecha")(_no_futura)
 

@@ -23,8 +23,11 @@ from modules.proveedores.schemas import (
 
 
 class ProveedoresService:
-    def __init__(self, repo: SqlProveedoresRepository) -> None:
+    def __init__(self, repo: SqlProveedoresRepository, *, caja=None) -> None:
         self._repo = repo
+        # CajaService atado a la MISMA sesión (lo cablea el router): un abono pagado con el efectivo
+        # del cajón tiene que dejar su egreso, o el arqueo queda descuadrado.
+        self._caja = caja
 
     async def listar_proveedores(self) -> list[ProveedorLeer]:
         """Lista de proveedores registrados (id/nombre/nit) para los desplegables del modal."""
@@ -42,7 +45,9 @@ class ProveedoresService:
             fecha_vencimiento=datos.fecha_vencimiento, usuario_id=usuario_id,
         )
 
-    async def registrar_abono(self, datos: AbonoCrear) -> FacturaProveedorLeer:
+    async def registrar_abono(
+        self, datos: AbonoCrear, *, usuario_id: int | None = None, modo_empresa: bool = False
+    ) -> FacturaProveedorLeer:
         """Registra el abono y devuelve la factura con el saldo recalculado.
 
         404 si la factura no existe; 422 si el monto excede el pendiente (criterio: no sobre-abonar).
@@ -56,9 +61,25 @@ class ProveedoresService:
             raise AbonoInvalido(
                 f"El abono {datos.monto} excede el pendiente {factura.pendiente} de la factura {datos.factura_id!r}"
             )
-        return await self._repo.crear_abono_y_recalcular(
+        leer, abono_id = await self._repo.crear_abono_devolver_id(
             factura_id=datos.factura_id, monto=datos.monto, fecha=datos.fecha or today_co(),
         )
+        movimiento_id = None
+        if datos.origen_fondos == "caja":
+            # Sale del cajón AHORA (exige caja abierta): sin esto el abono era plata fantasma.
+            if self._caja is None:
+                raise RuntimeError("un abono desde caja requiere el servicio de caja cableado")
+            res = await self._caja.registrar_movimiento(
+                usuario_id=usuario_id, tipo="egreso", monto=datos.monto,
+                concepto=f"Abono factura {datos.factura_id}",
+                referencia=f"abono:{abono_id}",
+                idempotency_key=f"abono:{abono_id}", modo_empresa=modo_empresa,
+            )
+            movimiento_id = res.movimiento.id
+        await self._repo.set_origen_abono(
+            abono_id, origen_fondos=datos.origen_fondos, caja_movimiento_id=movimiento_id
+        )
+        return leer
 
     async def listar(self, *, estado: str | None) -> list[FacturaProveedorLeer]:
         return await self._repo.listar(estado=estado)

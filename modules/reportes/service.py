@@ -81,6 +81,16 @@ def _promedio_dias_con_movimiento(serie: list[tuple[date, Decimal]]) -> Decimal:
     return sum(con_mov, Decimal("0")) / len(con_mov)
 
 
+# Etiquetas del desglose de egresos, en el idioma del dueño (la clave es el prefijo de
+# `caja_movimientos.referencia`).
+_ETIQUETA_ORIGEN = {
+    "pedido": "Anticipos y pagos al pedir",
+    "compra": "Pago de mercancía",
+    "abono": "Abonos a proveedor",
+    "manual": "Movimientos manuales de caja",
+}
+
+
 class ReportesService:
     def __init__(self, repo: ReportesRepo) -> None:
         self._repo = repo
@@ -183,6 +193,10 @@ class ReportesService:
         )
         return FlujoDinero(
             desde=d, hasta=h,
+            egresos_por_origen={
+                _ETIQUETA_ORIGEN.get(k, "Otros egresos de caja"): v
+                for k, v in agg.egresos_por_origen.items()
+            },
             ventas_por_metodo=agg.ventas_por_metodo, ventas_fiado=agg.ventas_fiado,
             abonos_fiados=agg.abonos_fiados, ingresos_caja=agg.ingresos_caja,
             total_entradas=total_entradas,

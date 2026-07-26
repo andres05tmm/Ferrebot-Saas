@@ -2,6 +2,8 @@
 
 Patrón test_compras: app mínima + ASGITransport + overrides de auth y sesión del tenant (commit).
 Cubre: factura nace pendiente, abono recalcula el saldo, abonos que saldan → 'pagada', dedup 409,
+(los abonos entran con `origen_fondos='banco'`: aquí se mide la matemática del saldo, no la caja —
+el egreso del abono pagado en efectivo tiene su propio test en test_abonos_origen_fondos.py)
 404/422 del abono, resumen, admin-only, y la foto (con un fake de Cloudinary → URL; sin Cloudinary →
 503). NUNCA hay red real.
 """
@@ -99,7 +101,7 @@ async def test_abono_recalcula_pendiente(tenant):
     app = _app(tenant, user_id=uid)
     async with _cliente(app) as c:
         await c.post("/api/v1/proveedores/facturas", json=_factura())
-        r = await c.post("/api/v1/proveedores/abonos", json={"factura_id": "FAC-001", "monto": 30000, "fecha": "2026-06-06"})
+        r = await c.post("/api/v1/proveedores/abonos", json={"factura_id": "FAC-001", "monto": 30000, "fecha": "2026-06-06", "origen_fondos": "banco"})
     assert r.status_code == 201, r.text
     body = r.json()
     assert body["pagado"] == "30000.00"
@@ -115,8 +117,8 @@ async def test_abonos_que_saldan_marcan_pagada(tenant):
     app = _app(tenant, user_id=uid)
     async with _cliente(app) as c:
         await c.post("/api/v1/proveedores/facturas", json=_factura())
-        await c.post("/api/v1/proveedores/abonos", json={"factura_id": "FAC-001", "monto": 60000, "fecha": "2026-06-06"})
-        r = await c.post("/api/v1/proveedores/abonos", json={"factura_id": "FAC-001", "monto": 40000, "fecha": "2026-06-07"})
+        await c.post("/api/v1/proveedores/abonos", json={"factura_id": "FAC-001", "monto": 60000, "fecha": "2026-06-06", "origen_fondos": "banco"})
+        r = await c.post("/api/v1/proveedores/abonos", json={"factura_id": "FAC-001", "monto": 40000, "fecha": "2026-06-07", "origen_fondos": "banco"})
     assert r.status_code == 201, r.text
     body = r.json()
     assert body["pagado"] == "100000.00"
@@ -144,7 +146,7 @@ async def test_abono_factura_inexistente_404(tenant):
 
     app = _app(tenant, user_id=uid)
     async with _cliente(app) as c:
-        r = await c.post("/api/v1/proveedores/abonos", json={"factura_id": "NO-EXISTE", "monto": 1000, "fecha": "2026-06-06"})
+        r = await c.post("/api/v1/proveedores/abonos", json={"factura_id": "NO-EXISTE", "monto": 1000, "fecha": "2026-06-06", "origen_fondos": "banco"})
     assert r.status_code == 404, r.text
 
 
@@ -156,7 +158,7 @@ async def test_abono_excede_pendiente_422(tenant):
     app = _app(tenant, user_id=uid)
     async with _cliente(app) as c:
         await c.post("/api/v1/proveedores/facturas", json=_factura())
-        r = await c.post("/api/v1/proveedores/abonos", json={"factura_id": "FAC-001", "monto": 150000, "fecha": "2026-06-06"})
+        r = await c.post("/api/v1/proveedores/abonos", json={"factura_id": "FAC-001", "monto": 150000, "fecha": "2026-06-06", "origen_fondos": "banco"})
     assert r.status_code == 422, r.text
 
 
@@ -168,7 +170,7 @@ async def test_abono_monto_no_positivo_422(tenant):
     app = _app(tenant, user_id=uid)
     async with _cliente(app) as c:
         await c.post("/api/v1/proveedores/facturas", json=_factura())
-        r = await c.post("/api/v1/proveedores/abonos", json={"factura_id": "FAC-001", "monto": 0, "fecha": "2026-06-06"})
+        r = await c.post("/api/v1/proveedores/abonos", json={"factura_id": "FAC-001", "monto": 0, "fecha": "2026-06-06", "origen_fondos": "banco"})
     assert r.status_code == 422, r.text   # Field(gt=0) lo rechaza
 
 
@@ -216,9 +218,9 @@ async def test_resumen_suma_pendientes(tenant):
     async with _cliente(app) as c:
         await c.post("/api/v1/proveedores/facturas", json=_factura(id="A", total=100000))
         await c.post("/api/v1/proveedores/facturas", json=_factura(id="B", total=50000))
-        await c.post("/api/v1/proveedores/abonos", json={"factura_id": "A", "monto": 30000, "fecha": "2026-06-06"})
+        await c.post("/api/v1/proveedores/abonos", json={"factura_id": "A", "monto": 30000, "fecha": "2026-06-06", "origen_fondos": "banco"})
         # Saldar B → sale del adeudado.
-        await c.post("/api/v1/proveedores/abonos", json={"factura_id": "B", "monto": 50000, "fecha": "2026-06-06"})
+        await c.post("/api/v1/proveedores/abonos", json={"factura_id": "B", "monto": 50000, "fecha": "2026-06-06", "origen_fondos": "banco"})
         resumen = await c.get("/api/v1/proveedores/resumen")
         pendientes = await c.get("/api/v1/proveedores/facturas", params={"estado": "pendiente"})
     assert resumen.status_code == 200, resumen.text

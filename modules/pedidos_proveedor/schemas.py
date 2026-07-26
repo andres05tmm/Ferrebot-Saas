@@ -12,6 +12,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from modules.caja.schemas import OrigenFondos
+from modules.inventario.precios import UnidadCaptura
 from modules.proveedores.pagos import PartePago
 
 CondicionPago = Literal["contado", "credito", "anticipado"]
@@ -45,6 +46,9 @@ class LineaPedidoCrear(BaseModel):
     descripcion: str | None = Field(default=None, max_length=300)
     cantidad: Decimal = Field(gt=0)
     costo_estimado: Decimal = Field(ge=0, le=MAX_MONTO)
+    # En qué unidad se capturó: 'paquete' es la caja/tarro con que se le compra al proveedor; el
+    # servicio la pasa a la sub-unidad en la que vive el stock (gramo/cm/ml).
+    unidad: UnidadCaptura = "sub"
 
 
 class PedidoCrear(BaseModel):
@@ -87,6 +91,7 @@ class LineaRecibir(BaseModel):
     producto_id: int = Field(gt=0)
     cantidad: Decimal = Field(gt=0)
     costo: Decimal = Field(ge=0, le=MAX_MONTO)
+    unidad: UnidadCaptura = "sub"
     cantidad_fisica: Decimal | None = Field(default=None, ge=0)
 
 
@@ -114,6 +119,10 @@ class LineaPedidoLeer(BaseModel):
     descripcion: str | None
     cantidad: Decimal
     costo_estimado: Decimal | None
+    # Unidad del producto (la llena el servicio): sin esto la UI no sabe si la cantidad son gramos o
+    # unidades, ni puede ofrecer capturar por caja.
+    unidad_medida: str | None = None
+    unidades_por_paquete: Decimal | None = None
 
 
 class PedidoLeer(BaseModel):

@@ -36,6 +36,7 @@ from modules.pedidos_proveedor.errors import (
 )
 from modules.pedidos_proveedor.models import PedidoProveedor
 from modules.pedidos_proveedor.repository import SqlPedidosProveedorRepository
+from modules.inventario.precios import convertir_a_subunidad, unidades_por_paquete
 from modules.proveedores.pagos import etiqueta_origen, monto_de_caja, normalizar_partes
 from modules.pedidos_proveedor.schemas import (
     CuadreLinea,
@@ -186,9 +187,19 @@ class PedidosProveedorService:
                 f"Estos productos no existen en el catálogo: {sorted(faltantes)}"
             )
 
-        valor_pedido = cuantizar(
-            sum((ln.cantidad * ln.costo_estimado for ln in datos.lineas), Decimal("0"))
+        # Captura en paquetes (cajas de puntilla) → sub-unidad del stock: el pedido, la recepción y
+        # la venta hablan la misma unidad.
+        unidades_medida = await self._compras_repo.unidades_medida(
+            [ln.producto_id for ln in datos.lineas]
         )
+        lineas = []
+        for ln in datos.lineas:
+            cantidad, costo = convertir_a_subunidad(
+                ln.cantidad, ln.costo_estimado, unidad=ln.unidad,
+                unidad_medida=unidades_medida.get(ln.producto_id),
+            )
+            lineas.append((ln.producto_id, ln.descripcion, cantidad, costo))
+        valor_pedido = cuantizar(sum((c * v for _, _, c, v in lineas), Decimal("0")))
         anticipo = self._anticipo_de(datos, valor_pedido)
 
         proveedor_id = await self._compras_repo.get_or_create_proveedor(
@@ -203,8 +214,7 @@ class PedidosProveedorService:
             condicion_pago=datos.condicion_pago,
             origen_anticipo=None,   # lo sella el pago (puede ser 'mixto')
             usuario_id=usuario_id, notas=datos.notas, idempotency_key=datos.idempotency_key,
-            lineas=[(ln.producto_id, ln.descripcion, ln.cantidad, ln.costo_estimado)
-                    for ln in datos.lineas],
+            lineas=lineas,
         )
         if anticipo:
             # Cómo se reparte lo que se paga ahora: solo la parte del cajón mueve la caja (y exige
@@ -312,6 +322,7 @@ class PedidosProveedorService:
             raise PedidoNoEditable(pedido_id, "cancelado")
 
         total = cuantizar(sum((ln.cantidad * ln.costo for ln in datos.lineas), Decimal("0")))
+        # (el total en plata no cambia al convertir la unidad: cantidad×costo es invariante)
         key_natural = f"pedido-recibo:{pedido.id}"
 
         if pedido.estado == "recibido":
@@ -341,8 +352,13 @@ class PedidosProveedorService:
         res_compra = await self._compras.registrar(
             CompraCrear(
                 proveedor=CompraProveedorRef(id=pedido.proveedor_id),
-                items=[CompraItemCrear(producto_id=ln.producto_id, cantidad=ln.cantidad, costo=ln.costo)
-                       for ln in datos.lineas],
+                items=[
+                    CompraItemCrear(
+                        producto_id=ln.producto_id, cantidad=ln.cantidad, costo=ln.costo,
+                        unidad=ln.unidad,
+                    )
+                    for ln in datos.lineas
+                ],
                 idempotency_key=key_natural,
             ),
             usuario_id=usuario_id,
@@ -402,6 +418,7 @@ class PedidosProveedorService:
             if ln.cantidad_fisica is not None:
                 await self._inventario.contar(
                     producto_id=ln.producto_id, cantidad_contada=ln.cantidad_fisica,
+                    unidad=ln.unidad,
                     motivo=f"Cuadre al recibir pedido proveedor #{pedido.id}",
                     usuario_id=usuario_id,
                     idempotency_key=f"pedido-cuadre:{pedido.id}:{ln.producto_id}",
@@ -454,6 +471,10 @@ class PedidosProveedorService:
     async def listar(self, *, estado: str | None = None) -> list[PedidoLeer]:
         pedidos = await self._repo.listar(estado=estado)
         nombres = await self._repo.nombres_proveedores(list({p.proveedor_id for p in pedidos}))
+        # Unidades de TODOS los productos de la página en una sola consulta (sin N+1).
+        unidades = await self._compras_repo.unidades_medida(
+            [d.producto_id for p in pedidos for d in p.detalles if d.producto_id]
+        )
         promedios: dict[int, float | None] = {}
         salida = []
         for p in pedidos:
@@ -461,7 +482,7 @@ class PedidosProveedorService:
                 promedios[p.proveedor_id] = await self._repo.promedio_lead_time_horas(p.proveedor_id)
             salida.append(self._a_leer(
                 p, proveedor_nombre=nombres.get(p.proveedor_id),
-                promedio=promedios[p.proveedor_id],
+                promedio=promedios[p.proveedor_id], unidades=unidades,
             ))
         return salida
 
@@ -488,15 +509,33 @@ class PedidosProveedorService:
     async def _leer(self, pedido: PedidoProveedor) -> PedidoLeer:
         nombre = await self._repo.nombre_proveedor(pedido.proveedor_id)
         promedio = await self._repo.promedio_lead_time_horas(pedido.proveedor_id)
-        return self._a_leer(pedido, proveedor_nombre=nombre, promedio=promedio)
+        unidades = await self._compras_repo.unidades_medida(
+            [d.producto_id for d in pedido.detalles if d.producto_id]
+        )
+        return self._a_leer(
+            pedido, proveedor_nombre=nombre, promedio=promedio, unidades=unidades
+        )
 
     @staticmethod
     def _a_leer(
-        pedido: PedidoProveedor, *, proveedor_nombre: str | None, promedio: float | None
+        pedido: PedidoProveedor,
+        *,
+        proveedor_nombre: str | None,
+        promedio: float | None,
+        unidades: dict[int, str] | None = None,
     ) -> PedidoLeer:
         base = PedidoLeer.model_validate(pedido)
         ahora = now_co()
+        unidades = unidades or {}
+        detalles = [
+            d.model_copy(update={
+                "unidad_medida": unidades.get(d.producto_id),
+                "unidades_por_paquete": unidades_por_paquete(unidades.get(d.producto_id)),
+            })
+            for d in base.detalles
+        ]
         return base.model_copy(update={
+            "detalles": detalles,
             "proveedor_nombre": proveedor_nombre,
             "promedio_proveedor_horas": round(promedio, 2) if promedio is not None else None,
             "horas_transcurridas": (

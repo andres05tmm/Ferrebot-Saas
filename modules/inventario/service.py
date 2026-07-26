@@ -9,6 +9,7 @@ from decimal import Decimal
 
 from core.config.timezone import now_co
 from modules.inventario.busqueda import BuscadorProductos, ResultadoBusqueda
+from modules.inventario.precios import convertir_a_subunidad
 from modules.inventario.errors import (
     AjusteDejaStockNegativo,
     CodigoDuplicado,
@@ -120,6 +121,7 @@ class InventarioService:
         *,
         producto_id: int,
         delta: Decimal,
+        unidad: str = "sub",
         motivo: str,
         usuario_id: int | None,
         idempotency_key: str | None = None,
@@ -127,6 +129,10 @@ class InventarioService:
         producto = await self._repo.obtener_producto(producto_id)
         if producto is None:
             raise ProductoInexistente(producto_id)
+        # Ajuste capturado en paquetes (p. ej. "sobró media caja"): a la sub-unidad del stock.
+        delta, _ = convertir_a_subunidad(
+            delta, None, unidad=unidad, unidad_medida=producto.unidad_medida,
+        )
 
         # Lock primero: serializa los ajustes concurrentes del mismo producto. Así el chequeo de
         # idempotencia queda DENTRO de la sección crítica: un reintento concurrente con la misma
@@ -159,11 +165,15 @@ class InventarioService:
         *,
         producto_id: int,
         cantidad_contada: Decimal,
+        unidad: str = "sub",
         motivo: str | None = None,
         usuario_id: int | None,
         idempotency_key: str | None = None,
     ) -> AjusteResultado:
         """Conteo físico (set-to-absolute): deja el stock en `cantidad_contada` (>= 0).
+
+        `unidad='paquete'` cuenta en la unidad con que se compra (cajas de puntilla, tarros): se
+        convierte a la sub-unidad en la que vive el stock antes de aplicar el conteo.
 
         Calcula `delta = cantidad_contada − stock_actual` (con la fila bloqueada) y REUSA el movimiento
         AJUSTE de `aplicar_ajuste` (no duplica la lógica de stock). Como `cantidad_contada >= 0`, el
@@ -173,6 +183,9 @@ class InventarioService:
         producto = await self._repo.obtener_producto(producto_id)
         if producto is None:
             raise ProductoInexistente(producto_id)
+        cantidad_contada, _ = convertir_a_subunidad(
+            cantidad_contada, None, unidad=unidad, unidad_medida=producto.unidad_medida,
+        )
 
         # Lock antes de la idempotencia (igual que `ajustar`): serializa conteos concurrentes y deja el
         # chequeo de la key dentro de la sección crítica.

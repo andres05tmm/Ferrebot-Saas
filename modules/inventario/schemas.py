@@ -4,7 +4,7 @@ from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator
 
-from modules.inventario.precios import unidades_por_paquete
+from modules.inventario.precios import UnidadCaptura, unidades_por_paquete
 
 
 class FraccionCrear(BaseModel):
@@ -121,6 +121,8 @@ class AjusteCrear(BaseModel):
     producto_id: int
     # Delta con signo: +5 (sobrante encontrado) / -3 (merma). El tipo de movimiento es AJUSTE.
     cantidad: Decimal = Field(description="Delta a aplicar al stock; positivo o negativo, distinto de 0")
+    # 'paquete' captura en la unidad de compra (cajas/tarros) y el servicio la pasa a la sub-unidad.
+    unidad: UnidadCaptura = "sub"
     motivo: str = Field(min_length=1)
 
     @field_validator("cantidad")
@@ -148,6 +150,7 @@ class ConteoCrear(BaseModel):
 
     producto_id: int
     cantidad_contada: Decimal = Field(ge=0, description="Cantidad real contada; el stock queda en este valor")
+    unidad: UnidadCaptura = "sub"
     motivo: str | None = Field(default=None)
 
 

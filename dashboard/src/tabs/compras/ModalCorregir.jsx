@@ -6,9 +6,9 @@
  * "ajustar el pago" la diferencia sale o entra de la caja). Antes de guardar se ve el impacto:
  * cuánto stock se mueve y cuánta plata cambia.
  */
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
-import { api } from '@/lib/api'
+import { api, apiJson } from '@/lib/api'
 import { cop } from '@/components/shared.jsx'
 import { Button } from '@/components/ui/button.jsx'
 import { Input } from '@/components/ui/input.jsx'
@@ -16,16 +16,31 @@ import { Label } from '@/components/ui/label.jsx'
 import {
   Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog.jsx'
-import { BuscadorProducto, LineasEditor, nuevaIdemKey, totalLineas } from './comunes.jsx'
+import { BuscadorProducto, LineasEditor, lineaDe, nuevaIdemKey, totalLineas } from './comunes.jsx'
 
 export default function ModalCorregir({ pedido, onCerrar, onCorregido }) {
-  const originales = (pedido?.detalles || [])
-    .filter(d => d.producto_id != null)
-    .map(d => ({
-      producto_id: d.producto_id, nombre: d.descripcion || `Producto #${d.producto_id}`,
-      cantidad: String(d.cantidad), costo: d.costo_estimado != null ? String(d.costo_estimado) : '',
-    }))
-  const [lineas, setLineas] = useState(originales)
+  // Se parte de lo que se RECIBIÓ (el detalle de la compra), no de lo que se pidió: pueden diferir.
+  const [originales, setOriginales] = useState([])
+  const [lineas, setLineas] = useState([])
+  useEffect(() => {
+    if (!pedido?.compra_id) return undefined
+    let cancelado = false
+    apiJson(`/compras/${pedido.compra_id}`)
+      .then(d => {
+        if (cancelado) return
+        const filas = (d?.lineas || [])
+          .filter(l => l.producto_id != null)
+          .map(l => ({
+            producto_id: l.producto_id, nombre: l.nombre || `Producto #${l.producto_id}`,
+            unidad: 'sub', unidad_medida: l.unidad_medida ?? null,
+            unidades_por_paquete: l.unidades_por_paquete ?? null,
+            cantidad: String(l.cantidad), costo: String(l.costo),
+          }))
+        setOriginales(filas); setLineas(filas)
+      })
+      .catch(() => { if (!cancelado) toast.error('No se pudo cargar el detalle de la compra') })
+    return () => { cancelado = true }
+  }, [pedido?.compra_id])
   const [motivo, setMotivo] = useState('')
   const [ajustarPago, setAjustarPago] = useState(true)
   const [enviando, setEnviando] = useState(false)
@@ -55,6 +70,7 @@ export default function ModalCorregir({ pedido, onCerrar, onCorregido }) {
         body: JSON.stringify({
           lineas: lineas.map(l => ({
             producto_id: l.producto_id, cantidad: Number(l.cantidad), costo: Number(l.costo),
+            unidad: l.unidad || 'sub',
           })),
           motivo: motivo.trim(),
           ajustar_pago: ajustarPago && diferencia !== 0,
@@ -81,10 +97,8 @@ export default function ModalCorregir({ pedido, onCerrar, onCorregido }) {
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={guardar} className="space-y-3">
-          <BuscadorProducto onPick={(p) => setLineas(prev => [...prev, {
-            producto_id: p.id, nombre: p.nombre, cantidad: '1',
-            costo: p.precio_compra != null ? String(p.precio_compra) : '',
-          }])} placeholder="Agregar un producto que faltaba…" />
+          <BuscadorProducto onPick={(p) => setLineas(prev => [...prev, lineaDe(p)])}
+            placeholder="Agregar un producto que faltaba…" />
 
           <LineasEditor lineas={lineas} setLineas={setLineas} etiquetaCosto="costo real" />
 

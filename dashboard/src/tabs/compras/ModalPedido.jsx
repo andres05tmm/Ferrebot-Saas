@@ -17,7 +17,8 @@ import {
   Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog.jsx'
 import {
-  BuscadorProducto, LineasEditor, OrigenFondos, nuevaIdemKey, pagoCuadra, partesPago, totalLineas,
+  BuscadorProducto, LineasEditor, OrigenFondos, lineaDe, nuevaIdemKey, pagoCuadra, partesPago,
+  totalLineas,
 } from './comunes.jsx'
 
 const FORMAS = [
@@ -29,7 +30,6 @@ const FORMAS = [
 export default function ModalPedido({ abierto, onCerrar, onCreado }) {
   const [proveedor, setProveedor] = useState('')
   const [descripcion, setDescripcion] = useState('')
-  const [fechaEstimada, setFechaEstimada] = useState('')
   const [lineas, setLineas] = useState([])   // {producto_id, nombre, cantidad, costo_estimado}
   const [forma, setForma] = useState('contado')
   const [anticipo, setAnticipo] = useState('')
@@ -48,7 +48,7 @@ export default function ModalPedido({ abierto, onCerrar, onCreado }) {
     && pagoCuadra(pagos, montoAhora)
 
   function limpiar() {
-    setProveedor(''); setDescripcion(''); setFechaEstimada(''); setLineas([])
+    setProveedor(''); setDescripcion(''); setLineas([])
     setForma('contado'); setAnticipo(''); setOrigen('caja'); setPagos([])
   }
 
@@ -58,13 +58,13 @@ export default function ModalPedido({ abierto, onCerrar, onCreado }) {
     const payload = {
       proveedor: { nombre: proveedor.trim() },
       descripcion: descripcion.trim() || null,
-      fecha_estimada: fechaEstimada || null,
       condicion_pago: forma,
       origen_fondos: origen,
       lineas: lineas.map(l => ({
         producto_id: l.producto_id,
         cantidad: Number(l.cantidad),
         costo_estimado: Number(l.costo_estimado),
+        unidad: l.unidad || 'sub',
       })),
     }
     if (forma === 'anticipado') payload.anticipo = Number(anticipo)
@@ -97,25 +97,17 @@ export default function ModalPedido({ abierto, onCerrar, onCreado }) {
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={crear} className="space-y-3">
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <Label htmlFor="pc-proveedor">Proveedor</Label>
-              <Input id="pc-proveedor" value={proveedor} onChange={(e) => setProveedor(e.target.value)}
-                placeholder="Ferrisariato" aria-label="Proveedor" />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="pc-fecha">Llega aprox.</Label>
-              <Input id="pc-fecha" type="date" value={fechaEstimada} aria-label="Fecha estimada"
-                onChange={(e) => setFechaEstimada(e.target.value)} />
-            </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="pc-proveedor">Proveedor</Label>
+            <Input id="pc-proveedor" value={proveedor} onChange={(e) => setProveedor(e.target.value)}
+              placeholder="Ferrisariato" aria-label="Proveedor" />
           </div>
 
           <div className="space-y-1.5">
             <Label>Productos que se están comprando</Label>
-            <BuscadorProducto onPick={(p) => setLineas(prev => [...prev, {
-              producto_id: p.id, nombre: p.nombre, cantidad: '1',
-              costo_estimado: p.precio_compra != null ? String(p.precio_compra) : '',
-            }])} />
+            <BuscadorProducto onPick={(p) => setLineas(prev => [
+              ...prev, lineaDe(p, { campoCosto: 'costo_estimado' }),
+            ])} />
             <LineasEditor lineas={lineas} setLineas={setLineas} campoCosto="costo_estimado" />
           </div>
 

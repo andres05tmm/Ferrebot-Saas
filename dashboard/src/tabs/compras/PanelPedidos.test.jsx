@@ -54,12 +54,29 @@ function instalarFetch({ pedidos = [EN_CAMINO] } = {}) {
     if (u.includes('/corregir')) {
       return Promise.resolve(jsonResp({ compra: { id: 42 }, delta_total: '0', lineas: [] }))
     }
+    // Detalle de la compra recibida (base de la corrección): lo que llegó de verdad.
+    if (/\/compras\/\d+$/.test(u)) {
+      return Promise.resolve(jsonResp({
+        id: 42, total: '70000.00',
+        lineas: [{
+          producto_id: 3, nombre: 'Martillo', cantidad: '10', costo: '7000',
+          unidad_medida: 'Unidad', unidades_por_paquete: null,
+        }],
+      }))
+    }
     if (u.includes('/pedidos-proveedor') && opts.method === 'POST') {
       return Promise.resolve(jsonResp({ ...EN_CAMINO, id: 8 }, 201))
     }
     if (u.includes('/pedidos-proveedor')) return Promise.resolve(jsonResp(pedidos))
     if (u.includes('/productos')) {
-      return Promise.resolve(jsonResp([{ id: 3, nombre: 'Martillo', precio_compra: '7000' }]))
+      return Promise.resolve(jsonResp([
+        { id: 3, nombre: 'Martillo', precio_compra: '7000', unidad_medida: 'Unidad' },
+        // Puntilla: se vende por gramo y se compra por caja de 500 g (granel).
+        {
+          id: 5, nombre: 'Puntilla 1"', precio_compra: '6000', unidad_medida: 'GRM',
+          unidades_por_paquete: '500',
+        },
+      ]))
     }
     return Promise.resolve(jsonResp([]))
   })
@@ -172,6 +189,33 @@ describe('Tab Compras — ciclo del pedido', () => {
     })
   })
 
+  it('un producto que se vende menudeado se compra por caja y avisa cuántos gramos entran', async () => {
+    const fetchMock = instalarFetch()
+    renderTab()
+    fireEvent.click(await screen.findByText('Nueva compra'))
+    fireEvent.change(screen.getByLabelText('Proveedor'), { target: { value: 'Ferrisariato' } })
+    fireEvent.change(screen.getByLabelText('Buscar producto'), { target: { value: 'punt' } })
+    fireEvent.click(await screen.findByText('Puntilla 1"'))
+
+    // Arranca en la unidad de COMPRA (la caja) y dice qué va a entrar al inventario.
+    expect(screen.getByLabelText('Comprar por caja Puntilla 1"')).toBeChecked()
+    fireEvent.change(screen.getByLabelText('Cantidad Puntilla 1"'), { target: { value: '10' } })
+    expect(screen.getByText(/entran 5000 g/)).toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText('Costo unitario Puntilla 1"'), { target: { value: '6000' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Registrar compra' }))
+
+    await waitFor(() => {
+      const call = fetchMock.mock.calls.find(
+        c => String(c[0]).includes('/pedidos-proveedor') && c[1]?.method === 'POST',
+      )
+      // Se manda la captura tal cual + la unidad: el backend convierte (una sola verdad).
+      expect(JSON.parse(call[1].body).lineas).toEqual([
+        { producto_id: 5, cantidad: 10, costo_estimado: 6000, unidad: 'paquete' },
+      ])
+    })
+  })
+
   it('«Llegó» abre la recepción con las líneas del pedido prellenadas', async () => {
     const fetchMock = instalarFetch()
     renderTab()
@@ -199,7 +243,8 @@ describe('Tab Compras — ciclo del pedido', () => {
     fireEvent.click(await screen.findByText('Corregir'))
     expect(await screen.findByText(/Corregir compra/)).toBeInTheDocument()
 
-    fireEvent.change(screen.getByLabelText('Cantidad Martillo'), { target: { value: '12' } })
+    // Las líneas se cargan del detalle de la COMPRA (no del pedido).
+    fireEvent.change(await screen.findByLabelText('Cantidad Martillo'), { target: { value: '12' } })
     fireEvent.change(screen.getByLabelText('Motivo'), { target: { value: 'llegaron 2 más' } })
     fireEvent.click(screen.getByRole('button', { name: 'Guardar corrección' }))
 

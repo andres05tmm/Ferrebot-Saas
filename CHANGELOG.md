@@ -15,6 +15,10 @@ Formato basado en Keep a Changelog. Versionado semántico.
 - **Pago mixto a proveedor** (migración **0068**): una parte en efectivo y otra por transferencia, al
   pedir, al recibir o al abonar. Solo la parte del cajón mueve la caja; el flujo de dinero muestra
   aparte lo pagado por fuera de ella.
+- **Unidad de compra vs unidad de venta**: los productos que se venden menudeados (puntilla por
+  gramo, lija por cm, tintilla por ml) se compran y se cuentan por caja/rollo/tarro; el backend
+  convierte a la sub-unidad en la que vive el stock, así el inventario y el costo cuadran con la
+  venta. `GET /compras/{id}` expone el detalle real para corregir la compra.
 - Migraciones tenant **0067** y **0068**.
 
 ## [Unreleased]

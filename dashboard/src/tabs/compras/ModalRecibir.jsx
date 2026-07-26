@@ -17,7 +17,7 @@ import {
   Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog.jsx'
 import {
-  BuscadorProducto, LineasEditor, OrigenFondos, pagoCuadra, partesPago, totalLineas,
+  BuscadorProducto, LineasEditor, OrigenFondos, lineaDe, pagoCuadra, partesPago, totalLineas,
 } from './comunes.jsx'
 
 export default function ModalRecibir({ pedido, onCerrar, onRecibido }) {
@@ -26,6 +26,10 @@ export default function ModalRecibir({ pedido, onCerrar, onRecibido }) {
       .filter(d => d.producto_id != null)
       .map(d => ({
         producto_id: d.producto_id, nombre: d.descripcion || `Producto #${d.producto_id}`,
+        // El pedido ya quedó guardado en la sub-unidad del stock: la recepción confirma en esa misma
+        // unidad (si el dueño prefiere cajas, marca la casilla de la línea).
+        unidad: 'sub', unidad_medida: d.unidad_medida ?? null,
+        unidades_por_paquete: d.unidades_por_paquete ?? null,
         cantidad: String(d.cantidad), costo: d.costo_estimado != null ? String(d.costo_estimado) : '',
         cuadrar: false, cantidad_fisica: '',
       })),
@@ -54,6 +58,7 @@ export default function ModalRecibir({ pedido, onCerrar, onRecibido }) {
     const payload = {
       lineas: lineas.map(l => ({
         producto_id: l.producto_id, cantidad: Number(l.cantidad), costo: Number(l.costo),
+        unidad: l.unidad || 'sub',
         cantidad_fisica: l.cuadrar && l.cantidad_fisica !== '' ? Number(l.cantidad_fisica) : null,
       })),
       condicion_pago: condicion,
@@ -91,11 +96,8 @@ export default function ModalRecibir({ pedido, onCerrar, onRecibido }) {
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={recibir} className="space-y-3">
-          <BuscadorProducto onPick={(p) => setLineas(prev => [...prev, {
-            producto_id: p.id, nombre: p.nombre, cantidad: '1',
-            costo: p.precio_compra != null ? String(p.precio_compra) : '',
-            cuadrar: false, cantidad_fisica: '',
-          }])} placeholder="Agregar producto que llegó…" />
+          <BuscadorProducto onPick={(p) => setLineas(prev => [...prev, lineaDe(p)])}
+            placeholder="Agregar producto que llegó…" />
 
           <LineasEditor
             lineas={lineas} setLineas={setLineas} etiquetaCosto="costo real"

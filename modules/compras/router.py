@@ -21,6 +21,7 @@ from modules.compras.errors import (
 from modules.compras.repository import SqlComprasRepository
 from modules.compras.schemas import (
     AnalisisPrecioProveedor,
+    CompraConDetalleLeer,
     CompraCorregir,
     CompraCrear,
     CompraLeer,
@@ -132,6 +133,19 @@ async def listar_compras(
 ) -> list[CompraLeer]:
     """Historial de compras del rango (default mes en curso, hora Colombia)."""
     return await _service(session).listar(desde=desde, hasta=hasta)
+
+
+@router.get("/compras/{compra_id}", response_model=CompraConDetalleLeer)
+async def obtener_compra(
+    compra_id: int,
+    session: AsyncSession = Depends(get_tenant_db),
+    _user: Principal = Depends(require_role("vendedor")),
+) -> CompraConDetalleLeer:
+    """Cabecera + líneas de la compra: lo que se recibió DE VERDAD (base para corregirla)."""
+    compra = await SqlComprasRepository(session).leer_con_detalle(compra_id)
+    if compra is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, f"La compra {compra_id} no existe")
+    return compra
 
 
 @router.post("/compras/{compra_id}/corregir", response_model=CorreccionLeer)

@@ -68,23 +68,27 @@ export function BuscadorProducto({ onPick, placeholder = 'Buscar producto para a
   )
 }
 
-// Vocabulario del granel (mismo que el POS): la sub-unidad en que se VENDE y el envase con que se
-// COMPRA. `unidades_por_paquete` (del backend) dice cuántas sub-unidades trae el envase.
-const ENVASE = {
-  grm: { sub: 'g', paquete: 'caja' },
-  gramos: { sub: 'g', paquete: 'caja' },
-  cms: { sub: 'cm', paquete: 'rollo' },
-  mlt: { sub: 'ml', paquete: 'tarro' },
-  ml: { sub: 'ml', paquete: 'tarro' },
-  mililitros: { sub: 'ml', paquete: 'tarro' },
+// Nombre corto de la unidad de VENTA (lo que se menudea) y del envase con que se COMPRA. El envase
+// lo dice el producto (`nombre_paquete`, 0069: la bolsa de cal); estos son solo los defaults del
+// oficio para los granel que ya venían del catálogo viejo.
+const SUB = { grm: 'g', gramos: 'g', cms: 'cm', mlt: 'ml', ml: 'ml', mililitros: 'ml' }
+const ENVASE_DEFAULT = {
+  grm: 'caja', gramos: 'caja', cms: 'rollo', mlt: 'tarro', ml: 'tarro', mililitros: 'tarro',
 }
 
-/** Cómo se llama lo que se está capturando: granel (caja/gramo) o la unidad del catálogo. */
+/**
+ * Cómo se compra y cómo se vende ese producto, o null si no se compra por empaque.
+ * `factor` = cuántas unidades de venta trae el empaque (bolsa de cal = 25 kg, caja de puntilla = 500 g).
+ */
 export function unidadesDe(producto) {
-  const paquete = Number(producto?.unidades_por_paquete || 0)
-  const envase = ENVASE[(producto?.unidad_medida || '').trim().toLowerCase()]
-  if (!paquete || !envase) return null
-  return { ...envase, factor: paquete }
+  const factor = Number(producto?.unidades_por_paquete || 0)
+  if (!factor) return null
+  const clave = (producto?.unidad_medida || '').trim().toLowerCase()
+  return {
+    sub: SUB[clave] || producto?.unidad_medida || 'unidad',
+    paquete: producto?.nombre_paquete || ENVASE_DEFAULT[clave] || 'paquete',
+    factor,
+  }
 }
 
 /** Línea nueva a partir del producto elegido, con lo necesario para mostrar/convertir la unidad. */
@@ -95,6 +99,7 @@ export function lineaDe(producto, { campoCosto = 'costo' } = {}) {
     nombre: producto.nombre,
     unidad_medida: producto.unidad_medida,
     unidades_por_paquete: producto.unidades_por_paquete ?? null,
+    nombre_paquete: producto.nombre_paquete ?? null,
     cantidad: '1',
     // Los granel se capturan por defecto en el envase con que se le compra al proveedor (la caja),
     // que es como el dueño piensa la compra; el backend lo pasa a la sub-unidad del stock.

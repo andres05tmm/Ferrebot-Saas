@@ -37,6 +37,10 @@ class _ProductoBase(BaseModel):
     precio_sobre_umbral: Decimal | None = Field(default=None, ge=0)
     iva: int = Field(default=19, ge=0, le=100)
     permite_fraccion: bool = False
+    # Empaque con que se compra y se puede vender entero (0069): la bolsa de cal trae 25 kg, la caja
+    # de puntilla 500 g. Con esto la compra en bultos entra al inventario en la unidad de venta.
+    contenido_paquete: Decimal | None = Field(default=None, gt=0)
+    nombre_paquete: str | None = Field(default=None, max_length=40)
     activo: bool = True
     fracciones: list[FraccionCrear] = Field(default_factory=list)
 
@@ -87,6 +91,8 @@ class ProductoLeer(BaseModel):
     precio_sobre_umbral: Decimal | None
     iva: int
     permite_fraccion: bool
+    contenido_paquete: Decimal | None = None
+    nombre_paquete: str | None = None
     activo: bool
     # El POS los usa para armar el modal de venta por fracción/sub-unidad sin round-trips extra:
     # `fracciones` da los precios "bonitos" (pintura por galón, ½ kg); `unidades_por_paquete` da el
@@ -96,7 +102,7 @@ class ProductoLeer(BaseModel):
     @computed_field
     @property
     def unidades_por_paquete(self) -> Decimal | None:
-        return unidades_por_paquete(self.unidad_medida)
+        return unidades_por_paquete(self.unidad_medida, self.contenido_paquete)
 
 
 class PrecioLeer(BaseModel):

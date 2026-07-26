@@ -69,3 +69,13 @@ export function precioSubunidad(p) {
   const pv = Number(p.precio_venta) || 0
   return paquete && paquete > 0 ? pv / paquete : null
 }
+
+
+// Empaque de compra que TAMBIÉN se vende entero (bolsa de cal de 25 kg): cuántas unidades de venta
+// trae y cómo se llama. Sale del producto (0069); null si no aplica. El precio del empaque completo
+// lo pone el motor (cantidad × precio, o la fila de `fracciones` si el dueño le puso precio propio).
+export function paqueteCompleto(p) {
+  const factor = Number(p?.unidades_por_paquete || 0)
+  if (!factor || !p?.nombre_paquete) return null
+  return { factor, nombre: p.nombre_paquete }
+}

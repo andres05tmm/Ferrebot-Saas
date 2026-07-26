@@ -50,8 +50,17 @@ _UNIDADES_POR_PAQUETE: dict[str, Decimal] = {
 }
 
 
-def unidades_por_paquete(unidad_medida: str | None) -> Decimal | None:
-    """Unidades por paquete si el producto se vende por sub-unidad (gramo/cm); None si no aplica."""
+def unidades_por_paquete(
+    unidad_medida: str | None, contenido_paquete: Decimal | None = None
+) -> Decimal | None:
+    """Cuántas unidades de venta trae el empaque con que se compra el producto.
+
+    Manda el DATO del producto (`contenido_paquete`, 0069: la bolsa de cal trae 25 kg, el bulto de
+    cemento 50); si no lo tiene, aplica la convención por unidad de medida (caja de puntilla = 500 g,
+    rollo de lija = 100 cm, tarro de tinte = 1000 ml). None = el producto no se compra por empaque.
+    """
+    if contenido_paquete is not None and contenido_paquete > 0:
+        return Decimal(contenido_paquete)
     if not unidad_medida:
         return None
     return _UNIDADES_POR_PAQUETE.get(unidad_medida.strip().lower())
@@ -63,17 +72,23 @@ UnidadCaptura = Literal["sub", "paquete"]
 
 
 def convertir_a_subunidad(
-    cantidad: Decimal, costo: Decimal | None, *, unidad: str, unidad_medida: str | None
+    cantidad: Decimal,
+    costo: Decimal | None,
+    *,
+    unidad: str,
+    unidad_medida: str | None,
+    contenido_paquete: Decimal | None = None,
 ) -> tuple[Decimal, Decimal | None]:
-    """Pasa una captura en PAQUETES a la sub-unidad en la que vive el stock (y su costo).
+    """Pasa una captura en PAQUETES a la unidad de venta (y su costo).
 
-    La ferretería compra cajas de puntilla pero vende gramos: si no se convierte, "10 cajas" suma 10
-    gramos y el costo queda en $/caja contra un COGS en $/gramo. Función pura; si el producto no es
-    granel (o la captura ya viene en sub-unidad) devuelve los mismos números.
+    La ferretería compra cajas de puntilla y bolsas de cal, pero vende gramos y kilos: si no se
+    convierte, "10 cajas" suma 10 gramos y "2 bolsas" suma 2 kilos, con el costo en $/empaque contra
+    un COGS en $/unidad. Función pura; sin empaque (o con la captura ya en la unidad de venta)
+    devuelve los mismos números.
     """
     if unidad != "paquete":
         return cantidad, costo
-    factor = unidades_por_paquete(unidad_medida)
+    factor = unidades_por_paquete(unidad_medida, contenido_paquete)
     if factor is None or factor <= 0:
         return cantidad, costo
     return cantidad * factor, (costo / factor if costo is not None else None)
@@ -99,6 +114,7 @@ class EsquemaPrecio:
     precio_sobre_umbral: Decimal | None = None
     fracciones: tuple[FraccionPrecio, ...] = field(default_factory=tuple)
     unidad_medida: str = "Unidad"
+    contenido_paquete: Decimal | None = None
 
     @property
     def tiene_escalonado(self) -> bool:
@@ -111,7 +127,7 @@ class EsquemaPrecio:
     @property
     def unidades_por_paquete(self) -> Decimal | None:
         """Unidades por paquete si se vende por sub-unidad (granel: gramo/cm); None si no aplica."""
-        return unidades_por_paquete(self.unidad_medida)
+        return unidades_por_paquete(self.unidad_medida, self.contenido_paquete)
 
 
 def _fraccion_que_coincide(esquema: EsquemaPrecio, cantidad: Decimal) -> FraccionPrecio | None:

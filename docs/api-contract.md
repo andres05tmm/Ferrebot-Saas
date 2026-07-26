@@ -96,6 +96,11 @@ inventario aceptan `unidad`: `sub` (default — la unidad en la que vive el stoc
 (GRM/Cms/MLT) el servidor convierte cantidad y costo con el mismo divisor del motor de precios; en
 los demás no hay conversión.
 
+El tamaño del empaque es DATO del producto (0069): `contenido_paquete` (cuántas unidades de venta
+trae) y `nombre_paquete` ('bolsa', 'bulto', 'caja'…). Manda sobre la convención por unidad, así que
+la cal (`Kg`, contenido 25) se compra y se cuenta por bolsa y se vende por kilo. `ProductoLeer`
+expone ambos y el `unidades_por_paquete` derivado.
+
 ## Clientes / Proveedores / Fiados
 
 | Método | Ruta | Rol | Request / Notas |

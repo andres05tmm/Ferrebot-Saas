@@ -46,9 +46,8 @@ describe('IA por familia (F2.1)', () => {
     expect(pathsDe('plata', PIM)).toEqual(['/cartera', '/gastos', '/caja'])
     expect(labelDe('plata', PIM, '/caja')).toBe('Caja menor')
     expect(labelDe('plata', PIM, '/gastos')).toBe('Gastos de obra')
-    // Sin pagos_online ni pack_pagar, /cobros y /cuentas-por-pagar no aparecen.
+    // Sin pagos_online, /cobros no aparece.
     expect(pathsDe('plata', PIM)).not.toContain('/cobros')
-    expect(pathsDe('plata', PIM)).not.toContain('/cuentas-por-pagar')
   })
 
   it('los grupos viejos quedan vacíos para construcción (el nav los oculta solo)', () => {

@@ -23,6 +23,11 @@ class FacturaProveedor(TenantBase):
 
     id: Mapped[str] = mapped_column(Text, primary_key=True)   # nº de factura del proveedor
     proveedor: Mapped[str] = mapped_column(Text, nullable=False)
+    # A quién se le debe (0070). NULL = factura vieja cuyo nombre no casó ningún proveedor: el
+    # dashboard la muestra aparte para asignarla, en vez de inventar un proveedor por cada typo.
+    proveedor_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("proveedores.id", ondelete="SET NULL")
+    )
     descripcion: Mapped[str | None] = mapped_column(Text)
     total: Mapped[Decimal] = mapped_column(MONEY, nullable=False)
     pagado: Mapped[Decimal] = mapped_column(MONEY, nullable=False, server_default="0")

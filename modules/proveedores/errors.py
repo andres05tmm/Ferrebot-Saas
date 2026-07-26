@@ -19,3 +19,11 @@ class FacturaProveedorInexistente(ProveedoresError):
 
 class AbonoInvalido(ProveedoresError):
     """El abono no es válido (p. ej. excede el pendiente de la factura)."""
+
+
+class ProveedorInexistente(Exception):
+    """No existe un proveedor con ese id (el estado de cuenta lo mapea a 404)."""
+
+    def __init__(self, proveedor_id: int) -> None:
+        super().__init__(f"El proveedor {proveedor_id} no existe")
+        self.proveedor_id = proveedor_id

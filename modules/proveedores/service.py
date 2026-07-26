@@ -4,11 +4,14 @@ Reglas: id de factura único (409); el abono debe existir la factura (404), ser 
 pendiente (422). La fecha por defecto es hoy en hora Colombia (regla #4). El recálculo del saldo lo
 hace el repositorio en la misma transacción.
 """
-from datetime import date
+from datetime import date, timedelta
+from decimal import Decimal
 
 from core.config.timezone import today_co
+from core.money import cuantizar
 from modules.proveedores.errors import (
     AbonoInvalido,
+    ProveedorInexistente,
     FacturaProveedorDuplicada,
     FacturaProveedorInexistente,
 )
@@ -16,11 +19,19 @@ from modules.proveedores.pagos import etiqueta_origen, monto_de_caja, normalizar
 from modules.proveedores.repository import SqlProveedoresRepository
 from modules.proveedores.schemas import (
     AbonoCrear,
+    EstadoCuentaProveedor,
+    MovimientoCuenta,
+    ProveedorEstado,
     FacturaProveedorCrear,
     FacturaProveedorLeer,
     ProveedorLeer,
     ResumenCxP,
 )
+
+
+# Ventana por defecto del estado de cuenta: 6 meses (decisión del dueño). Más atrás se consulta con
+# un rango explícito — el botón de PDF del tab lo usa para llevarse todo el histórico.
+_VENTANA_ESTADO_CUENTA_DIAS = 183
 
 
 class ProveedoresService:
@@ -34,14 +45,82 @@ class ProveedoresService:
         """Lista de proveedores registrados (id/nombre/nit) para los desplegables del modal."""
         return await self._repo.listar_proveedores()
 
+    async def estado_proveedores(self) -> list[ProveedorEstado]:
+        """Cómo va cada proveedor: cuánto se le debe, cuánto está vencido, qué viene en camino y
+        cuánto suele tardar. Es la lista del tab de proveedores."""
+        filas = await self._repo.estado_proveedores(hoy=today_co())
+        return [
+            ProveedorEstado(
+                **{k: v for k, v in f.items() if k != "lead_time_horas"},
+                lead_time_promedio_horas=(
+                    round(float(f["lead_time_horas"]), 2) if f["lead_time_horas"] is not None else None
+                ),
+            )
+            for f in filas
+        ]
+
+    async def estado_cuenta(
+        self, proveedor_id: int, *, desde: date | None, hasta: date | None
+    ) -> EstadoCuentaProveedor:
+        """Estado de cuenta del proveedor: saldo, antigüedad y el movimiento a movimiento con SALDO
+        CORRIDO (cada línea muestra cómo quedó la deuda después de ella).
+
+        Default: los últimos 6 meses (lo que se consulta a diario); con un rango explícito se puede
+        ir tan atrás como haga falta — el PDF del tab usa justamente eso.
+        """
+        hoy = today_co()
+        hasta = hasta or hoy
+        desde = desde or (hasta - timedelta(days=_VENTANA_ESTADO_CUENTA_DIAS))
+        nombre = await self._repo.nombre_proveedor(proveedor_id)
+        if nombre is None:
+            raise ProveedorInexistente(proveedor_id)
+
+        aging = await self._repo.aging_proveedor(proveedor_id, hoy=hoy)
+        saldo_anterior, filas = await self._repo.movimientos_cuenta(
+            proveedor_id, desde=desde, hasta=hasta
+        )
+
+        saldo_anterior = Decimal(str(saldo_anterior or 0))
+        saldo = cuantizar(saldo_anterior)
+        movimientos = []
+        for f in filas:
+            cargo = cuantizar(Decimal(str(f["cargo"] or 0)))
+            abono = cuantizar(Decimal(str(f["abono"] or 0)))
+            saldo = cuantizar(saldo + cargo - abono)
+            movimientos.append(MovimientoCuenta(
+                fecha=f["fecha"], tipo=f["tipo"], referencia=f["referencia"],
+                descripcion=f["descripcion"], cargo=cargo, abono=abono, saldo=saldo,
+                medio=f["medio"],
+            ))
+
+        return EstadoCuentaProveedor(
+            proveedor_id=proveedor_id, proveedor_nombre=nombre, desde=desde, hasta=hasta,
+            saldo_pendiente=cuantizar(Decimal(str(aging["total"]))),
+            vencido=cuantizar(Decimal(str(aging["vencido"]))),
+            saldo_anterior=cuantizar(saldo_anterior),
+            aging={
+                tramo: cuantizar(Decimal(str(aging[col])))
+                for tramo, col in (
+                    ("0-30", "d0_30"), ("31-60", "d31_60"), ("61-90", "d61_90"), ("90+", "d90_mas")
+                )
+            },
+            movimientos=movimientos,
+        )
+
     async def crear_factura(
         self, datos: FacturaProveedorCrear, *, usuario_id: int | None
     ) -> FacturaProveedorLeer:
         """Da de alta la deuda (pendiente=total). Si el id ya existe → FacturaProveedorDuplicada."""
         if await self._repo.existe(datos.id):
             raise FacturaProveedorDuplicada(datos.id)
+        # La deuda queda ligada al proveedor (0070): el que venga en el payload o el que case por
+        # nombre. Sin coincidencia queda NULL y el dashboard la muestra para asignarla a mano.
+        proveedor_id = datos.proveedor_id or await self._repo.resolver_proveedor_por_nombre(
+            datos.proveedor
+        )
         return await self._repo.crear_factura(
-            factura_id=datos.id, proveedor=datos.proveedor, descripcion=datos.descripcion,
+            factura_id=datos.id, proveedor=datos.proveedor, proveedor_id=proveedor_id,
+            descripcion=datos.descripcion,
             total=datos.total, fecha=datos.fecha or today_co(),
             fecha_vencimiento=datos.fecha_vencimiento, usuario_id=usuario_id,
         )
@@ -87,6 +166,11 @@ class ProveedoresService:
             abono_id, origen_fondos=etiqueta_origen(partes), caja_movimiento_id=movimiento_id
         )
         return leer
+
+    async def asignar_proveedor(self, factura_id: str, proveedor_id: int) -> FacturaProveedorLeer:
+        if await self._repo.obtener(factura_id) is None:
+            raise FacturaProveedorInexistente(factura_id)
+        return await self._repo.asignar_proveedor(factura_id, proveedor_id)
 
     async def listar(self, *, estado: str | None) -> list[FacturaProveedorLeer]:
         return await self._repo.listar(estado=estado)

@@ -249,6 +249,7 @@ class ComprasService:
             await self._proveedores.crear_factura(
                 factura_id=factura_id,
                 proveedor=compra.proveedor_nombre or "Proveedor",
+                proveedor_id=compra.proveedor_id,
                 descripcion=f"Compra #{compra.id}",
                 total=total, fecha=today_co(), fecha_vencimiento=datos.fecha_vencimiento,
                 usuario_id=usuario_id,

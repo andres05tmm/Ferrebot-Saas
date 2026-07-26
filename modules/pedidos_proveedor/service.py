@@ -377,7 +377,7 @@ class PedidosProveedorService:
                 raise RecepcionInvalida(f"La factura {factura_id!r} ya existe en cuentas por pagar")
             nombre = await self._repo.nombre_proveedor(pedido.proveedor_id) or "Proveedor"
             await self._proveedores.crear_factura(
-                factura_id=factura_id, proveedor=nombre,
+                factura_id=factura_id, proveedor=nombre, proveedor_id=pedido.proveedor_id,
                 descripcion=f"Pedido proveedor #{pedido.id}",
                 total=total, fecha=today_co(), fecha_vencimiento=datos.fecha_vencimiento,
                 usuario_id=usuario_id,
@@ -469,8 +469,10 @@ class PedidosProveedorService:
 
     # --- Lecturas -------------------------------------------------------------
 
-    async def listar(self, *, estado: str | None = None) -> list[PedidoLeer]:
-        pedidos = await self._repo.listar(estado=estado)
+    async def listar(
+        self, *, estado: str | None = None, proveedor_id: int | None = None
+    ) -> list[PedidoLeer]:
+        pedidos = await self._repo.listar(estado=estado, proveedor_id=proveedor_id)
         nombres = await self._repo.nombres_proveedores(list({p.proveedor_id for p in pedidos}))
         # Unidades de TODOS los productos de la página en una sola consulta (sin N+1).
         unidades = await self._compras_repo.unidades_medida(

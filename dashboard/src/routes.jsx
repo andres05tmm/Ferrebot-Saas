@@ -67,8 +67,8 @@ export const ROUTES = [
   // Compras es el ciclo completo pedido→recepción→corrección (el tab de "Pedidos a proveedor" se
   // fusionó aquí en la reforma 2026-07).
   { path: '/compras',             label: 'Compras',             icon: Truck,           group: 'gestion', grupoObra: 'materiales', labelObra: 'Compras de obra' },
+  // Proveedores absorbió "Cuentas por pagar": la deuda de cada proveedor vive en su ficha (2026-07).
   { path: '/proveedores',         label: 'Proveedores',         icon: Building2,       group: 'gestion', grupoObra: 'materiales' },
-  { path: '/cuentas-por-pagar',   label: 'Cuentas por pagar',   icon: Banknote,        group: 'gestion', grupoObra: 'plata' },
   { path: '/gastos',              label: 'Gastos',              icon: Receipt,         group: 'gestion', grupoObra: 'plata', labelObra: 'Gastos de obra', ordenObra: 2 },
   { path: '/conciliacion',        label: 'Conciliación',        icon: Landmark,        group: 'gestion', grupoObra: 'plata' },
 

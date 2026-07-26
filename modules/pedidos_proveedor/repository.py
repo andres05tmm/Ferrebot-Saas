@@ -94,10 +94,14 @@ class SqlPedidosProveedorRepository:
             stmt = stmt.with_for_update()
         return (await self._s.execute(stmt)).scalar_one_or_none()
 
-    async def listar(self, *, estado: str | None = None) -> list[PedidoProveedor]:
+    async def listar(
+        self, *, estado: str | None = None, proveedor_id: int | None = None
+    ) -> list[PedidoProveedor]:
         stmt = select(PedidoProveedor)
         if estado is not None:
             stmt = stmt.where(PedidoProveedor.estado == estado)
+        if proveedor_id is not None:
+            stmt = stmt.where(PedidoProveedor.proveedor_id == proveedor_id)
         stmt = stmt.order_by(PedidoProveedor.fecha_pedido.desc(), PedidoProveedor.id.desc())
         return list((await self._s.execute(stmt)).scalars().all())
 

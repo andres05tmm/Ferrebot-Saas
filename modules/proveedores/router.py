@@ -18,6 +18,7 @@ from modules.caja.service import CajaService
 from modules.proveedores.cloudinary_client import CloudinaryClient
 from modules.proveedores.cloudinary_config import cargar_config_cloudinary
 from modules.proveedores.errors import (
+    ProveedorInexistente,
     AbonoInvalido,
     FacturaProveedorDuplicada,
     FacturaProveedorInexistente,
@@ -25,6 +26,9 @@ from modules.proveedores.errors import (
 from modules.proveedores.pagos import PagoInvalido
 from modules.proveedores.repository import SqlProveedoresRepository
 from modules.proveedores.schemas import (
+    AsignarProveedor,
+    EstadoCuentaProveedor,
+    ProveedorEstado,
     AbonoCrear,
     FacturaProveedorCrear,
     FacturaProveedorLeer,
@@ -99,6 +103,51 @@ async def crear_abono(
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
     except CajaNoAbierta as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+
+
+@router.get("/proveedores/estado", response_model=list[ProveedorEstado])
+async def estado_proveedores(
+    session: AsyncSession = Depends(get_tenant_db),
+    _user: Principal = Depends(require_role("admin")),
+) -> list[ProveedorEstado]:
+    """Cómo va cada proveedor: deuda, vencido, pedidos en camino, cuánto tarda y última compra.
+
+    Declarado ANTES de `/proveedores/{...}` para que "estado" no entre como path param."""
+    return await _service(session).estado_proveedores()
+
+
+@router.get(
+    "/proveedores/{proveedor_id}/estado-cuenta", response_model=EstadoCuentaProveedor
+)
+async def estado_cuenta_proveedor(
+    proveedor_id: int,
+    desde: date | None = Query(default=None),
+    hasta: date | None = Query(default=None),
+    session: AsyncSession = Depends(get_tenant_db),
+    _user: Principal = Depends(require_role("admin")),
+) -> EstadoCuentaProveedor:
+    """Estado de cuenta con SALDO CORRIDO (facturas y abonos en orden) + antigüedad de la deuda.
+    Default: últimos 6 meses; con rango explícito se va tan atrás como se quiera (el PDF del tab)."""
+    try:
+        return await _service(session).estado_cuenta(proveedor_id, desde=desde, hasta=hasta)
+    except ProveedorInexistente as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
+
+
+@router.put(
+    "/proveedores/facturas/{factura_id}/proveedor", response_model=FacturaProveedorLeer
+)
+async def asignar_proveedor_factura(
+    factura_id: str,
+    payload: AsignarProveedor,
+    session: AsyncSession = Depends(get_tenant_db),
+    _user: Principal = Depends(require_role("admin")),
+) -> FacturaProveedorLeer:
+    """Enlaza una factura vieja (nombre suelto) con su proveedor real (0070)."""
+    try:
+        return await _service(session).asignar_proveedor(factura_id, payload.proveedor_id)
+    except FacturaProveedorInexistente as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
 
 
 @router.get("/proveedores/facturas", response_model=list[FacturaProveedorLeer])

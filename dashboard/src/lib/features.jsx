@@ -121,7 +121,6 @@ export const RUTA_FEATURE = {
   '/conversaciones': 'canal_whatsapp',
   '/conocimiento': 'pack_faq',
   '/cartera': 'pack_cobranza',
-  '/cuentas-por-pagar': 'pack_pagar',
   '/pedidos': 'pack_pedidos',
   '/mesas': 'pack_mesas',
   '/kds': 'kds',

@@ -218,13 +218,13 @@ function AlertasHoy({ datos, navigate }) {
   }
   if (datos.cxp_vencidas > 0) {
     alertas.push({
-      tono: 'destructive', icon: Banknote, to: '/cuentas-por-pagar',
+      tono: 'destructive', icon: Banknote, to: '/proveedores',
       texto: `${cop(Number(datos.cxp_monto_vencido))} vencidos a proveedores (${datos.cxp_vencidas} factura${datos.cxp_vencidas === 1 ? '' : 's'}).`,
     })
   }
   if (datos.cxp_por_vencer_7d > 0) {
     alertas.push({
-      tono: 'warning', icon: Banknote, to: '/cuentas-por-pagar',
+      tono: 'warning', icon: Banknote, to: '/proveedores',
       texto: `${cop(Number(datos.cxp_monto_por_vencer))} por pagar en los próximos 7 días.`,
     })
   }

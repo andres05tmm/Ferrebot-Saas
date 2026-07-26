@@ -91,12 +91,13 @@ async def crear_pedido(
 @router.get("/pedidos-proveedor", response_model=list[PedidoLeer])
 async def listar_pedidos(
     estado: str | None = Query(default=None, pattern="^(pedido|recibido|cancelado)$"),
+    proveedor_id: int | None = Query(default=None, description="Filtra por proveedor (ficha)"),
     session: AsyncSession = Depends(get_tenant_db),
     _user: Principal = Depends(require_role("vendedor")),
 ) -> list[PedidoLeer]:
     """Pedidos (default: todos), con el cronómetro derivado: `horas_transcurridas` (en camino),
     `lead_time_horas` (recibidos) y `promedio_proveedor_horas` (semáforo vs histórico)."""
-    return await _service(session).listar(estado=estado)
+    return await _service(session).listar(estado=estado, proveedor_id=proveedor_id)
 
 
 @router.get("/pedidos-proveedor/metricas", response_model=list[MetricasProveedor])

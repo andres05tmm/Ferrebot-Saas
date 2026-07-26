@@ -86,7 +86,9 @@ async def test_crear_factura_nace_pendiente(tenant):
     assert r.status_code == 201, r.text
     body = r.json()
     assert body == {
-        "id": "FAC-001", "proveedor": "Ferre Mayorista", "descripcion": None,
+        # `proveedor_id` (0070): la deuda queda ligada al proveedor; None si el nombre no casó
+        # ninguno de los registrados (aquí no hay proveedores en la base).
+        "id": "FAC-001", "proveedor": "Ferre Mayorista", "proveedor_id": None, "descripcion": None,
         "total": "100000.00", "pagado": "0.00", "pendiente": "100000.00",
         "estado": "pendiente", "fecha": "2026-06-05", "fecha_vencimiento": None,
         "foto_url": None, "foto_nombre": None,

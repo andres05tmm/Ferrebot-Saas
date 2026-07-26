@@ -44,6 +44,8 @@ class FacturaProveedorCrear(BaseModel):
 
     id: str = Field(min_length=1)
     proveedor: str = Field(min_length=1)
+    # A quién se le debe (0070). Opcional: si no viene, el servicio lo resuelve por nombre.
+    proveedor_id: int | None = Field(default=None, gt=0)
     descripcion: str | None = None
     total: Decimal = Field(gt=0)
     fecha: date | None = None   # default hoy Colombia en el servicio
@@ -67,6 +69,12 @@ class FacturaProveedorCrear(BaseModel):
         ):
             raise ValueError("La fecha de vencimiento no puede ser anterior a la fecha de la factura")
         return self
+
+
+class AsignarProveedor(BaseModel):
+    """Asigna una factura huérfana (nombre que no casó en el backfill) a su proveedor real."""
+
+    proveedor_id: int = Field(gt=0)
 
 
 class AbonoCrear(BaseModel):
@@ -95,6 +103,7 @@ class FacturaProveedorLeer(BaseModel):
 
     id: str
     proveedor: str
+    proveedor_id: int | None = None
     descripcion: str | None
     total: Decimal
     pagado: Decimal
@@ -104,6 +113,57 @@ class FacturaProveedorLeer(BaseModel):
     fecha_vencimiento: date | None
     foto_url: str | None
     foto_nombre: str | None
+
+
+class ProveedorEstado(BaseModel):
+    """Cómo va la relación con un proveedor, para la lista del tab (una fila por proveedor).
+
+    Junta lo que hoy vivía en tres pantallas distintas: la deuda (cuentas por pagar), el ritmo de
+    entrega (pedidos) y la última compra.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    nombre: str
+    nit: str | None = None
+    telefono: str | None = None
+    contacto_nombre: str | None = None
+    contacto_telefono: str | None = None
+    saldo_pendiente: Decimal = Decimal("0")
+    vencido: Decimal = Decimal("0")
+    facturas_pendientes: int = 0
+    pedidos_en_camino: int = 0
+    lead_time_promedio_horas: float | None = None
+    ultima_compra: date | None = None
+
+
+class MovimientoCuenta(BaseModel):
+    """Una línea del estado de cuenta: lo que se le debió (factura) o lo que se le pagó (abono),
+    con el saldo corrido — el "detailed ledger" que piden los contadores."""
+
+    fecha: date
+    tipo: str                      # 'factura' | 'abono'
+    referencia: str                # nº de factura
+    descripcion: str | None = None
+    cargo: Decimal = Decimal("0")  # lo que aumentó la deuda
+    abono: Decimal = Decimal("0")  # lo que la bajó
+    saldo: Decimal = Decimal("0")  # saldo corrido tras el movimiento
+    medio: str | None = None       # de dónde salió la plata del abono
+
+
+class EstadoCuentaProveedor(BaseModel):
+    """Ficha de deuda de un proveedor: saldo, antigüedad y el movimiento a movimiento."""
+
+    proveedor_id: int
+    proveedor_nombre: str
+    desde: date
+    hasta: date
+    saldo_pendiente: Decimal
+    vencido: Decimal
+    saldo_anterior: Decimal        # lo que ya se debía antes del rango (arranque del corrido)
+    aging: dict[str, Decimal] = {}
+    movimientos: list[MovimientoCuenta] = []
 
 
 class ResumenCxP(BaseModel):

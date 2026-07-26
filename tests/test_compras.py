@@ -15,6 +15,8 @@ from httpx import ASGITransport
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+import modules.maquinaria.models  # noqa: F401  (registra `maquinas`: FK de gastos)
+import modules.obra.models  # noqa: F401  (registra `obras`: FK de compras/gastos)
 from core.auth import Principal, get_current_user
 from core.auth.features import get_capacidades
 from core.db.session import get_tenant_db
@@ -152,7 +154,9 @@ async def test_get_or_create_proveedor_dedup(tenant):
 
 
 # ---- RBAC ------------------------------------------------------------------
-async def test_registrar_compra_es_solo_admin_vendedor_403(tenant):
+async def test_registrar_compra_es_solo_admin_pero_el_historial_lo_ve_el_vendedor(tenant):
+    """Registrar (y corregir) es de admin; VER el historial es de vendedor: el tab Compras es del
+    mostrador — la empleada registra el pedido y marca que llegó (ADR 0034)."""
     async with AsyncSession(tenant.engine) as s:
         uid = await _seed_usuario(s, rol="vendedor")
         pid = await _seed_producto(s, nombre="Cemento", stock="0")
@@ -163,7 +167,7 @@ async def test_registrar_compra_es_solo_admin_vendedor_403(tenant):
         post = await c.post("/api/v1/compras", json={"proveedor": {"nombre": "X"}, "items": [{"producto_id": pid, "cantidad": 1, "costo": 100}]})
         lista = await c.get("/api/v1/compras")
     assert post.status_code == 403, post.text
-    assert lista.status_code == 403, lista.text
+    assert lista.status_code == 200, lista.text
 
 
 # ---- Listado ---------------------------------------------------------------

@@ -136,6 +136,12 @@
     --chart-4:        21 90% 48%;
     --chart-5:        262 83% 68%;
     --chart-6:        240 5% 65%;
+
+    /* Sombras del dark base: tintadas con el marrón del fondo (#1F1B16), no negro puro. Sin esto
+       heredaba las de light (negro al 4%) y las cards no se despegaban del fondo. */
+    --shadow-xs: 0 1px 2px hsl(33 30% 4% / 0.5);
+    --shadow-sm: 0 1px 3px hsl(33 30% 4% / 0.55), 0 6px 20px hsl(33 30% 4% / 0.35);
+    --shadow-md: 0 4px 12px hsl(33 30% 4% / 0.55), 0 12px 32px hsl(33 30% 4% / 0.4);
   }
 
   /* Respeta sistema cuando no hay override manual */
@@ -173,6 +179,12 @@
       --chart-4:        21 90% 48%;
       --chart-5:        262 83% 68%;
       --chart-6:        240 5% 65%;
+
+      /* Sombras del dark base: tintadas con el marrón del fondo (#1F1B16), no negro puro. Sin esto
+         heredaba las de light (negro al 4%) y las cards no se despegaban del fondo. */
+      --shadow-xs: 0 1px 2px hsl(33 30% 4% / 0.5);
+      --shadow-sm: 0 1px 3px hsl(33 30% 4% / 0.55), 0 6px 20px hsl(33 30% 4% / 0.35);
+      --shadow-md: 0 4px 12px hsl(33 30% 4% / 0.55), 0 12px 32px hsl(33 30% 4% / 0.4);
     }
   }
 

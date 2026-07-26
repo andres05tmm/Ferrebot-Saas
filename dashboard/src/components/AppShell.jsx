@@ -64,6 +64,10 @@ export default function AppShell() {
   return (
     <RealtimeProvider>
     <div className="min-h-dvh text-foreground flex">
+      <a href="#contenido"
+        className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 focus:rounded-md focus:bg-primary focus:px-3 focus:py-2 focus:text-primary-foreground focus:text-sm">
+        Saltar al contenido
+      </a>
       {!isMobile && (
         <Sidebar
           collapsed={collapsed}
@@ -85,6 +89,7 @@ export default function AppShell() {
         />
 
         <main
+          id="contenido"
           className="flex-1 min-w-0 overflow-x-clip px-4 md:px-6 py-5 md:py-6 mx-auto w-full"
           style={{
             maxWidth: 1400,

@@ -14,7 +14,7 @@ import { useNavigate, useOutletContext } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { AlertTriangle, Building2, Plus, Search, Truck, Wallet } from 'lucide-react'
 import { apiJson } from '@/lib/api'
-import { cop } from '@/components/shared.jsx'
+import { cop, EstadoVacio, SkeletonFilas } from '@/components/shared.jsx'
 import { useRealtimeEvent } from '@/components/RealtimeProvider.jsx'
 import { useAuth } from '@/hooks/useAuth.js'
 import { Card } from '@/components/ui/card.jsx'
@@ -100,11 +100,20 @@ function Contenido() {
             </Button>
           </div>
           {estadoQ.isLoading ? (
-            <p className="py-10 text-center text-sm text-muted-foreground">Cargando…</p>
+            <SkeletonFilas filas={6} className="px-3" />
           ) : filtrados.length === 0 ? (
-            <p className="py-10 text-center text-sm text-muted-foreground">
-              {proveedores.length === 0 ? 'Aún no hay proveedores registrados.' : 'Ningún proveedor coincide.'}
-            </p>
+            proveedores.length === 0 ? (
+              <EstadoVacio icon={Building2} titulo="Todavía no hay proveedores"
+                detalle="Registra a quienes te surten: sus pedidos, facturas y abonos se agrupan solos en su ficha."
+                accion={(
+                  <Button size="sm" onClick={() => setEditando({})} className="gap-1">
+                    <Plus className="size-4" /> Registrar el primero
+                  </Button>
+                )} />
+            ) : (
+              <EstadoVacio icon={Search} titulo="Ningún proveedor coincide"
+                detalle={`Nada con "${busca.trim()}". Prueba con parte del nombre o el NIT.`} />
+            )
           ) : (
             <ul className="divide-y divide-border-subtle max-h-[32rem] overflow-y-auto">
               {filtrados.map(p => {
@@ -141,8 +150,9 @@ function Contenido() {
               onComprar={() => navigate('/compras')}
               onEditar={(p) => setEditando(p)} />
           ) : (
-            <Card className="p-8 text-center text-sm text-muted-foreground">
-              Elige un proveedor para ver su estado de cuenta.
+            <Card>
+              <EstadoVacio icon={Building2} titulo="Elige un proveedor"
+                detalle="A la izquierda está la lista con lo que se le debe a cada uno." />
             </Card>
           )}
           <HuerfanasFacturas proveedores={proveedores} onAsignada={recargar} />

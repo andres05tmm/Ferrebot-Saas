@@ -96,3 +96,40 @@ describe('ModalCantidad — fracciones de kilo', () => {
     expect(screen.queryByRole('button', { name: /completa/i })).toBeNull()
   })
 })
+
+describe('ModalCantidad — empaque en productos por unidad (el wayper)', () => {
+  const WAYPER = {
+    id: 9, nombre: 'Wayper Blanco', unidad_medida: 'Unidad', precio_venta: '1000',
+    unidades_por_paquete: '12', nombre_paquete: 'kilo', precio_paquete: '10000',
+    permite_fraccion: true,
+    fracciones: [{ fraccion: '1/2 kilo', decimal: '6', precio_total: '5000' }],
+  }
+
+  it('ofrece el kilo completo a su precio, no a 12 × la unidad', () => {
+    render(<ModalCantidad prod={WAYPER} onCerrar={() => {}} onConfirmar={() => {}} />)
+    const boton = screen.getByRole('button', { name: /kilo completo \(12 u\)/i })
+    expect(boton.textContent).toContain('10.000')
+    expect(boton.textContent).not.toContain('12.000')
+  })
+
+  it('el kilo entra al carrito como 12 unidades marcadas por empaque', () => {
+    const onConfirmar = vi.fn()
+    render(<ModalCantidad prod={WAYPER} onCerrar={() => {}} onConfirmar={onConfirmar} />)
+    fireEvent.click(screen.getByRole('button', { name: /kilo completo/i }))
+    fireEvent.click(screen.getByRole('button', { name: 'Agregar al carrito' }))
+    expect(onConfirmar).toHaveBeenCalledWith(
+      expect.objectContaining({ cantidad: 12, porEmpaque: true }),
+    )
+  })
+
+  it('elegir el ½ kilo apaga el precio de kilo entero', () => {
+    const onConfirmar = vi.fn()
+    render(<ModalCantidad prod={WAYPER} onCerrar={() => {}} onConfirmar={onConfirmar} />)
+    fireEvent.click(screen.getByRole('button', { name: /kilo completo/i }))
+    fireEvent.click(screen.getByRole('button', { name: /1\/2 kilo/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Agregar al carrito' }))
+    expect(onConfirmar).toHaveBeenCalledWith(
+      expect.objectContaining({ cantidad: 6, porEmpaque: false }),
+    )
+  })
+})

@@ -97,6 +97,14 @@ function FormCantidad({ prod, tipo, onConfirmar, onCancelar }) {
   function resolver() {
     if (tipo === 'fraccion') {
       const cantidad = unidades + (fracSel ? Number(fracSel.decimal) : 0)
+      if (porEmpaque && empaque) {
+        const n = cantidad / empaque.factor
+        return {
+          cantidad, precioManual: null, porEmpaque: true,
+          total: previewMotor(prod, cantidad, { porEmpaque: true }),
+          desc: `${n} ${empaque.nombre}${n === 1 ? '' : 's'} (${cantidad} u)`,
+        }
+      }
       const desc = [unidades > 0 ? `${unidades} u` : '', fracSel ? fracSel.fraccion : '']
         .filter(Boolean).join(' + ')
       // Unidades enteras + fracción a la vez: el motor no lo expresa en una cantidad; el modal ya
@@ -158,25 +166,42 @@ function FormCantidad({ prod, tipo, onConfirmar, onCancelar }) {
       <div className="space-y-3">
         {tipo === 'fraccion' && (
           <>
+            {/* El empaque también aquí: el kilo de wayper son 12 unidades a $10.000, no 12 × $1.000.
+                Sin este botón el camino corto del mostrador cobraba de más. */}
+            {empaque && (
+              <BotonKpi
+                activo={porEmpaque}
+                onClick={() => {
+                  const n = porEmpaque ? (unidades / empaque.factor) + 1 : 1
+                  setPorEmpaque(true); setFracSel(null); setUnidades(n * empaque.factor)
+                }}
+                titulo={`${empaque.nombre} completo (${empaque.factor} u)`}
+                precio={empaque.precio}
+              />
+            )}
             <div>
               <Label className="text-caption uppercase tracking-wider text-muted-foreground">Unidades completas</Label>
               <div className="mt-1.5 flex items-center gap-2">
                 <Button type="button" variant="outline" size="icon" aria-label="Menos"
-                  onClick={() => setUnidades((n) => Math.max(0, n - 1))}>−</Button>
+                  onClick={() => { setPorEmpaque(false); setUnidades((n) => Math.max(0, n - 1)) }}>−</Button>
                 <span className="w-12 text-center text-body font-semibold tabular">{unidades}</span>
                 <Button type="button" variant="outline" size="icon" aria-label="Más"
-                  onClick={() => setUnidades((n) => n + 1)}>+</Button>
+                  onClick={() => { setPorEmpaque(false); setUnidades((n) => n + 1) }}>+</Button>
                 <span className="text-caption text-muted-foreground">× {cop(pv)}</span>
               </div>
             </div>
             <div>
               <Label className="text-caption uppercase tracking-wider text-muted-foreground">Fracción adicional</Label>
               <div className="mt-1.5 grid grid-cols-3 gap-1.5">
-                <BotonKpi activo={fracSel == null} onClick={() => setFracSel(null)}
+                {/* Salir del empaque limpia las unidades que puso el botón: si el vendedor cambia
+                    de "un kilo" a "medio kilo", quiere medio kilo — no un kilo Y medio. */}
+                <BotonKpi activo={fracSel == null && !porEmpaque}
+                  onClick={() => { if (porEmpaque) setUnidades(0); setPorEmpaque(false); setFracSel(null) }}
                   titulo="Ninguna" sub="sólo unidades" />
                 {fraccionesOrdenadas(prod).map((f) => (
                   <BotonKpi key={f.fraccion} activo={fracSel?.fraccion === f.fraccion}
-                    onClick={() => setFracSel(f)} titulo={f.fraccion} precio={Number(f.precio_total)} />
+                    onClick={() => { if (porEmpaque) setUnidades(0); setPorEmpaque(false); setFracSel(f) }}
+                    titulo={f.fraccion} precio={Number(f.precio_total)} />
                 ))}
               </div>
             </div>

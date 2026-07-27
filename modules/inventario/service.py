@@ -44,6 +44,8 @@ def esquema_de(producto: Producto) -> EsquemaPrecio:
         unidad_medida=producto.unidad_medida,
         # Tamaño del empaque como dato del producto (0069): manda sobre la convención por unidad.
         contenido_paquete=producto.contenido_paquete,
+        # Precio del empaque entero (0072): la bolsa a precio fijo, aparte del kilo suelto.
+        precio_paquete=producto.precio_paquete,
     )
 
 
@@ -104,18 +106,24 @@ class InventarioService:
         if not await self._repo.soft_delete_producto(producto_id):
             raise ProductoInexistente(producto_id)
 
-    async def calcular_precio(self, producto_id: int, cantidad: Decimal) -> PrecioCalculado:
+    async def calcular_precio(
+        self, producto_id: int, cantidad: Decimal, *, por_empaque: bool = False
+    ) -> PrecioCalculado:
+        """Precio de una cantidad (siempre en la unidad de venta). `por_empaque` la cobra a precio
+        de bulto — es lo que el POS consulta para previsualizar la línea antes de vender."""
         producto = await self._repo.obtener_producto(producto_id)
         if producto is None:
             raise ProductoInexistente(producto_id)
         esquema = esquema_de(producto)
-        total, precio_unitario = obtener_precio_para_cantidad(esquema, cantidad)
+        total, precio_unitario = obtener_precio_para_cantidad(
+            esquema, cantidad, por_empaque=por_empaque
+        )
         return PrecioCalculado(
             producto_id=producto_id,
             cantidad=cantidad,
             precio_unitario=precio_unitario,
             total=total,
-            regla=regla_para_cantidad(esquema, cantidad),
+            regla=regla_para_cantidad(esquema, cantidad, por_empaque=por_empaque),
         )
 
     async def ajustar(

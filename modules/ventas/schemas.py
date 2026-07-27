@@ -43,6 +43,10 @@ class VentaDetalleCrear(BaseModel):
     # Tipo del impuesto de la tarifa `iva` (ADR 0032 D2). Solo lo usan las líneas VARIA (el
     # catálogo lo trae del producto): 'iva' (default histórico) o 'inc' (impoconsumo 8%).
     tipo_impuesto: str = Field(default="iva", pattern="^(iva|inc)$")
+    # Cobrar la línea a precio de EMPAQUE (0072): el bulto de cemento a $28.000 en vez de 50 kg
+    # sueltos a $1.500. `cantidad` sigue en la unidad de venta (50, no 1) — es la única unidad que
+    # ven el inventario, el kárdex y la factura; esto solo cambia el precio.
+    por_empaque: bool = False
 
     @model_validator(mode="after")
     def _validar_linea(self) -> "VentaDetalleCrear":

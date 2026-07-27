@@ -4,8 +4,9 @@ Dos verdades de dominio que el bot confundía:
 
   - La palabra "esmeril" decide el PRODUCTO: "lija 60" es lija normal (por hoja); "lija esmeril 60"
     es otro producto que se cobra por centímetro. Apuntan a ids distintos del catálogo.
-  - La lija esmeril cobra `cm × (precio_venta / 100)` porque su `precio_venta` está expresado por
-    100 cm (`unidad_medida = "Cms"`, motor de precios). El catálogo NO se toca; solo la resolución.
+  - La lija esmeril se cobra POR CENTÍMETRO: su `precio_venta` está en centímetros ($220/cm) y el
+    rollo de 100 cm vale $22.000 en `precio_paquete` (0072). Antes el precio del rollo vivía en
+    `precio_venta` y el motor dividía por una convención; ahora no hay nada que deducir.
 
 Se prueba la canonización del slug (notación de grano) en aislamiento y, de punta a punta, la
 resolución + cálculo del bypass sobre un catálogo en memoria que espeja el real de Punto Rojo.
@@ -28,12 +29,15 @@ from tests.evals._harness import construir, ctx_eval
 # --- Catálogo en memoria que espeja el real (ids reales de Punto Rojo) --------
 LIJA_N60 = ProductoPrecio(id=15, nombre="Lija N°60", precio_venta=Decimal("2000"), iva=0, activo=True)
 LIJA_N100 = ProductoPrecio(id=17, nombre="Lija N°100", precio_venta=Decimal("2000"), iva=0, activo=True)
-ESMERIL_N36 = ProductoPrecio(id=29, nombre="Lija Esmeril N°36", precio_venta=Decimal("22000"),
-                             iva=0, activo=True, unidad_medida="Cms")
-ESMERIL_N60 = ProductoPrecio(id=30, nombre="Lija Esmeril N°60", precio_venta=Decimal("20000"),
-                             iva=0, activo=True, unidad_medida="Cms")
-ESMERIL_N80 = ProductoPrecio(id=31, nombre="Lija Esmeril N°80", precio_venta=Decimal("20000"),
-                             iva=0, activo=True, unidad_medida="Cms")
+ESMERIL_N36 = ProductoPrecio(id=29, nombre="Lija Esmeril N°36", precio_venta=Decimal("220"),
+                             iva=0, activo=True, unidad_medida="Cms",
+                             contenido_paquete=Decimal("100"), precio_paquete=Decimal("22000"))
+ESMERIL_N60 = ProductoPrecio(id=30, nombre="Lija Esmeril N°60", precio_venta=Decimal("200"),
+                             iva=0, activo=True, unidad_medida="Cms",
+                             contenido_paquete=Decimal("100"), precio_paquete=Decimal("20000"))
+ESMERIL_N80 = ProductoPrecio(id=31, nombre="Lija Esmeril N°80", precio_venta=Decimal("200"),
+                             iva=0, activo=True, unidad_medida="Cms",
+                             contenido_paquete=Decimal("100"), precio_paquete=Decimal("20000"))
 CATALOGO_LIJA = (LIJA_N60, LIJA_N100, ESMERIL_N36, ESMERIL_N60, ESMERIL_N80)
 
 
@@ -70,15 +74,15 @@ def test_no_toca_frases_sin_lija():
 
 # --- Fórmula de la lija esmeril (motor de precios, por cm) --------------------
 @pytest.mark.parametrize(
-    "precio_venta, cm, total",
+    "precio_cm, cm, total",
     [
-        ("20000", "10", "2000"),     # 10 cm N°60 = 2.000
-        ("22000", "100", "22000"),   # 100 cm N°36 = 22.000
-        ("20000", "50", "10000"),    # 50 cm N°80 = 10.000
+        ("200", "10", "2000"),      # 10 cm N°60 = 2.000
+        ("220", "100", "22000"),    # 100 cm N°36 = 22.000 (el rollo entero)
+        ("200", "50", "10000"),     # 50 cm N°80 = 10.000
     ],
 )
-def test_esmeril_cobra_por_centimetro(precio_venta, cm, total):
-    esquema = EsquemaPrecio(precio_venta=Decimal(precio_venta), unidad_medida="Cms")
+def test_esmeril_cobra_por_centimetro(precio_cm, cm, total):
+    esquema = EsquemaPrecio(precio_venta=Decimal(precio_cm), unidad_medida="Cms")
     total_linea, _ = obtener_precio_para_cantidad(esquema, Decimal(cm))
     assert total_linea == Decimal(total)
 

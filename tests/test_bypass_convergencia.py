@@ -59,10 +59,15 @@ ESCALONADO = ProductoPrecio(id=11, nombre="cemento", precio_venta=Decimal("20000
 LIJA = ProductoPrecio(id=12, nombre="lija", precio_venta=Decimal("2000"), iva=0, activo=True)  # sin fracciones
 # Granel: puntilla por gramo (caja 500 g, precio_venta = precio de la caja) y lija esmeril por cm
 # (precio_venta por 100 cm). El motor cobra exacto vía unidad_medida (no cantidad×precio_venta).
-PUNTILLA_GRM = ProductoPrecio(id=15, nombre="puntilla 1 sin cabeza", precio_venta=Decimal("7000"),
-                              iva=0, activo=True, unidad_medida="GRM")
-LIJA_ESMERIL = ProductoPrecio(id=16, nombre="lija esmeril n36", precio_venta=Decimal("22000"),
-                              iva=0, activo=True, unidad_medida="Cms")
+# Granel tras 0072: `precio_venta` está en la unidad de venta (el gramo, el centímetro) y el precio
+# del empaque va aparte. La caja de 500 g sigue costando $7.000 y el rollo de 100 cm $22.000 — lo
+# que cambió es que el motor ya no lo deduce dividiendo por una convención.
+PUNTILLA_GRM = ProductoPrecio(id=15, nombre="puntilla 1 sin cabeza", precio_venta=Decimal("14"),
+                              iva=0, activo=True, unidad_medida="GRM",
+                              contenido_paquete=Decimal("500"), precio_paquete=Decimal("7000"))
+LIJA_ESMERIL = ProductoPrecio(id=16, nombre="lija esmeril n36", precio_venta=Decimal("220"),
+                              iva=0, activo=True, unidad_medida="Cms",
+                              contenido_paquete=Decimal("100"), precio_paquete=Decimal("22000"))
 # Producto cuyo nombre lleva "para <Palabra capitalizada>": NO es un cliente ("para Juan").
 BROCA_MURO = ProductoPrecio(id=17, nombre="Broca para Muro 1/4", precio_venta=Decimal("5000"),
                             iva=0, activo=True)

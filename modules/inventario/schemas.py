@@ -41,6 +41,9 @@ class _ProductoBase(BaseModel):
     # de puntilla 500 g. Con esto la compra en bultos entra al inventario en la unidad de venta.
     contenido_paquete: Decimal | None = Field(default=None, gt=0)
     nombre_paquete: str | None = Field(default=None, max_length=40)
+    # Precio del empaque completo (0072). `precio_venta` es siempre el de UNA unidad de venta: el
+    # bulto de cemento vale $28.000 y el kilo suelto $1.500, contra el mismo inventario.
+    precio_paquete: Decimal | None = Field(default=None, ge=0)
     activo: bool = True
     fracciones: list[FraccionCrear] = Field(default_factory=list)
 
@@ -93,6 +96,7 @@ class ProductoLeer(BaseModel):
     permite_fraccion: bool
     contenido_paquete: Decimal | None = None
     nombre_paquete: str | None = None
+    precio_paquete: Decimal | None = None
     activo: bool
     # El POS los usa para armar el modal de venta por fracción/sub-unidad sin round-trips extra:
     # `fracciones` da los precios "bonitos" (pintura por galón, ½ kg); `unidades_por_paquete` da el
@@ -110,7 +114,7 @@ class PrecioLeer(BaseModel):
     cantidad: Decimal
     precio_unitario: Decimal
     total: Decimal
-    regla: str  # escalonado | fraccion | subunidad | simple
+    regla: str  # empaque | escalonado | fraccion | simple
 
 
 class StockLeer(BaseModel):
@@ -121,6 +125,29 @@ class StockLeer(BaseModel):
     stock_actual: Decimal
     stock_minimo: Decimal
     bajo: bool
+
+
+class PorCuadrarItem(BaseModel):
+    """Un producto que todavía no entra al inventario progresivo (0052), con su rotación.
+
+    `lineas_vendidas` es cuántas veces se tocó en el mostrador en la ventana: es el orden en que
+    conviene irlos cuadrando. `stock_actual` puede venir NEGATIVO — son las ventas anotadas sin
+    haber contado nunca; no es un error, es el backlog.
+    """
+
+    producto_id: int
+    nombre: str
+    unidad_medida: str
+    stock_actual: Decimal
+    lineas_vendidas: int
+
+
+class AvanceInventario(BaseModel):
+    """Cuánto del catálogo ya es confiable + qué toca cuadrar ahora."""
+
+    activos: int
+    cuadrados: int
+    pendientes: list[PorCuadrarItem]
 
 
 class AjusteCrear(BaseModel):

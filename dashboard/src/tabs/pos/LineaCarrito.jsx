@@ -10,8 +10,13 @@ import { Seg } from './piezas.jsx'
 const FRACCIONES = [['¼', 0.25], ['½', 0.5], ['¾', 0.75], ['1', 1]]
 const GRANEL = { grm: 'g', gramos: 'g', cms: 'cm' }   // sub-unidades de venta a granel
 
-export default function LineaCarrito({ it, precio, onCantidad, onQuitar, onEspecial }) {
+export default function LineaCarrito({ it, precio, onCantidad, onQuitar, onEspecial, onEmpaque }) {
   const granel = !it.varia && GRANEL[(it.unidad_medida || '').toLowerCase()]
+  // Empaque entero (0072): el bulto de cemento a precio fijo. Solo aparece si el producto tiene las
+  // dos mitades del dato — cuántas unidades trae y cuánto vale completo.
+  const contenido = Number(it.contenido_paquete) || 0
+  const empaque = !it.varia && contenido > 0 && it.precio_paquete != null
+  const empaques = empaque && it.por_empaque ? Number(it.cantidad) / contenido : null
   // Precio a mano / pesos: total explícito de la línea (no consulta al servidor).
   const manual = !it.varia && it.precio_manual != null
   const usaServidor = !it.varia && !it.usarEspecial && !manual
@@ -53,13 +58,32 @@ export default function LineaCarrito({ it, precio, onCantidad, onQuitar, onEspec
       </div>
 
       {/* Multiplicadores (patrón del FerreBot viejo): SETEAN la cantidad — predecible al ojo; la
-          edición libre queda en el input. El precio se re-consulta solo (efecto firmaPrecios). */}
+          edición libre queda en el input. El precio se re-consulta solo (efecto firmaPrecios).
+          Vendiendo por bulto multiplican BULTOS, no unidades sueltas. */}
       {!it.varia && (
         <div className="mt-1.5 flex items-center gap-1" role="group" aria-label={`Cantidad rápida de ${it.nombre}`}>
-          {[2, 5, 10].map(n => (
-            <Seg key={n} activo={Number(it.cantidad) === n} onClick={() => onCantidad(String(n))}
-              aria-label={`×${n} de ${it.nombre}`}>×{n}</Seg>
-          ))}
+          {[2, 5, 10].map(n => {
+            const cant = it.por_empaque ? n * contenido : n
+            return (
+              <Seg key={n} activo={Number(it.cantidad) === cant} onClick={() => onCantidad(String(cant))}
+                aria-label={`×${n} de ${it.nombre}`}>×{n}</Seg>
+            )
+          })}
+        </div>
+      )}
+      {empaque && (
+        <div className="mt-1.5 flex items-center gap-1" role="group" aria-label={`Presentación de ${it.nombre}`}>
+          <Seg activo={!it.por_empaque} onClick={() => onEmpaque(false)}>
+            Suelto{granel ? '' : ` (${it.unidad_medida})`}
+          </Seg>
+          <Seg activo={!!it.por_empaque} onClick={() => onEmpaque(true)}>
+            {it.nombre_paquete || 'Empaque'} de {contenido}
+          </Seg>
+          {empaques != null && (
+            <span className="text-caption text-muted-foreground tabular">
+              {empaques} × {cop(Number(it.precio_paquete))}
+            </span>
+          )}
         </div>
       )}
       {it.permite_fraccion && !it.usarEspecial && (

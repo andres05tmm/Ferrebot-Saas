@@ -114,72 +114,91 @@ def test_unidades_por_paquete(unidad, esperado):
     assert unidades_por_paquete(unidad) == esperado
 
 
-def test_granel_grm_cobra_por_gramo():
-    # Puntilla: la caja trae 500 g y precio_venta es el precio de la caja. "500 puntilla" = 500 g = 1 caja.
-    esquema = EsquemaPrecio(precio_venta=Decimal("7500"), unidad_medida="GRM")
+def test_granel_cobra_por_sub_unidad_sin_dividir_nada():
+    # Puntilla tras 0072: `precio_venta` YA está por gramo ($15). El motor no divide por convención;
+    # la caja de 500 g sale de multiplicar, igual que cualquier otro producto.
+    esquema = EsquemaPrecio(precio_venta=Decimal("15"), unidad_medida="GRM")
     total, pu = obtener_precio_para_cantidad(esquema, Decimal("500"))
-    assert total == Decimal("7500.00")            # antes el bug: 500 * 7500 = 3.75M
-    assert pu == Decimal("15")                    # 7500 / 500 = $15 por gramo
+    assert total == Decimal("7500.00")
+    assert pu == Decimal("15")
+    assert obtener_precio_para_cantidad(esquema, Decimal("250"))[0] == Decimal("3750.00")
+    assert obtener_precio_para_cantidad(esquema, Decimal("100"))[0] == Decimal("1500.00")
 
 
-def test_granel_grm_menudeo_y_multicaja():
-    esquema = EsquemaPrecio(precio_venta=Decimal("7500"), unidad_medida="GRM")
-    assert obtener_precio_para_cantidad(esquema, Decimal("250"))[0] == Decimal("3750.00")    # media caja
-    assert obtener_precio_para_cantidad(esquema, Decimal("1000"))[0] == Decimal("15000.00")  # 2 cajas
-    assert obtener_precio_para_cantidad(esquema, Decimal("100"))[0] == Decimal("1500.00")    # 100 g
-
-
-def test_granel_cms_cobra_por_centimetro():
-    # Lija esmeril: se cobra por cm; precio_venta está expresado por 100 cm. Esmeril 36 = $220/cm.
-    esquema = EsquemaPrecio(precio_venta=Decimal("22000"), unidad_medida="Cms")
-    assert obtener_precio_para_cantidad(esquema, Decimal("100"))[0] == Decimal("22000.00")  # 1 m
-    assert obtener_precio_para_cantidad(esquema, Decimal("10"))[0] == Decimal("2200.00")    # 10 cm
-    assert obtener_precio_para_cantidad(esquema, Decimal("30"))[0] == Decimal("6600.00")    # 30 cm
-    # Se acopla a CUALQUIER cantidad de cm que pida el cliente (no solo múltiplos de 100/10).
+def test_lija_por_centimetro():
+    # Lija esmeril: $220 el cm (el rollo de 100 cm vale $22.000). Cualquier cantidad de cm, no solo
+    # múltiplos: el cliente pide 11 cm y se le cobran 11.
+    esquema = EsquemaPrecio(precio_venta=Decimal("220"), unidad_medida="Cms")
+    assert obtener_precio_para_cantidad(esquema, Decimal("100"))[0] == Decimal("22000.00")
     assert obtener_precio_para_cantidad(esquema, Decimal("11"))[0] == Decimal("2420.00")
 
 
-def test_granel_ml_cobra_por_mililitro():
-    # Tintilla: el tarro trae 1000 ml (1 L) y precio_venta es el precio del tarro. $26/ml.
-    esquema = EsquemaPrecio(precio_venta=Decimal("26000"), unidad_medida="MLT")
-    total, pu = obtener_precio_para_cantidad(esquema, Decimal("1000"))
-    assert total == Decimal("26000.00")           # tarro completo
-    assert pu == Decimal("26")                     # 26000 / 1000 = $26 por ml
-    assert obtener_precio_para_cantidad(esquema, Decimal("250"))[0] == Decimal("6500.00")   # ¼ tarro
-    assert regla_para_cantidad(esquema, Decimal("250")) == "subunidad"
+# --- Esquema 1: empaque entero (el bulto de cemento, la caja de puntilla) -----
+
+def _cemento() -> EsquemaPrecio:
+    """Bulto de 50 kg a $28.000; el kilo suelto a $1.500. Un solo inventario, dos precios."""
+    return EsquemaPrecio(
+        precio_venta=Decimal("1500"), unidad_medida="Kg",
+        contenido_paquete=Decimal("50"), precio_paquete=Decimal("28000"),
+    )
 
 
-def test_granel_etiqueta_regla():
-    assert regla_para_cantidad(EsquemaPrecio(precio_venta=Decimal("7500"), unidad_medida="GRM"),
-                               Decimal("500")) == "subunidad"
-    assert regla_para_cantidad(EsquemaPrecio(precio_venta=Decimal("7500")), Decimal("3")) == "simple"
+def test_empaque_cobra_el_precio_del_bulto_y_el_unitario_efectivo():
+    total, pu = obtener_precio_para_cantidad(_cemento(), Decimal("50"), por_empaque=True)
+    assert total == Decimal("28000.00")           # no 50 × 1.500 = 75.000
+    assert pu == Decimal("560")                   # 28.000 / 50: la línea de la factura cuadra
+    assert regla_para_cantidad(_cemento(), Decimal("50"), por_empaque=True) == "empaque"
 
 
-def test_esquema_de_lleva_unidad_medida():
-    # Regresión: esquema_de omitía unidad_medida → el esquema quedaba en "Unidad" y GET /productos/{id}/
-    # precio (que el POS consulta por línea) cobraba la sub-unidad como precio_venta*cantidad. La lija de
-    # 250 cm de un pliego de $22.000 (=$220/cm) debe dar $55.000, no $5.5M.
+def test_empaque_es_fijo_por_empaque():
+    assert obtener_precio_para_cantidad(_cemento(), Decimal("150"), por_empaque=True)[0] == \
+        Decimal("84000.00")                       # 3 bultos
+
+
+def test_sin_pedirlo_la_misma_cantidad_se_cobra_suelta():
+    # El precio de bulto NO se adivina: 50 kg sueltos son 50 kg sueltos. Nadie quiere un descuento
+    # sorpresa por llevar justo el contenido de una bolsa.
+    total, pu = obtener_precio_para_cantidad(_cemento(), Decimal("50"))
+    assert total == Decimal("75000.00")
+    assert pu == Decimal("1500")
+
+
+def test_empaque_pedido_sobre_un_producto_que_no_lo_tiene_cae_a_simple():
+    # Guarda de último recurso del motor (el servicio ya lo rechaza antes con LineaInvalida): sin
+    # precio de empaque no se inventa uno.
+    esquema = EsquemaPrecio(precio_venta=Decimal("11900"))
+    assert not esquema.vende_por_empaque
+    assert obtener_precio_para_cantidad(esquema, Decimal("2"), por_empaque=True)[0] == \
+        Decimal("23800.00")
+
+
+def test_empaque_tiene_prioridad_sobre_escalonado():
+    # Si el vendedor pidió el bulto, manda el bulto. Caso defensivo: en datos reales no coexisten,
+    # pero el orden de esquemas debe ser estable.
+    esquema = EsquemaPrecio(
+        precio_venta=Decimal("1500"), unidad_medida="Kg",
+        contenido_paquete=Decimal("50"), precio_paquete=Decimal("28000"),
+        precio_umbral=Decimal("10"), precio_bajo_umbral=Decimal("1500"),
+        precio_sobre_umbral=Decimal("1200"),
+    )
+    assert obtener_precio_para_cantidad(esquema, Decimal("50"), por_empaque=True)[0] == \
+        Decimal("28000.00")
+
+
+def test_esquema_de_lleva_empaque_y_unidad():
+    # Regresión: `esquema_de` alimenta GET /productos/{id}/precio, que el POS consulta por línea. Si
+    # omite el empaque, el POS cotiza un precio distinto al que la venta va a cobrar.
     from modules.inventario.models import Producto
     from modules.inventario.service import esquema_de
 
     prod = Producto(
-        nombre="Lija esmeril", unidad_medida="Cms", precio_venta=Decimal("22000"),
+        nombre="Cemento Gris", unidad_medida="Kg", precio_venta=Decimal("1500"),
+        contenido_paquete=Decimal("50"), precio_paquete=Decimal("28000"),
         iva=19, permite_fraccion=False, activo=True, fracciones=[],
     )
     esquema = esquema_de(prod)
-    assert esquema.unidad_medida == "Cms"
-    total, pu = obtener_precio_para_cantidad(esquema, Decimal("250"))
-    assert total == Decimal("55000.00")            # 22000 * 250 / 100
-
-
-def test_escalonado_tiene_prioridad_sobre_subunidad():
-    # Un producto con umbral Y unidad de granel: el escalonado gana (se evalúa primero). Caso defensivo:
-    # en datos reales no coexisten, pero el orden de esquemas debe ser estable.
-    esquema = EsquemaPrecio(
-        precio_venta=Decimal("7500"), unidad_medida="GRM",
-        precio_umbral=Decimal("10"), precio_bajo_umbral=Decimal("7500"),
-        precio_sobre_umbral=Decimal("7000"),
-    )
-    total, pu = obtener_precio_para_cantidad(esquema, Decimal("5"))
-    assert pu == Decimal("7500")                  # escalonado bajo umbral, NO ÷500
-    assert total == Decimal("37500.00")
+    assert esquema.unidad_medida == "Kg" and esquema.vende_por_empaque
+    assert obtener_precio_para_cantidad(esquema, Decimal("50"), por_empaque=True)[0] == \
+        Decimal("28000.00")
+    # Y sin pedir el empaque, el mismo esquema cobra los 50 kg sueltos.
+    assert obtener_precio_para_cantidad(esquema, Decimal("50"))[0] == Decimal("75000.00")

@@ -67,6 +67,49 @@ class SqlInventarioRepository:
         )).scalars().all()
         return list(filas)
 
+    async def conteo_cuadrados(self) -> tuple[int, int]:
+        """(productos activos, cuántos ya están cuadrados) — el avance del inventario progresivo."""
+        fila = (await self._s.execute(
+            text(
+                "SELECT count(*) FILTER (WHERE p.activo) AS activos, "
+                "  count(*) FILTER (WHERE p.activo AND i.cuadrado_at IS NOT NULL) AS cuadrados "
+                "FROM productos p LEFT JOIN inventario i ON i.producto_id = p.id"
+            )
+        )).one()
+        return int(fila.activos), int(fila.cuadrados)
+
+    async def por_cuadrar(self, *, dias: int, limite: int) -> list[dict]:
+        """Productos que aún no entran al inventario, LOS QUE MÁS ROTAN primero (0052 + issue #180).
+
+        La ferretería no llevaba inventario y no va a cerrar el local a contar 600 productos: lo
+        construye producto por producto, con el trabajo del día. El orden es lo que decide si eso
+        sirve o no — con los 40 que más se venden ya se controla la mitad del negocio; empezando por
+        la A se cuadran tornillos que rotan dos veces al año.
+
+        `cuadrado_at IS NULL` es el pendiente. El stock que traigan mientras tanto es informativo (y
+        puede estar en negativo: son las ventas anotadas sin haber contado nunca).
+        """
+        filas = (await self._s.execute(
+            text(
+                "SELECT p.id AS producto_id, p.nombre, p.unidad_medida, "
+                "  COALESCE(i.stock_actual, 0) AS stock_actual, "
+                "  COALESCE(v.lineas, 0) AS lineas_vendidas "
+                "FROM productos p "
+                "LEFT JOIN inventario i ON i.producto_id = p.id "
+                "LEFT JOIN ("
+                "  SELECT d.producto_id, count(*) AS lineas FROM ventas_detalle d "
+                "  JOIN ventas v2 ON v2.id = d.venta_id "
+                "  WHERE d.producto_id IS NOT NULL "
+                "    AND v2.fecha >= now() - make_interval(days => :dias) "
+                "  GROUP BY d.producto_id"
+                ") v ON v.producto_id = p.id "
+                "WHERE p.activo AND (i.cuadrado_at IS NULL OR i.producto_id IS NULL) "
+                "ORDER BY COALESCE(v.lineas, 0) DESC, p.nombre LIMIT :limite"
+            ),
+            {"dias": dias, "limite": limite},
+        )).all()
+        return [dict(f._mapping) for f in filas]
+
     # ---- Catálogo (mutaciones) ----------------------------------------------
     async def codigo_existe(self, codigo: str, *, excluir_id: int | None = None) -> bool:
         """¿Otro producto ya usa este código? (`excluir_id` se ignora a sí mismo al editar)."""
@@ -114,6 +157,7 @@ class SqlInventarioRepository:
             precio_bajo_umbral=datos.precio_bajo_umbral, precio_sobre_umbral=datos.precio_sobre_umbral,
             iva=datos.iva, permite_fraccion=datos.permite_fraccion,
             contenido_paquete=datos.contenido_paquete, nombre_paquete=datos.nombre_paquete,
+            precio_paquete=datos.precio_paquete,
             activo=datos.activo,
             fracciones=[
                 ProductoFraccion(
@@ -167,6 +211,7 @@ class SqlInventarioRepository:
         producto.permite_fraccion = datos.permite_fraccion
         producto.contenido_paquete = datos.contenido_paquete
         producto.nombre_paquete = datos.nombre_paquete
+        producto.precio_paquete = datos.precio_paquete
         producto.activo = datos.activo
         # Reasignar la colección (cargada por selectin) borra las fracciones huérfanas en el flush.
         producto.fracciones = [

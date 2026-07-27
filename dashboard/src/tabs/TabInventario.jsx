@@ -31,6 +31,7 @@ import { useAuth } from '@/hooks/useAuth.js'
 import { Card } from '@/components/ui/card.jsx'
 import { Input } from '@/components/ui/input.jsx'
 import { Badge } from '@/components/ui/badge.jsx'
+import PanelAvance from './inventario/PanelAvance.jsx'
 import usePosCatalogo from './pos/usePosCatalogo.js'
 import { filtrarYRankear } from './pos/filtroLocal.js'
 import { etiquetaCategoria, iconoCategoria } from './pos/categorias.js'
@@ -119,6 +120,9 @@ export default function TabInventario() {
 
   return (
     <div className="space-y-3">
+      {/* Inventario progresivo (0052): se construye producto por producto con el trabajo del día.
+          Desaparece solo cuando ya no queda nada pendiente por cuadrar. */}
+      {admin && <PanelAvance refreshKey={refreshKey} onCuadrado={recargar} />}
       <Card className="p-3 space-y-2">
         <div className="flex items-center gap-2">
           <div className="relative flex-1">

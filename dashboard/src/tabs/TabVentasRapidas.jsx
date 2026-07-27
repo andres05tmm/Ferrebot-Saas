@@ -155,7 +155,7 @@ export default function TabVentasRapidas() {
   // cambian las cantidades. Las líneas "especial" y "varia" NO consultan (su precio es explícito).
   const firmaPrecios = carrito
     .filter(it => !it.varia && !it.usarEspecial && it.precio_manual == null)
-    .map(it => `${it.key}:${it.producto_id}:${it.cantidad}`).join('|')
+    .map(it => `${it.key}:${it.producto_id}:${it.cantidad}:${it.por_empaque ? 'e' : 's'}`).join('|')
   useEffect(() => {
     const lineas = carrito.filter(
       it => !it.varia && !it.usarEspecial && it.precio_manual == null && Number(it.cantidad) > 0)
@@ -166,7 +166,8 @@ export default function TabVentasRapidas() {
         setPrecios(p => ({ ...p, [it.key]: { ...(p[it.key] || {}), loading: true } }))
         try {
           const d = await apiJson(
-            `/productos/${it.producto_id}/precio?cantidad=${encodeURIComponent(it.cantidad)}`,
+            `/productos/${it.producto_id}/precio?cantidad=${encodeURIComponent(it.cantidad)}` +
+            (it.por_empaque ? '&por_empaque=true' : ''),
             { signal: ctrl.signal })
           setPrecios(p => ({ ...p, [it.key]: {
             total: Number(d.total), precio_unitario: Number(d.precio_unitario),
@@ -288,6 +289,12 @@ export default function TabVentasRapidas() {
       unidad_medida: p.unidad_medida, permite_fraccion: p.permite_fraccion,
       precio_umbral: p.precio_umbral != null ? Number(p.precio_umbral) : null,
       precio_sobre_umbral: p.precio_sobre_umbral != null ? Number(p.precio_sobre_umbral) : null,
+      // Empaque entero (0072): el bulto de cemento a precio fijo. La cantidad de la línea siempre va
+      // en la unidad de venta (50 kg, no "1 bulto"): `por_empaque` solo cambia cómo se cobra.
+      contenido_paquete: p.contenido_paquete != null ? Number(p.contenido_paquete) : null,
+      precio_paquete: p.precio_paquete != null ? Number(p.precio_paquete) : null,
+      nombre_paquete: p.nombre_paquete || null,
+      por_empaque: false,
     }
   }
 
@@ -346,6 +353,16 @@ export default function TabVentasRapidas() {
     setCarrito(prev => prev.map(it => it.key === key ? { ...it, cantidad } : it))
   const setUsarEspecial = (key, usarEspecial) =>
     setCarrito(prev => prev.map(it => it.key === key ? { ...it, usarEspecial } : it))
+  // Bulto ⇄ suelto. La cantidad se reajusta a un múltiplo del empaque (el backend rechaza "bulto y
+  // medio"): al prender queda en 1 bulto; al apagar, en las unidades sueltas que ya tenía.
+  const setPorEmpaque = (key, porEmpaque) =>
+    setCarrito(prev => prev.map(it => {
+      if (it.key !== key) return it
+      const contenido = Number(it.contenido_paquete) || 0
+      if (!porEmpaque || contenido <= 0) return { ...it, por_empaque: false }
+      const empaques = Math.max(1, Math.round(Number(it.cantidad) / contenido))
+      return { ...it, por_empaque: true, cantidad: empaques * contenido }
+    }))
   const quitar = (key) => setCarrito(prev => prev.filter(it => it.key !== key))
 
   // POST /ventas con una key concreta. Si el backend responde 409 `caja_no_abierta` (guard de caja),
@@ -390,6 +407,7 @@ export default function TabVentasRapidas() {
         descripcion: it.nombre, cantidad: Number(it.cantidad), precio_unitario: Number(it.precio_unitario),
       }
       const linea = { producto_id: it.producto_id, cantidad: Number(it.cantidad) }
+      if (it.por_empaque) linea.por_empaque = true
       // Override explícito: "especial" (precio por unidad del producto) o "a mano"/pesos (total de la
       // línea → precio por unidad = total/cantidad). Si no, el backend recalcula con el motor.
       if (it.precio_manual != null) linea.precio_unitario = Number(it.precio_manual) / (Number(it.cantidad) || 1)
@@ -468,7 +486,8 @@ export default function TabVentasRapidas() {
           {carrito.map(it => (
             <LineaCarrito key={it.key} it={it} precio={precios[it.key]}
               onCantidad={(v) => setCantidad(it.key, v)} onQuitar={() => quitar(it.key)}
-              onEspecial={(v) => setUsarEspecial(it.key, v)} />
+              onEspecial={(v) => setUsarEspecial(it.key, v)}
+              onEmpaque={(v) => setPorEmpaque(it.key, v)} />
           ))}
         </ul>
       )}

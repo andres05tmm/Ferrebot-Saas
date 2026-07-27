@@ -53,11 +53,14 @@ class ProductoPrecio:
     precio_bajo_umbral: Decimal | None = None
     precio_sobre_umbral: Decimal | None = None
     fracciones: tuple[FraccionPrecio, ...] = field(default_factory=tuple)
-    # Unidad de venta del catálogo: "Unidad" (default) o sub-unidad de granel ("GRM"/"Cms") que el
-    # motor de precios usa para cobrar por gramo/cm (puntillas, lija esmeril). Ver precios.py.
+    # Unidad de venta del catálogo: "Unidad" (default), "Kg", o una sub-unidad de granel
+    # ("GRM"/"Cms"). `precio_venta` es SIEMPRE el precio de una de estas (0072).
     unidad_medida: str = "Unidad"
     # Tipo del impuesto de la tarifa `iva` (ADR 0032 D2): 'iva' (0/5/19) o 'inc' (impoconsumo 8%).
     tipo_impuesto: str = "iva"
+    # Empaque entero (0069/0072): cuántas unidades trae y qué vale completo. Los dos o ninguno.
+    contenido_paquete: Decimal | None = None
+    precio_paquete: Decimal | None = None
 
     def esquema(self) -> EsquemaPrecio:
         """Arma el esquema que consume el motor de precios (modules.inventario)."""
@@ -68,6 +71,8 @@ class ProductoPrecio:
             precio_sobre_umbral=self.precio_sobre_umbral,
             fracciones=self.fracciones,
             unidad_medida=self.unidad_medida,
+            contenido_paquete=self.contenido_paquete,
+            precio_paquete=self.precio_paquete,
         )
 
 
@@ -436,6 +441,26 @@ class VentaService:
             tipo_impuesto=getattr(ln, "tipo_impuesto", None) or "iva",
         )
 
+    @staticmethod
+    def _validar_empaque(prod: ProductoPrecio, cantidad: Decimal) -> None:
+        """Cobrar a precio de empaque exige empaque y cantidad entera de empaques.
+
+        Un martillo no se vende por bulto, y "1 bulto y medio" no es una venta de esta ferretería:
+        el dueño cobra la bolsa a precio fijo y los kilos sueltos aparte, en su propia línea. Sin
+        estas dos guardas el sistema inventaría un precio (media bolsa) o cobraría el bulto por algo
+        que no lo tiene.
+        """
+        esquema = prod.esquema()
+        if not esquema.vende_por_empaque:
+            raise LineaInvalida(
+                f"'{prod.nombre}' no se vende por empaque (le falta el tamaño o el precio del bulto)"
+            )
+        if cantidad % esquema.unidades_por_paquete != 0:
+            raise LineaInvalida(
+                f"{cantidad} no es un número entero de empaques de {esquema.unidades_por_paquete} "
+                f"de '{prod.nombre}': cobra el empaque y lo suelto en líneas aparte"
+            )
+
     async def _linea_catalogo(self, ln, control_stock_estricto: bool) -> LineaResuelta:
         prod = await self._repo.obtener_producto(ln.producto_id)
         if prod is None or not prod.activo:
@@ -447,13 +472,18 @@ class VentaService:
         disponible = disponible if disponible is not None else Decimal("0")
         if control_stock_estricto and disponible < ln.cantidad:
             raise StockInsuficiente(ln.producto_id, disponible, ln.cantidad)
-        # Precio declarado (override explícito) gana; si no, el motor de precios es la fuente
-        # de verdad: escalonado por umbral → fracción → simple (ferrebot-logica-portar.md §3).
+        por_empaque = bool(getattr(ln, "por_empaque", False))
+        if por_empaque:
+            self._validar_empaque(prod, ln.cantidad)
+        # Precio declarado (override explícito) gana; si no, el motor de precios es la fuente de
+        # verdad: empaque → escalonado por umbral → fracción → simple (ferrebot-logica-portar.md §3).
         if ln.precio_unitario is not None:
             precio = ln.precio_unitario
             total = _money(precio * ln.cantidad)
         else:
-            total, precio = obtener_precio_para_cantidad(prod.esquema(), ln.cantidad)
+            total, precio = obtener_precio_para_cantidad(
+                prod.esquema(), ln.cantidad, por_empaque=por_empaque
+            )
             if _money(precio * ln.cantidad) != total:
                 # Fracción: el motor cobra `precio_total` de la fracción pero devuelve el precio del
                 # paquete COMPLETO como unitario. El detalle persiste solo (cantidad, precio_unitario),

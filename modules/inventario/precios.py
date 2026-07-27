@@ -1,15 +1,24 @@
 """Motor de precios — port de `catalogo_service.py:315` (ferrebot-logica-portar.md §3).
 
 Función pura `obtener_precio_para_cantidad`: dado el esquema de precio de un producto y una
-cantidad, devuelve (total_de_la_linea, precio_unitario). Cuatro esquemas que conviven, evaluados
-SIEMPRE en este orden:
+cantidad, devuelve (total_de_la_linea, precio_unitario). La cantidad viene SIEMPRE en la unidad de
+venta (un kilo, un gramo, una unidad) — es la única unidad que existe en inventario, kárdex y
+factura. Los esquemas se evalúan SIEMPRE en este orden:
 
-    1. Escalonado por umbral  → precio_sobre_umbral si cantidad >= umbral, si no precio_bajo_umbral.
-    2. Por fracción           → si alguna fracción coincide (|decimal - cantidad| < 0.01).
-    3. Sub-unidad (granel)    → si `unidad_medida` se vende por sub-unidad (gramo/cm), `precio_venta`
-                                es el precio del PAQUETE y la cantidad viene en la sub-unidad:
-                                total = precio_venta * cantidad / unidades_por_paquete.
+    1. Empaque entero (`por_paquete`) → la bolsa de cemento a precio fijo: la cantidad se lee como
+                                        `cantidad / contenido_paquete` empaques y cada uno cuesta
+                                        `precio_paquete`. Es explícito: lo pide quien vende, nunca
+                                        se adivina (nadie quiere un descuento sorpresa por llevar
+                                        justo 50 kg sueltos).
+    2. Escalonado por umbral  → precio_sobre_umbral si cantidad >= umbral, si no precio_bajo_umbral.
+    3. Por fracción           → si alguna fracción coincide (|decimal - cantidad| < 0.01).
     4. Simple                 → precio_venta * cantidad.
+
+`precio_venta` significa SIEMPRE el precio de UNA unidad de venta (0072). Antes había una quinta
+rama —"sub-unidad"— donde para el granel (GRM/Cms/MLT) `precio_venta` era el precio del PAQUETE y el
+motor dividía por una convención clavada en el código. Eso hacía que el mismo campo significara dos
+cosas según la unidad de medida, y volvía imposible tener a la vez el precio del bulto y el del kilo
+suelto. Ahora son dos datos distintos y el motor no adivina nada.
 
 Sin SQL: el repositorio arma el `EsquemaPrecio` y este módulo solo calcula. El total se cuantiza
 a centavos (core.money); FerreBot redondeaba a pesos enteros (desviación deliberada, G2).
@@ -23,23 +32,15 @@ from core.money import cuantizar
 # Tolerancia para casar la cantidad con el decimal de una fracción (1/4 == 0.25, etc.).
 _TOLERANCIA_FRACCION = Decimal("0.01")
 
-# Productos por sub-unidad: `unidad_medida` (DATA del catálogo) → unidades por paquete. El
-# `precio_venta` de estos productos es el precio del PAQUETE COMPLETO y la cantidad de la venta viene
-# expresada en la sub-unidad (gramos, centímetros, mililitros), no en paquetes. Así el menudeo cobra
-# exacto:
-#   GRM/Gramos: puntillas — la caja trae 500 gramos; `precio_venta` = precio de la caja (puntorojo).
-#   Cms:        lija esmeril — se cobra por cm; `precio_venta` está expresado por 100 cm.
-#   MLT/ML:     tintillas — el tarro trae 1000 ml (1 L); `precio_venta` = precio del tarro completo.
+# Tamaño del empaque cuando el producto no lo trae como dato: convención del oficio ferretero por
+# `unidad_medida`. Ya NO decide precios (0072) — solo dice cuántas unidades de venta trae el empaque,
+# que es lo que necesitan la captura de compras/conteos y el cobro del empaque entero:
+#   GRM/Gramos: puntillas — la caja trae 500 gramos.
+#   Cms:        lija esmeril — el rollo trae 100 cm.
+#   MLT/ML:     tintillas — el tarro trae 1000 ml (1 L).
 # El 500 está portado de `bot-ventas-ferreteria/bypass.py` (`_PESO_CAJA_GR`); el 100 (cm) y el 1000
-# (ml, ported de `ModalMlt`) son convenciones del negocio confirmadas por el owner. La señal
-# por-producto la da `unidad_medida` (DATA); son convenciones del oficio ferretero (caja de puntilla
-# ≈ 500 g, lija esmeril a $/100 cm, tarro de tintilla ≈ 1 L). Normalización lo case-insensitiviza.
-# NOTA kg: los productos por kilo NO van aquí — su `precio_venta` es POR KILO, así que la rama
-# simple (precio_venta*cantidad) ya cobra bien, y el ½ kg "bonito" sale de una fila `1/2`.
-# CAVEAT de escalabilidad: el supuesto "GRM/Gramos→500, Cms→100, MLT/ML→1000" asume que `precio_venta`
-# de esos productos es del PAQUETE, no por sub-unidad. Al onboardear otro tenant ferretero hay que
-# validar que cumple (un producto ya cobrado por-gramo con unidad "gramos" se sub-registraría 500×).
-# Si algún tenant difiere, migrar este mapa a config por-empresa.
+# (ml, ported de `ModalMlt`) son convenciones del negocio confirmadas por el owner. Manda siempre el
+# DATO del producto (`contenido_paquete`, 0069): esto es solo el respaldo para lo que no lo tenga.
 _UNIDADES_POR_PAQUETE: dict[str, Decimal] = {
     "grm": Decimal("500"),
     "gramos": Decimal("500"),
@@ -105,8 +106,9 @@ class FraccionPrecio:
 class EsquemaPrecio:
     """Los esquemas de precio de un producto (los que no aplican van en None/vacío/default).
 
-    `unidad_medida` es la unidad de venta del catálogo: "Unidad" (default) para el caso normal, o una
-    sub-unidad de granel ("GRM"/"Cms") que activa el esquema 3 (ver `obtener_precio_para_cantidad`).
+    `precio_venta` es el precio de UNA unidad de venta; `precio_paquete` el del empaque completo
+    (None = ese producto no se vende por empaque). `unidad_medida` ya no decide precio: solo sirve
+    de respaldo para saber el tamaño del empaque cuando el producto no lo trae como dato.
     """
     precio_venta: Decimal
     precio_umbral: Decimal | None = None
@@ -115,6 +117,7 @@ class EsquemaPrecio:
     fracciones: tuple[FraccionPrecio, ...] = field(default_factory=tuple)
     unidad_medida: str = "Unidad"
     contenido_paquete: Decimal | None = None
+    precio_paquete: Decimal | None = None
 
     @property
     def tiene_escalonado(self) -> bool:
@@ -126,8 +129,14 @@ class EsquemaPrecio:
 
     @property
     def unidades_por_paquete(self) -> Decimal | None:
-        """Unidades por paquete si se vende por sub-unidad (granel: gramo/cm); None si no aplica."""
+        """Cuántas unidades de venta trae el empaque (dato del producto, o convención); None si no hay."""
         return unidades_por_paquete(self.unidad_medida, self.contenido_paquete)
+
+    @property
+    def vende_por_empaque(self) -> bool:
+        """¿Se puede vender el empaque entero? Exige las dos mitades: el tamaño y su precio."""
+        unidades = self.unidades_por_paquete
+        return self.precio_paquete is not None and unidades is not None and unidades > 0
 
 
 def _fraccion_que_coincide(esquema: EsquemaPrecio, cantidad: Decimal) -> FraccionPrecio | None:
@@ -138,9 +147,20 @@ def _fraccion_que_coincide(esquema: EsquemaPrecio, cantidad: Decimal) -> Fraccio
 
 
 def obtener_precio_para_cantidad(
-    esquema: EsquemaPrecio, cantidad: Decimal
+    esquema: EsquemaPrecio, cantidad: Decimal, *, por_empaque: bool = False
 ) -> tuple[Decimal, Decimal]:
-    """Devuelve (total_linea, precio_unitario) aplicando el primer esquema que corresponda."""
+    """Devuelve (total_linea, precio_unitario) aplicando el primer esquema que corresponda.
+
+    `cantidad` va siempre en la unidad de venta. Con `por_empaque` se cobra a precio de empaque:
+    3 bultos de 50 kg entran como cantidad=150 y se cobran 3 × `precio_paquete`. El unitario que sale
+    es el efectivo por unidad ($28.000/50 = $560), para que la línea de la factura cuadre al
+    multiplicar. El caller valida que el producto vende por empaque y que la cantidad es múltiplo.
+    """
+    if por_empaque and esquema.vende_por_empaque:
+        empaques = cantidad / esquema.unidades_por_paquete
+        total = cuantizar(esquema.precio_paquete * empaques)
+        return total, total / cantidad
+
     if esquema.tiene_escalonado:
         precio_unitario = (
             esquema.precio_sobre_umbral
@@ -153,28 +173,17 @@ def obtener_precio_para_cantidad(
     if fraccion is not None:
         return cuantizar(fraccion.precio_total), esquema.precio_venta
 
-    # Granel: `precio_venta` es el precio del paquete; la cantidad viene en la sub-unidad. El precio
-    # por sub-unidad (precio_venta/unidades) NO se cuantiza —es informativo y de baja magnitud—; el
-    # total sí. "500 puntilla" (GRM, caja=500g) → 7500*500/500 = 7500; "30 lija esmeril" (Cms) → /100.
-    # Nota de orden: la fracción (esquema 2) se evalúa antes; por construcción del catálogo los
-    # productos granel NO llevan filas de `fracciones` (se cobran por sub-unidad, no por fracción de
-    # paquete), así que ambos esquemas son mutuamente excluyentes y no compiten.
-    unidades = esquema.unidades_por_paquete
-    if unidades is not None and unidades > 0:
-        return (
-            cuantizar(esquema.precio_venta * cantidad / unidades),
-            esquema.precio_venta / unidades,
-        )
-
     return cuantizar(esquema.precio_venta * cantidad), esquema.precio_venta
 
 
-def regla_para_cantidad(esquema: EsquemaPrecio, cantidad: Decimal) -> str:
-    """Etiqueta del esquema: 'escalonado' | 'fraccion' | 'subunidad' | 'simple' (para el API)."""
+def regla_para_cantidad(
+    esquema: EsquemaPrecio, cantidad: Decimal, *, por_empaque: bool = False
+) -> str:
+    """Etiqueta del esquema: 'empaque' | 'escalonado' | 'fraccion' | 'simple' (para el API)."""
+    if por_empaque and esquema.vende_por_empaque:
+        return "empaque"
     if esquema.tiene_escalonado:
         return "escalonado"
     if _fraccion_que_coincide(esquema, cantidad) is not None:
         return "fraccion"
-    if esquema.unidades_por_paquete is not None:
-        return "subunidad"
     return "simple"

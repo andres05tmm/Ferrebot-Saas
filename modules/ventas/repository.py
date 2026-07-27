@@ -311,6 +311,8 @@ class SqlVentasRepository:
             fracciones=fracciones,
             unidad_medida=prod.unidad_medida,
             tipo_impuesto=prod.tipo_impuesto,
+            contenido_paquete=prod.contenido_paquete,
+            precio_paquete=prod.precio_paquete,
         )
 
     async def lock_inventario(self, producto_id: int) -> Decimal | None:

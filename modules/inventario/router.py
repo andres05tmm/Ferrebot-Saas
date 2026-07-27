@@ -22,9 +22,11 @@ from modules.inventario.repository import SqlInventarioRepository
 from modules.inventario.schemas import (
     AjusteCrear,
     AjusteLeer,
+    AvanceInventario,
     ConteoCrear,
     ConteoLeer,
     KardexItem,
+    PorCuadrarItem,
     PrecioLeer,
     ProductoActualizar,
     ProductoCrear,
@@ -157,11 +159,14 @@ async def eliminar_producto(
 async def precio_producto(
     producto_id: int,
     cantidad: Decimal = Query(gt=0),
+    por_empaque: bool = Query(default=False, description="Cobrar la cantidad a precio de empaque"),
     session: AsyncSession = Depends(get_tenant_db),
     _user: Principal = Depends(require_role("vendedor")),
 ) -> PrecioLeer:
     try:
-        calc = await _service(session).calcular_precio(producto_id, cantidad)
+        calc = await _service(session).calcular_precio(
+            producto_id, cantidad, por_empaque=por_empaque
+        )
     except ProductoInexistente as exc:
         raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
     return PrecioLeer(
@@ -182,6 +187,28 @@ async def listar_stock(
         solo_bajo=bajo, limite=limite, offset=offset
     )
     return [StockLeer(**fila) for fila in filas]
+
+
+@router.get("/inventario/avance", response_model=AvanceInventario)
+async def avance_inventario(
+    dias: int = Query(default=60, ge=1, le=365),
+    limite: int = Query(default=12, ge=1, le=100),
+    session: AsyncSession = Depends(get_tenant_db),
+    _user: Principal = Depends(require_role("vendedor")),
+) -> AvanceInventario:
+    """Cuánto del catálogo ya es confiable y cuál conviene cuadrar ahora (inventario progresivo).
+
+    Los pendientes salen ordenados por ROTACIÓN, no alfabéticamente: el objetivo es que con pocos
+    productos cuadrados ya se controle la mayor parte de la venta. Declarado antes de las rutas con
+    parámetro para que 'avance' no se lea como un id.
+    """
+    repo = SqlInventarioRepository(session)
+    activos, cuadrados = await repo.conteo_cuadrados()
+    pendientes = await repo.por_cuadrar(dias=dias, limite=limite)
+    return AvanceInventario(
+        activos=activos, cuadrados=cuadrados,
+        pendientes=[PorCuadrarItem(**p) for p in pendientes],
+    )
 
 
 @router.post("/inventario/ajuste", response_model=AjusteLeer, status_code=status.HTTP_201_CREATED)

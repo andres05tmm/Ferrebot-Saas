@@ -46,6 +46,9 @@ class Producto(TenantBase):
     # (bolsa de cal = 25 kg) y cómo lo llama el negocio ('bolsa', 'bulto', 'caja'…).
     contenido_paquete: Mapped[Decimal | None] = mapped_column(Numeric(12, 3))
     nombre_paquete: Mapped[str | None] = mapped_column(Text)
+    # Precio del empaque COMPLETO (0072). El bulto de cemento vale $28.000 y el kilo suelto $1.500:
+    # dos precios contra un solo inventario. NULL = ese producto no se vende por empaque.
+    precio_paquete: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
     activo: Mapped[bool] = mapped_column(Boolean, nullable=False)
     # Zona de comandas KDS (0062, ADR 0032 D5): rutea el producto a parrilla/bar/…; NULL = cocina.
     zona_comanda_id: Mapped[int | None] = mapped_column(BigInteger)

@@ -62,11 +62,21 @@ async def _whatsapp_control(tenant_id: int) -> str | None:
     return valor or None
 
 
+async def _branding_control(tenant_id: int) -> dict:
+    """Branding RESUELTO del tenant (preset + overrides → tokens). La página pública se pinta con
+    los tokens del vertical — cero colores de plataforma hardcodeados (DESIGN.md §1)."""
+    from core.tenancy.control_repo import leer_branding
+
+    async with control_session() as cs:
+        return await leer_branding(cs, tenant_id)
+
+
 @dataclass(frozen=True, slots=True)
 class MenuPublicoDeps:
     resolver: object = field(default_factory=_ControlResolver)
     capacidades: Callable[[int], Awaitable[frozenset[str]]] = _capacidades_control
     whatsapp: Callable[[int], Awaitable[str | None]] = _whatsapp_control
+    branding: Callable[[int], Awaitable[dict]] = _branding_control
 
 
 def _pesos(v) -> str:
@@ -124,29 +134,91 @@ async def _leer_menu(session) -> list[dict]:
     return secciones
 
 
-def _render(nombre: str, secciones: list[dict], whatsapp: str | None) -> str:
-    """HTML autocontenido (inline CSS, cero JS). Todo texto va escapado."""
+# Orden editorial de una carta (auditoría R0, P2): entradas → sopas → fuertes → acompañamientos →
+# bebidas → postres. Secciones desconocidas quedan en el medio; el desempate es alfabético.
+_ORDEN_SECCIONES = (
+    ("entrada", 0), ("sopa", 1), ("almuerzo", 2), ("fuerte", 2), ("plato", 2), ("especial", 3),
+    ("parrilla", 3), ("acompa", 6), ("adici", 6), ("bebida", 7), ("jugo", 7), ("postre", 8),
+)
+
+
+def _peso_seccion(nombre: str) -> int:
+    limpio = nombre.lower()
+    for clave, peso in _ORDEN_SECCIONES:
+        if clave in limpio:
+            return peso
+    return 4
+
+
+def _render(branding: dict, nombre: str, secciones: list[dict], whatsapp: str | None) -> str:
+    """HTML autocontenido (CSS inline, cero JS), pintado con los TOKENS del tenant (DESIGN.md §1):
+    ningún color de marca hardcodeado — la piel del vertical entra por `resolver_branding`.
+    Secciones sticky y CTA de WhatsApp persistente (goal §A.4.4). Todo texto va escapado."""
     e = _html.escape
+    t = branding.get("tokens", {})
+    nombre_visible = branding.get("nombre_comercial") or nombre
+    logo = branding.get("logo_url")
+    fuentes = {t.get("font_display", "system-ui"), t.get("font_ui", "system-ui")} - {"system-ui"}
+    # Fuentes async (media=print → all al cargar): el primer paint sale con system-ui al instante
+    # y la tipografía del preset entra sin bloquear (gate Lighthouse móvil ≥85 en 3G simulado).
+    href = (
+        "https://fonts.googleapis.com/css2?"
+        + "&".join(f"family={f.replace(' ', '+')}:wght@400;600;700" for f in sorted(fuentes))
+        + "&display=swap"
+    )
+    gf = (
+        "<link rel='preconnect' href='https://fonts.googleapis.com'>"
+        "<link rel='preconnect' href='https://fonts.gstatic.com' crossorigin>"
+        f"<link rel='stylesheet' href='{href}' media='print' onload=\"this.media='all'\">"
+        f"<noscript><link rel='stylesheet' href='{href}'></noscript>"
+    ) if fuentes else ""
+    css_vars = "".join(
+        f"--{k.replace('_', '-')}:{v};" for k, v in t.items() if not k.startswith("font")
+    )
     partes = [
         "<!doctype html><html lang='es'><head><meta charset='utf-8'>",
         "<meta name='viewport' content='width=device-width, initial-scale=1'>",
-        f"<title>{e(nombre)} — Menú</title>",
-        "<style>body{font-family:system-ui,sans-serif;margin:0;background:#faf7f2;color:#222}"
-        "header{background:#C8200E;color:#fff;padding:20px 16px;text-align:center}"
-        "h1{margin:0;font-size:1.4rem}main{max-width:640px;margin:0 auto;padding:16px}"
-        "h2{font-size:1.05rem;border-bottom:2px solid #C8200E;padding-bottom:4px;margin:20px 0 8px}"
-        ".p{display:flex;justify-content:space-between;gap:8px;padding:8px 0;border-bottom:1px dashed #ddd}"
-        ".mods{font-size:.85rem;color:#555;margin:2px 0 6px 12px}"
-        ".precio{white-space:nowrap;font-weight:600}"
-        ".wa{display:block;text-align:center;background:#25D366;color:#fff;text-decoration:none;"
-        "padding:12px;border-radius:10px;font-weight:700;margin:24px 0}</style></head><body>",
-        f"<header><h1>{e(nombre)}</h1><div>Menú</div></header><main>",
+        f"<meta name='description' content='Menú de {e(nombre_visible)}: pide por WhatsApp.'>",
+        f"<title>{e(nombre_visible)} — Menú</title>", gf,
+        "<style>",
+        f":root{{{css_vars}--font-display:'{t.get('font_display', 'system-ui')}',system-ui,sans-serif;"
+        f"--font-ui:'{t.get('font_ui', 'system-ui')}',system-ui,sans-serif;"
+        f"--radius:{t.get('radius', '14px')}}}",
+        "*{box-sizing:border-box}"
+        "body{font-family:var(--font-ui);margin:0;background:var(--superficie);color:var(--tinta)}"
+        "header{background:linear-gradient(135deg,var(--primario),var(--primario-up));color:#fff;"
+        "padding:28px 16px 22px;text-align:center}"
+        "header img{max-height:56px;margin-bottom:8px}"
+        "h1{margin:0;font-family:var(--font-display);font-size:1.6rem;letter-spacing:-.01em}"
+        ".sub{opacity:.92;font-size:.9rem;margin-top:2px}"
+        "main{max-width:640px;margin:0 auto;padding:8px 16px 96px}"
+        # Texto de cuerpo SIEMPRE en tinta (AA sobre superficie/card en todo preset — DESIGN.md §4);
+        # el primario queda de acento en bordes/underline, no en texto pequeño.
+        "h2{position:sticky;top:0;z-index:2;background:var(--superficie);font-family:var(--font-display);"
+        "font-size:1.05rem;color:var(--tinta);border-bottom:2px solid var(--primario);"
+        "padding:10px 0 6px;margin:18px 0 4px}"
+        ".card{background:var(--card);border:1px solid var(--linea);border-radius:var(--radius);"
+        "padding:4px 14px;margin:10px 0}"
+        ".p{display:flex;justify-content:space-between;gap:10px;padding:11px 0;align-items:baseline}"
+        ".p+.p,.mods+.p{border-top:1px dashed var(--linea)}"
+        ".nombre{font-weight:600}"
+        ".mods{font-size:.85rem;color:var(--tinta-suave);margin:-6px 0 8px;padding-left:2px}"
+        ".mods b{color:var(--tinta)}"
+        ".precio{white-space:nowrap;font-weight:700;color:var(--tinta)}"
+        ".wa{position:fixed;left:16px;right:16px;bottom:14px;z-index:3;display:block;text-align:center;"
+        "background:#128C7E;color:#fff;text-decoration:none;padding:14px;border-radius:999px;"
+        "font-weight:700;font-size:1rem;box-shadow:0 10px 15px -3px rgba(0,0,0,.25)}"
+        "footer{text-align:center;color:var(--tinta-suave);font-size:.8rem;padding:12px 0 90px}",
+        "</style></head><body>",
+        "<header>",
+        f"<img src='{e(logo)}' alt=''>" if logo else "",
+        f"<h1>{e(nombre_visible)}</h1><div class='sub'>Menú</div></header><main>",
     ]
-    for seccion in secciones:
-        partes.append(f"<h2>{e(seccion['nombre'])}</h2>")
+    for seccion in sorted(secciones, key=lambda s: (_peso_seccion(s["nombre"]), s["nombre"])):
+        partes.append(f"<h2>{e(seccion['nombre'])}</h2><div class='card'>")
         for p in seccion["productos"]:
             partes.append(
-                f"<div class='p'><span>{e(p['nombre'])}</span>"
+                f"<div class='p'><span class='nombre'>{e(p['nombre'])}</span>"
                 f"<span class='precio'>{_pesos(p['precio'])}</span></div>"
             )
             for g in p["grupos"]:
@@ -155,12 +227,13 @@ def _render(nombre: str, secciones: list[dict], whatsapp: str | None) -> str:
                     for o in g["opciones"]
                 )
                 partes.append(f"<div class='mods'><b>{e(g['nombre'])}:</b> {opciones}</div>")
+        partes.append("</div>")
     if whatsapp:
         partes.append(
-            f"<a class='wa' href='https://wa.me/{e(whatsapp)}?text=Hola!%20Quiero%20pedir'>"
-            "Pedir por WhatsApp</a>"
+            f"<a class='wa' href='https://wa.me/{e(whatsapp)}?text=Hola!%20Quiero%20pedir' "
+            "aria-label='Pedir por WhatsApp'>Pedir por WhatsApp</a>"
         )
-    partes.append("</main></body></html>")
+    partes.append("</main><footer>Precios en pesos colombianos</footer></body></html>")
     return "".join(partes)
 
 
@@ -209,6 +282,7 @@ def crear_router_menu_publico(deps: MenuPublicoDeps | None = None) -> APIRouter:
         async with asynccontextmanager(tenant_session)(tenant) as session:
             secciones = await _leer_menu(session)
         numero = await deps.whatsapp(tenant.id)
-        return HTMLResponse(_render(tenant.nombre, secciones, numero))
+        branding = await deps.branding(tenant.id)
+        return HTMLResponse(_render(branding, tenant.nombre, secciones, numero))
 
     return router

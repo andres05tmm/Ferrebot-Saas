@@ -84,10 +84,19 @@ def _app(tenants: dict, capacidades_por_tenant: dict) -> FastAPI:
     async def _whatsapp(tenant_id: int) -> str | None:
         return "573001112233"
 
+    async def _branding(tenant_id: int) -> dict:
+        # Branding resuelto como lo entrega leer_branding: preset brasa, sin overrides.
+        from core.tenancy.branding_presets import resolver_branding
+
+        return resolver_branding({"preset": "brasa"})
+
     app = FastAPI()
     app.include_router(
         crear_router_menu_publico(
-            MenuPublicoDeps(resolver=_Resolver(), capacidades=_capacidades, whatsapp=_whatsapp)
+            MenuPublicoDeps(
+                resolver=_Resolver(), capacidades=_capacidades, whatsapp=_whatsapp,
+                branding=_branding,
+            )
         )
     )
     return app
@@ -141,10 +150,57 @@ async def test_menu_publico_sin_token_y_aislado(tenant_factory):
         assert "Arroz insumo" not in html and "Insumos" not in html
         # Sin JS del dashboard (página autocontenida).
         assert "<script" not in html.lower()
+        # THEMING (R4/DESIGN.md §1): la piel es del PRESET del tenant (tokens), jamás el rojo
+        # de Punto Rojo ni colores de plataforma hardcodeados.
+        assert "#C8200E" not in html and "#c8200e" not in html
+        assert "#d6452c" in html            # primario brasa vía tokens
+        assert "Figtree" in html            # tipografía del preset
+        assert "position:sticky" in html    # secciones sticky (goal §A.4.4)
+        assert "lang='es'" in html
 
         # El menú de B es el de B.
         rb = await c.get("/publico/resto-b/menu")
         assert "Secreto De B" in rb.text and "Secreto De A" not in rb.text
+
+
+async def test_menu_publico_cambia_de_piel_por_preset(tenant_factory):
+    """Smoke multi-preset (condicional R4): el MISMO render con otro preset cambia la piel entera
+    sin tocar código — los tokens entran por el puerto de branding."""
+    from core.tenancy.branding_presets import resolver_branding
+
+    a = await tenant_factory()
+    await _seed_menu(a.engine, secreto="X")
+    id_a = _id_unico()
+    tenants = {"resto-a": _resolved(a, tenant_id=id_a, slug="resto-a", nombre="Resto A")}
+    app = _app(tenants, {id_a: frozenset({"menu_qr", "ventas"})})
+
+    # Sobrescribir el puerto de branding del router ya montado no es trivial: se arma otra app
+    # con el preset melquiadez.
+    async def _branding_mel(tenant_id: int) -> dict:
+        return resolver_branding({"preset": "melquiadez"})
+
+    class _Resolver:
+        async def por_slug(self, slug: str):
+            return tenants.get(slug)
+
+    async def _caps(tenant_id: int) -> frozenset[str]:
+        return frozenset({"menu_qr", "ventas"})
+
+    async def _wa(tenant_id: int) -> str | None:
+        return None
+
+    app_mel = FastAPI()
+    app_mel.include_router(
+        crear_router_menu_publico(
+            MenuPublicoDeps(resolver=_Resolver(), capacidades=_caps, whatsapp=_wa, branding=_branding_mel)
+        )
+    )
+    async with httpx.AsyncClient(
+        transport=ASGITransport(app=app_mel, raise_app_exceptions=False), base_url="http://t"
+    ) as c:
+        html = (await c.get("/publico/resto-a/menu")).text
+        assert "#b8924f" in html and "Fraunces" in html    # piel melquiadez
+        assert "#d6452c" not in html                       # nada de brasa pegado en el componente
 
 
 async def test_menu_qr_autenticado_devuelve_url_y_svg():

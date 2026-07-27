@@ -6,6 +6,8 @@ lógica vive en `BancosService`; aquí solo se valida, se mapea a HTTP y se seri
 """
 from __future__ import annotations
 
+from datetime import date
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -56,11 +58,18 @@ async def sugerir(
 @router.get("/movimientos", response_model=list[MovimientoConCandidatos])
 async def listar_movimientos(
     estado: str | None = Query(default=None),
+    desde: date | None = Query(default=None),
+    hasta: date | None = Query(default=None),
+    incluir_descartados: bool = Query(default=False),
+    limite: int = Query(default=200, ge=1, le=500),
     service: BancosService = Depends(get_bancos_service),
     _user: Principal = Depends(require_role("admin")),
 ) -> list[MovimientoConCandidatos]:
-    """Movimientos del extracto (filtrables por estado) con sus candidatos internos vigentes."""
-    return await service.listar(estado=estado)
+    """Movimientos bancarios (filtrables por estado/período) con sus candidatos internos vigentes."""
+    return await service.listar(
+        estado=estado, desde=desde, hasta=hasta,
+        incluir_descartados=incluir_descartados, limite=limite,
+    )
 
 
 @router.post("/movimientos/{mov_id}/conciliar", response_model=MovimientoBancarioLeer)
@@ -75,6 +84,37 @@ async def conciliar(
         return await service.confirmar(
             mov_id, tipo=payload.tipo, id_interno=payload.id_interno, ahora=now_co()
         )
+    except MovimientoBancarioInexistente as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
+    except ConciliacionInvalida as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
+
+
+@router.post("/movimientos/{mov_id}/descarte", response_model=MovimientoBancarioLeer)
+async def descartar(
+    mov_id: int,
+    service: BancosService = Depends(get_bancos_service),
+    _user: Principal = Depends(require_role("admin")),
+) -> MovimientoBancarioLeer:
+    """Marca el movimiento como "no es venta" (plata personal o de la casa). Idempotente."""
+    return await _descarte(service, mov_id, descartar=True)
+
+
+@router.delete("/movimientos/{mov_id}/descarte", response_model=MovimientoBancarioLeer)
+async def deshacer_descarte(
+    mov_id: int,
+    service: BancosService = Depends(get_bancos_service),
+    _user: Principal = Depends(require_role("admin")),
+) -> MovimientoBancarioLeer:
+    """Deshace el "no es venta": el movimiento vuelve al pendiente. Idempotente."""
+    return await _descarte(service, mov_id, descartar=False)
+
+
+async def _descarte(
+    service: BancosService, mov_id: int, *, descartar: bool
+) -> MovimientoBancarioLeer:
+    try:
+        return await service.descartar(mov_id, descartar=descartar, ahora=now_co())
     except MovimientoBancarioInexistente as exc:
         raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
     except ConciliacionInvalida as exc:

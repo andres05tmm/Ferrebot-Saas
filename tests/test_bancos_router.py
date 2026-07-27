@@ -70,12 +70,17 @@ async def test_sin_flag_da_404(tenant):
     app = _app(tenant, capacidades=frozenset())
     async with _cliente(app) as c:
         assert (await c.get("/api/v1/bancos/movimientos")).status_code == 404
+        # El gate vive en el APIRouter; se verifica que las rutas nuevas no quedaron fuera de él.
+        assert (await c.post("/api/v1/bancos/movimientos/1/descarte")).status_code == 404
+        assert (await c.delete("/api/v1/bancos/movimientos/1/descarte")).status_code == 404
 
 
 async def test_rbac_vendedor_no_entra(tenant):
     async with _cliente(_app(tenant, rol="vendedor")) as c:
         assert (await c.get("/api/v1/bancos/movimientos")).status_code == 403
         assert (await c.post("/api/v1/bancos/ingesta", json=[])).status_code == 403
+        assert (await c.post("/api/v1/bancos/movimientos/1/descarte")).status_code == 403
+        assert (await c.delete("/api/v1/bancos/movimientos/1/descarte")).status_code == 403
 
 
 async def test_ingesta_idempotente_por_http(tenant):

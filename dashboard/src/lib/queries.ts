@@ -257,10 +257,16 @@ export function useGuardarRetencion() {
 }
 
 // ── Conciliación bancaria (ADR 0028) — solo admin ───────────────────────────────────────────────
-export function useMovimientosBancarios(estado: string) {
+export function useMovimientosBancarios(estado: string, incluirDescartados = false) {
   return useQuery({
-    queryKey: queryKeys.bancosMovimientos(estado),
-    queryFn: () => apiJson<Fila[]>(estado ? `/bancos/movimientos?estado=${estado}` : '/bancos/movimientos'),
+    queryKey: queryKeys.bancosMovimientos(`${estado}|${incluirDescartados ? 'd' : ''}`),
+    queryFn: () => {
+      const q = new URLSearchParams()
+      if (estado) q.set('estado', estado)
+      if (incluirDescartados) q.set('incluir_descartados', 'true')
+      const qs = q.toString()
+      return apiJson<Fila[]>(`/bancos/movimientos${qs ? `?${qs}` : ''}`)
+    },
   })
 }
 
@@ -279,6 +285,17 @@ export function useConciliar() {
       api(`/bancos/movimientos/${movId}/conciliar`, {
         method: 'POST', headers: jsonHeaders, body: JSON.stringify({ tipo, id_interno: idInterno }),
       }),
+    onSuccess: (res) => { if (res.ok) qc.invalidateQueries({ queryKey: keyPrefix.bancosMovimientos }) },
+  })
+}
+
+// "No es venta": la plata personal o de la casa que también entra a esas cuentas. No borra nada —
+// sella la fila para sacarla del pendiente, y el mismo endpoint en DELETE lo deshace.
+export function useDescartarMovimiento() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ movId, descartar }: { movId: number; descartar: boolean }) =>
+      api(`/bancos/movimientos/${movId}/descarte`, { method: descartar ? 'POST' : 'DELETE' }),
     onSuccess: (res) => { if (res.ok) qc.invalidateQueries({ queryKey: keyPrefix.bancosMovimientos }) },
   })
 }

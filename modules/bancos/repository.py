@@ -96,18 +96,23 @@ class SqlBancosRepository:
     async def ingestar_gmail(
         self, *, gmail_message_id: str, fecha: date, monto: Decimal, remitente: str | None,
         descripcion: str | None, tipo_transaccion: str | None, hora: str | None,
+        cuenta_destino: str | None = None, referencia: str | None = None,
     ) -> BancolombiaTransferencia | None:
         """Inserta una transferencia entrante venida de Gmail; None si el mensaje ya se había ingerido.
 
         Idempotente por `gmail_message_id` (UNIQUE, la columna de dedup de ESTE canal): `ON CONFLICT
         DO NOTHING` — reintentos del push Pub/Sub no duplican ni re-notifican. `notificado=True` porque
         el envío a Telegram lo hace la ingesta tras persistir. `naturaleza='credito'` (dinero que entra).
+
+        `cuenta_destino` y `referencia` (la llave Bancolombia) las extrae el parser desde siempre;
+        hasta 0073 se calculaban para el mensaje de Telegram y se tiraban antes de guardar.
         """
         stmt = (
             pg_insert(BancolombiaTransferencia)
             .values(
                 gmail_message_id=gmail_message_id, fecha=fecha, monto=monto, remitente=remitente,
                 descripcion=descripcion, tipo_transaccion=tipo_transaccion, hora=hora,
+                cuenta_destino=cuenta_destino, referencia=referencia,
                 naturaleza="credito", estado_conciliacion="no_conciliado", notificado=True,
             )
             .on_conflict_do_nothing(index_elements=["gmail_message_id"])
@@ -125,15 +130,33 @@ class SqlBancosRepository:
             )
         ).scalar_one_or_none()
 
-    async def listar(self, *, estado: str | None = None) -> list[BancolombiaTransferencia]:
-        stmt = select(BancolombiaTransferencia).where(
-            BancolombiaTransferencia.referencia_bancaria.isnot(None)   # solo movimientos del extracto
-        )
+    async def listar(
+        self, *, estado: str | None = None, desde: date | None = None, hasta: date | None = None,
+        incluir_descartados: bool = False, limite: int = 200,
+    ) -> list[BancolombiaTransferencia]:
+        """Movimientos bancarios, los del extracto Y los que llegaron por el correo del banco.
+
+        Antes filtraba `referencia_bancaria IS NOT NULL` — o sea, solo el extracto. Las filas de
+        Gmail nacen con esa columna en NULL, así que desaparecían de la pantalla y del match sin que
+        nadie lo notara: dos libros conviviendo en la tabla que el ADR 0028 declaró única (D1).
+
+        `descartado_en` es el guard de "no es venta". Va aquí, en el único sitio del módulo con SQL
+        (regla no negociable #2), y `sugerir_pendientes` lo hereda gratis por llamar a este método.
+        """
+        stmt = select(BancolombiaTransferencia)
         if estado is not None:
             stmt = stmt.where(BancolombiaTransferencia.estado_conciliacion == estado)
+        if not incluir_descartados:
+            stmt = stmt.where(BancolombiaTransferencia.descartado_en.is_(None))
+        if desde is not None:
+            stmt = stmt.where(BancolombiaTransferencia.fecha >= desde)
+        if hasta is not None:
+            stmt = stmt.where(BancolombiaTransferencia.fecha <= hasta)
+        # El tope no es cosmético: el servicio corre una consulta de candidatos POR movimiento, así
+        # que una lista sin cota es un N+1 que crece con el histórico.
         stmt = stmt.order_by(
             BancolombiaTransferencia.fecha.desc(), BancolombiaTransferencia.id.desc()
-        )
+        ).limit(limite)
         return list((await self._s.execute(stmt)).scalars().all())
 
     async def candidatos(
@@ -171,5 +194,23 @@ class SqlBancosRepository:
         mov.conciliado_con_tipo = tipo
         mov.conciliado_con_id = id_interno
         mov.conciliado_en = cuando
+        await self._s.flush()
+        return mov
+
+    async def marcar_descarte(
+        self, mov: BancolombiaTransferencia, *, cuando: datetime | None
+    ) -> BancolombiaTransferencia:
+        """Sella (o quita) el "no es venta". `cuando=None` deshace.
+
+        Al descartar hay que SOLTAR la sugerencia si la había: el filtro anti-doble-uso considera
+        tomado todo interno enlazado en estado `sugerido`, así que una venta que quedara colgando de
+        una transferencia descartada quedaría secuestrada — ninguna otra transferencia volvería a
+        verla nunca. Es un bug de dinero silencioso.
+        """
+        mov.descartado_en = cuando
+        if cuando is not None and mov.estado_conciliacion == "sugerido":
+            mov.estado_conciliacion = "no_conciliado"
+            mov.conciliado_con_tipo = None
+            mov.conciliado_con_id = None
         await self._s.flush()
         return mov

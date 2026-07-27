@@ -49,7 +49,20 @@ class BancolombiaTransferencia(TenantBase):
     estado_conciliacion: Mapped[str] = mapped_column(
         conciliacion_estado, nullable=False, default="no_conciliado"
     )
-    # Enlace polimórfico al movimiento interno (FK-less, como ventas→usuarios): tipo ∈ {venta,gasto,abono}.
+    # Enlace polimórfico al movimiento interno (FK-less, como ventas→usuarios):
+    # tipo ∈ {venta, gasto, abono, abono_fiado}. OJO: 'abono' es un pago a PROVEEDOR
+    # (`facturas_abonos`) y 'abono_fiado' el pago de un CLIENTE (`fiados_movimientos`) — son tablas
+    # distintas y compartir el nombre cruzaría sus ids en el filtro anti-doble-uso.
     conciliado_con_tipo: Mapped[str | None] = mapped_column(Text)
     conciliado_con_id: Mapped[int | None] = mapped_column(BigInteger)
     conciliado_en: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # --- 0073 ---------------------------------------------------------------
+    # Cuenta a la que entró la plata ("*3891"). La saca el parser del correo; NULL = no se pudo leer.
+    cuenta_destino: Mapped[str | None] = mapped_column(Text)
+    # Sello de "no es una venta": plata personal o de la casa. NULL = sin clasificar o es del negocio.
+    descartado_en: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    @property
+    def origen(self) -> str:
+        """De dónde salió la fila. Derivado, no columna: el dato ya está en el esquema."""
+        return "gmail" if self.gmail_message_id else "extracto"

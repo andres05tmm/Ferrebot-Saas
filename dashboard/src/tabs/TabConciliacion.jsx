@@ -1,16 +1,24 @@
 /*
- * TabConciliacion — conciliación bancaria (ADR 0028). Gateada por 'conciliacion_bancaria', SOLO admin.
- * Cruza los movimientos del extracto con ventas/gastos/abonos internos. El match automático (POST
- * /bancos/sugerir) marca 'sugerido' SOLO los de candidato único; los AMBIGUOS (varios candidatos) exigen
- * que un humano elija explícitamente antes de conciliar (POST /bancos/movimientos/{id}/conciliar). Nunca
- * concilia solo un ambiguo. GET /bancos/movimientos?estado. Enlazar no toca saldos: solo cruza.
+ * TabConciliacion — la plata que entra por transferencia (ADR 0028 + 0073). Gateada por
+ * 'conciliacion_bancaria', SOLO admin.
+ *
+ * Cruza los movimientos bancarios —los del extracto Y los que llegan por el correo del banco— con
+ * ventas, gastos y abonos internos. El match automático (POST /bancos/sugerir) marca 'sugerido' SOLO
+ * los de candidato único; los AMBIGUOS exigen que un humano elija antes de conciliar. Nunca concilia
+ * solo un ambiguo. Enlazar no toca saldos: solo cruza.
+ *
+ * A las cuentas del negocio también entra plata personal y de la casa, así que cada movimiento tiene
+ * una salida además de "es esta venta": "No es venta" (POST .../descarte) lo saca del pendiente sin
+ * borrarlo, y se puede deshacer. Ese botón está SIEMPRE, haya candidatos o no.
  */
 import { useState } from 'react'
 import { toast } from 'sonner'
 import { useQueryClient } from '@tanstack/react-query'
-import { Landmark, Wand2, ArrowDownLeft, ArrowUpRight, Link2, CheckCircle2 } from '@/lib/icons.jsx'
+import { Landmark, Wand2, ArrowDownLeft, ArrowUpRight, Link2, CheckCircle2, XCircle, Undo2 } from '@/lib/icons.jsx'
 import { cop } from '@/components/shared.jsx'
-import { useMovimientosBancarios, useSugerirConciliacion, useConciliar, keyPrefix } from '@/lib/queries'
+import {
+  useMovimientosBancarios, useSugerirConciliacion, useConciliar, useDescartarMovimiento, keyPrefix,
+} from '@/lib/queries'
 import { useRealtimeEvent } from '@/components/RealtimeProvider.jsx'
 import { useAuth } from '@/hooks/useAuth.js'
 import { Card } from '@/components/ui/card.jsx'
@@ -24,6 +32,7 @@ const FILTROS = [
   { id: 'no_conciliado', label: 'Sin conciliar' },
   { id: 'sugerido', label: 'Sugeridos' },
   { id: 'conciliado', label: 'Conciliados' },
+  { id: 'descartado', label: 'No son ventas' },
 ]
 
 const ESTADO_BADGE = {
@@ -38,35 +47,64 @@ function fechaCorta(f) {
   return new Date(f).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', timeZone: 'America/Bogota' })
 }
 
-function Movimiento({ item, onConciliar }) {
+// Quién mandó la plata. El remitente que trae el correo del banco es lo que el dueño reconoce; la
+// referencia del extracto es un código y solo sirve cuando no hay nombre.
+function titulo(m) {
+  return m.remitente || m.referencia_bancaria || 'movimiento'
+}
+
+function Movimiento({ item, onConciliar, onDescartar }) {
   const m = item.movimiento
   const candidatos = arr(item.candidatos)
   const credito = m.naturaleza === 'credito'
   const ambiguo = candidatos.length > 1
+  const descartado = m.descartado_en != null
+  const conciliado = m.estado_conciliacion === 'conciliado'
+  const detalle = [fechaCorta(m.fecha), m.hora, m.cuenta_destino, m.tipo_transaccion]
+    .filter(Boolean).join(' · ')
+
   return (
-    <li className="px-3.5 py-2.5 space-y-2 text-body-sm">
+    <li className={`px-3.5 py-2.5 space-y-2 text-body-sm ${descartado ? 'opacity-60' : ''}`}>
       <div className="flex items-center gap-3">
         {credito ? <ArrowDownLeft className="size-4 text-success shrink-0" /> : <ArrowUpRight className="size-4 text-destructive shrink-0" />}
         <div className="min-w-0 flex-1">
-          <div className="font-medium truncate">{m.referencia_bancaria || 'movimiento'}</div>
-          <div className="text-caption text-muted-foreground">{fechaCorta(m.fecha)} · {credito ? 'entrada' : 'salida'}</div>
+          <div className="font-medium truncate">{titulo(m)}</div>
+          <div className="text-caption text-muted-foreground truncate">{detalle || (credito ? 'entrada' : 'salida')}</div>
         </div>
         <span className={`tabular-nums font-semibold shrink-0 ${credito ? 'text-success' : 'text-destructive'}`}>{cop(m.monto)}</span>
-        <Badge variant="outline" className={`h-5 text-micro shrink-0 ${ESTADO_BADGE[m.estado_conciliacion] || ''}`}>
-          {ESTADO_LABEL[m.estado_conciliacion] || m.estado_conciliacion}
-        </Badge>
+        {descartado ? (
+          <Badge variant="outline" className="h-5 text-micro shrink-0 bg-muted text-muted-foreground border-border">
+            no es venta
+          </Badge>
+        ) : (
+          <Badge variant="outline" className={`h-5 text-micro shrink-0 ${ESTADO_BADGE[m.estado_conciliacion] || ''}`}>
+            {ESTADO_LABEL[m.estado_conciliacion] || m.estado_conciliacion}
+          </Badge>
+        )}
       </div>
 
-      {m.estado_conciliacion === 'conciliado' ? (
+      {descartado ? (
+        <div className="ml-7 flex items-center gap-2">
+          <span className="text-caption text-muted-foreground flex-1">Marcado como plata que no es del negocio.</span>
+          <Button size="sm" variant="ghost" className="h-7 px-2 shrink-0"
+            aria-label={`Deshacer no es venta de ${titulo(m)}`}
+            onClick={() => onDescartar(m.id, false)}>
+            <Undo2 className="size-3.5 mr-1" /> Deshacer
+          </Button>
+        </div>
+      ) : conciliado ? (
         <div className="ml-7 text-caption text-success inline-flex items-center gap-1">
           <CheckCircle2 className="size-3.5" /> enlazado con {m.conciliado_con_tipo} #{m.conciliado_con_id}
         </div>
-      ) : candidatos.length === 0 ? (
-        <div className="ml-7 text-caption text-muted-foreground">Sin candidatos internos que calcen.</div>
       ) : (
         <div className="ml-7 space-y-1.5">
           {ambiguo && (
             <div className="text-caption text-warning">Varios candidatos: elige cuál corresponde (no se concilia solo).</div>
+          )}
+          {candidatos.length === 0 && (
+            <div className="text-caption text-muted-foreground">
+              Todavía no hay una venta que calce. Anótala y vuelve a correr el cruce.
+            </div>
           )}
           {candidatos.map(cand => (
             <div key={`${cand.tipo}-${cand.id}`} className="flex items-center gap-2">
@@ -77,10 +115,18 @@ function Movimiento({ item, onConciliar }) {
               <Button size="sm" variant="ghost" className="h-7 px-2 text-primary shrink-0"
                 aria-label={`Conciliar ${m.id} con ${cand.tipo} ${cand.id}`}
                 onClick={() => onConciliar(m.id, cand)}>
-                <Link2 className="size-3.5 mr-1" /> Conciliar
+                <Link2 className="size-3.5 mr-1" /> Es esta venta
               </Button>
             </div>
           ))}
+          {/* Siempre visible, haya candidatos o no: a estas cuentas también entra plata de la casa. */}
+          <div className="flex">
+            <Button size="sm" variant="ghost" className="h-7 px-2 text-muted-foreground"
+              aria-label={`Marcar que ${titulo(m)} no es una venta`}
+              onClick={() => onDescartar(m.id, true)}>
+              <XCircle className="size-3.5 mr-1" /> No es venta
+            </Button>
+          </div>
         </div>
       )}
     </li>
@@ -103,12 +149,22 @@ function ConciliacionContenido() {
   const [filtro, setFiltro] = useState('')
   const [sugiriendo, setSugiriendo] = useState(false)
   const qc = useQueryClient()
-  const movsQ = useMovimientosBancarios(filtro)
+  const verDescartados = filtro === 'descartado'
+  const movsQ = useMovimientosBancarios(verDescartados ? '' : filtro, verDescartados)
   const sugerirM = useSugerirConciliacion()
   const conciliarM = useConciliar()
-  useRealtimeEvent(['reconnected'], () => qc.invalidateQueries({ queryKey: keyPrefix.bancosMovimientos }))
+  const descartarM = useDescartarMovimiento()
+  // `transferencia_recibida` ya lo publica el worker al ingerir el correo: el pago aparece en la
+  // lista en el mismo momento en que suena Telegram, sin que nadie recargue.
+  useRealtimeEvent(
+    ['reconnected', 'transferencia_recibida'],
+    () => qc.invalidateQueries({ queryKey: keyPrefix.bancosMovimientos }),
+  )
 
-  const movimientos = arr(movsQ.data)
+  const todos = arr(movsQ.data)
+  const movimientos = verDescartados
+    ? todos.filter(i => i.movimiento.descartado_en != null)
+    : todos
 
   async function correrSugerencias() {
     setSugiriendo(true)
@@ -128,6 +184,16 @@ function ConciliacionContenido() {
       else if (res.status === 422) toast.error('El enlace no es válido (monto o naturaleza no calzan)')
       else if (res.status === 404) toast.error('El movimiento ya no existe')
       else toast.error('No se pudo conciliar')
+    } catch { toast.error('Error de conexión') }
+  }
+
+  async function descartar(movId, marcar) {
+    try {
+      const res = await descartarM.mutateAsync({ movId, descartar: marcar })
+      if (res.ok) toast.success(marcar ? 'Marcado como plata que no es del negocio' : 'Vuelve al pendiente')
+      else if (res.status === 422) toast.error('Ya está enlazado a una venta: desconcílialo primero')
+      else if (res.status === 404) toast.error('El movimiento ya no existe')
+      else toast.error('No se pudo marcar')
     } catch { toast.error('Error de conexión') }
   }
 
@@ -161,12 +227,12 @@ function ConciliacionContenido() {
           <p className="py-10 text-center text-sm text-destructive">No se pudieron cargar los movimientos.</p>
         ) : movimientos.length === 0 ? (
           <p className="py-10 text-center text-sm text-muted-foreground">
-            {filtro ? 'Sin movimientos en ese estado.' : 'Sin movimientos bancarios ingeridos todavía.'}
+            {filtro ? 'Sin movimientos en ese estado.' : 'Todavía no ha entrado ninguna transferencia.'}
           </p>
         ) : (
           <ul className="divide-y divide-border-subtle">
             {movimientos.map(item => (
-              <Movimiento key={item.movimiento.id} item={item} onConciliar={conciliar} />
+              <Movimiento key={item.movimiento.id} item={item} onConciliar={conciliar} onDescartar={descartar} />
             ))}
           </ul>
         )}

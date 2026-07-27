@@ -155,3 +155,140 @@ async def test_aislamiento_a_no_ve_movimientos_de_b(tenant_factory):
     async with AsyncSession(a.engine) as s:
         movs = await _svc(s).listar(estado=None)
     assert [m.movimiento.referencia_bancaria for m in movs] == ["A-REF"]
+
+
+# --- 0073: un solo libro + "no es venta" -------------------------------------
+
+async def _transferencia_gmail(s: AsyncSession, *, mid: str, monto: str) -> int:
+    """Una transferencia como la que deja el correo del banco: sin `referencia_bancaria`."""
+    mov = await SqlBancosRepository(s).ingestar_gmail(
+        gmail_message_id=mid, fecha=_DIA, monto=Decimal(monto), remitente="JUAN PEREZ",
+        descripcion=None, tipo_transaccion="Código QR", hora="09:12",
+        cuenta_destino="*3891", referencia="0046052593",
+    )
+    return mov.id
+
+
+async def test_listar_incluye_las_que_llegaron_por_el_correo(tenant):
+    """La regresión que dejaba el tab vacío: `listar` filtraba `referencia_bancaria IS NOT NULL`.
+
+    Las filas de Gmail nacen con esa columna en NULL, así que desaparecían de la pantalla y del
+    match. El ADR 0028 (D1) declaró UN libro de movimientos bancarios; el filtro creaba dos.
+    """
+    async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
+        await _transferencia_gmail(s, mid="msg-1", monto="150000")
+        await _svc(s).ingestar([MovimientoBancarioIngesta(
+            referencia_bancaria="REF-EXT", fecha=_DIA, monto=Decimal("90000"), naturaleza="credito",
+        )])
+        await s.commit()
+
+        movs = await _svc(s).listar(estado=None)
+
+    origenes = sorted(m.movimiento.origen for m in movs)
+    assert origenes == ["extracto", "gmail"]
+    gmail = next(m.movimiento for m in movs if m.movimiento.origen == "gmail")
+    assert gmail.cuenta_destino == "*3891" and gmail.remitente == "JUAN PEREZ"
+
+
+async def test_la_ingesta_de_gmail_guarda_cuenta_y_llave(tenant):
+    """El parser las extraía desde siempre; hasta 0073 se tiraban antes de llegar a la base."""
+    async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
+        mov_id = await _transferencia_gmail(s, mid="msg-cuenta", monto="80000")
+        await s.commit()
+
+        fila = (
+            await s.execute(
+                text("SELECT cuenta_destino, referencia FROM bancolombia_transferencias WHERE id=:i"),
+                {"i": mov_id},
+            )
+        ).one()
+    assert fila.cuenta_destino == "*3891"
+    assert fila.referencia == "0046052593"
+
+
+async def test_descartar_saca_del_pendiente_y_se_puede_deshacer(tenant):
+    """"No es venta": la plata de la casa sale de la lista sin borrarse de la base."""
+    async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
+        mov_id = await _transferencia_gmail(s, mid="msg-personal", monto="500000")
+        await s.commit()
+        svc = _svc(s)
+
+        leer = await svc.descartar(mov_id, descartar=True, ahora=now_co())
+        await s.commit()
+        assert leer.descartado_en is not None
+        assert [m.movimiento.id for m in await svc.listar(estado=None)] == []
+        # Sigue existiendo: se puede consultar pidiéndolos explícitamente.
+        con_descartados = await svc.listar(estado=None, incluir_descartados=True)
+        assert [m.movimiento.id for m in con_descartados] == [mov_id]
+
+        await svc.descartar(mov_id, descartar=False, ahora=now_co())
+        await s.commit()
+        assert [m.movimiento.id for m in await svc.listar(estado=None)] == [mov_id]
+
+
+async def test_descartar_dos_veces_conserva_el_primer_sello(tenant):
+    """Idempotencia (regla #8): repetir la acción no cambia nada, ni la fecha del sello."""
+    async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
+        mov_id = await _transferencia_gmail(s, mid="msg-idem", monto="70000")
+        await s.commit()
+        svc = _svc(s)
+
+        primero = await svc.descartar(mov_id, descartar=True, ahora=now_co())
+        await s.commit()
+        segundo = await svc.descartar(mov_id, descartar=True, ahora=now_co())
+        await s.commit()
+
+    assert primero.descartado_en == segundo.descartado_en
+
+
+async def test_descartar_un_sugerido_libera_la_venta(tenant):
+    """INVARIANTE de dinero: la venta que quedó colgando debe volver a ofrecerse.
+
+    El filtro anti-doble-uso da por tomado todo interno enlazado en estado `sugerido`. Si al
+    descartar una transferencia no se suelta su sugerencia, esa venta queda secuestrada para
+    siempre: la transferencia que SÍ la pagó nunca volvería a verla como candidata.
+    """
+    async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
+        uid = await _usuario(s)
+        await _venta_transferencia(s, uid=uid, total="120000", consecutivo=77)
+        await s.commit()
+        svc = _svc(s)
+
+        personal = await _transferencia_gmail(s, mid="msg-confunde", monto="120000")
+        await s.commit()
+        assert await svc.sugerir_pendientes() == 1      # se enganchó a la venta por monto+fecha
+        await s.commit()
+
+        await svc.descartar(personal, descartar=True, ahora=now_co())
+        await s.commit()
+
+        # La de verdad llega después y la venta tiene que estar libre.
+        real = await _transferencia_gmail(s, mid="msg-real", monto="120000")
+        await s.commit()
+        assert await svc.sugerir_pendientes() == 1
+        await s.commit()
+
+        sugeridos = await svc.listar(estado="sugerido")
+
+    assert [m.movimiento.id for m in sugeridos] == [real]
+
+
+async def test_no_se_puede_descartar_uno_ya_conciliado(tenant):
+    """Está enlazado a una venta real: marcarlo personal es contradictorio."""
+    from modules.bancos.errors import ConciliacionInvalida
+
+    async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
+        uid = await _usuario(s)
+        await _venta_transferencia(s, uid=uid, total="330000", consecutivo=88)
+        await s.commit()
+        svc = _svc(s)
+        mov_id = await _transferencia_gmail(s, mid="msg-conciliado", monto="330000")
+        await s.commit()
+        await svc.sugerir_pendientes()
+        await s.commit()
+        cand = (await svc.listar(estado="sugerido"))[0].candidatos[0]
+        await svc.confirmar(mov_id, tipo=cand.tipo, id_interno=cand.id, ahora=now_co())
+        await s.commit()
+
+        with pytest.raises(ConciliacionInvalida):
+            await svc.descartar(mov_id, descartar=True, ahora=now_co())

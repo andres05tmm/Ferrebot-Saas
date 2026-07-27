@@ -38,8 +38,13 @@ depends_on: str | Sequence[str] | None = None
 
 def upgrade() -> None:
     op.add_column("productos", sa.Column("precio_paquete", sa.Numeric(12, 2)))
-    # Los que hoy tienen el precio del EMPAQUE en `precio_venta` son exactamente los que 0069 marcó
-    # con `contenido_paquete` (la convención de granel hecha dato). Se les separa el número.
+    # SOLO los granel: son los únicos donde `precio_venta` significa el precio del EMPAQUE, porque
+    # el motor dividía por la convención de `unidad_medida` (GRM→500, Cms→100, MLT→1000).
+    #
+    # NO basta con `contenido_paquete IS NOT NULL`. Ese campo es de 0069 y cualquiera pudo llenarlo
+    # desde el dashboard sobre un producto por kilo —cuyo `precio_venta` YA es por kilo— y ahí
+    # dividir destruye el precio. Pasó: en Punto Rojo el dueño había puesto el tamaño de bolsa a
+    # nueve polvos y esta migración les dejó el cemento a $60 el kilo en vez de $1.500.
     op.execute(
         """
         UPDATE productos
@@ -47,16 +52,21 @@ def upgrade() -> None:
                precio_venta = ROUND(precio_venta / contenido_paquete, 2)
          WHERE contenido_paquete IS NOT NULL AND contenido_paquete > 0
            AND precio_paquete IS NULL
+           AND lower(btrim(unidad_medida))
+               IN ('grm', 'gramos', 'cms', 'mlt', 'ml', 'mililitros')
         """
     )
 
 
 def downgrade() -> None:
-    # Devuelve el precio del empaque a `precio_venta` (el significado viejo) antes de soltar la columna.
+    # Devuelve el precio del empaque a `precio_venta` (el significado viejo) antes de soltar la
+    # columna, solo donde el upgrade lo movió: los granel.
     op.execute(
         """
         UPDATE productos SET precio_venta = precio_paquete
          WHERE precio_paquete IS NOT NULL AND contenido_paquete IS NOT NULL
+           AND lower(btrim(unidad_medida))
+               IN ('grm', 'gramos', 'cms', 'mlt', 'ml', 'mililitros')
         """
     )
     op.drop_column("productos", "precio_paquete")

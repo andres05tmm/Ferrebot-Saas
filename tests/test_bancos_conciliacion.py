@@ -535,6 +535,79 @@ async def test_totales_aislados_entre_empresas(tenant_factory):
     assert tot_a.total == Decimal("500000")
 
 
+# --- fase 4: quién repite ----------------------------------------------------
+
+async def _credito_de(
+    s: AsyncSession, *, mid: str, remitente: str | None, monto: str, fecha: date = _DIA
+) -> int:
+    mov = await SqlBancosRepository(s).ingestar_gmail(
+        gmail_message_id=mid, fecha=fecha, monto=Decimal(monto), remitente=remitente,
+        descripcion=None, tipo_transaccion=None, hora=None, cuenta_destino="*3891", referencia=None,
+    )
+    return mov.id
+
+
+async def test_remitentes_agrupa_a_quien_repite(tenant):
+    async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
+        await _credito_de(s, mid="r1", remitente="MARIA GOMEZ", monto="30000")
+        await _credito_de(s, mid="r2", remitente="  maria gomez ", monto="20000",
+                          fecha=date(2026, 6, 17))
+        await _credito_de(s, mid="r3", remitente="JUAN PEREZ", monto="90000")
+        await s.commit()
+
+        recurrentes = await _svc(s).remitentes(desde=_DIA, hasta=date(2026, 6, 30))
+
+    # JUAN vino una sola vez: con min_veces=2 no es "recurrente" todavía.
+    assert [r.nombre for r in recurrentes] == ["MARIA GOMEZ"]
+    r = recurrentes[0]
+    assert (r.veces, r.total, r.primera, r.ultima) == (2, Decimal("50000"), _DIA, date(2026, 6, 17))
+    assert r.conciliados == 0
+
+
+async def test_remitentes_no_escriben_en_clientes(tenant):
+    """Decisión del dueño hecha test: agrupar remitentes NO da de alta clientes.
+
+    El nombre del correo del banco es texto sin documento ni teléfono; volcarlo a `clientes` llenaría
+    la tabla de duplicados que después hay que limpiar a mano.
+    """
+    async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
+        await _credito_de(s, mid="rc1", remitente="PEDRO PEREZ", monto="10000")
+        await _credito_de(s, mid="rc2", remitente="PEDRO PEREZ", monto="10000")
+        await s.commit()
+        antes = (await s.execute(text("SELECT count(*) FROM clientes"))).scalar_one()
+
+        assert len(await _svc(s).remitentes(desde=_DIA, hasta=_DIA)) == 1
+        await s.commit()
+        despues = (await s.execute(text("SELECT count(*) FROM clientes"))).scalar_one()
+
+    assert antes == despues == 0
+
+
+async def test_remitentes_ignoran_la_plata_de_la_casa(tenant):
+    """Lo descartado no cuenta: la plata personal no es un cliente fiel."""
+    async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
+        await _credito_de(s, mid="rp1", remitente="FARID MALO", monto="500000")
+        casa = await _credito_de(s, mid="rp2", remitente="FARID MALO", monto="300000")
+        await s.commit()
+        svc = _svc(s)
+        await svc.descartar(casa, descartar=True, ahora=now_co())
+        await s.commit()
+
+        # Le queda una sola aparición visible → deja de ser recurrente.
+        assert await svc.remitentes(desde=_DIA, hasta=_DIA) == []
+        assert len(await svc.remitentes(desde=_DIA, hasta=_DIA, min_veces=1)) == 1
+
+
+async def test_remitentes_sin_nombre_no_arman_un_grupo_fantasma(tenant):
+    """Las filas del extracto no traen remitente: agruparlas juntas inventaría un cliente."""
+    async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
+        await _credito_de(s, mid="rs1", remitente=None, monto="10000")
+        await _credito_de(s, mid="rs2", remitente="   ", monto="10000")
+        await s.commit()
+
+        assert await _svc(s).remitentes(desde=_DIA, hasta=_DIA, min_veces=1) == []
+
+
 def test_un_alias_mal_escrito_no_tumba_el_reporte():
     """Los alias son etiquetas: cualquier basura en la config degrada a mostrar el número de cuenta."""
     from modules.bancos.config import parsear_alias

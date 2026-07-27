@@ -102,6 +102,21 @@ class TotalesBancarios(BaseModel):
     por_cuenta: list[TotalPorCuenta]
 
 
+class RemitenteRecurrente(BaseModel):
+    """Alguien que mandó plata más de una vez en el período (por el nombre del correo del banco).
+
+    Es un reporte de LECTURA: no crea ni toca la tabla `clientes`. El nombre viene normalizado
+    (mayúsculas, sin espacios sobrantes) y la agrupación es exacta — sin fuzzy matching.
+    """
+
+    nombre: str
+    veces: int
+    total: Decimal
+    primera: date
+    ultima: date
+    conciliados: int      # cuántas de esas veces ya quedaron enlazadas a una venta
+
+
 class ConciliarConfirmar(BaseModel):
     """Confirmación EXPLÍCITA del enlace elegido (sugerido/ambiguo → conciliado)."""
 

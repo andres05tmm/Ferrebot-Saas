@@ -24,6 +24,7 @@ from modules.bancos.schemas import (
     MovimientoBancarioIngesta,
     MovimientoBancarioLeer,
     MovimientoConCandidatos,
+    RemitenteRecurrente,
     TotalesBancarios,
 )
 from modules.bancos.service import BancosService
@@ -67,6 +68,19 @@ async def totales(
 ) -> TotalesBancarios:
     """Cuánta plata entró (solo créditos) en el período, en total y por cuenta. Default: mes en curso."""
     return await service.totales(desde=desde, hasta=hasta, alias=alias)
+
+
+@router.get("/remitentes", response_model=list[RemitenteRecurrente])
+async def remitentes(
+    desde: date | None = Query(default=None),
+    hasta: date | None = Query(default=None),
+    min_veces: int = Query(default=2, ge=1, le=100),
+    limite: int = Query(default=20, ge=1, le=100),
+    service: BancosService = Depends(get_bancos_service),
+    _user: Principal = Depends(require_role("admin")),
+) -> list[RemitenteRecurrente]:
+    """Quién mandó plata más de una vez en el período. Reporte de lectura: no toca `clientes`."""
+    return await service.remitentes(desde=desde, hasta=hasta, min_veces=min_veces, limite=limite)
 
 
 @router.get("/movimientos", response_model=list[MovimientoConCandidatos])

@@ -15,12 +15,12 @@
 import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { useQueryClient } from '@tanstack/react-query'
-import { Landmark, Wand2, ArrowDownLeft, ArrowUpRight, Link2, CheckCircle2, XCircle, Undo2 } from '@/lib/icons.jsx'
+import { Landmark, Wand2, ArrowDownLeft, ArrowUpRight, Link2, CheckCircle2, XCircle, Undo2, Users } from '@/lib/icons.jsx'
 import { cop } from '@/components/shared.jsx'
 import { PERIODOS, hoyCO, periodo } from '@/lib/gastos.js'
 import {
-  useMovimientosBancarios, useTotalesBancarios, useSugerirConciliacion, useConciliar,
-  useDescartarMovimiento, keyPrefix,
+  useMovimientosBancarios, useTotalesBancarios, useRemitentesRecurrentes, useSugerirConciliacion,
+  useConciliar, useDescartarMovimiento, keyPrefix,
 } from '@/lib/queries'
 import { useRealtimeEvent } from '@/components/RealtimeProvider.jsx'
 import { useAuth } from '@/hooks/useAuth.js'
@@ -194,6 +194,50 @@ function Totales({ datos, cargando }) {
   )
 }
 
+/* Quién repite. Colapsado por defecto: es el objetivo terciario, no lo que el dueño viene a hacer.
+ * Agrupa por el nombre que trae el correo del banco y NO escribe en `clientes`: ese nombre es texto
+ * sin documento ni teléfono, y volcarlo llenaría la tabla de duplicados que después se limpian a mano. */
+function Recurrentes({ rango }) {
+  const [abierto, setAbierto] = useState(false)
+  const q = useRemitentesRecurrentes(rango.desde, rango.hasta, abierto)
+  const filas = arr(q.data)
+
+  return (
+    <Card className="p-0 overflow-hidden">
+      <button type="button" onClick={() => setAbierto(a => !a)} aria-expanded={abierto}
+        className="w-full px-3.5 py-2.5 flex items-center gap-2 text-body-sm hover:bg-surface-2 transition-colors">
+        <Users className="size-4 text-primary shrink-0" />
+        <span className="font-medium flex-1 text-left">Quién repite</span>
+        <span className="text-caption text-muted-foreground">{abierto ? 'ocultar' : 'ver'}</span>
+      </button>
+      {abierto && (
+        q.isLoading ? (
+          <p className="py-6 text-center text-sm text-muted-foreground">Cargando…</p>
+        ) : filas.length === 0 ? (
+          <p className="py-6 text-center text-sm text-muted-foreground">
+            Nadie ha mandado plata más de una vez en este período.
+          </p>
+        ) : (
+          <ul className="divide-y divide-border-subtle border-t border-border-subtle">
+            {filas.map(r => (
+              <li key={r.nombre} className="px-3.5 py-2 flex items-center gap-3 text-body-sm">
+                <div className="min-w-0 flex-1">
+                  <div className="font-medium truncate">{r.nombre}</div>
+                  <div className="text-caption text-muted-foreground">
+                    {`${r.veces} transferencias · última ${fechaCorta(r.ultima)}`
+                      + (r.conciliados > 0 ? ` · ${r.conciliados} ya enlazadas a una venta` : '')}
+                  </div>
+                </div>
+                <span className="tabular-nums font-semibold shrink-0">{cop(r.total)}</span>
+              </li>
+            ))}
+          </ul>
+        )
+      )}
+    </Card>
+  )
+}
+
 export default function TabConciliacion() {
   const { isAdmin } = useAuth()
   if (!isAdmin()) {
@@ -294,6 +338,8 @@ function ConciliacionContenido() {
       </div>
 
       <Totales datos={totalesQ.data} cargando={totalesQ.isLoading} />
+
+      <Recurrentes rango={rango} />
 
       <div className="flex flex-wrap gap-1.5">
         {FILTROS.map(f => (

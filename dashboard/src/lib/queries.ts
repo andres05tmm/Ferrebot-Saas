@@ -45,6 +45,7 @@ export const queryKeys = {
   retencionesConfig: ['retenciones', 'config'] as const,
   bancosMovimientos: (estado: string) => ['bancos', 'movimientos', estado] as const,
   bancosTotales: (rango: string) => ['bancos', 'totales', rango] as const,
+  bancosRemitentes: (rango: string) => ['bancos', 'remitentes', rango] as const,
 }
 
 // Listado de facturas recibidas por QR (GET /facturas-recibidas). Gateado por `compras_fiscal` en el back.
@@ -281,6 +282,16 @@ export function useTotalesBancarios(desde: string, hasta: string) {
   return useQuery({
     queryKey: queryKeys.bancosTotales(`${desde}|${hasta}`),
     queryFn: () => apiJson<Fila>(`/bancos/totales?desde=${desde}&hasta=${hasta}`),
+  })
+}
+
+// Quién repite (GET /bancos/remitentes). `enabled` corta la llamada mientras la tabla está
+// colapsada: es un reporte secundario, no tiene por qué pagarse al abrir el tab.
+export function useRemitentesRecurrentes(desde: string, hasta: string, activo: boolean) {
+  return useQuery({
+    queryKey: queryKeys.bancosRemitentes(`${desde}|${hasta}`),
+    queryFn: () => apiJson<Fila[]>(`/bancos/remitentes?desde=${desde}&hasta=${hasta}`),
+    enabled: activo,
   })
 }
 

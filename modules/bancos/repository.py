@@ -118,6 +118,37 @@ _TOTALES_POR_CUENTA = (
 )
 
 
+# Quién repite. Agrupa por el nombre que trae el correo del banco, normalizado a mayúsculas y sin
+# espacios sobrantes. NO toca `clientes`: es un reporte de lectura, no un alta de clientes.
+#
+# Los descartados quedan fuera: la plata de la casa no es un cliente fiel. La agrupación es exacta
+# (sin `unaccent` ni `pg_trgm`), así que "JUAN PÉREZ" y "JUAN PEREZ" cuentan aparte; si el dueño ve
+# duplicados por tildes, ahí se agrega — antes es complejidad sin evidencia.
+_REMITENTES = (
+    "SELECT upper(trim(remitente)) AS nombre, count(*) AS veces, "
+    "       COALESCE(SUM(monto), 0) AS total, min(fecha) AS primera, max(fecha) AS ultima, "
+    "       count(*) FILTER (WHERE estado_conciliacion = 'conciliado') AS conciliados "
+    "FROM bancolombia_transferencias "
+    "WHERE naturaleza = 'credito' AND descartado_en IS NULL "
+    "AND remitente IS NOT NULL AND trim(remitente) <> '' "
+    "AND fecha BETWEEN :desde AND :hasta "
+    "GROUP BY upper(trim(remitente)) "
+    "HAVING count(*) >= :min_veces "
+    "ORDER BY veces DESC, total DESC "
+    "LIMIT :limite"
+)
+
+
+@dataclass(frozen=True, slots=True)
+class RemitenteRecurrente:
+    nombre: str
+    veces: int
+    total: Decimal
+    primera: date
+    ultima: date
+    conciliados: int
+
+
 @dataclass(frozen=True, slots=True)
 class TotalCuenta:
     cuenta: str | None          # None = el parser no pudo leerla; se muestra, no se esconde
@@ -243,6 +274,24 @@ class SqlBancosRepository:
             TotalCuenta(
                 cuenta=f.cuenta, movimientos=f.movimientos, total=Decimal(f.total),
                 total_negocio=Decimal(f.total_negocio), sin_clasificar=f.sin_clasificar,
+            )
+            for f in filas
+        ]
+
+    async def remitentes_recurrentes(
+        self, *, desde: date, hasta: date, min_veces: int, limite: int
+    ) -> list[RemitenteRecurrente]:
+        """Quién mandó plata más de una vez en el período, de mayor a menor frecuencia."""
+        filas = (
+            await self._s.execute(
+                text(_REMITENTES),
+                {"desde": desde, "hasta": hasta, "min_veces": min_veces, "limite": limite},
+            )
+        ).all()
+        return [
+            RemitenteRecurrente(
+                nombre=f.nombre, veces=f.veces, total=Decimal(f.total),
+                primera=f.primera, ultima=f.ultima, conciliados=f.conciliados,
             )
             for f in filas
         ]

@@ -74,6 +74,7 @@ async def test_sin_flag_da_404(tenant):
         assert (await c.post("/api/v1/bancos/movimientos/1/descarte")).status_code == 404
         assert (await c.delete("/api/v1/bancos/movimientos/1/descarte")).status_code == 404
         assert (await c.get("/api/v1/bancos/totales")).status_code == 404
+        assert (await c.get("/api/v1/bancos/remitentes")).status_code == 404
 
 
 async def test_rbac_vendedor_no_entra(tenant):
@@ -84,6 +85,7 @@ async def test_rbac_vendedor_no_entra(tenant):
         assert (await c.delete("/api/v1/bancos/movimientos/1/descarte")).status_code == 403
         # Cuánta plata entró al negocio es justo lo que un vendedor no tiene por qué ver.
         assert (await c.get("/api/v1/bancos/totales")).status_code == 403
+        assert (await c.get("/api/v1/bancos/remitentes")).status_code == 403
 
 
 async def test_ingesta_idempotente_por_http(tenant):

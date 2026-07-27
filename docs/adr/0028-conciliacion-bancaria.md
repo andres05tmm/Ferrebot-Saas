@@ -153,3 +153,21 @@ de arriba son la SUMA de las cuentas y no una segunda consulta, así no pueden c
 
 En el tab, el período acota los TOTALES pero no la lista: la lista es la bandeja de trabajo (lo que
 falta resolver) y el total es el reporte del mes. Mezclarlos escondería pendientes viejos.
+
+## Enmienda (2026-07-27) — quién repite (`GET /bancos/remitentes`)
+
+Objetivo terciario del dueño: ver qué clientes vuelven. Agrupa por `upper(trim(remitente))` sobre
+los créditos del período y devuelve `veces`, `total`, `primera`, `ultima` y `conciliados`.
+
+- **CERO escrituras en `clientes`.** Es un reporte de lectura, y así se queda: el nombre que trae el
+  correo del banco es texto sin documento ni teléfono, y volcarlo a `clientes` llenaría la tabla de
+  duplicados que después hay que limpiar a mano. Cubierto por `test_remitentes_no_escriben_en_clientes`
+  (snapshot de `count(*)` antes/después).
+- **Los descartados no cuentan:** la plata de la casa no es un cliente fiel.
+- **Sin remitente no hay grupo:** las filas del extracto no traen nombre; agruparlas juntas
+  inventaría un cliente que no existe.
+- **Agrupación exacta, sin `unaccent` ni `pg_trgm`:** "JUAN PÉREZ" y "JUAN PEREZ" cuentan aparte. Si
+  el dueño ve duplicados por tildes, ahí se agrega; antes es complejidad sin evidencia.
+
+En el tab va colapsado y la consulta no se dispara hasta abrirlo: es el objetivo terciario, no lo
+que el dueño viene a hacer.

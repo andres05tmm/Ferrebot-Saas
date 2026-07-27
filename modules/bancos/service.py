@@ -26,6 +26,7 @@ from modules.bancos.schemas import (
     MovimientoBancarioIngesta,
     MovimientoBancarioLeer,
     MovimientoConCandidatos,
+    RemitenteRecurrente as RemitenteRecurrenteLeer,
     TotalesBancarios,
     TotalPorCuenta,
 )
@@ -123,6 +124,17 @@ class BancosService:
                 for c in cuentas
             ],
         )
+
+    async def remitentes(
+        self, *, desde: date | None, hasta: date | None, min_veces: int = 2, limite: int = 20
+    ) -> list[RemitenteRecurrenteLeer]:
+        """Quién repite en el período. SOLO lee: no crea ni modifica clientes."""
+        hoy = today_co()
+        filas = await self._repo.remitentes_recurrentes(
+            desde=desde or hoy.replace(day=1), hasta=hasta or hoy,
+            min_veces=min_veces, limite=limite,
+        )
+        return [RemitenteRecurrenteLeer.model_validate(f, from_attributes=True) for f in filas]
 
     async def confirmar(
         self, mov_id: int, *, tipo: str, id_interno: int, ahora: datetime

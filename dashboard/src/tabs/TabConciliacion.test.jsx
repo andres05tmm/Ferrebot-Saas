@@ -207,6 +207,29 @@ describe('TabConciliacion — match de mixtas y fiados', () => {
     expect(screen.getByText(/2 movimiento\(s\) sin resolver/)).toBeInTheDocument()
   })
 
+  it('"Quién repite" está colapsado y no se pide hasta abrirlo', async () => {
+    comoAdmin()
+    const fetchMock = vi.fn((url) => {
+      const u = String(url)
+      if (u.includes('/bancos/remitentes')) return Promise.resolve(jsonResp([
+        { nombre: 'LUCIA TORRES', veces: 4, total: '320000.00', primera: '2026-07-01',
+          ultima: '2026-07-25', conciliados: 3 },
+      ]))
+      if (u.includes('/bancos/movimientos')) return Promise.resolve(jsonResp(GMAIL))
+      return Promise.resolve(jsonResp({ sugeridos: 0 }))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    render(conQuery(<MemoryRouter><TabConciliacion /></MemoryRouter>))
+    await screen.findByText('JHON JAIRO GARCIA MORALES')
+
+    // Es el objetivo terciario: no se paga la consulta al abrir el tab.
+    expect(fetchMock.mock.calls.some(c => String(c[0]).includes('/bancos/remitentes'))).toBe(false)
+
+    fireEvent.click(screen.getByRole('button', { name: /Quién repite/ }))
+    expect(await screen.findByText('LUCIA TORRES')).toBeInTheDocument()
+    expect(screen.getByText(/4 transferencias/)).toBeInTheDocument()
+  })
+
   it('al abrir el tab corre el cruce solo, sin que nadie toque el botón', async () => {
     comoAdmin()
     const fetchMock = fetchGmail()

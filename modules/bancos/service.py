@@ -13,7 +13,7 @@ Conciliar SOLO escribe el estado/enlace en la fila bancaria: nunca toca caja, fi
 """
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 
 from core.logging import get_logger
 from modules.bancos.errors import ConciliacionInvalida, MovimientoBancarioInexistente
@@ -68,10 +68,16 @@ class BancosService:
         log.info("banco_sugerencias", sugeridos=sugeridos)
         return sugeridos
 
-    async def listar(self, *, estado: str | None) -> list[MovimientoConCandidatos]:
-        """Movimientos del extracto (opcionalmente por estado) con sus candidatos internos vigentes."""
+    async def listar(
+        self, *, estado: str | None, desde: date | None = None, hasta: date | None = None,
+        incluir_descartados: bool = False, limite: int = 200,
+    ) -> list[MovimientoConCandidatos]:
+        """Movimientos bancarios (opcionalmente por estado/período) con sus candidatos vigentes."""
         salida: list[MovimientoConCandidatos] = []
-        for mov in await self._repo.listar(estado=estado):
+        for mov in await self._repo.listar(
+            estado=estado, desde=desde, hasta=hasta,
+            incluir_descartados=incluir_descartados, limite=limite,
+        ):
             candidatos = await self._repo.candidatos(
                 monto=mov.monto, fecha=mov.fecha, naturaleza=mov.naturaleza, excluir_mov_id=mov.id
             )
@@ -105,4 +111,26 @@ class BancosService:
             )
         await self._repo.confirmar(mov, tipo=tipo, id_interno=id_interno, cuando=ahora)
         log.info("banco_conciliado", mov_id=mov_id, tipo=tipo, id_interno=id_interno)
+        return MovimientoBancarioLeer.model_validate(mov)
+
+    async def descartar(
+        self, mov_id: int, *, descartar: bool, ahora: datetime
+    ) -> MovimientoBancarioLeer:
+        """Marca (o desmarca) un movimiento como "no es venta": plata personal o de la casa.
+
+        Idempotente en los dos sentidos: repetir la misma acción deja el mismo resultado. Descartar
+        uno ya `conciliado` es contradictorio (está enlazado a una venta real) → 422.
+        """
+        mov = await self._repo.obtener(mov_id)
+        if mov is None:
+            raise MovimientoBancarioInexistente(mov_id)
+        if descartar and mov.estado_conciliacion == "conciliado":
+            raise ConciliacionInvalida(
+                f"El movimiento {mov_id} ya está conciliado con una venta: desconcílialo primero"
+            )
+        # Idempotencia: si ya estaba descartado se conserva el sello original (no se pisa la fecha).
+        if descartar and mov.descartado_en is not None:
+            return MovimientoBancarioLeer.model_validate(mov)
+        await self._repo.marcar_descarte(mov, cuando=ahora if descartar else None)
+        log.info("banco_descarte", mov_id=mov_id, descartado=descartar)
         return MovimientoBancarioLeer.model_validate(mov)

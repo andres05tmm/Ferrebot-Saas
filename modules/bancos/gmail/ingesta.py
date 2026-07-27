@@ -86,6 +86,10 @@ async def procesar_push(
             descripcion=datos["descripcion"] or None,
             tipo_transaccion=datos["tipo"] or None,
             hora=datos["hora"] or None,
+            # El parser las saca del correo desde siempre; hasta 0073 solo viajaban al mensaje de
+            # Telegram y nunca llegaban a la base. Sin la cuenta no se puede separar *3891 de *6485.
+            cuenta_destino=datos["cuenta"] or None,
+            referencia=datos["llave"] or None,
         )
         if mov is None:            # ya ingerido antes (dedup por gmail_message_id) → no re-notificar
             continue

@@ -55,6 +55,14 @@ class MovimientoBancarioLeer(BaseModel):
     conciliado_con_tipo: str | None
     conciliado_con_id: int | None
     conciliado_en: datetime | None
+    # Lo que el dueño necesita para reconocer el pago de un vistazo: quién mandó, a qué cuenta y a
+    # qué hora. Estaba en la tabla desde 0001 y nunca salía por el API.
+    remitente: str | None = None
+    hora: str | None = None
+    tipo_transaccion: str | None = None
+    cuenta_destino: str | None = None
+    descartado_en: datetime | None = None
+    origen: str = "extracto"      # property del modelo: 'gmail' | 'extracto'
 
 
 class MovimientoConCandidatos(BaseModel):

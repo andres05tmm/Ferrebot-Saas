@@ -77,3 +77,76 @@ describe('TabConciliacion', () => {
     expect(fetchMock.mock.calls.some(c => String(c[0]).includes('/bancos/sugerir') && c[1]?.method === 'POST')).toBe(true)
   })
 })
+
+// --- 0073: transferencias del correo + "no es venta" -------------------------
+
+const GMAIL = [
+  {
+    movimiento: { id: 20, referencia_bancaria: null, fecha: '2026-07-27', monto: '150000',
+      naturaleza: 'credito', estado_conciliacion: 'no_conciliado', conciliado_con_tipo: null,
+      conciliado_con_id: null, conciliado_en: null, remitente: 'JHON JAIRO GARCIA MORALES',
+      hora: '08:31', cuenta_destino: '*3891', tipo_transaccion: 'Código QR',
+      descartado_en: null, origen: 'gmail' },
+    candidatos: [],
+  },
+  {
+    movimiento: { id: 21, referencia_bancaria: null, fecha: '2026-07-27', monto: '80000',
+      naturaleza: 'credito', estado_conciliacion: 'no_conciliado', conciliado_con_tipo: null,
+      conciliado_con_id: null, conciliado_en: null, remitente: 'MARIA GOMEZ',
+      hora: '09:02', cuenta_destino: '*6485', tipo_transaccion: 'Nequi',
+      descartado_en: null, origen: 'gmail' },
+    candidatos: [
+      { tipo: 'venta', id: 50, monto: '80000', fecha: '2026-07-27', descripcion: 'venta #50' },
+      { tipo: 'venta', id: 51, monto: '80000', fecha: '2026-07-27', descripcion: 'venta #51' },
+    ],
+  },
+]
+
+function fetchGmail() {
+  const fetchMock = vi.fn((url) => {
+    const u = String(url)
+    if (u.includes('/descarte')) return Promise.resolve(jsonResp({ ...GMAIL[0].movimiento, descartado_en: 'x' }))
+    if (u.includes('/bancos/movimientos')) return Promise.resolve(jsonResp(GMAIL))
+    return Promise.resolve(jsonResp([]))
+  })
+  vi.stubGlobal('fetch', fetchMock)
+  return fetchMock
+}
+
+describe('TabConciliacion — transferencias del correo del banco', () => {
+  it('muestra quién mandó la plata, a qué cuenta y a qué hora', async () => {
+    comoAdmin()
+    fetchGmail()
+    render(conQuery(<MemoryRouter><TabConciliacion /></MemoryRouter>))
+
+    expect(await screen.findByText('JHON JAIRO GARCIA MORALES')).toBeInTheDocument()
+    expect(screen.getByText(/\*3891/)).toBeInTheDocument()
+    expect(screen.getByText(/08:31/)).toBeInTheDocument()
+  })
+
+  it('"No es venta" está aunque no haya ningún candidato', async () => {
+    comoAdmin()
+    const fetchMock = fetchGmail()
+    render(conQuery(<MemoryRouter><TabConciliacion /></MemoryRouter>))
+    await screen.findByText('JHON JAIRO GARCIA MORALES')
+
+    // Ese movimiento no tiene candidatos: el botón tiene que estar igual, porque a esas cuentas
+    // también entra plata de la casa.
+    fireEvent.click(screen.getByRole('button', { name: /Marcar que JHON JAIRO GARCIA MORALES no es una venta/ }))
+    await screen.findByText('JHON JAIRO GARCIA MORALES')
+
+    const llamada = fetchMock.mock.calls.find(c => String(c[0]).includes('/bancos/movimientos/20/descarte'))
+    expect(llamada).toBeTruthy()
+    expect(llamada[1].method).toBe('POST')
+  })
+
+  it('con dos candidatos no concilia nada solo: espera el click', async () => {
+    comoAdmin()
+    const fetchMock = fetchGmail()
+    render(conQuery(<MemoryRouter><TabConciliacion /></MemoryRouter>))
+    await screen.findByText('MARIA GOMEZ')
+
+    expect(screen.getByText(/Varios candidatos/)).toBeInTheDocument()
+    expect(fetchMock.mock.calls.some(c => String(c[0]).includes('/conciliar'))).toBe(false)
+  })
+})

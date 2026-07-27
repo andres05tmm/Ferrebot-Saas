@@ -27,16 +27,20 @@ export function paqueteDe(p) {
   return p.unidades_por_paquete != null ? Number(p.unidades_por_paquete) : null
 }
 
-// Preview del total espejando el motor del backend (obtener_precio_para_cantidad): fracción exacta →
-// granel por sub-unidad → simple. No cubre el escalonado por umbral (los productos por fracción/granel
-// no lo usan); da igual si difiere en un caso exótico: el TOTAL real de la línea siempre lo pone
-// /precio en el carrito, esto es solo el número que se muestra en el modal.
-export function previewMotor(p, cantidad) {
+// Preview del total espejando el motor del backend (obtener_precio_para_cantidad, 0072): empaque
+// entero → fracción exacta → simple. `precio_venta` es SIEMPRE el precio de una unidad de venta (un
+// kilo, un gramo), así que aquí no se divide por nada; el precio del bulto vive en `precio_paquete`.
+// No cubre el escalonado por umbral (los productos por fracción/granel no lo usan); da igual si
+// difiere en un caso exótico: el TOTAL real de la línea siempre lo pone /precio en el carrito, esto
+// es solo el número que se muestra en el modal.
+export function previewMotor(p, cantidad, { porEmpaque = false } = {}) {
   const pv = Number(p.precio_venta) || 0
+  if (porEmpaque) {
+    const emp = paqueteCompleto(p)
+    if (emp) return (cantidad / emp.factor) * emp.precio
+  }
   const frac = fraccionQueCasa(p, cantidad)
   if (frac) return Number(frac.precio_total)
-  const paquete = paqueteDe(p)
-  if (paquete && paquete > 0) return (pv * cantidad) / paquete
   return pv * cantidad
 }
 
@@ -56,26 +60,29 @@ export function fraccionesOrdenadas(p) {
 // Modo "pesos" del granel: cuántas sub-unidades equivalen a un monto (redondeado a 1 decimal, como el
 // viejo). Ej: $2000 de puntilla ($10/g) → 200 g. Devuelve 0 si no se puede calcular.
 export function subunidadesDesdePesos(p, pesos) {
-  const paquete = paqueteDe(p)
   const pv = Number(p.precio_venta) || 0
-  if (!paquete || pv <= 0 || !(pesos > 0)) return 0
-  const precioSub = pv / paquete
-  return Math.round((pesos / precioSub) * 10) / 10
+  if (pv <= 0 || !(pesos > 0)) return 0
+  return Math.round((pesos / pv) * 10) / 10
 }
 
-// Precio por sub-unidad (por gramo / ml / cm) para el subtítulo del modal. null si no es granel.
-export function precioSubunidad(p) {
-  const paquete = paqueteDe(p)
-  const pv = Number(p.precio_venta) || 0
-  return paquete && paquete > 0 ? pv / paquete : null
-}
-
-
-// Empaque de compra que TAMBIÉN se vende entero (bolsa de cal de 25 kg): cuántas unidades de venta
-// trae y cómo se llama. Sale del producto (0069); null si no aplica. El precio del empaque completo
-// lo pone el motor (cantidad × precio, o la fila de `fracciones` si el dueño le puso precio propio).
+// Empaque que TAMBIÉN se vende entero (la bolsa de cemento de 40 kg): cuántas unidades de venta trae,
+// cómo lo llama el negocio y QUÉ VALE COMPLETO. Exige las dos mitades del dato — sin `precio_paquete`
+// (0072) no se puede ofrecer, porque el precio del bulto no se deduce del precio del kilo.
 export function paqueteCompleto(p) {
   const factor = Number(p?.unidades_por_paquete || 0)
-  if (!factor || !p?.nombre_paquete) return null
-  return { factor, nombre: p.nombre_paquete }
+  const precio = p?.precio_paquete != null ? Number(p.precio_paquete) : null
+  if (!factor || !p?.nombre_paquete || precio == null) return null
+  return { factor, nombre: p.nombre_paquete, precio }
+}
+
+// Accesos rápidos del modo kg: las fracciones que el dueño configuró (¼, ½ …, con su precio propio)
+// y después kilos enteros. Antes era una lista fija [½, 1, 1½ …] que ignoraba el dato del producto:
+// el amoniaco se vende por ¼ de kilo y ese botón no existía.
+export function atajosKg(p) {
+  const fracs = [...(p.fracciones || [])]
+    .filter((f) => f.decimal != null && Number(f.decimal) < 1)
+    .sort((a, b) => Number(a.decimal) - Number(b.decimal))
+    .map((f) => ({ etiqueta: `${f.fraccion} kg`, cantidad: Number(f.decimal) }))
+  const enteros = [1, 2, 3].map((n) => ({ etiqueta: `${n} kg`, cantidad: n }))
+  return [...fracs, ...enteros].slice(0, 6)
 }

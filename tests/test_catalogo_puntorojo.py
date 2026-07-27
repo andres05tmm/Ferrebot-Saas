@@ -170,3 +170,15 @@ def test_las_fracciones_quedan_en_la_tabla_de_fracciones(tenant):
             ("1/4", Decimal("4000.00")), ("1/2", Decimal("7000.00")),
         ]
         conn.rollback()
+
+
+def test_el_producto_con_fracciones_queda_marcado_para_venderlas(tenant):
+    """Sin `permite_fraccion` el POS no muestra el botón del ½ kilo aunque el precio esté cargado."""
+    with _conn(tenant) as conn:
+        _sembrar(conn)
+        aplicar(conn)
+
+        assert _producto(conn, "Wayper Blanco")["permite_fraccion"] is True
+        assert _producto(conn, "Silicato")["permite_fraccion"] is True
+        assert _producto(conn, "Cemento Gris")["permite_fraccion"] is False   # no se vende partido
+        conn.rollback()

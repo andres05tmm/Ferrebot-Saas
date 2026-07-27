@@ -249,10 +249,12 @@ def _aplicar_empacado(conn, emp: Empacado, rep: Reporte) -> None:
         rep.sin_encontrar.append(emp.nombre)
         return
     conn.execute(
+        # `permite_fraccion` se deriva de si tiene fracciones: sin esa bandera el POS no muestra el
+        # botón del ½ kilo aunque el precio esté cargado (el wayper se vende así).
         "UPDATE productos SET unidad_medida=%s, precio_venta=%s, precio_paquete=%s, "
-        "contenido_paquete=%s, nombre_paquete=%s WHERE id=%s",
+        "contenido_paquete=%s, nombre_paquete=%s, permite_fraccion=%s WHERE id=%s",
         (emp.unidad_medida, emp.precio_venta, emp.precio_paquete, emp.contenido,
-         emp.nombre_paquete, pid),
+         emp.nombre_paquete, bool(emp.fracciones), pid),
     )
     _fracciones(conn, pid, emp.fracciones)
     _renombrar(conn, pid, emp.renombrar_a, rep)

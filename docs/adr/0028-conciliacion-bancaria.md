@@ -111,3 +111,23 @@ sensible del negocio (mismo criterio que `pack_pagar`).
 - **Desviaciones vs. spec:** (a) el match usa monto+fecha (no la referencia bancaria, ausente en los
   internos — D3); (b) no se creó tabla nueva de conciliación: el enlace vive en la fila bancaria
   (`conciliado_con_*`), manteniendo la paridad de esquema sin tablas nuevas. Sin otras diferencias.
+
+## Enmienda (2026-07-27) — de dónde salen los candidatos de crédito
+
+D3 acotaba los candidatos de un crédito a las ventas con `metodo_pago='transferencia'`. En Punto Rojo
+eso dejaba fuera dos formas normales de que entre plata al banco, así que el match se ampliaba o no
+servía. **La regla dura no se toca:** 1 candidato → `sugerido`; 0 o ≥2 → lo decide una persona.
+
+- **La parte transferencia de una venta MIXTA** (`ventas_pagos`, 0053): calza contra el monto de esa
+  parte, no contra el total de la venta. El enlace sigue siendo `tipo='venta'` — no se inventa un
+  tipo para media venta, y el filtro anti-doble-uso sigue protegiendo la venta entera.
+- **El abono de un cliente a su fiado** (`fiados_movimientos` con `tipo='abono'`): tipo de enlace
+  nuevo **`abono_fiado`**. No reusa `'abono'`, que es el pago a un PROVEEDOR (`facturas_abonos`):
+  compartir el nombre cruzaría los ids de dos tablas distintas en el filtro anti-doble-uso.
+  `conciliado_con_tipo` es TEXT sin CHECK, así que el valor nuevo no necesita migración.
+
+Además, el día del match pasa de `columna::date = :fecha` a una ventana de instantes
+(`rango_dia_co`): el cast dependía del `TimeZone` de la sesión de Postgres, así que una venta de las
+7 p. m. caía en el día siguiente y dejaba de calzar con la transferencia que la pagó (regla no
+negociable #4). Los candidatos también traen el `cliente`, para que resolver un ambiguo sea una
+decisión informada.

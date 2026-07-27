@@ -11,7 +11,9 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 Naturaleza = Literal["credito", "debito"]
-TipoInterno = Literal["venta", "gasto", "abono"]
+# 'abono' es el pago a un PROVEEDOR (`facturas_abonos`); 'abono_fiado', el pago de un CLIENTE a su
+# fiado (`fiados_movimientos`). Tablas distintas: compartir el nombre cruzaría sus ids en el enlace.
+TipoInterno = Literal["venta", "gasto", "abono", "abono_fiado"]
 EstadoConciliacion = Literal["no_conciliado", "sugerido", "conciliado"]
 
 
@@ -41,6 +43,7 @@ class CandidatoInterno(BaseModel):
     monto: Decimal
     fecha: date
     descripcion: str | None = None
+    cliente: str | None = None      # para reconocer de quién es el pago al resolver un ambiguo
 
 
 class MovimientoBancarioLeer(BaseModel):

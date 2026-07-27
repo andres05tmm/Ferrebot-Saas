@@ -3,15 +3,16 @@
  * 'conciliacion_bancaria', SOLO admin.
  *
  * Cruza los movimientos bancarios —los del extracto Y los que llegan por el correo del banco— con
- * ventas, gastos y abonos internos. El match automático (POST /bancos/sugerir) marca 'sugerido' SOLO
- * los de candidato único; los AMBIGUOS exigen que un humano elija antes de conciliar. Nunca concilia
- * solo un ambiguo. Enlazar no toca saldos: solo cruza.
+ * los movimientos internos: ventas por transferencia, la parte transferencia de las mixtas, abonos
+ * de fiado, gastos y abonos a proveedores. El match automático (POST /bancos/sugerir) marca
+ * 'sugerido' SOLO los de candidato único; los AMBIGUOS exigen que un humano elija antes de conciliar.
+ * Nunca concilia solo un ambiguo. Enlazar no toca saldos: solo cruza.
  *
  * A las cuentas del negocio también entra plata personal y de la casa, así que cada movimiento tiene
  * una salida además de "es esta venta": "No es venta" (POST .../descarte) lo saca del pendiente sin
  * borrarlo, y se puede deshacer. Ese botón está SIEMPRE, haya candidatos o no.
  */
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { useQueryClient } from '@tanstack/react-query'
 import { Landmark, Wand2, ArrowDownLeft, ArrowUpRight, Link2, CheckCircle2, XCircle, Undo2 } from '@/lib/icons.jsx'
@@ -109,8 +110,10 @@ function Movimiento({ item, onConciliar, onDescartar }) {
           {candidatos.map(cand => (
             <div key={`${cand.tipo}-${cand.id}`} className="flex items-center gap-2">
               <span className="text-meta text-muted-foreground flex-1 truncate">
-                {cand.tipo} #{cand.id} · {fechaCorta(cand.fecha)} · {cop(cand.monto)}
-                {cand.descripcion ? ` · ${cand.descripcion}` : ''}
+                {/* La descripción ya dice qué es ("venta #77", "abono al fiado #3"); el tipo crudo
+                    solo aparece si el backend no mandó ninguna. */}
+                {cand.descripcion || cand.tipo} · {fechaCorta(cand.fecha)} · {cop(cand.monto)}
+                {cand.cliente ? ` · ${cand.cliente}` : ''}
               </span>
               <Button size="sm" variant="ghost" className="h-7 px-2 text-primary shrink-0"
                 aria-label={`Conciliar ${m.id} con ${cand.tipo} ${cand.id}`}
@@ -160,6 +163,12 @@ function ConciliacionContenido() {
     ['reconnected', 'transferencia_recibida'],
     () => qc.invalidateQueries({ queryKey: keyPrefix.bancosMovimientos }),
   )
+  // Si el pago llegó ANTES que la venta, la transferencia espera sin candidato. El cruce se vuelve a
+  // correr solo al abrir el tab y cada vez que se anota una venta, así deja de esperar sin que nadie
+  // toque el botón. Callado a propósito: el toast es para el cruce que pide el usuario.
+  // La sugerencia solo importa cuando alguien mira; correrla desde aquí evita acoplar ventas↔bancos.
+  useEffect(() => { sugerirM.mutate() }, [])   // eslint-disable-line react-hooks/exhaustive-deps
+  useRealtimeEvent(['venta_registrada'], () => sugerirM.mutate())
 
   const todos = arr(movsQ.data)
   const movimientos = verDescartados

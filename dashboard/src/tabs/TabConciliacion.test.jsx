@@ -150,3 +150,47 @@ describe('TabConciliacion — transferencias del correo del banco', () => {
     expect(fetchMock.mock.calls.some(c => String(c[0]).includes('/conciliar'))).toBe(false)
   })
 })
+
+// --- fase 2: el cruce se corre solo y el candidato dice de quién es ----------
+
+const CON_CLIENTE = [
+  {
+    movimiento: { id: 30, referencia_bancaria: null, fecha: '2026-07-27', monto: '120000',
+      naturaleza: 'credito', estado_conciliacion: 'no_conciliado', conciliado_con_tipo: null,
+      conciliado_con_id: null, conciliado_en: null, remitente: 'PEDRO RAMIREZ',
+      hora: '10:15', cuenta_destino: '*3891', tipo_transaccion: 'Transferencia',
+      descartado_en: null, origen: 'gmail' },
+    candidatos: [
+      { tipo: 'venta', id: 60, monto: '120000', fecha: '2026-07-27',
+        descripcion: 'parte por transferencia de la venta #60', cliente: 'PEDRO RAMIREZ' },
+      { tipo: 'abono_fiado', id: 9, monto: '120000', fecha: '2026-07-27',
+        descripcion: 'abono al fiado #3', cliente: 'ANA LOPEZ' },
+    ],
+  },
+]
+
+describe('TabConciliacion — match de mixtas y fiados', () => {
+  it('el candidato dice de quién es el pago y qué es', async () => {
+    comoAdmin()
+    vi.stubGlobal('fetch', vi.fn((url) => Promise.resolve(
+      String(url).includes('/bancos/movimientos') ? jsonResp(CON_CLIENTE) : jsonResp({ sugeridos: 0 })
+    )))
+    render(conQuery(<MemoryRouter><TabConciliacion /></MemoryRouter>))
+    await screen.findByText('PEDRO RAMIREZ')
+
+    expect(screen.getByText(/parte por transferencia de la venta #60.*PEDRO RAMIREZ/)).toBeInTheDocument()
+    expect(screen.getByText(/abono al fiado #3.*ANA LOPEZ/)).toBeInTheDocument()
+  })
+
+  it('al abrir el tab corre el cruce solo, sin que nadie toque el botón', async () => {
+    comoAdmin()
+    const fetchMock = fetchGmail()
+    render(conQuery(<MemoryRouter><TabConciliacion /></MemoryRouter>))
+    await screen.findByText('JHON JAIRO GARCIA MORALES')
+
+    // Si el pago llegó antes que la venta, deja de esperar sin intervención.
+    expect(fetchMock.mock.calls.some(
+      c => String(c[0]).includes('/bancos/sugerir') && c[1]?.method === 'POST',
+    )).toBe(true)
+  })
+})

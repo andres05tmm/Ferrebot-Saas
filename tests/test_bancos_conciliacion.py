@@ -55,6 +55,8 @@ async def _snapshot_saldos(s: AsyncSession) -> dict[str, Decimal]:
         "cxp_pendiente": await _sum("SELECT COALESCE(SUM(pendiente),0) FROM facturas_proveedores"),
         "gastos": await _sum("SELECT COALESCE(SUM(monto),0) FROM gastos"),
         "caja_mov": await _sum("SELECT COALESCE(SUM(monto),0) FROM caja_movimientos"),
+        # Desde la fase 2 un abono de fiado también se puede enlazar: enlazarlo no puede mover deuda.
+        "fiados_saldo": await _sum("SELECT COALESCE(SUM(saldo),0) FROM fiados"),
     }
 
 
@@ -271,6 +273,161 @@ async def test_descartar_un_sugerido_libera_la_venta(tenant):
         sugeridos = await svc.listar(estado="sugerido")
 
     assert [m.movimiento.id for m in sugeridos] == [real]
+
+
+# --- fase 2: que el match sirva (mixtas, fiados y el día en hora Colombia) ----
+
+async def _cliente(s: AsyncSession, nombre: str) -> int:
+    return (
+        await s.execute(text("INSERT INTO clientes (nombre) VALUES (:n) RETURNING id"), {"n": nombre})
+    ).scalar_one()
+
+
+async def _venta_mixta(
+    s: AsyncSession, *, uid: int, cliente_id: int | None, total: str, parte: str, consecutivo: int
+) -> int:
+    """Venta cobrada en dos partes (0053): una en efectivo y otra por transferencia."""
+    venta_id = (
+        await s.execute(
+            text(
+                "INSERT INTO ventas (consecutivo, cliente_id, vendedor_id, fecha, subtotal, impuestos, "
+                "total, metodo_pago, estado) VALUES (:c, :cl, :uid, :f, :t, 0, :t, 'mixto', 'completada') "
+                "RETURNING id"
+            ),
+            {"c": consecutivo, "cl": cliente_id, "uid": uid, "f": _TS, "t": total},
+        )
+    ).scalar_one()
+    for metodo, monto in (("efectivo", str(Decimal(total) - Decimal(parte))), ("transferencia", parte)):
+        await s.execute(
+            text("INSERT INTO ventas_pagos (venta_id, metodo, monto) VALUES (:v, :m, :n)"),
+            {"v": venta_id, "m": metodo, "n": monto},
+        )
+    return venta_id
+
+
+async def _abono_de_fiado(s: AsyncSession, *, cliente_id: int, monto: str) -> int:
+    """El cliente que debía y paga: devuelve el id del movimiento de abono."""
+    fiado_id = (
+        await s.execute(
+            text(
+                "INSERT INTO fiados (cliente_id, monto, saldo, creado_en) "
+                "VALUES (:cl, :m, 0, :f) RETURNING id"
+            ),
+            {"cl": cliente_id, "m": monto, "f": _TS},
+        )
+    ).scalar_one()
+    return (
+        await s.execute(
+            text(
+                "INSERT INTO fiados_movimientos (fiado_id, tipo, monto, creado_en) "
+                "VALUES (:fi, 'abono', :m, :f) RETURNING id"
+            ),
+            {"fi": fiado_id, "m": monto, "f": _TS},
+        )
+    ).scalar_one()
+
+
+async def test_venta_mixta_es_candidata_por_el_monto_de_su_parte(tenant):
+    """El cliente pagó una parte en efectivo y otra por transferencia: al banco llegó SOLO la parte.
+
+    Comparar contra el total de la venta la volvía invisible para el match, aunque los reportes por
+    método sí la expanden en sus partes desde 0053.
+    """
+    async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
+        uid = await _usuario(s)
+        cli = await _cliente(s, "PEDRO RAMIREZ")
+        venta_id = await _venta_mixta(
+            s, uid=uid, cliente_id=cli, total="200000", parte="120000", consecutivo=91
+        )
+        await s.commit()
+        svc = _svc(s)
+        mov_id = await _transferencia_gmail(s, mid="msg-mixta", monto="120000")
+        await s.commit()
+
+        assert await svc.sugerir_pendientes() == 1        # calzó por la parte, no por el total
+        await s.commit()
+        sugerido = (await svc.listar(estado="sugerido"))[0]
+
+    assert sugerido.movimiento.id == mov_id
+    assert sugerido.movimiento.conciliado_con_tipo == "venta"     # el enlace es la venta, no media venta
+    assert sugerido.movimiento.conciliado_con_id == venta_id
+    assert sugerido.candidatos[0].cliente == "PEDRO RAMIREZ"
+
+
+async def test_abono_de_fiado_es_candidato_y_se_concilia(tenant):
+    """El caso que nombró el dueño: el cliente que debía paga su fiado por transferencia."""
+    async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
+        cli = await _cliente(s, "ANA LOPEZ")
+        abono_id = await _abono_de_fiado(s, cliente_id=cli, monto="60000")
+        await s.commit()
+        svc = _svc(s)
+        mov_id = await _transferencia_gmail(s, mid="msg-fiado", monto="60000")
+        await s.commit()
+
+        assert await svc.sugerir_pendientes() == 1
+        await s.commit()
+        cand = (await svc.listar(estado="sugerido"))[0].candidatos[0]
+        assert (cand.tipo, cand.id, cand.cliente) == ("abono_fiado", abono_id, "ANA LOPEZ")
+
+        leer = await svc.confirmar(mov_id, tipo=cand.tipo, id_interno=cand.id, ahora=now_co())
+        await s.commit()
+
+    assert leer.estado_conciliacion == "conciliado"
+    assert leer.conciliado_con_tipo == "abono_fiado"
+
+
+async def test_las_tres_fuentes_del_mismo_monto_siguen_siendo_ambiguas(tenant):
+    """La regla dura del ADR 0028 no se relaja al sumar fuentes: ≥2 candidatos → decide una persona.
+
+    Una variante de ambigüedad por cada fuente de crédito: venta entera, parte de una mixta y abono
+    de fiado, todas por $45.000 el mismo día.
+    """
+    async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
+        uid = await _usuario(s)
+        cli = await _cliente(s, "LUIS DIAZ")
+        await _venta_transferencia(s, uid=uid, total="45000", consecutivo=92)
+        await _venta_mixta(s, uid=uid, cliente_id=cli, total="70000", parte="45000", consecutivo=94)
+        await _abono_de_fiado(s, cliente_id=cli, monto="45000")
+        await s.commit()
+        svc = _svc(s)
+        await _transferencia_gmail(s, mid="msg-ambiguo-2", monto="45000")
+        await s.commit()
+
+        assert await svc.sugerir_pendientes() == 0
+        await s.commit()
+        pend = await svc.listar(estado=None)
+
+    assert pend[0].movimiento.estado_conciliacion == "no_conciliado"
+    assert sorted(c.tipo for c in pend[0].candidatos) == ["abono_fiado", "venta", "venta"]
+
+
+async def test_el_dia_del_match_es_el_dia_colombiano(tenant):
+    """Una venta de las 7 p. m. pertenece a ESE día en Colombia, no al siguiente.
+
+    `venta.fecha::date` se resolvía con el `TimeZone` de la sesión de Postgres: con la sesión en UTC,
+    una venta de las 19:00 (= 00:00 UTC del día siguiente) dejaba de calzar con la transferencia que
+    la pagó. Regla no negociable #4.
+    """
+    noche = datetime(2026, 6, 15, 19, 0, 0, tzinfo=timezone(timedelta(hours=-5)))
+    async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
+        uid = await _usuario(s)
+        await s.execute(
+            text(
+                "INSERT INTO ventas (consecutivo, vendedor_id, fecha, subtotal, impuestos, total, "
+                "metodo_pago, estado) VALUES (93, :uid, :f, 75000, 0, 75000, 'transferencia', 'completada')"
+            ),
+            {"uid": uid, "f": noche},
+        )
+        await s.commit()
+        await _transferencia_gmail(s, mid="msg-noche", monto="75000")
+        await s.commit()
+
+        # LOCAL: se deshace al cerrar la transacción, no contamina la conexión del pool.
+        await s.execute(text("SET LOCAL TIME ZONE 'UTC'"))
+        sugeridos = await _svc(s).sugerir_pendientes()
+        await s.rollback()
+
+    assert sugeridos == 1
 
 
 async def test_no_se_puede_descartar_uno_ya_conciliado(tenant):

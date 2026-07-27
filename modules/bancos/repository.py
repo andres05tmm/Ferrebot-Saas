@@ -4,8 +4,9 @@ La sesión del tenant es la transacción y la frontera del aislamiento. Dos resp
 
 1. Ingesta idempotente del extracto → `bancolombia_transferencias` (INSERT ... ON CONFLICT DO NOTHING
    sobre el índice UNIQUE parcial de `referencia_bancaria`): reprocesar el mismo extracto no duplica.
-2. Match contra movimientos internos (ventas por transferencia / gastos / abonos) por monto+fecha,
-   acotado por `naturaleza`, EXCLUYENDO los internos ya enlazados por otro movimiento bancario. El
+2. Match contra movimientos internos por monto+fecha, acotado por `naturaleza` — crédito: ventas por
+   transferencia, la parte transferencia de las mixtas y abonos de fiado; débito: gastos y abonos a
+   proveedores —, EXCLUYENDO los internos ya enlazados por otro movimiento bancario. El
    enlace (sugerido/conciliado) SOLO escribe columnas de estado en la fila bancaria: no toca saldos.
 """
 from __future__ import annotations
@@ -18,39 +19,83 @@ from sqlalchemy import select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.config.timezone import rango_dia_co
 from modules.bancos.models import BancolombiaTransferencia
 
 # Movimientos internos candidatos por naturaleza del movimiento bancario. Cada consulta devuelve
-# (tipo, id, monto, fecha, descripcion) y EXCLUYE los ya enlazados (sugerido/conciliado) por OTRA
-# fila bancaria (`bt.id IS DISTINCT FROM :self_id`), para no ofrecer el mismo interno dos veces —
-# pero SÍ mantiene el candidato que la propia fila (`self_id`) ya tenía sugerido, para confirmarlo.
-_NO_ENLAZADO = (
-    "AND NOT EXISTS (SELECT 1 FROM bancolombia_transferencias bt "
-    "WHERE bt.conciliado_con_tipo = :tipo AND bt.conciliado_con_id = x.id "
-    "AND bt.estado_conciliacion IN ('sugerido', 'conciliado') "
-    "AND bt.id IS DISTINCT FROM :self_id) "
-)
+# (tipo, id, monto, fecha, cliente, descripcion) y EXCLUYE los ya enlazados (sugerido/conciliado) por
+# OTRA fila bancaria, para no ofrecer el mismo interno dos veces — pero SÍ mantiene el candidato que
+# la propia fila (`self_id`) ya tenía sugerido, para confirmarlo.
+#
+# El día es una ventana de instantes (`:inicio`/`:fin` de `rango_dia_co`) y no `columna::date = :fecha`:
+# el cast depende del `TimeZone` de la sesión de Postgres, así que un pago de las 7 p. m. caía en el
+# día siguiente y dejaba de calzar con su venta (regla no negociable #4).
 
+
+def _no_enlazado(tipo: str, id_expr: str) -> str:
+    """Filtro anti-doble-uso para una rama del UNION. `tipo`/`id_expr` son literales de este módulo
+    (nunca entrada de usuario); el monto y la fecha sí van como parámetros."""
+    return (
+        f"AND NOT EXISTS (SELECT 1 FROM bancolombia_transferencias bt "
+        f"WHERE bt.conciliado_con_tipo = '{tipo}' AND bt.conciliado_con_id = {id_expr} "
+        "AND bt.estado_conciliacion IN ('sugerido', 'conciliado') "
+        "AND bt.id IS DISTINCT FROM :self_id) "
+    )
+
+
+_DIA_CO = "AT TIME ZONE 'America/Bogota'"
+
+# Un crédito puede ser el cobro de una venta entera, la PARTE por transferencia de una venta mixta,
+# o el abono de un cliente a su fiado. Las tres se ofrecen juntas y la regla dura del ADR 0028 sigue
+# igual: si el monto calza con más de una, decide una persona.
 _CANDIDATOS_CREDITO = (
-    "SELECT 'venta' AS tipo, x.id, x.total AS monto, x.fecha::date AS fecha, "
+    "SELECT 'venta' AS tipo, x.id, x.total AS monto, "
+    f"       (x.fecha {_DIA_CO})::date AS fecha, c.nombre AS cliente, "
     "       'venta #' || x.consecutivo AS descripcion "
-    "FROM ventas x "
+    "FROM ventas x LEFT JOIN clientes c ON c.id = x.cliente_id "
     "WHERE x.metodo_pago = 'transferencia' AND x.estado = 'completada' "
-    "AND x.total = :monto AND x.fecha::date = :fecha "
-    + _NO_ENLAZADO.replace(":tipo", "'venta'")
+    "AND x.total = :monto AND x.fecha BETWEEN :inicio AND :fin "
+    + _no_enlazado("venta", "x.id")
+    # Venta MIXTA (0053): calza contra el monto de SU parte por transferencia, no contra el total.
+    # El enlace sigue siendo la venta (`tipo='venta'`): no se inventa un tipo para media venta.
+    + "UNION ALL "
+    "SELECT 'venta' AS tipo, v.id, p.monto, "
+    f"       (v.fecha {_DIA_CO})::date AS fecha, c.nombre AS cliente, "
+    "       'parte por transferencia de la venta #' || v.consecutivo AS descripcion "
+    "FROM ventas_pagos p JOIN ventas v ON v.id = p.venta_id "
+    "LEFT JOIN clientes c ON c.id = v.cliente_id "
+    # `v.metodo_pago = 'mixto'` deja las dos primeras ramas disjuntas por construcción: sin eso, una
+    # venta que tuviera fila en las dos se ofrecería duplicada y el match la leería como ambigua.
+    "WHERE p.metodo = 'transferencia' AND v.metodo_pago = 'mixto' AND v.estado = 'completada' "
+    "AND p.monto = :monto AND v.fecha BETWEEN :inicio AND :fin "
+    + _no_enlazado("venta", "v.id")
+    # Abono a un fiado: el cliente que debía y paga por transferencia. 'abono_fiado' y no 'abono',
+    # que es el pago a un PROVEEDOR (`facturas_abonos`): compartir el nombre cruzaría los ids de dos
+    # tablas distintas en el filtro anti-doble-uso.
+    + "UNION ALL "
+    "SELECT 'abono_fiado' AS tipo, m.id, m.monto, "
+    f"       (m.creado_en {_DIA_CO})::date AS fecha, c.nombre AS cliente, "
+    "       'abono al fiado #' || f.id AS descripcion "
+    "FROM fiados_movimientos m JOIN fiados f ON f.id = m.fiado_id "
+    "LEFT JOIN clientes c ON c.id = f.cliente_id "
+    "WHERE m.tipo = 'abono' AND m.monto = :monto AND m.creado_en BETWEEN :inicio AND :fin "
+    + _no_enlazado("abono_fiado", "m.id")
 )
 
 _CANDIDATOS_DEBITO = (
-    "SELECT 'gasto' AS tipo, x.id, x.monto AS monto, x.creado_en::date AS fecha, x.concepto AS descripcion "
+    "SELECT 'gasto' AS tipo, x.id, x.monto AS monto, "
+    f"       (x.creado_en {_DIA_CO})::date AS fecha, NULL::text AS cliente, "
+    "       x.concepto AS descripcion "
     "FROM gastos x "
-    "WHERE x.monto = :monto AND x.creado_en::date = :fecha AND x.anulado_en IS NULL "
-    + _NO_ENLAZADO.replace(":tipo", "'gasto'")
+    "WHERE x.monto = :monto AND x.creado_en BETWEEN :inicio AND :fin AND x.anulado_en IS NULL "
+    + _no_enlazado("gasto", "x.id")
+    # `facturas_abonos.fecha` es DATE (el día que el dueño registró el pago): sin instantes que acotar.
     + "UNION ALL "
-    "SELECT 'abono' AS tipo, x.id, x.monto AS monto, x.fecha AS fecha, "
+    "SELECT 'abono' AS tipo, x.id, x.monto AS monto, x.fecha AS fecha, NULL::text AS cliente, "
     "       'abono factura ' || x.factura_id AS descripcion "
     "FROM facturas_abonos x "
     "WHERE x.monto = :monto AND x.fecha = :fecha "
-    + _NO_ENLAZADO.replace(":tipo", "'abono'")
+    + _no_enlazado("abono", "x.id")
 )
 
 
@@ -61,6 +106,8 @@ class Candidato:
     monto: Decimal
     fecha: date
     descripcion: str | None
+    # Quién es, para que la decisión humana sobre un ambiguo sea informada. None = venta sin cliente.
+    cliente: str | None = None
 
 
 class SqlBancosRepository:
@@ -166,13 +213,18 @@ class SqlBancosRepository:
 
         `excluir_mov_id` = el propio movimiento bancario: su candidato ya sugerido NO se descarta
         (para poder confirmarlo); los tomados por OTRAS filas bancarias sí.
+
+        El día del banco se traduce a la ventana [00:00, 23:59:59.999999] de ese día en Colombia.
         """
         sql = _CANDIDATOS_CREDITO if naturaleza == "credito" else _CANDIDATOS_DEBITO
-        params = {"monto": monto, "fecha": fecha, "self_id": excluir_mov_id}
+        inicio, fin = rango_dia_co(fecha, fecha)
+        params = {
+            "monto": monto, "fecha": fecha, "inicio": inicio, "fin": fin, "self_id": excluir_mov_id,
+        }
         filas = (await self._s.execute(text(sql), params)).all()
         return [
             Candidato(tipo=f.tipo, id=f.id, monto=Decimal(f.monto), fecha=f.fecha,
-                      descripcion=f.descripcion)
+                      descripcion=f.descripcion, cliente=f.cliente)
             for f in filas
         ]
 

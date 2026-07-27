@@ -182,6 +182,31 @@ describe('TabConciliacion — match de mixtas y fiados', () => {
     expect(screen.getByText(/abono al fiado #3.*ANA LOPEZ/)).toBeInTheDocument()
   })
 
+  it('muestra cuánto entró, cuánto es del negocio y el desglose por cuenta', async () => {
+    comoAdmin()
+    vi.stubGlobal('fetch', vi.fn((url) => {
+      const u = String(url)
+      if (u.includes('/bancos/totales')) return Promise.resolve(jsonResp({
+        desde: '2026-07-01', hasta: '2026-07-27',
+        total: '430000.00', total_negocio: '350000.00', total_personal: '80000.00',
+        sin_clasificar: 2,
+        por_cuenta: [
+          { cuenta: '*3891', alias: 'Andrés', movimientos: 2, total: '180000.00', total_negocio: '100000.00' },
+          { cuenta: null, alias: null, movimientos: 1, total: '250000.00', total_negocio: '250000.00' },
+        ],
+      }))
+      if (u.includes('/bancos/movimientos')) return Promise.resolve(jsonResp(GMAIL))
+      return Promise.resolve(jsonResp({ sugeridos: 0 }))
+    }))
+    render(conQuery(<MemoryRouter><TabConciliacion /></MemoryRouter>))
+
+    expect(await screen.findByText('Andrés')).toBeInTheDocument()
+    expect(screen.getByText('Del negocio')).toBeInTheDocument()
+    // La cuenta que el parser no pudo leer se muestra, no se esconde.
+    expect(screen.getByText(/Cuenta sin identificar/)).toBeInTheDocument()
+    expect(screen.getByText(/2 movimiento\(s\) sin resolver/)).toBeInTheDocument()
+  })
+
   it('al abrir el tab corre el cruce solo, sin que nadie toque el botón', async () => {
     comoAdmin()
     const fetchMock = fetchGmail()

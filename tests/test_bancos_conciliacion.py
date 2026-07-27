@@ -430,6 +430,123 @@ async def test_el_dia_del_match_es_el_dia_colombiano(tenant):
     assert sugeridos == 1
 
 
+# --- fase 3: cuánta plata entró ----------------------------------------------
+
+async def _credito(
+    s: AsyncSession, *, mid: str, monto: str, cuenta: str | None, fecha: date = _DIA
+) -> int:
+    mov = await SqlBancosRepository(s).ingestar_gmail(
+        gmail_message_id=mid, fecha=fecha, monto=Decimal(monto), remitente="ALGUIEN",
+        descripcion=None, tipo_transaccion=None, hora=None, cuenta_destino=cuenta, referencia=None,
+    )
+    return mov.id
+
+
+async def test_totales_separan_lo_del_negocio_de_lo_personal(tenant):
+    """`total == negocio + personal` por construcción: los de arriba son la suma de las cuentas."""
+    async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
+        await _credito(s, mid="t1", monto="100000", cuenta="*3891")
+        await _credito(s, mid="t2", monto="250000", cuenta="*6485")
+        casa = await _credito(s, mid="t3", monto="80000", cuenta="*3891")
+        await s.commit()
+        svc = _svc(s)
+        await svc.descartar(casa, descartar=True, ahora=now_co())
+        await s.commit()
+
+        tot = await svc.totales(desde=_DIA, hasta=_DIA, alias={"*3891": "Andrés"})
+
+    assert tot.total == Decimal("430000")
+    assert tot.total_negocio == Decimal("350000")
+    assert tot.total_personal == Decimal("80000")
+    assert tot.total == tot.total_negocio + tot.total_personal
+    # Lo descartado NO desaparece del total: entró a la cuenta, solo no es del negocio.
+    por_cuenta = {c.cuenta: c for c in tot.por_cuenta}
+    assert por_cuenta["*3891"].total == Decimal("180000")
+    assert por_cuenta["*3891"].total_negocio == Decimal("100000")
+    assert por_cuenta["*3891"].alias == "Andrés"
+    assert por_cuenta["*6485"].alias is None      # sin alias configurado: la UI muestra el número
+
+
+async def test_la_cuenta_que_el_parser_no_leyo_se_muestra_no_se_esconde(tenant):
+    """`cuenta_destino` NULL es "sin identificar", no un movimiento que se cae del reporte."""
+    async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
+        await _credito(s, mid="t-sin", monto="45000", cuenta=None)
+        await s.commit()
+        tot = await _svc(s).totales(desde=_DIA, hasta=_DIA, alias={})
+
+    assert tot.total == Decimal("45000")
+    assert [c.cuenta for c in tot.por_cuenta] == [None]
+
+
+async def test_los_totales_respetan_el_periodo_y_cuentan_lo_sin_clasificar(tenant):
+    async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
+        await _credito(s, mid="t-dentro", monto="10000", cuenta="*3891")
+        await _credito(s, mid="t-fuera", monto="999999", cuenta="*3891", fecha=date(2026, 7, 1))
+        conciliado = await _credito(s, mid="t-ok", monto="20000", cuenta="*3891")
+        await s.commit()
+        uid = await _usuario(s)
+        await _venta_transferencia(s, uid=uid, total="20000", consecutivo=95)
+        await s.commit()
+        svc = _svc(s)
+        await svc.sugerir_pendientes()
+        await s.commit()
+        cand = next(
+            m.candidatos[0] for m in await svc.listar(estado="sugerido") if m.movimiento.id == conciliado
+        )
+        await svc.confirmar(conciliado, tipo=cand.tipo, id_interno=cand.id, ahora=now_co())
+        await s.commit()
+
+        tot = await svc.totales(desde=_DIA, hasta=_DIA, alias={})
+
+    assert tot.total == Decimal("30000")          # el de julio queda fuera del período
+    assert tot.sin_clasificar == 1                # el conciliado ya no cuenta como pendiente
+
+
+async def test_totales_no_ven_los_debitos(tenant):
+    """Los egresos de esas cuentas se mezclan con lo personal: el dueño decidió no llevarlos."""
+    async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
+        await _svc(s).ingestar([
+            MovimientoBancarioIngesta(
+                referencia_bancaria="D-1", fecha=_DIA, monto=Decimal("70000"), naturaleza="debito",
+            ),
+            MovimientoBancarioIngesta(
+                referencia_bancaria="C-1", fecha=_DIA, monto=Decimal("30000"), naturaleza="credito",
+            ),
+        ])
+        await s.commit()
+        tot = await _svc(s).totales(desde=_DIA, hasta=_DIA, alias={})
+
+    assert tot.total == Decimal("30000")
+
+
+async def test_totales_aislados_entre_empresas(tenant_factory):
+    """La plata que entró a la empresa A no puede aparecer en el reporte de B."""
+    a = await tenant_factory()
+    b = await tenant_factory()
+    async with AsyncSession(a.engine, expire_on_commit=False) as s:
+        await _credito(s, mid="a-1", monto="500000", cuenta="*3891")
+        await s.commit()
+    async with AsyncSession(b.engine) as s:
+        tot_b = await _svc(s).totales(desde=_DIA, hasta=_DIA, alias={})
+    async with AsyncSession(a.engine) as s:
+        tot_a = await _svc(s).totales(desde=_DIA, hasta=_DIA, alias={})
+
+    assert tot_b.total == Decimal("0") and tot_b.por_cuenta == []
+    assert tot_a.total == Decimal("500000")
+
+
+def test_un_alias_mal_escrito_no_tumba_el_reporte():
+    """Los alias son etiquetas: cualquier basura en la config degrada a mostrar el número de cuenta."""
+    from modules.bancos.config import parsear_alias
+
+    assert parsear_alias('{"*3891": "Andrés"}') == {"*3891": "Andrés"}
+    assert parsear_alias(None) == {}
+    assert parsear_alias("  ") == {}
+    assert parsear_alias("{no es json") == {}
+    assert parsear_alias('["*3891"]') == {}          # JSON válido, pero no un objeto
+    assert parsear_alias('{"*3891": null}') == {}    # alias vacío: mejor el número que "None"
+
+
 async def test_no_se_puede_descartar_uno_ya_conciliado(tenant):
     """Está enlazado a una venta real: marcarlo personal es contradictorio."""
     from modules.bancos.errors import ConciliacionInvalida

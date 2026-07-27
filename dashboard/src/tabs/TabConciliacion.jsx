@@ -12,13 +12,15 @@
  * una salida además de "es esta venta": "No es venta" (POST .../descarte) lo saca del pendiente sin
  * borrarlo, y se puede deshacer. Ese botón está SIEMPRE, haya candidatos o no.
  */
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { useQueryClient } from '@tanstack/react-query'
 import { Landmark, Wand2, ArrowDownLeft, ArrowUpRight, Link2, CheckCircle2, XCircle, Undo2 } from '@/lib/icons.jsx'
 import { cop } from '@/components/shared.jsx'
+import { PERIODOS, hoyCO, periodo } from '@/lib/gastos.js'
 import {
-  useMovimientosBancarios, useSugerirConciliacion, useConciliar, useDescartarMovimiento, keyPrefix,
+  useMovimientosBancarios, useTotalesBancarios, useSugerirConciliacion, useConciliar,
+  useDescartarMovimiento, keyPrefix,
 } from '@/lib/queries'
 import { useRealtimeEvent } from '@/components/RealtimeProvider.jsx'
 import { useAuth } from '@/hooks/useAuth.js'
@@ -136,6 +138,62 @@ function Movimiento({ item, onConciliar, onDescartar }) {
   )
 }
 
+/* Cuánta plata entró en el período. Tres cifras y no una: `total` es lo que llegó a las cuentas,
+ * `total_negocio` descuenta lo que el dueño marcó como plata de la casa, y la diferencia es
+ * justamente lo personal — mostrar solo una escondería que a esas cuentas entra de todo. Los
+ * egresos no van: se mezclan con gastos personales (decisión del dueño). */
+function Totales({ datos, cargando }) {
+  if (cargando || !datos) {
+    return (
+      <div className="grid grid-cols-3 gap-2">
+        {Array.from({ length: 3 }, (_, i) => <Card key={i} className="p-3 h-[74px] animate-pulse" />)}
+      </div>
+    )
+  }
+  const cuentas = arr(datos.por_cuenta)
+  const cifras = [
+    ['Entró', datos.total, 'text-foreground'],
+    ['Del negocio', datos.total_negocio, 'text-success'],
+    ['Personal', datos.total_personal, 'text-muted-foreground'],
+  ]
+  return (
+    <div className="space-y-2">
+      <div className="grid grid-cols-3 gap-2">
+        {cifras.map(([titulo, valor, tono]) => (
+          <Card key={titulo} className="p-3">
+            <div className="text-caption text-muted-foreground">{titulo}</div>
+            <div className={`text-lg font-semibold tabular-nums truncate ${tono}`}>{cop(valor)}</div>
+          </Card>
+        ))}
+      </div>
+      {cuentas.length > 0 && (
+        <Card className="p-0 overflow-hidden">
+          <ul className="divide-y divide-border-subtle">
+            {cuentas.map(c => (
+              <li key={c.cuenta || 'sin-cuenta'} className="px-3.5 py-2 flex items-center gap-3 text-body-sm">
+                <div className="min-w-0 flex-1">
+                  {/* Sin alias configurado se muestra el número; sin cuenta, que el parser no la leyó. */}
+                  <div className="font-medium truncate">{c.alias || c.cuenta || 'Cuenta sin identificar'}</div>
+                  <div className="text-caption text-muted-foreground">
+                    {c.alias && c.cuenta ? `${c.cuenta} · ` : ''}{c.movimientos} movimiento(s)
+                  </div>
+                </div>
+                <span className="tabular-nums font-semibold shrink-0">{cop(c.total)}</span>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
+      {datos.sin_clasificar > 0 && (
+        <p className="text-caption text-muted-foreground px-1">
+          {datos.sin_clasificar} movimiento(s) sin resolver: hasta que digas cuáles no son ventas,
+          cuentan como plata del negocio.
+        </p>
+      )}
+    </div>
+  )
+}
+
 export default function TabConciliacion() {
   const { isAdmin } = useAuth()
   if (!isAdmin()) {
@@ -150,10 +208,16 @@ export default function TabConciliacion() {
 
 function ConciliacionContenido() {
   const [filtro, setFiltro] = useState('')
+  const [periodoId, setPeriodoId] = useState('mes')
   const [sugiriendo, setSugiriendo] = useState(false)
   const qc = useQueryClient()
+  const hoy = useMemo(hoyCO, [])
+  const rango = useMemo(() => periodo(periodoId, hoy), [periodoId, hoy])
   const verDescartados = filtro === 'descartado'
   const movsQ = useMovimientosBancarios(verDescartados ? '' : filtro, verDescartados)
+  // El período acota los totales, no la lista: la lista es la bandeja de trabajo (lo que falta
+  // resolver) y el total es el reporte del mes. Mezclarlos escondería pendientes viejos.
+  const totalesQ = useTotalesBancarios(rango.desde, rango.hasta)
   const sugerirM = useSugerirConciliacion()
   const conciliarM = useConciliar()
   const descartarM = useDescartarMovimiento()
@@ -161,7 +225,7 @@ function ConciliacionContenido() {
   // lista en el mismo momento en que suena Telegram, sin que nadie recargue.
   useRealtimeEvent(
     ['reconnected', 'transferencia_recibida'],
-    () => qc.invalidateQueries({ queryKey: keyPrefix.bancosMovimientos }),
+    () => qc.invalidateQueries({ queryKey: keyPrefix.bancos }),
   )
   // Si el pago llegó ANTES que la venta, la transferencia espera sin candidato. El cruce se vuelve a
   // correr solo al abrir el tab y cada vez que se anota una venta, así deja de esperar sin que nadie
@@ -217,6 +281,19 @@ function ConciliacionContenido() {
           <Wand2 className="size-4" /> {sugiriendo ? 'Cruzando…' : 'Correr sugerencias'}
         </Button>
       </div>
+
+      <div className="flex flex-wrap gap-1.5">
+        {PERIODOS.map(([id, label]) => (
+          <button key={id} type="button" onClick={() => setPeriodoId(id)} aria-pressed={periodoId === id}
+            className={`text-meta px-2.5 h-8 rounded-md border transition-colors ${
+              periodoId === id ? 'border-primary bg-primary/10 text-primary' : 'bg-surface border-border hover:bg-surface-2'
+            }`}>
+            {label}
+          </button>
+        ))}
+      </div>
+
+      <Totales datos={totalesQ.data} cargando={totalesQ.isLoading} />
 
       <div className="flex flex-wrap gap-1.5">
         {FILTROS.map(f => (

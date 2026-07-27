@@ -14,7 +14,9 @@ Conciliar SOLO escribe el estado/enlace en la fila bancaria: nunca toca caja, fi
 from __future__ import annotations
 
 from datetime import date, datetime
+from decimal import Decimal
 
+from core.config.timezone import today_co
 from core.logging import get_logger
 from modules.bancos.errors import ConciliacionInvalida, MovimientoBancarioInexistente
 from modules.bancos.repository import Candidato, SqlBancosRepository
@@ -24,6 +26,8 @@ from modules.bancos.schemas import (
     MovimientoBancarioIngesta,
     MovimientoBancarioLeer,
     MovimientoConCandidatos,
+    TotalesBancarios,
+    TotalPorCuenta,
 )
 
 log = get_logger("bancos")
@@ -91,6 +95,34 @@ class BancosService:
                 )
             )
         return salida
+
+    async def totales(
+        self, *, desde: date | None, hasta: date | None, alias: dict[str, str] | None = None
+    ) -> TotalesBancarios:
+        """Cuánta plata entró en el período, en total y por cuenta. Sin período → el mes en curso.
+
+        Los totales de arriba son la suma de las cuentas, no una segunda consulta: así no pueden
+        contradecirse, y `total == total_negocio + total_personal` se cumple por construcción.
+        """
+        hoy = today_co()
+        desde = desde or hoy.replace(day=1)
+        hasta = hasta or hoy
+        alias = alias or {}
+        cuentas = await self._repo.totales_por_cuenta(desde=desde, hasta=hasta)
+        total = sum((c.total for c in cuentas), Decimal(0))
+        negocio = sum((c.total_negocio for c in cuentas), Decimal(0))
+        return TotalesBancarios(
+            desde=desde, hasta=hasta, total=total, total_negocio=negocio,
+            total_personal=total - negocio,
+            sin_clasificar=sum(c.sin_clasificar for c in cuentas),
+            por_cuenta=[
+                TotalPorCuenta(
+                    cuenta=c.cuenta, alias=alias.get(c.cuenta or ""), movimientos=c.movimientos,
+                    total=c.total, total_negocio=c.total_negocio,
+                )
+                for c in cuentas
+            ],
+        )
 
     async def confirmar(
         self, mov_id: int, *, tipo: str, id_interno: int, ahora: datetime

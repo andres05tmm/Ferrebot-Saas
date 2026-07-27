@@ -44,6 +44,9 @@ export function rangoISO({ desde, hasta }) {
   return { desde: `${desde}T00:00:00-05:00`, hasta: `${hasta}T23:59:59-05:00` }
 }
 
+/** Hoy en Colombia como YYYY-MM-DD (nunca la fecha local del navegador). */
+export const hoyCO = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
+
 /** Presets del selector de período, en fechas YYYY-MM-DD Colombia. */
 export function periodo(id, hoyYMD) {
   const hoy = new Date(`${hoyYMD}T12:00:00-05:00`)

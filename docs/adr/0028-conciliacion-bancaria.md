@@ -131,3 +131,25 @@ Además, el día del match pasa de `columna::date = :fecha` a una ventana de ins
 7 p. m. caía en el día siguiente y dejaba de calzar con la transferencia que la pagó (regla no
 negociable #4). Los candidatos también traen el `cliente`, para que resolver un ambiguo sea una
 decisión informada.
+
+## Enmienda (2026-07-27) — cuánta plata entró (`GET /bancos/totales`)
+
+Objetivo secundario del dueño: saber cuánto entró por cuenta y por período. Una sola consulta
+agregada con `FILTER` sobre `bancolombia_transferencias`, agrupada por `cuenta_destino`; los totales
+de arriba son la SUMA de las cuentas y no una segunda consulta, así no pueden contradecirse y
+`total == total_negocio + total_personal` se cumple por construcción.
+
+- **Solo créditos.** Los egresos de esas cuentas se mezclan con gastos personales y de la casa: el
+  dueño decidió no llevarlos, y un total de egresos "del negocio" sería un número falso.
+- **Lo descartado no desaparece del total**: entró a la cuenta. Sale de `total_negocio` y aparece
+  como `total_personal`. `sin_clasificar` cuenta los que nadie resolvió (ni descartados ni
+  conciliados): sin ese número, `total_negocio` se lee como más firme de lo que es.
+- **`cuenta_destino` NULL se muestra como "sin identificar"**, no se esconde: es el aviso de que el
+  parser no pudo leer la cuenta de ese correo.
+- **Alias de las cuentas en `config_empresa.bancos_cuentas_alias`** (JSON `{"*3891": "Andrés"}`),
+  leído por `modules/bancos/config.py` con default seguro `{}` — un alias mal escrito muestra el
+  número de cuenta, nunca tumba el reporte. Son dos strings que cambian una vez en la vida: mismo
+  criterio que `pago_transferencia_titular`, no una tabla con CRUD.
+
+En el tab, el período acota los TOTALES pero no la lista: la lista es la bandeja de trabajo (lo que
+falta resolver) y el total es el reporte del mes. Mezclarlos escondería pendientes viejos.

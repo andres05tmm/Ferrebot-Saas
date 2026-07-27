@@ -44,6 +44,7 @@ export const queryKeys = {
   libroAuxiliar: (desde: string, hasta: string) => ['libros', 'auxiliar', desde, hasta] as const,
   retencionesConfig: ['retenciones', 'config'] as const,
   bancosMovimientos: (estado: string) => ['bancos', 'movimientos', estado] as const,
+  bancosTotales: (rango: string) => ['bancos', 'totales', rango] as const,
 }
 
 // Listado de facturas recibidas por QR (GET /facturas-recibidas). Gateado por `compras_fiscal` en el back.
@@ -84,6 +85,10 @@ export const keyPrefix = {
   libros: ['libros'] as const,
   retencionesConfig: ['retenciones', 'config'] as const,
   bancosMovimientos: ['bancos', 'movimientos'] as const,
+  bancosTotales: ['bancos', 'totales'] as const,
+  // Conciliar, sugerir y descartar mueven la lista Y los totales (lo descartado sale de "del
+  // negocio", lo conciliado deja de contar como "sin clasificar"): se invalida el módulo entero.
+  bancos: ['bancos'] as const,
 }
 
 // JSON de list endpoints sin validar en runtime (los .jsx no se type-checan; el shape lo usa cada tab).
@@ -270,11 +275,20 @@ export function useMovimientosBancarios(estado: string, incluirDescartados = fal
   })
 }
 
+// Cuánta plata entró en el período (solo créditos). Va aparte de la lista: la lista está acotada a
+// 200 movimientos y el total tiene que contar TODO el período, no lo que quepa en pantalla.
+export function useTotalesBancarios(desde: string, hasta: string) {
+  return useQuery({
+    queryKey: queryKeys.bancosTotales(`${desde}|${hasta}`),
+    queryFn: () => apiJson<Fila>(`/bancos/totales?desde=${desde}&hasta=${hasta}`),
+  })
+}
+
 export function useSugerirConciliacion() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: () => api('/bancos/sugerir', { method: 'POST' }),
-    onSuccess: (res) => { if (res.ok) qc.invalidateQueries({ queryKey: keyPrefix.bancosMovimientos }) },
+    onSuccess: (res) => { if (res.ok) qc.invalidateQueries({ queryKey: keyPrefix.bancos }) },
   })
 }
 
@@ -285,7 +299,7 @@ export function useConciliar() {
       api(`/bancos/movimientos/${movId}/conciliar`, {
         method: 'POST', headers: jsonHeaders, body: JSON.stringify({ tipo, id_interno: idInterno }),
       }),
-    onSuccess: (res) => { if (res.ok) qc.invalidateQueries({ queryKey: keyPrefix.bancosMovimientos }) },
+    onSuccess: (res) => { if (res.ok) qc.invalidateQueries({ queryKey: keyPrefix.bancos }) },
   })
 }
 
@@ -296,6 +310,6 @@ export function useDescartarMovimiento() {
   return useMutation({
     mutationFn: ({ movId, descartar }: { movId: number; descartar: boolean }) =>
       api(`/bancos/movimientos/${movId}/descarte`, { method: descartar ? 'POST' : 'DELETE' }),
-    onSuccess: (res) => { if (res.ok) qc.invalidateQueries({ queryKey: keyPrefix.bancosMovimientos }) },
+    onSuccess: (res) => { if (res.ok) qc.invalidateQueries({ queryKey: keyPrefix.bancos }) },
   })
 }

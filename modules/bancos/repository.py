@@ -99,6 +99,34 @@ _CANDIDATOS_DEBITO = (
 )
 
 
+# Cuánta plata entró, por cuenta. Solo CRÉDITOS: los egresos de estas cuentas se mezclan con gastos
+# personales y de la casa, así que no se llevan (decisión del dueño).
+#
+# `total` es todo lo que entró; `total_negocio` descuenta lo marcado "no es venta". `sin_clasificar`
+# cuenta los que siguen sin resolverse (ni descartados ni conciliados): es la deuda de clasificación
+# que hay detrás del número, y sin ella `total_negocio` se lee como más firme de lo que es.
+_TOTALES_POR_CUENTA = (
+    "SELECT cuenta_destino AS cuenta, count(*) AS movimientos, "
+    "       COALESCE(SUM(monto), 0) AS total, "
+    "       COALESCE(SUM(monto) FILTER (WHERE descartado_en IS NULL), 0) AS total_negocio, "
+    "       count(*) FILTER (WHERE descartado_en IS NULL "
+    "                        AND estado_conciliacion <> 'conciliado') AS sin_clasificar "
+    "FROM bancolombia_transferencias "
+    "WHERE naturaleza = 'credito' AND fecha BETWEEN :desde AND :hasta "
+    "GROUP BY cuenta_destino "
+    "ORDER BY total DESC"
+)
+
+
+@dataclass(frozen=True, slots=True)
+class TotalCuenta:
+    cuenta: str | None          # None = el parser no pudo leerla; se muestra, no se esconde
+    movimientos: int
+    total: Decimal
+    total_negocio: Decimal
+    sin_clasificar: int
+
+
 @dataclass(frozen=True, slots=True)
 class Candidato:
     tipo: str
@@ -205,6 +233,19 @@ class SqlBancosRepository:
             BancolombiaTransferencia.fecha.desc(), BancolombiaTransferencia.id.desc()
         ).limit(limite)
         return list((await self._s.execute(stmt)).scalars().all())
+
+    async def totales_por_cuenta(self, *, desde: date, hasta: date) -> list[TotalCuenta]:
+        """Ingresos del período agrupados por cuenta destino, de mayor a menor."""
+        filas = (
+            await self._s.execute(text(_TOTALES_POR_CUENTA), {"desde": desde, "hasta": hasta})
+        ).all()
+        return [
+            TotalCuenta(
+                cuenta=f.cuenta, movimientos=f.movimientos, total=Decimal(f.total),
+                total_negocio=Decimal(f.total_negocio), sin_clasificar=f.sin_clasificar,
+            )
+            for f in filas
+        ]
 
     async def candidatos(
         self, *, monto: Decimal, fecha: date, naturaleza: str, excluir_mov_id: int | None = None

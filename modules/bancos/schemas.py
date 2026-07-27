@@ -75,6 +75,33 @@ class MovimientoConCandidatos(BaseModel):
     candidatos: list[CandidatoInterno]
 
 
+class TotalPorCuenta(BaseModel):
+    """Cuánto entró a UNA cuenta en el período."""
+
+    cuenta: str | None            # None = el parser no la pudo leer ("sin identificar")
+    alias: str | None = None      # nombre del titular, si la empresa lo configuró
+    movimientos: int
+    total: Decimal
+    total_negocio: Decimal
+
+
+class TotalesBancarios(BaseModel):
+    """Cuánta plata entró a las cuentas del negocio en un período (solo créditos).
+
+    `total` = todo lo que entró. `total_negocio` descuenta lo marcado "no es venta" y
+    `total_personal` es justo esa diferencia, así que `total == total_negocio + total_personal`
+    siempre. `sin_clasificar` cuenta los movimientos que nadie resolvió todavía.
+    """
+
+    desde: date
+    hasta: date
+    total: Decimal
+    total_negocio: Decimal
+    total_personal: Decimal
+    sin_clasificar: int
+    por_cuenta: list[TotalPorCuenta]
+
+
 class ConciliarConfirmar(BaseModel):
     """Confirmación EXPLÍCITA del enlace elegido (sugerido/ambiguo → conciliado)."""
 

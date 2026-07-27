@@ -18,7 +18,7 @@ import { Button } from '@/components/ui/button.jsx'
 import { Label } from '@/components/ui/label.jsx'
 import { Seg } from './piezas.jsx'
 import {
-  fraccionQueCasa, fraccionesOrdenadas, paqueteCompleto, paqueteDe, precioSubunidad, previewMotor,
+  atajosKg, fraccionQueCasa, fraccionesOrdenadas, paqueteCompleto, paqueteDe, previewMotor,
   subunidadesDesdePesos, tipoVenta,
 } from './cantidad.js'
 
@@ -27,7 +27,6 @@ const ENVASE = {
   gramos: { sub: 'g', nombre: 'caja', full: 'Caja completa', half: '½ caja', quarter: '¼ caja' },
   ml: { sub: 'ml', nombre: 'tarro', full: 'Tarro completo', half: '½ tarro', quarter: '¼ tarro' },
 }
-const KG_RAPIDOS = [['½ kg', 0.5], ['1 kg', 1], ['1½ kg', 1.5], ['2 kg', 2], ['2½ kg', 2.5], ['3 kg', 3]]
 
 function kgDesc(n) {
   if (!n) return ''
@@ -71,7 +70,7 @@ export default function ModalCantidad({ prod, onCerrar, onConfirmar }) {
 function FormCantidad({ prod, tipo, onConfirmar, onCancelar }) {
   const pv = Number(prod.precio_venta) || 0
   const paquete = paqueteDe(prod)
-  const precioSub = precioSubunidad(prod)
+  const empaque = paqueteCompleto(prod)
 
   // Estado (un solo hook por campo; el `key={prod.id}` del padre lo resetea entre productos).
   const [unidades, setUnidades] = useState(0)        // pintura: galones/unidades completas
@@ -81,6 +80,9 @@ function FormCantidad({ prod, tipo, onConfirmar, onCancelar }) {
   const [cmVal, setCmVal] = useState('')             // cm
   const [kgVal, setKgVal] = useState('')             // kg
   const [uniVal, setUniVal] = useState('')           // unidad: cantidad entera
+  // Se está vendiendo el EMPAQUE entero (la bolsa a su precio fijo), no unidades sueltas. Lo prende
+  // el botón del empaque y lo apaga cualquier otra captura: el precio de bulto nunca se adivina.
+  const [porEmpaque, setPorEmpaque] = useState(false)
   // Total editable de abajo: `precio` es lo que se muestra/edita; `tocado` marca que el cajero lo
   // cambió a mano (regateo). Mientras no lo toque, sigue al total calculado.
   const [precio, setPrecio] = useState('')
@@ -115,7 +117,10 @@ function FormCantidad({ prod, tipo, onConfirmar, onCancelar }) {
       const cantidad = valorNum
       const desc = paquete && cantidad >= paquete && cantidad % paquete === 0
         ? `${cantidad / paquete} ${env.nombre}(s)` : `${cantidad} ${env.sub}`
-      return { cantidad, precioManual: null, total: previewMotor(prod, cantidad), desc }
+      return {
+        cantidad, precioManual: null, porEmpaque: porEmpaque && !!empaque,
+        total: previewMotor(prod, cantidad, { porEmpaque: porEmpaque && !!empaque }), desc,
+      }
     }
     if (tipo === 'cm') {
       const cantidad = Number(cmVal) || 0
@@ -127,19 +132,27 @@ function FormCantidad({ prod, tipo, onConfirmar, onCancelar }) {
     }
     // kg
     const cantidad = Number(kgVal) || 0
+    if (porEmpaque && empaque) {
+      const n = cantidad / empaque.factor
+      return {
+        cantidad, precioManual: null, porEmpaque: true,
+        total: previewMotor(prod, cantidad, { porEmpaque: true }),
+        desc: `${n} ${empaque.nombre}${n === 1 ? '' : 's'} (${cantidad} kg)`,
+      }
+    }
     return { cantidad, precioManual: null, total: previewMotor(prod, cantidad), desc: kgDesc(cantidad) }
   }
 
   function confirmar() {
     if (!valido) return
-    onConfirmar({ cantidad: r.cantidad, precioManual, desc: r.desc })
+    onConfirmar({ cantidad: r.cantidad, precioManual, desc: r.desc, porEmpaque: !!r.porEmpaque })
   }
 
   return (
     <>
       <DialogHeader>
         <DialogTitle>{prod.nombre}</DialogTitle>
-        <DialogDescription id="cant-desc">{subtitulo(tipo, prod, pv, precioSub, paquete)}</DialogDescription>
+        <DialogDescription id="cant-desc">{subtitulo(tipo, prod, pv, empaque, paquete)}</DialogDescription>
       </DialogHeader>
 
       <div className="space-y-3">
@@ -173,10 +186,14 @@ function FormCantidad({ prod, tipo, onConfirmar, onCancelar }) {
         {(tipo === 'gramos' || tipo === 'ml') && (
           <>
             <div className="grid grid-cols-3 gap-1.5">
-              {[[ENVASE[tipo].full, paquete], [ENVASE[tipo].half, paquete / 2], [ENVASE[tipo].quarter, paquete / 4]]
-                .map(([et, q]) => (
-                  <BotonKpi key={et} activo={modo === 'sub' && Number(valor) === q}
-                    onClick={() => { setModo('sub'); setValor(String(q)) }} titulo={et} precio={previewMotor(prod, q)} />
+              {/* El envase completo va a SU precio (`precio_paquete`); la media y el cuarto son
+                  cantidades sueltas a precio de sub-unidad. */}
+              {[[ENVASE[tipo].full, paquete, true], [ENVASE[tipo].half, paquete / 2, false],
+                [ENVASE[tipo].quarter, paquete / 4, false]]
+                .map(([et, q, entero]) => (
+                  <BotonKpi key={et} activo={modo === 'sub' && Number(valor) === q && porEmpaque === !!(entero && empaque)}
+                    onClick={() => { setModo('sub'); setPorEmpaque(!!(entero && empaque)); setValor(String(q)) }}
+                    titulo={et} precio={previewMotor(prod, q, { porEmpaque: !!(entero && empaque) })} />
                 ))}
             </div>
             <div className="flex gap-1.5">
@@ -215,23 +232,29 @@ function FormCantidad({ prod, tipo, onConfirmar, onCancelar }) {
 
         {tipo === 'kg' && (
           <>
-            {/* Empaque completo (la bolsa de cal de 25 kg): un toque para venderla entera. */}
-            {paqueteCompleto(prod) && (
+            {/* Empaque completo (la bolsa de cemento de 40 kg): un toque, a SU precio — no al del
+                kilo multiplicado. Vuelve a tocarlo para sumar bolsas. */}
+            {empaque && (
               <BotonKpi
-                activo={Number(kgVal) === paqueteCompleto(prod).factor}
-                onClick={() => setKgVal(String(paqueteCompleto(prod).factor))}
-                titulo={`${paqueteCompleto(prod).nombre} completa (${paqueteCompleto(prod).factor} kg)`}
-                precio={previewMotor(prod, paqueteCompleto(prod).factor)}
+                activo={porEmpaque}
+                onClick={() => {
+                  const n = porEmpaque ? (Number(kgVal) / empaque.factor) + 1 : 1
+                  setPorEmpaque(true); setKgVal(String(n * empaque.factor))
+                }}
+                titulo={`${empaque.nombre} completa (${empaque.factor} kg)`}
+                precio={empaque.precio}
               />
             )}
             <div className="grid grid-cols-3 gap-1.5">
-              {KG_RAPIDOS.map(([et, q]) => (
-                <BotonKpi key={et} activo={Number(kgVal) === q} onClick={() => setKgVal(String(q))}
-                  titulo={et} precio={previewMotor(prod, q)} />
+              {atajosKg(prod).map(({ etiqueta, cantidad }) => (
+                <BotonKpi key={etiqueta} activo={!porEmpaque && Number(kgVal) === cantidad}
+                  onClick={() => { setPorEmpaque(false); setKgVal(String(cantidad)) }}
+                  titulo={etiqueta} precio={previewMotor(prod, cantidad)} />
               ))}
             </div>
-            <Input type="number" min="0" step="0.5" value={kgVal}
-              onChange={(e) => setKgVal(e.target.value)} placeholder="kg" aria-label="Cantidad en kilos" />
+            <Input type="number" min="0" step="0.25" value={kgVal}
+              onChange={(e) => { setPorEmpaque(false); setKgVal(e.target.value) }}
+              placeholder="kg" aria-label="Cantidad en kilos" />
           </>
         )}
 
@@ -256,14 +279,17 @@ function FormCantidad({ prod, tipo, onConfirmar, onCancelar }) {
   )
 }
 
-function subtitulo(tipo, prod, pv, precioSub, paquete) {
+// `pv` es el precio de UNA unidad de venta (un gramo, un kilo) y `empaque.precio` el del envase
+// completo: son dos datos distintos desde 0072, no uno derivado del otro.
+function subtitulo(tipo, prod, pv, empaque, paquete) {
+  const envase = empaque ? ` · ${cop(empaque.precio)} la ${empaque.nombre} (${empaque.factor})` : ''
   if (tipo === 'fraccion' || tipo === 'unidad') return `Precio unidad: ${cop(pv)}`
-  if (tipo === 'gramos') return `${cop(precioSub)}/g · ${cop(pv)} por caja (${paquete} g)`
-  if (tipo === 'ml') return `${cop(precioSub)}/ml · ${cop(pv)} por tarro (${paquete} ml)`
-  if (tipo === 'cm') return `Pliego: ${cop(pv)} · ${cop(precioSub)}/cm`
+  if (tipo === 'gramos') return `${cop(pv)}/g${envase || ` · caja de ${paquete} g`}`
+  if (tipo === 'ml') return `${cop(pv)}/ml${envase || ` · tarro de ${paquete} ml`}`
+  if (tipo === 'cm') return `${cop(pv)}/cm${envase}`
   if (tipo === 'kg') {
     const half = fraccionQueCasa(prod, 0.5)
-    return `${cop(pv)}/kg${half ? ` · ½ kg ${cop(Number(half.precio_total))}` : ''}`
+    return `${cop(pv)}/kg${half ? ` · ½ kg ${cop(Number(half.precio_total))}` : ''}${envase}`
   }
   return ''
 }

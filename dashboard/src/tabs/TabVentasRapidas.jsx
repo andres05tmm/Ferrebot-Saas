@@ -278,7 +278,7 @@ export default function TabVentasRapidas() {
 
   // Arma una línea de carrito a partir del producto. `cantidad`/`precioManual`/`desc` los fija el modal
   // de fracción/sub-unidad; el tap simple usa el default (1 unidad, sin override).
-  function lineaDeProducto(p, { cantidad = 1, precioManual = null, desc = null } = {}) {
+  function lineaDeProducto(p, { cantidad = 1, precioManual = null, desc = null, porEmpaque = false } = {}) {
     return {
       key: nuevaKey(), producto_id: p.id, nombre: p.nombre, cantidad, varia: false,
       precio_normal: Number(p.precio_venta),
@@ -294,7 +294,7 @@ export default function TabVentasRapidas() {
       contenido_paquete: p.contenido_paquete != null ? Number(p.contenido_paquete) : null,
       precio_paquete: p.precio_paquete != null ? Number(p.precio_paquete) : null,
       nombre_paquete: p.nombre_paquete || null,
-      por_empaque: false,
+      por_empaque: !!porEmpaque,
     }
   }
 
@@ -320,9 +320,9 @@ export default function TabVentasRapidas() {
 
   // Confirmación del modal: empuja SIEMPRE una línea nueva (no fusiona: cada fracción/monto es su
   // propia línea, como el dashboard viejo).
-  function agregarDesdeModal({ cantidad, precioManual, desc }) {
+  function agregarDesdeModal({ cantidad, precioManual, desc, porEmpaque }) {
     if (!modalProd) return
-    setCarrito(prev => [...prev, lineaDeProducto(modalProd, { cantidad, precioManual, desc })])
+    setCarrito(prev => [...prev, lineaDeProducto(modalProd, { cantidad, precioManual, desc, porEmpaque })])
     setModalProd(null)
   }
 

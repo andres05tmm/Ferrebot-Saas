@@ -25,6 +25,17 @@ const COLS_CLS = {
   7: 'lg:grid-cols-7', 8: 'lg:grid-cols-8',
 }
 
+// Sufijo de la unidad de venta para el precio de la card. "Unidad" no lleva sufijo (es el caso
+// normal y ensuciaría toda la grilla); el granel y el kilo sí, porque ahí el número es por gramo o
+// por kilo y sin decirlo se lee como el precio del envase.
+const UNIDAD_CORTA = {
+  grm: 'g', gramos: 'g', cms: 'cm', mlt: 'ml', ml: 'ml', mililitros: 'ml',
+  kg: 'kg', kgm: 'kg', kilo: 'kg', kilos: 'kg', mts: 'm', mt: 'm', metro: 'm',
+}
+function unidadCorta(p) {
+  return UNIDAD_CORTA[(p.unidad_medida || '').trim().toLowerCase()] || null
+}
+
 const CardProducto = memo(function CardProducto({ p, enCarrito, esFav, resaltado, onTap, onFav, onCantidad }) {
   const { Icono, color } = iconoCategoria(p.categoria)
   const mayorista = p.precio_umbral != null && p.precio_sobre_umbral != null
@@ -36,7 +47,17 @@ const CardProducto = memo(function CardProducto({ p, enCarrito, esFav, resaltado
           resaltado ? 'border-primary bg-primary/10' : 'border-border bg-surface hover:border-primary/40 hover:bg-surface-2'}`}>
         <Icono className={`size-4 ${color}`} aria-hidden="true" />
         <span className="text-caption font-medium leading-tight line-clamp-2 min-h-[2em] [overflow-wrap:anywhere]">{p.nombre}</span>
-        <span className="text-body-sm font-semibold tabular text-foreground">{cop(Number(p.precio_venta))}</span>
+        <span className="text-body-sm font-semibold tabular text-foreground">
+          {cop(Number(p.precio_venta))}
+          {unidadCorta(p) && <span className="text-caption font-normal text-muted-foreground">/{unidadCorta(p)}</span>}
+        </span>
+        {/* El precio suelto solo no basta: un bulto de cemento a "$2.500" se lee como el precio de
+            la bolsa. Se muestran los dos, que es como se vende. */}
+        {p.precio_paquete != null && p.nombre_paquete && (
+          <span className="text-micro tabular text-muted-foreground leading-none">
+            {p.nombre_paquete} {cop(Number(p.precio_paquete))}
+          </span>
+        )}
       </button>
       {enCarrito > 0 && (
         <span className="absolute -top-1.5 -left-1.5 min-w-5 h-5 px-1 grid place-items-center rounded-full bg-primary text-primary-foreground text-micro font-bold tabular"

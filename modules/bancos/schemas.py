@@ -44,6 +44,8 @@ class CandidatoInterno(BaseModel):
     fecha: date
     descripcion: str | None = None
     cliente: str | None = None      # para reconocer de quién es el pago al resolver un ambiguo
+    # Qué se vendió. El consecutivo no le sirve al dueño para reconocer la venta; los productos sí.
+    detalle: str | None = None
 
 
 class MovimientoBancarioLeer(BaseModel):

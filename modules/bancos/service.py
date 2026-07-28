@@ -37,7 +37,7 @@ log = get_logger("bancos")
 def _a_candidato(c: Candidato) -> CandidatoInterno:
     return CandidatoInterno(
         tipo=c.tipo, id=c.id, monto=c.monto, fecha=c.fecha,
-        descripcion=c.descripcion, cliente=c.cliente,
+        descripcion=c.descripcion, cliente=c.cliente, detalle=c.detalle,
     )
 
 

@@ -703,3 +703,73 @@ async def test_el_total_por_cuenta_trae_su_propio_sin_clasificar(tenant):
     assert por_cuenta["*6485"].sin_clasificar == 2
     # El agregado sigue siendo la suma de las cuentas, como los montos.
     assert tot.sin_clasificar == sum(c.sin_clasificar for c in tot.por_cuenta)
+
+
+# --- el candidato tiene que ser reconocible: productos, no un consecutivo -------
+
+async def _detalle(s: AsyncSession, *, venta_id: int, descripcion: str, cantidad: str) -> None:
+    await s.execute(
+        text(
+            "INSERT INTO ventas_detalle (venta_id, descripcion, cantidad, precio_unitario, iva) "
+            "VALUES (:v, :d, :c, 1000, 0)"
+        ),
+        {"v": venta_id, "d": descripcion, "c": cantidad},
+    )
+
+
+async def test_el_candidato_trae_los_productos_de_la_venta(tenant):
+    """El dueño nunca vio el consecutivo: para reconocer la venta necesita QUÉ se vendió."""
+    async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
+        uid = await _usuario(s)
+        venta = await _venta_transferencia(s, uid=uid, total="40000", consecutivo=300)
+        await _detalle(s, venta_id=venta, descripcion="Cemento gris 50kg", cantidad="2")
+        await _detalle(s, venta_id=venta, descripcion="Varilla 1/2", cantidad="1.5")
+        await _credito(s, mid="p1", monto="40000", cuenta="*3891")
+        await s.commit()
+
+        movs = await _svc(s).listar(estado=None)
+
+    cand = movs[0].candidatos[0]
+    assert cand.detalle == "2 Cemento gris 50kg, 1.5 Varilla 1/2"
+    # La cantidad sale sin los ceros del NUMERIC(12,3): "2", no "2.000".
+    assert "2.000" not in cand.detalle
+    # El consecutivo NO se pierde: baja a rastro, deja de ser lo único.
+    assert cand.descripcion == "venta #300"
+
+
+async def test_el_detalle_del_candidato_se_corta_en_tres_renglones(tenant):
+    """Una venta de 30 ítems no puede viajar entera por cada candidato de la lista."""
+    async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
+        uid = await _usuario(s)
+        venta = await _venta_transferencia(s, uid=uid, total="50000", consecutivo=301)
+        for i in range(6):
+            await _detalle(s, venta_id=venta, descripcion=f"Producto {i}", cantidad="1")
+        await _credito(s, mid="p2", monto="50000", cuenta="*3891")
+        await s.commit()
+
+        movs = await _svc(s).listar(estado=None)
+
+    cand = movs[0].candidatos[0]
+    assert cand.detalle == "1 Producto 0, 1 Producto 1, 1 Producto 2"
+    # Se corta por renglón, no truncando el texto ya armado: ningún nombre queda partido.
+    assert not cand.detalle.endswith("…") and "Producto 3" not in cand.detalle
+
+
+async def test_un_gasto_no_inventa_detalle_de_productos(tenant):
+    """Los débitos comparten la forma del candidato pero no tienen renglones que mostrar."""
+    async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
+        await s.execute(
+            text("INSERT INTO gastos (categoria, concepto, monto, creado_en) "
+                 "VALUES ('otros', 'Papelería', 15000, :t)"),
+            {"t": _TS},
+        )
+        await _svc(s).ingestar([MovimientoBancarioIngesta(
+            referencia_bancaria="REF-DEB", fecha=_DIA, monto=Decimal("15000"), naturaleza="debito",
+        )])
+        await s.commit()
+
+        movs = await _svc(s).listar(estado=None)
+
+    cand = movs[0].candidatos[0]
+    assert cand.tipo == "gasto" and cand.detalle is None
+    assert cand.descripcion == "Papelería"

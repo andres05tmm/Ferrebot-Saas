@@ -207,30 +207,36 @@ def parsear_email_bancolombia(body_raw: str) -> dict:
 
 
 def construir_mensaje(datos: dict, subject: str, ahora_hhmm: str) -> str:
-    """Mensaje Markdown para Telegram con encabezado por canal. `ahora_hhmm` = hora fallback."""
+    """Mensaje de Telegram con encabezado por canal. `ahora_hhmm` = hora fallback.
+
+    **Texto plano, sin Markdown.** Llevaba `*negritas*` y `` `código` ``, pero se envía sin
+    `parse_mode`, así que Telegram los mostraba tal cual: el dueño leía los asteriscos y las comillas
+    invertidas como si fueran parte del mensaje. Prender `parse_mode` sería la otra salida, pero
+    entonces cualquier nombre de remitente con un `_` o un `*` rompería el formato del aviso.
+    """
     tipo_lower = (datos.get("tipo") or "").lower()
     if "nequi" in tipo_lower:
-        encabezado = "🟣 *Transferencia recibida — Nequi*"
+        encabezado = "🟣 Transferencia recibida — Nequi"
     elif "pse" in tipo_lower:
-        encabezado = "🔵 *Transferencia recibida — PSE*"
+        encabezado = "🔵 Transferencia recibida — PSE"
     elif "daviplata" in tipo_lower:
-        encabezado = "🔴 *Transferencia recibida — Daviplata*"
+        encabezado = "🔴 Transferencia recibida — Daviplata"
     elif "consign" in tipo_lower:
-        encabezado = "🏧 *Consignación recibida — Bancolombia*"
+        encabezado = "🏧 Consignación recibida — Bancolombia"
     else:
-        encabezado = "🏦 *Transferencia recibida — Bancolombia*"
+        encabezado = "🏦 Transferencia recibida — Bancolombia"
 
     lineas = [encabezado]
     if datos.get("monto", 0) > 0:
-        lineas.append(f"💰 Monto: *{datos['monto_str']}*")
+        lineas.append(f"💰 Monto: {datos['monto_str']}")
     else:
         lineas.append(f"📩 {subject[:80]}")
     if datos.get("remitente"):
         lineas.append(f"👤 De: {datos['remitente']}")
     if datos.get("cuenta"):
-        lineas.append(f"🏦 Cuenta: `{datos['cuenta']}`")
+        lineas.append(f"🏦 Cuenta: {datos['cuenta']}")
     if datos.get("llave"):
-        lineas.append(f"🔑 Llave: `{datos['llave']}`")
+        lineas.append(f"🔑 Llave: {datos['llave']}")
     if datos.get("tipo") and tipo_lower not in ("transferencia", ""):
         lineas.append(f"📲 Canal: {datos['tipo']}")
     if datos.get("descripcion"):

@@ -87,6 +87,12 @@ def test_construir_mensaje_incluye_monto_y_remitente():
     msg = parser.construir_mensaje(datos, "Transferencia recibida", "10:00")
     assert "$12.000" in msg and "LUIS" in msg and "09:30" in msg
     assert msg.startswith("🏦")
+    # Se manda sin `parse_mode`, así que cualquier marca de Markdown la lee el dueño como texto.
+    # Ojo: el asterisco de `*3891` NO es marcado, es como Bancolombia enmascara la cuenta — tiene
+    # que sobrevivir. Lo que no puede quedar es el marcado que envolvía título, monto y cuenta.
+    assert "`" not in msg
+    assert "*Transferencia" not in msg and "*$" not in msg
+    assert "🏦 Cuenta: *3891" in msg
 
 
 def test_construir_mensaje_nequi_encabezado():

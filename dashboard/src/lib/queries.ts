@@ -43,6 +43,8 @@ export const queryKeys = {
   libroMayor: (desde: string, hasta: string) => ['libros', 'mayor', desde, hasta] as const,
   libroAuxiliar: (desde: string, hasta: string) => ['libros', 'auxiliar', desde, hasta] as const,
   retencionesConfig: ['retenciones', 'config'] as const,
+  historialLineas: (clave: string) => ['historial', 'lineas', clave] as const,
+  historialResumen: (clave: string) => ['historial', 'resumen', clave] as const,
   bancosMovimientos: (estado: string) => ['bancos', 'movimientos', estado] as const,
   bancosTotales: (rango: string) => ['bancos', 'totales', rango] as const,
   bancosRemitentes: (rango: string) => ['bancos', 'remitentes', rango] as const,
@@ -85,6 +87,7 @@ export const keyPrefix = {
   ventas: ['ventas'] as const,
   libros: ['libros'] as const,
   retencionesConfig: ['retenciones', 'config'] as const,
+  historial: ['historial'] as const,
   bancosMovimientos: ['bancos', 'movimientos'] as const,
   bancosTotales: ['bancos', 'totales'] as const,
   // Conciliar, sugerir y descartar mueven la lista Y los totales (lo descartado sale de "del
@@ -339,5 +342,28 @@ export function useDescartarMovimiento() {
     mutationFn: ({ movId, descartar }: { movId: number; descartar: boolean }) =>
       api(`/bancos/movimientos/${movId}/descarte`, { method: descartar ? 'POST' : 'DELETE' }),
     onSuccess: (res) => { if (res.ok) qc.invalidateQueries({ queryKey: keyPrefix.bancos }) },
+  })
+}
+
+
+// ── Historial: el libro de ventas (ADR 0029; el tab se rehizo sobre TanStack Query) ─────────────
+//
+// `GET /ventas/historial` devuelve una fila por RENGLÓN vendido, ya con producto, cliente y vendedor
+// resueltos. Se pagina por VENTA, así que `filas` siempre trae grupos completos.
+export function useHistorialLineas(desde: string, hasta: string, limite = 100) {
+  return useQuery({
+    queryKey: queryKeys.historialLineas(`${desde}|${hasta}|${limite}`),
+    queryFn: () => apiJson<Fila>(
+      `/ventas/historial?desde=${desde}&hasta=${hasta}&limite=${limite}`),
+  })
+}
+
+// KPIs del período. Va SEPARADO del feed a propósito: el feed está acotado a N ventas y el total
+// tiene que cubrir todo el rango. Sumar lo que quepa en pantalla daría un número más chico que el
+// real, y nadie lo notaría.
+export function useHistorialResumen(desde: string, hasta: string) {
+  return useQuery({
+    queryKey: queryKeys.historialResumen(`${desde}|${hasta}`),
+    queryFn: () => apiJson<Fila>(`/reportes/resumen?desde=${desde}&hasta=${hasta}`),
   })
 }

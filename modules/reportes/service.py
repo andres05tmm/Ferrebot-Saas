@@ -107,16 +107,27 @@ class ReportesService:
     def __init__(self, repo: ReportesRepo) -> None:
         self._repo = repo
 
-    async def resumen_dia(self, vendedor_id: int | None) -> ResumenDia:
-        """Resumen de HOY (Colombia): conteo, total, ticket promedio y desglose por método de pago."""
+    async def resumen_dia(
+        self, vendedor_id: int | None, *, desde: date | None = None, hasta: date | None = None
+    ) -> ResumenDia:
+        """Resumen del rango (default HOY, Colombia): conteo, total, ticket y desglose por método.
+
+        El rango lo estrenó el tab Historial, que necesita los mismos KPIs sobre varios días. La
+        agregación del repositorio ya aceptaba instantes arbitrarios y ya expande las ventas MIXTAS
+        a sus partes reales (`_expandir_mixtas`): lo único que fijaba el día era este servicio.
+
+        `fecha` reporta el ÚLTIMO día del rango, no el primero: es la que el front rotula, y para el
+        default de un solo día sigue siendo hoy.
+        """
         hoy = today_co()
-        inicio, fin = rango_dia_co(hoy, hoy)
+        desde, hasta = desde or hoy, hasta or hoy
+        inicio, fin = rango_dia_co(desde, hasta)
         agg = await self._repo.resumen(inicio=inicio, fin=fin, vendedor_id=vendedor_id)
         ticket = (
             cuantizar(agg.total_vendido / agg.num_ventas) if agg.num_ventas else Decimal("0")
         )
         return ResumenDia(
-            fecha=hoy,
+            fecha=hasta,
             num_ventas=agg.num_ventas,
             total_vendido=agg.total_vendido,
             ticket_promedio=ticket,
@@ -383,6 +394,16 @@ class ReportesService:
             proyeccion_neto_mes=proy_ventas - proy_gastos,
         )
 
+    async def cargar_historico(self, dias: list[tuple[date, Decimal]]) -> int:
+        """Guarda los totales de días ANTERIORES al sistema (los del cuaderno del dueño).
+
+        NO es contabilidad y no debe volverse contabilidad: se graba con `incluir_en_balances=False`
+        porque de esos días no se anotaron gastos, caja ni movimientos de inventario. Sirven para que
+        el calendario muestre el año completo, y nada más. Si algún día alguien quiere sumarlos a un
+        estado de resultados, la respuesta es que faltan los egresos del otro lado.
+        """
+        return await self._repo.cargar_historico(dias)
+
     async def calendario(self, *, anio: int, mes: int, vendedor_id: int | None) -> list[DiaCalendarioLeer]:
         """Agregado diario del mes (heatmap): total, transacciones y gastos por día Colombia."""
         import calendar
@@ -393,7 +414,8 @@ class ReportesService:
         dias = await self._repo.calendario(inicio=inicio, fin=fin, vendedor_id=vendedor_id)
         return [
             DiaCalendarioLeer(
-                fecha=d.fecha, total=d.total, num_ventas=d.num_ventas, gastos=d.gastos
+                fecha=d.fecha, total=d.total, num_ventas=d.num_ventas, gastos=d.gastos,
+                historico=d.historico,
             )
             for d in dias
         ]

@@ -12,13 +12,14 @@ from sse_starlette.sse import EventSourceResponse
 from core.auth import Principal, get_current_user, get_filtro_efectivo, require_role
 from core.auth.features import get_capacidades, require_feature
 from core.auth.rbac import satisface
-from core.config.timezone import today_co
+from core.config.timezone import rango_dia_co, today_co
 from core.db.session import control_session, get_tenant_db
 from core.events.sse import tenant_event_stream
 from core.tenancy.catalogo import expandir_metapacks
 from modules.caja.config import get_caja_obligatoria
 from modules.caja.repository import SqlCajaRepository
 from modules.facturacion.repository import SqlFacturacionRepository
+from modules.reportes.repository import SqlReportesRepository
 from modules.ventas.config import cargar_control_stock_estricto
 from modules.fiados.errors import ClienteInexistente
 from modules.fiados.repository import SqlFiadosRepository
@@ -56,6 +57,12 @@ router = APIRouter(tags=["ventas"], dependencies=[Depends(require_feature("venta
 # exactamente el mismo límite, y el export es justo el que se olvida.
 RANGO_HISTORIAL_MAX_DIAS = 92
 
+# Tope del archivo. Por encima de esto el export responde 422 pidiendo partir por meses, en vez de
+# entregar un Excel incompleto que nadie puede detectar como incompleto.
+LIMITE_EXPORT_VENTAS = 5_000
+
+_XLSX_MEDIA = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
 
 def rango_historial(
     desde: date | None = Query(default=None),
@@ -89,6 +96,11 @@ def _aplicador_retenciones(
 def get_ventas_repo(session: AsyncSession = Depends(get_tenant_db)) -> SqlVentasRepository:
     """Repo de ventas sobre la sesión del tenant para las lecturas (overridable en test)."""
     return SqlVentasRepository(session)
+
+
+def get_reportes_lectura(session: AsyncSession = Depends(get_tenant_db)) -> SqlReportesRepository:
+    """Repo de reportes (misma sesión del tenant) solo para el total del pie del export."""
+    return SqlReportesRepository(session)
 
 
 def get_facturacion_lectura(session: AsyncSession = Depends(get_tenant_db)) -> SqlFacturacionRepository:
@@ -236,6 +248,48 @@ async def historial_ventas(
     desde, hasta = rango
     return await repo.historial_lineas(
         desde=desde, hasta=hasta, vendedor_id=filtro, limite=limite, offset=offset
+    )
+
+
+@router.get("/ventas/historial/exportar")
+async def exportar_historial(
+    rango: tuple[date, date] = Depends(rango_historial),
+    repo: SqlVentasRepository = Depends(get_ventas_repo),
+    reportes: SqlReportesRepository = Depends(get_reportes_lectura),
+    _user: Principal = Depends(require_role("vendedor")),
+    filtro: int | None = Depends(get_filtro_efectivo),
+) -> Response:
+    """El libro de ventas del rango como `.xlsx`.
+
+    Mismo rango y **mismo filtro por rol** que el feed: el export es justo el endpoint donde se
+    olvida el aislamiento y un vendedor termina bajándose el Excel de toda la tienda.
+
+    El TOTAL del pie sale de `/reportes/resumen` (suma de cabeceras, sin anuladas), no de sumar los
+    renglones del propio archivo: ver el aviso de `services/export/historial_ventas.py`.
+    """
+    desde, hasta = rango
+    feed = await repo.historial_lineas(
+        desde=desde, hasta=hasta, vendedor_id=filtro, limite=LIMITE_EXPORT_VENTAS
+    )
+    if feed.hay_mas:
+        # Nada de truncar en silencio: un Excel con la mitad de las ventas del mes es peor que un
+        # error, porque el que lo abre no tiene cómo notar lo que falta.
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            f"El rango supera las {LIMITE_EXPORT_VENTAS} ventas por archivo; expórtalo por meses",
+        )
+    inicio, fin = rango_dia_co(desde, hasta)
+    agg = await reportes.resumen(inicio=inicio, fin=fin, vendedor_id=filtro)
+
+    from services.export.historial_ventas import render_historial_excel   # perezoso: openpyxl
+
+    xlsx = render_historial_excel(
+        feed.filas, desde=desde, hasta=hasta, total_periodo=agg.total_vendido
+    )
+    return Response(
+        content=xlsx,
+        media_type=_XLSX_MEDIA,
+        headers={"Content-Disposition": f'attachment; filename="ventas_{desde}_{hasta}.xlsx"'},
     )
 
 

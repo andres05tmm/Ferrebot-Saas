@@ -1,27 +1,36 @@
 /*
- * VistaMes — calendario mensual tipo heatmap: agregado por día del backend
- * (GET /reportes/calendario?anio&mes) con navegación de meses.
+ * VistaMes — el calendario del mes, con la forma del dashboard viejo: cada celda muestra el día Y
+ * el monto abreviado, arriba van los cuatro KPIs del mes y abajo el desglose por método de pago.
  *
- * Además de lo que vendió el sistema, muestra los días ANTERIORES a él: totales que el dueño anotó
- * a mano (`historico_ventas`, cargados pegando la lista del cuaderno). Se pintan DISTINTO —contorno
- * punteado, sin relleno de intensidad— y sus KPIs van separados. Es deliberado: un total anotado a
- * mano no tiene gastos ni caja detrás, así que mezclarlo con lo registrado daría un mes que ningún
- * reporte financiero puede respaldar, y nadie sabría cuál de los dos números está mal.
+ * Se replica ese formato a propósito y no uno nuevo: es el que el dueño lleva meses leyendo, y un
+ * heatmap sin cifras lo obligaba a pasar el mouse celda por celda para saber cuánto fue cada día.
+ *
+ * Dos formas de anotar los días ANTERIORES al sistema (`historico_ventas`):
+ *   - tocando la celda de un día pasado sin ventas → escribir el total ahí mismo;
+ *   - pegando la lista completa, para el atraso de meses.
+ * Los dos caminos van al mismo endpoint idempotente por fecha. Esos días se pintan distinto y NUNCA
+ * se suman con lo que registró el sistema: no tienen gastos ni caja detrás, así que mezclarlos daría
+ * un mes que ningún reporte financiero puede respaldar.
  */
 import { useMemo, useState } from 'react'
-import { ChevronLeft, ChevronRight, Plus } from '@/lib/icons.jsx'
-import { anioMesCO as hoyCO } from '@/lib/fechas'
-import { useFetch, cop, num } from '@/components/shared.jsx'
+import { toast } from 'sonner'
+import { ChevronLeft, ChevronRight, CalendarDays, TrendingUp, Trophy, Plus } from '@/lib/icons.jsx'
+import { anioMesCO as hoyCO, hoyStrCO } from '@/lib/fechas'
+import { api } from '@/lib/api'
+import { useFetch, cop } from '@/components/shared.jsx'
 import { useRealtimeEvent } from '@/components/RealtimeProvider.jsx'
 import { useAuth } from '@/hooks/useAuth.js'
 import { Card } from '@/components/ui/card.jsx'
+import { Input } from '@/components/ui/input.jsx'
+import KpiCard from '@/components/KpiCard.jsx'
 import CargarDiasViejos from './CargarDiasViejos.jsx'
+import { montoCorto } from './montoCorto.js'
 
-const DIAS_SEMANA = ['L', 'M', 'X', 'J', 'V', 'S', 'D']
+const DIAS_SEMANA = ['LUN', 'MAR', 'MIÉ', 'JUE', 'VIE', 'SÁB', 'DOM']
 const MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio',
   'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
 
-// Intensidad 0..4 relativa al mejor día del mes (para el heatmap con el color primario del tenant).
+// Intensidad 0..4 relativa al mejor día del mes, sobre el color de marca del tenant.
 function nivel(total, max) {
   if (!total || !max) return 0
   const r = total / max
@@ -31,30 +40,43 @@ function nivel(total, max) {
   return 1
 }
 const NIVEL_CLS = [
-  'bg-surface-2 text-muted-foreground',
-  'bg-primary/15', 'bg-primary/30', 'bg-primary/55 text-primary-foreground',
-  'bg-primary text-primary-foreground',
+  'bg-surface border border-border-subtle text-muted-foreground',
+  'bg-primary/10', 'bg-primary/20', 'bg-primary/35', 'bg-primary/55',
 ]
-// Los días anotados a mano: contorno punteado y sin relleno. No compiten con la escala del heatmap
+// Los días anotados a mano: contorno punteado, sin relleno. No compiten con la escala del heatmap
 // porque no son la misma clase de dato.
-const CLS_HISTORICO = 'border border-dashed border-border-strong text-muted-foreground'
+const CLS_HISTORICO = 'bg-surface border border-dashed border-border-strong'
 
 const esHistorico = (d) => Number(d?.historico || 0) > 0 && Number(d?.total || 0) === 0
+const montoDia = (d) => Number(d?.total || 0) || Number(d?.historico || 0)
 
 export default function VistaMes() {
   const { isAdmin } = useAuth()
-  const [{ anio, mes }, setPeriodo] = useState(hoyCO())
-  const [cargando, setCargando] = useState(false)
+  const admin = isAdmin()
+  const actual = hoyCO()
+  const [{ anio, mes }, setPeriodo] = useState(actual)
+  const [pegando, setPegando] = useState(false)
+  const [editando, setEditando] = useState(null)     // fecha ISO del día en edición
+  const [valor, setValor] = useState('')
+  const [guardando, setGuardando] = useState(false)
+
   const q = useFetch(`/reportes/calendario?anio=${anio}&mes=${mes}`, [anio, mes])
+  const desde = `${anio}-${String(mes).padStart(2, '0')}-01`
+  const hasta = `${anio}-${String(mes).padStart(2, '0')}-${new Date(Date.UTC(anio, mes, 0)).getUTCDate()}`
+  const resumenQ = useFetch(`/reportes/resumen?desde=${desde}&hasta=${hasta}`, [anio, mes])
   useRealtimeEvent(['venta_registrada', 'venta_anulada', 'venta_editada', 'reconnected'], q.refetch)
 
   const dias = Array.isArray(q.data) ? q.data : []
   const porFecha = useMemo(() => Object.fromEntries(dias.map(d => [d.fecha, d])), [dias])
-  const max = useMemo(() => Math.max(0, ...dias.map(d => Number(d.total))), [dias])
+  const max = useMemo(() => Math.max(0, ...dias.map(d => montoDia(d))), [dias])
   const total = useMemo(() => dias.reduce((a, d) => a + Number(d.total), 0), [dias])
-  const totalGastos = useMemo(() => dias.reduce((a, d) => a + Number(d.gastos), 0), [dias])
   const totalHistorico = useMemo(
     () => dias.reduce((a, d) => a + Number(d.historico || 0), 0), [dias])
+  const conVenta = dias.filter(d => Number(d.total) > 0)
+  const mejorDia = useMemo(() => Math.max(0, ...conVenta.map(d => Number(d.total))), [conVenta])
+  const promedio = conVenta.length ? total / conVenta.length : 0
+  const porMetodo = resumenQ.data?.por_metodo_pago ?? {}
+  const esMesActual = anio === actual.anio && mes === actual.mes
 
   function mover(delta) {
     setPeriodo(({ anio, mes }) => {
@@ -63,12 +85,12 @@ export default function VistaMes() {
       if (m > 12) return { anio: anio + 1, mes: 1 }
       return { anio, mes: m }
     })
+    setEditando(null)
   }
 
-  // Grilla del mes: celdas vacías hasta el día de la semana del 1° (lunes = 0).
   const celdas = useMemo(() => {
     const primero = new Date(Date.UTC(anio, mes - 1, 1))
-    const offset = (primero.getUTCDay() + 6) % 7
+    const offset = (primero.getUTCDay() + 6) % 7      // lunes = 0
     const nDias = new Date(Date.UTC(anio, mes, 0)).getUTCDate()
     const out = Array.from({ length: offset }, () => null)
     for (let d = 1; d <= nDias; d++) {
@@ -78,106 +100,182 @@ export default function VistaMes() {
     return out
   }, [anio, mes, porFecha])
 
-  const conMovimiento = dias.filter(d => Number(d.total) > 0 || Number(d.historico || 0) > 0)
+  // Un día se puede anotar a mano solo si es PASADO y no tiene ventas del sistema. Sobre un día con
+  // ventas registradas no se escribe: ese número lo produjo el sistema y anotarlo encima sería
+  // inventar una segunda verdad para la misma fecha.
+  const anotable = (c) => admin && c.fecha < hoyStrCO() && Number(c.datos?.total || 0) === 0
+
+  function abrirEdicion(c) {
+    if (!anotable(c)) return
+    setEditando(c.fecha)
+    setValor(String(Number(c.datos?.historico || 0) || ''))
+  }
+
+  async function guardarDia() {
+    const monto = Number(String(valor).replace(/[^\d]/g, ''))
+    if (!Number.isFinite(monto) || monto < 0) { toast.error('Escribe un total válido'); return }
+    setGuardando(true)
+    try {
+      const res = await api('/historico-ventas/cargar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dias: [{ fecha: editando, total: monto }] }),
+      })
+      if (res.ok) {
+        toast.success(`${editando}: ${cop(monto)}`)
+        setEditando(null)
+        q.refetch()
+      } else if (res.status === 403) toast.error('Solo un administrador puede anotar días anteriores')
+      else toast.error('No se pudo guardar el día')
+    } catch { toast.error('Error de conexión') } finally { setGuardando(false) }
+  }
 
   return (
     <div className="space-y-3">
+      {/* Selector de período: mes y año como listas, no solo flechas — saltar a marzo del año
+          pasado con flechas son 16 clics. */}
+      <div className="flex flex-wrap items-center justify-center gap-2">
+        <button onClick={() => mover(-1)} aria-label="Mes anterior"
+          className="size-8 grid place-items-center rounded-md border border-border hover:bg-surface-2">
+          <ChevronLeft className="size-4" />
+        </button>
+        <select value={mes} onChange={(e) => setPeriodo(p => ({ ...p, mes: Number(e.target.value) }))}
+          aria-label="Mes"
+          className="h-9 rounded-md border border-border bg-surface px-2 text-body-sm">
+          {MESES.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
+        </select>
+        <select value={anio} onChange={(e) => setPeriodo(p => ({ ...p, anio: Number(e.target.value) }))}
+          aria-label="Año"
+          className="h-9 rounded-md border border-border bg-surface px-2 text-body-sm tabular">
+          {Array.from({ length: 6 }, (_, i) => actual.anio - 4 + i).map(a => (
+            <option key={a} value={a}>{a}</option>
+          ))}
+        </select>
+        <button onClick={() => mover(1)} aria-label="Mes siguiente"
+          className="size-8 grid place-items-center rounded-md border border-border hover:bg-surface-2">
+          <ChevronRight className="size-4" />
+        </button>
+        {esMesActual && (
+          <span className="text-micro uppercase tracking-wider font-semibold px-2 py-1 rounded-md bg-primary/10 text-primary">
+            Mes actual
+          </span>
+        )}
+      </div>
+
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
+        <KpiCard tone="primary" headerBand coloredValue icon={CalendarDays}
+          label="Total del mes" value={cop(total)} />
+        <KpiCard tone="warning" headerBand icon={CalendarDays}
+          label="Días con venta" value={conVenta.length} />
+        <KpiCard tone="success" headerBand coloredValue icon={TrendingUp}
+          label="Promedio / día" value={cop(promedio)}
+          sub={conVenta.length ? 'sobre los días con venta' : null} />
+        <KpiCard tone="info" headerBand coloredValue icon={Trophy}
+          label="Mejor día" value={cop(mejorDia)} />
+      </div>
+
       <Card className="p-3.5">
-        <div className="flex items-center justify-between mb-3">
-          <button onClick={() => mover(-1)} aria-label="Mes anterior"
-            className="size-7 grid place-items-center rounded-md border border-border hover:bg-surface-2">
-            <ChevronLeft className="size-4" />
-          </button>
-          <div className="text-center">
-            <h2 className="text-sm font-semibold">{MESES[mes - 1]} {anio}</h2>
-            <p className="text-caption text-muted-foreground">
-              {cop(total)} vendidos · {cop(totalGastos)} en gastos
-            </p>
-            {totalHistorico > 0 && (
-              // Nunca sumado al de arriba: son dos cosas distintas y decirlo es la mitad del valor.
-              <p className="text-caption text-muted-foreground">
-                + {cop(totalHistorico)} anotados a mano (antes del sistema)
-              </p>
-            )}
-          </div>
-          <button onClick={() => mover(1)} aria-label="Mes siguiente"
-            className="size-7 grid place-items-center rounded-md border border-border hover:bg-surface-2">
-            <ChevronRight className="size-4" />
-          </button>
-        </div>
-
-        <div className="grid grid-cols-7 gap-1 text-center">
+        <div className="grid grid-cols-7 gap-1.5 text-center">
           {DIAS_SEMANA.map(d => (
-            <div key={d} className="text-caption text-muted-foreground py-1">{d}</div>
+            <div key={d} className="text-micro uppercase tracking-wider text-muted-foreground py-1">{d}</div>
           ))}
-          {celdas.map((c, i) => c === null ? <div key={`v-${i}`} /> : (
-            <div key={c.fecha}
-              title={esHistorico(c.datos)
-                ? `${c.fecha}: ${cop(Number(c.datos.historico))} — anotado a mano, antes del sistema`
-                : c.datos
-                  ? `${c.fecha}: ${cop(Number(c.datos.total))} en ${num(c.datos.num_ventas)} venta(s)`
-                    + (Number(c.datos.gastos) > 0 ? ` · gastos ${cop(Number(c.datos.gastos))}` : '')
-                  : `${c.fecha}: sin movimiento`}
-              className={`rounded-md py-1.5 text-caption tabular ${
-                esHistorico(c.datos) ? CLS_HISTORICO : NIVEL_CLS[nivel(Number(c.datos?.total || 0), max)]}`}>
-              {c.dia}
-            </div>
-          ))}
+          {celdas.map((c, i) => {
+            if (c === null) return <div key={`v-${i}`} />
+            const historico = esHistorico(c.datos)
+            const hoy = c.fecha === hoyStrCO()
+            const monto = montoDia(c.datos)
+            const editable = anotable(c)
+            const Celda = editable ? 'button' : 'div'
+            return (
+              <Celda key={c.fecha}
+                {...(editable ? {
+                  type: 'button',
+                  onClick: () => abrirEdicion(c),
+                  'aria-label': `Anotar el total del ${c.fecha}`,
+                } : {})}
+                title={historico
+                  ? `${c.fecha}: ${cop(Number(c.datos.historico))} — anotado a mano, antes del sistema`
+                  : c.datos && Number(c.datos.total) > 0
+                    ? `${c.fecha}: ${cop(Number(c.datos.total))} en ${c.datos.num_ventas} venta(s)`
+                    : editable ? `${c.fecha}: sin ventas — toca para anotar el total`
+                      : `${c.fecha}: sin movimiento`}
+                className={`rounded-lg py-2 px-1 transition-colors ${
+                  historico ? CLS_HISTORICO : NIVEL_CLS[nivel(monto, max)]
+                } ${hoy ? 'ring-2 ring-primary' : ''} ${
+                  editable ? 'hover:border-primary hover:bg-primary/5 cursor-pointer' : ''
+                } ${editando === c.fecha ? 'ring-2 ring-primary' : ''}`}>
+                <div className="text-caption tabular text-muted-foreground">{c.dia}</div>
+                <div className={`text-body-sm tabular font-semibold ${
+                  historico ? 'text-muted-foreground' : monto ? 'text-success' : 'text-muted-foreground/50'}`}>
+                  {montoCorto(monto)}
+                </div>
+              </Celda>
+            )
+          })}
         </div>
 
-        {totalHistorico > 0 && (
-          <p className="mt-3 text-caption text-muted-foreground flex items-center gap-1.5">
-            <span className={`inline-block size-3 rounded ${CLS_HISTORICO}`} />
-            Día anotado a mano: solo el total, sin gastos ni detalle. No entra a los reportes
-            financieros.
-          </p>
-        )}
-      </Card>
-
-      <Card className="p-0 overflow-hidden">
-        <div className="flex items-center justify-between px-3.5 py-2.5 border-b border-border-subtle">
-          <h2 className="text-caption font-semibold uppercase tracking-wider text-muted-foreground">Detalle por día</h2>
-          <div className="flex items-center gap-2">
-            {isAdmin() && (
-              <button type="button" onClick={() => setCargando(true)}
-                className="inline-flex items-center gap-1 text-meta h-7 px-2 rounded-md border border-border hover:bg-surface-2">
-                <Plus className="size-3.5" /> Cargar días anteriores
-              </button>
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-3 text-caption text-muted-foreground">
+            {totalHistorico > 0 && (
+              <span className="inline-flex items-center gap-1.5">
+                <span className={`inline-block size-3 rounded ${CLS_HISTORICO}`} />
+                Anotado a mano · {cop(totalHistorico)} (no entra a los reportes financieros)
+              </span>
             )}
-            <span className="text-meta tabular font-semibold">{cop(total)}</span>
+            {admin && (
+              <span className="hidden sm:inline">Toca un día pasado sin ventas para anotar su total.</span>
+            )}
+          </div>
+          <div className="flex items-center gap-1.5 text-caption text-muted-foreground">
+            Menos
+            {NIVEL_CLS.map((cls, i) => <span key={i} className={`inline-block size-3 rounded ${cls}`} />)}
+            Más
           </div>
         </div>
-        {q.loading ? (
-          <p className="py-10 text-center text-sm text-muted-foreground">Cargando…</p>
-        ) : conMovimiento.length === 0 ? (
-          <p className="py-10 text-center text-sm text-muted-foreground">Sin ventas este mes.</p>
-        ) : (
-          <ul className="divide-y divide-border-subtle">
-            {[...conMovimiento].reverse().map(d => (
-              <li key={d.fecha} className="flex items-center gap-2 px-3.5 py-2 text-body-sm">
-                <span className="tabular text-muted-foreground w-28 shrink-0">{d.fecha}</span>
-                <span className="flex-1 text-meta text-muted-foreground">
-                  {esHistorico(d) ? 'anotado a mano' : (
-                    `${num(d.num_ventas)} ${d.num_ventas === 1 ? 'venta' : 'ventas'}`
-                    + (Number(d.gastos) > 0 ? ` · gastos ${cop(Number(d.gastos))}` : '')
-                    // Un día con ventas Y anotación: se dice, no se esconde. Si no, el total de
-                    // arriba cuenta una plata que no aparece en ninguna fila y no hay dónde buscarla.
-                    + (Number(d.historico || 0) > 0
-                      ? ` · ${cop(Number(d.historico))} anotados a mano aparte` : '')
-                  )}
-                </span>
-                <span className={`tabular font-semibold shrink-0 ${esHistorico(d) ? 'text-muted-foreground' : ''}`}>
-                  {cop(Number(esHistorico(d) ? d.historico : d.total))}
-                </span>
-              </li>
-            ))}
-          </ul>
-        )}
       </Card>
 
-      {cargando && (
-        <CargarDiasViejos anio={anio} onClose={() => setCargando(false)}
-          onGuardado={() => { setCargando(false); q.refetch() }} />
+      {editando && (
+        <Card className="p-3.5 flex flex-wrap items-end gap-3">
+          <div>
+            <p className="text-caption text-muted-foreground">Total vendido el {editando}</p>
+            <p className="text-caption text-muted-foreground">
+              Solo el total: estos días no llevan gastos ni detalle, y no entran a los reportes.
+            </p>
+          </div>
+          <Input autoFocus inputMode="numeric" value={valor}
+            onChange={(e) => setValor(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') guardarDia(); if (e.key === 'Escape') setEditando(null) }}
+            aria-label={`Total del ${editando}`} placeholder="1030500" className="h-9 w-40 tabular" />
+          <button type="button" onClick={guardarDia} disabled={guardando}
+            className="h-9 px-3 rounded-md bg-primary text-primary-foreground text-meta hover:bg-primary-hover disabled:opacity-60">
+            {guardando ? 'Guardando…' : 'Guardar'}
+          </button>
+          <button type="button" onClick={() => setEditando(null)}
+            className="h-9 px-3 rounded-md border border-border text-meta hover:bg-surface-2">
+            Cancelar
+          </button>
+        </Card>
+      )}
+
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+        {['efectivo', 'transferencia', 'datafono'].map((m, i) => (
+          <KpiCard key={m} tone={['success', 'info', 'warning'][i]} headerBand coloredValue
+            label={m} value={cop(Number(porMetodo[m] || 0))} />
+        ))}
+      </div>
+
+      {admin && (
+        <div className="flex justify-end">
+          <button type="button" onClick={() => setPegando(true)}
+            className="inline-flex items-center gap-1.5 text-meta h-9 px-3 rounded-md border border-border hover:bg-surface-2">
+            <Plus className="size-4" /> Cargar varios días de una vez
+          </button>
+        </div>
+      )}
+
+      {pegando && (
+        <CargarDiasViejos anio={anio} onClose={() => setPegando(false)}
+          onGuardado={() => { setPegando(false); q.refetch() }} />
       )}
     </div>
   )

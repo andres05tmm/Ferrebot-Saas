@@ -1,7 +1,10 @@
-"""Webhook del push de Gmail (modules/bancos/gmail/webhook.py) — lógica pura, sin FastAPI.
+"""Webhook del push de Gmail (modules/bancos/gmail/webhook.py).
 
 INVARIANTE de aislamiento (TDD): un token desconocido NO resuelve empresa → 404 fail-closed (jamás
 escribe en un tenant que no le corresponde). Token válido → encola con la empresa correcta.
+
+La mayoría son sobre la lógica pura (`manejar_push`, sin FastAPI), pero el último cruza la ruta REAL:
+probar solo la lógica pura dejó pasar meses un 422 en el ruteo, con estos tests en verde.
 """
 import base64
 import json
@@ -52,3 +55,32 @@ async def test_envelope_invalido_igual_encola_sin_history():
     res = await manejar_push(token="tok-A", cuerpo=b"no-es-json", deps=deps)
     assert res.status == 200
     assert encolados == [(7, None)]
+
+
+def test_ruta_real_de_fastapi_encola_y_devuelve_200():
+    """El push atraviesa la ruta montada, no solo `manejar_push`.
+
+    Regresión: con `from __future__ import annotations` en el módulo, el `Request` importado dentro
+    de `crear_router_bancolombia` quedaba sin resolver y FastAPI lo degradaba a query param
+    obligatorio → **todo push contestaba 422** y Pub/Sub reintentaba en bucle, con la lógica pura en
+    verde. Este test es el único que mira el ruteo.
+    """
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from modules.bancos.gmail.webhook import crear_router_bancolombia
+
+    deps, encolados = _deps(empresa_por_token={"tok-A": 7})
+    app = FastAPI()
+    app.include_router(crear_router_bancolombia())
+    app.state.bancolombia_webhook_deps = deps
+    cliente = TestClient(app)
+
+    resp = cliente.post("/webhooks/bancolombia/tok-A", content=_push_body("12345"))
+    assert resp.status_code == 200, resp.text
+    assert resp.json() == {"accion": "encolado"}
+    assert encolados == [(7, "12345")]
+
+    # Aislamiento, también por la ruta: token ajeno → 404 y sin encolar nada nuevo.
+    assert cliente.post("/webhooks/bancolombia/tok-AJENO", content=_push_body("9")).status_code == 404
+    assert encolados == [(7, "12345")]

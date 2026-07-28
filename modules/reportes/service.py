@@ -107,16 +107,27 @@ class ReportesService:
     def __init__(self, repo: ReportesRepo) -> None:
         self._repo = repo
 
-    async def resumen_dia(self, vendedor_id: int | None) -> ResumenDia:
-        """Resumen de HOY (Colombia): conteo, total, ticket promedio y desglose por método de pago."""
+    async def resumen_dia(
+        self, vendedor_id: int | None, *, desde: date | None = None, hasta: date | None = None
+    ) -> ResumenDia:
+        """Resumen del rango (default HOY, Colombia): conteo, total, ticket y desglose por método.
+
+        El rango lo estrenó el tab Historial, que necesita los mismos KPIs sobre varios días. La
+        agregación del repositorio ya aceptaba instantes arbitrarios y ya expande las ventas MIXTAS
+        a sus partes reales (`_expandir_mixtas`): lo único que fijaba el día era este servicio.
+
+        `fecha` reporta el ÚLTIMO día del rango, no el primero: es la que el front rotula, y para el
+        default de un solo día sigue siendo hoy.
+        """
         hoy = today_co()
-        inicio, fin = rango_dia_co(hoy, hoy)
+        desde, hasta = desde or hoy, hasta or hoy
+        inicio, fin = rango_dia_co(desde, hasta)
         agg = await self._repo.resumen(inicio=inicio, fin=fin, vendedor_id=vendedor_id)
         ticket = (
             cuantizar(agg.total_vendido / agg.num_ventas) if agg.num_ventas else Decimal("0")
         )
         return ResumenDia(
-            fecha=hoy,
+            fecha=hasta,
             num_ventas=agg.num_ventas,
             total_vendido=agg.total_vendido,
             ticket_promedio=ticket,

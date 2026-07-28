@@ -7,12 +7,17 @@ El stock se bloquea con SELECT ... FOR UPDATE en lock_inventario (evita carreras
 from datetime import date
 from decimal import Decimal
 
-from sqlalchemy import delete, func, select, text
+from sqlalchemy import column as sa_column
+from sqlalchemy import delete, func, select
+from sqlalchemy import table as sa_table
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import lazyload, selectinload
 
 from core.config.timezone import now_co, rango_dia_co
 from core.events import publish
+from core.money import cuantizar
+from modules.clientes.models import Cliente
 from modules.facturacion.models import FacturaElectronica
 from modules.inventario.busqueda import BuscadorProductos
 from modules.inventario.models import Inventario, MovimientoInventario, Producto
@@ -20,6 +25,8 @@ from modules.inventario.precios import FraccionPrecio
 from modules.inventario.repository import SqlInventarioRepository
 from modules.ventas.models import Venta, VentaDetalle, VentaPago
 from modules.ventas.schemas import (
+    HistorialFeed,
+    HistorialLinea,
     ItemVentaResumen,
     PagoParte,
     VentaConLineas,
@@ -37,6 +44,12 @@ from modules.ventas.service import (
 
 # Estados de factura electrónica que BLOQUEAN el borrado de la venta (factura "viva").
 _ESTADOS_FACTURA_VIVA = ("pendiente", "aceptada")
+
+
+# `usuarios` no tiene modelo ORM en este repo (patrón FK-less deliberado, igual que en proveedores y
+# perfil): declararlo metería la tabla en el grafo de mappers de todos los módulos. Para resolver el
+# nombre del vendedor alcanza una tabla literal.
+_usuarios = sa_table("usuarios", sa_column("id"), sa_column("nombre"))
 
 
 class SqlVentasRepository:
@@ -114,6 +127,105 @@ class SqlVentasRepository:
             )
             for c in cabeceras
         ]
+
+    async def historial_lineas(
+        self, *, desde: date, hasta: date, vendedor_id: int | None = None,
+        limite: int = 100, offset: int = 0,
+    ) -> HistorialFeed:
+        """El libro de ventas del rango: una fila por RENGLÓN vendido, con producto, cliente y
+        vendedor ya resueltos.
+
+        **Pagina por VENTA, no por renglón.** `limite` cuenta ventas: así un grupo nunca queda
+        partido entre dos páginas y el front no tiene que reconstruir grupos a caballo. `hay_mas`
+        sale de pedir una venta de más, no de un `COUNT(*)` sobre todo el rango.
+
+        Sin N+1: dos consultas (ids + renglones en batch), y una tercera SOLO si alguna de esas
+        ventas fue mixta. El nombre de producto se resuelve con el mismo `coalesce` de
+        `listar_recientes`; el cliente ausente cae en 'Consumidor Final' en SQL, no en el front.
+
+        Incluye las ANULADAS, marcadas en `estado`: esto es un libro, y lo que se anuló también es
+        historia. Ojo con la asimetría deliberada: `/reportes/resumen` sí las excluye de los totales.
+
+        El día es el colombiano (`rango_dia_co` da instantes aware): nunca un `::date` crudo, que
+        depende del `TimeZone` de la sesión de Postgres y corre las ventas de la noche al día
+        siguiente.
+        """
+        inicio, fin = rango_dia_co(desde, hasta)
+        ids_stmt = (
+            select(Venta.id)
+            .where(Venta.fecha >= inicio, Venta.fecha <= fin)
+            .order_by(Venta.fecha.desc(), Venta.id.desc())
+            .limit(limite + 1)
+            .offset(offset)
+        )
+        if vendedor_id is not None:
+            ids_stmt = ids_stmt.where(Venta.vendedor_id == vendedor_id)
+        ids = [f.id for f in (await self._s.execute(ids_stmt)).all()]
+        hay_mas = len(ids) > limite
+        ids = ids[:limite]
+        if not ids:
+            return HistorialFeed(desde=desde, hasta=hasta, filas=[], hay_mas=False)
+
+        lineas_stmt = (
+            select(
+                VentaDetalle.id.label("linea_id"),
+                Venta.id.label("venta_id"), Venta.consecutivo, Venta.fecha, Venta.estado,
+                Venta.metodo_pago, Venta.total.label("venta_total"),
+                Venta.cliente_id, Venta.vendedor_id,
+                VentaDetalle.producto_id, VentaDetalle.cantidad,
+                VentaDetalle.precio_unitario, VentaDetalle.iva,
+                func.coalesce(Producto.nombre, VentaDetalle.descripcion, "Producto").label("producto"),
+                func.coalesce(Cliente.nombre, "Consumidor Final").label("cliente"),
+                func.coalesce(_usuarios.c.nombre, "—").label("vendedor"),
+            )
+            .select_from(VentaDetalle)
+            .join(Venta, Venta.id == VentaDetalle.venta_id)
+            .outerjoin(Producto, Producto.id == VentaDetalle.producto_id)
+            .outerjoin(Cliente, Cliente.id == Venta.cliente_id)
+            .outerjoin(_usuarios, _usuarios.c.id == Venta.vendedor_id)
+            .where(VentaDetalle.venta_id.in_(ids))
+            .order_by(Venta.fecha.desc(), Venta.id.desc(), VentaDetalle.id)
+        )
+        filas = (await self._s.execute(lineas_stmt)).all()
+
+        # Las partes de una venta MIXTA, solo si hay alguna: `metodo_pago='mixto'` no es un método de
+        # pago, es un marcador, y sin el desglose la columna Método del historial mentiría.
+        ids_mixtas = {f.venta_id for f in filas if f.metodo_pago == "mixto"}
+        pagos_por_venta: dict[int, list[PagoParte]] = {}
+        if ids_mixtas:
+            pagos_stmt = (
+                select(VentaPago.venta_id, VentaPago.metodo, VentaPago.monto)
+                .where(VentaPago.venta_id.in_(ids_mixtas))
+                .order_by(VentaPago.venta_id, VentaPago.id)
+            )
+            for p in (await self._s.execute(pagos_stmt)).all():
+                pagos_por_venta.setdefault(p.venta_id, []).append(
+                    PagoParte(metodo=p.metodo, monto=p.monto)
+                )
+
+        num_lineas: dict[int, int] = {}
+        for f in filas:
+            num_lineas[f.venta_id] = num_lineas.get(f.venta_id, 0) + 1
+
+        return HistorialFeed(
+            desde=desde, hasta=hasta, hay_mas=hay_mas,
+            filas=[
+                HistorialLinea(
+                    linea_id=f.linea_id, venta_id=f.venta_id, consecutivo=f.consecutivo,
+                    fecha=f.fecha, estado=f.estado, producto=f.producto,
+                    producto_id=f.producto_id, cantidad=f.cantidad,
+                    precio_unitario=f.precio_unitario, iva=f.iva,
+                    # Se reconstruye como la factura DIAN: cantidad x precio. NO se suma para
+                    # obtener totales — para eso está `venta_total` (ver el docstring del schema).
+                    total_linea=cuantizar(f.cantidad * f.precio_unitario),
+                    cliente=f.cliente, cliente_id=f.cliente_id,
+                    vendedor=f.vendedor, vendedor_id=f.vendedor_id,
+                    metodo_pago=f.metodo_pago, pagos=pagos_por_venta.get(f.venta_id, []),
+                    venta_total=f.venta_total, num_lineas=num_lineas[f.venta_id],
+                )
+                for f in filas
+            ],
+        )
 
     async def obtener_cabecera(self, venta_id: int) -> VentaLeer | None:
         """Cabecera de una venta (sin líneas) para los guards del borrado: fecha y vendedor_id."""

@@ -12,6 +12,7 @@ from sse_starlette.sse import EventSourceResponse
 from core.auth import Principal, get_current_user, get_filtro_efectivo, require_role
 from core.auth.features import get_capacidades, require_feature
 from core.auth.rbac import satisface
+from core.config.timezone import today_co
 from core.db.session import control_session, get_tenant_db
 from core.events.sse import tenant_event_stream
 from core.tenancy.catalogo import expandir_metapacks
@@ -37,11 +38,42 @@ from modules.facturacion.pos_hook import encolar_cierre_pos
 from modules.retenciones.repository import SqlRetencionesRepository
 from modules.retenciones.service import RetencionesService
 from modules.ventas.repository import SqlVentasRepository
-from modules.ventas.schemas import VentaConLineas, VentaCrear, VentaLeer, VentaRecienteLeer
+from modules.ventas.schemas import (
+    HistorialFeed,
+    VentaConLineas,
+    VentaCrear,
+    VentaLeer,
+    VentaRecienteLeer,
+)
 from modules.ventas.service import RetencionesAplicador, VentaService
 
 # Feature fina `ventas` (ADR 0021, antes pack `pos`): sin la capacidad, todo el router responde 404.
 router = APIRouter(tags=["ventas"], dependencies=[Depends(require_feature("ventas"))])
+
+
+# Un trimestre. Sin esta cota, `?desde=2020-01-01` es un recorrido completo de `ventas` unida a
+# `ventas_detalle`. Va como dependencia y no dentro del endpoint porque el EXPORT tiene que aplicar
+# exactamente el mismo límite, y el export es justo el que se olvida.
+RANGO_HISTORIAL_MAX_DIAS = 92
+
+
+def rango_historial(
+    desde: date | None = Query(default=None),
+    hasta: date | None = Query(default=None),
+) -> tuple[date, date]:
+    """Valida y normaliza el rango del historial (default: hoy Colombia)."""
+    hoy = today_co()
+    d, h = desde or hoy, hasta or hoy
+    if h < d:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY, "La fecha final es anterior a la inicial"
+        )
+    if (h - d).days > RANGO_HISTORIAL_MAX_DIAS:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            f"El rango no puede superar {RANGO_HISTORIAL_MAX_DIAS} días; consulta por meses",
+        )
+    return d, h
 
 
 def _aplicador_retenciones(
@@ -182,6 +214,29 @@ async def listar_ventas_recientes(
     (nombre+cantidad) resueltos, acotadas al vendedor efectivo (RBAC). DEBE declararse antes de
     `/ventas/{venta_id}` para que 'recientes' no matchee el parámetro de path."""
     return await repo.listar_recientes(limite=limite, vendedor_id=filtro)
+
+
+@router.get("/ventas/historial", response_model=HistorialFeed)
+async def historial_ventas(
+    rango: tuple[date, date] = Depends(rango_historial),
+    limite: int = Query(default=100, ge=1, le=300),
+    offset: int = Query(default=0, ge=0),
+    repo: SqlVentasRepository = Depends(get_ventas_repo),
+    _user: Principal = Depends(require_role("vendedor")),
+    filtro: int | None = Depends(get_filtro_efectivo),
+) -> HistorialFeed:
+    """El libro de ventas: una fila por RENGLÓN vendido, con producto, cliente y vendedor resueltos.
+
+    `/ventas` devuelve cabeceras y esconde los productos; esto es lo contrario, y es lo que el dueño
+    mira a diario. `limite` cuenta VENTAS, no renglones: una página nunca parte una venta por la
+    mitad. Acotado al vendedor efectivo por RBAC.
+
+    DEBE declararse antes de `/ventas/{venta_id}`, o 'historial' matchea el parámetro de path y
+    responde 422 (ya pasó con `/ventas/recientes`)."""
+    desde, hasta = rango
+    return await repo.historial_lineas(
+        desde=desde, hasta=hasta, vendedor_id=filtro, limite=limite, offset=offset
+    )
 
 
 @router.get("/ventas/{venta_id}", response_model=VentaConLineas)

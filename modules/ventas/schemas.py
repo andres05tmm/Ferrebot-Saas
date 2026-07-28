@@ -1,5 +1,5 @@
 """Contratos Pydantic de ventas (entrada validada, salida del API)."""
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Literal
 
@@ -137,3 +137,51 @@ class VentaRecienteLeer(BaseModel):
     metodo_pago: str
     items: list[ItemVentaResumen]
     num_items: int
+
+
+class HistorialLinea(BaseModel):
+    """Un RENGLÓN vendido del feed del tab Historial, con el contexto de su venta ya resuelto.
+
+    Es el libro de ventas: una fila por producto vendido, no por venta. Las filas de una misma venta
+    comparten `venta_id`/`consecutivo` — el front agrupa por ahí, porque editar y anular actúan sobre
+    la VENTA entera (`PUT`/`DELETE /ventas/{venta_id}`), nunca sobre un renglón suelto.
+
+    `total_linea` se reconstruye como `cantidad × precio_unitario`, igual que la factura DIAN. OJO:
+    para fracciones y empaques el servicio guarda `precio_unitario = total / cantidad`
+    (`modules/ventas/service.py:492`), así que la SUMA de los renglones puede diferir del total de la
+    venta en centavos. Por eso viaja también `venta_total`: cualquier cifra que se sume sale de ahí,
+    de la cabecera, jamás de las líneas.
+    """
+
+    linea_id: int
+    venta_id: int
+    consecutivo: int
+    fecha: datetime                 # instante de la venta; el front la pinta en hora Colombia
+    estado: str                     # 'completada' | 'anulada' — las anuladas se muestran atenuadas
+    producto: str                   # nombre de catálogo, o la descripción si fue una venta varia
+    producto_id: int | None         # None = venta varia (sin producto del catálogo)
+    cantidad: Decimal
+    precio_unitario: Decimal
+    iva: int
+    total_linea: Decimal
+    cliente: str                    # 'Consumidor Final' cuando la venta no tiene cliente
+    cliente_id: int | None
+    vendedor: str
+    vendedor_id: int | None
+    metodo_pago: str                # 'mixto' NO es un método: es un marcador, el desglose va en `pagos`
+    pagos: list[PagoParte] = []     # partes reales del cobro mixto; vacío en las ventas normales
+    venta_total: Decimal            # total de la CABECERA: la única cifra que suma sin perder centavos
+    num_lineas: int                 # renglones de esa venta, para el encabezado del grupo
+
+
+class HistorialFeed(BaseModel):
+    """Página del libro de ventas. Se pagina por VENTA, no por renglón: así un grupo nunca queda
+    partido entre dos páginas y el front no tiene que reconstruir grupos a caballo.
+
+    `hay_mas` sale de pedir un registro de más, no de un `COUNT(*)` sobre todo el rango.
+    """
+
+    desde: date
+    hasta: date
+    filas: list[HistorialLinea]
+    hay_mas: bool

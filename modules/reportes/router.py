@@ -57,11 +57,18 @@ def get_reportes_repo(session: AsyncSession = Depends(get_tenant_db)) -> SqlRepo
 
 @router.get("/reportes/resumen", response_model=ResumenDia)
 async def resumen_dia(
+    desde: date | None = Query(default=None),
+    hasta: date | None = Query(default=None),
     repo: SqlReportesRepository = Depends(get_reportes_repo),
     _user: Principal = Depends(require_role("vendedor")),
     filtro: int | None = Depends(get_filtro_efectivo),
 ) -> ResumenDia:
-    return await ReportesService(repo).resumen_dia(filtro)
+    """KPIs del rango (default hoy): total, número de ventas, ticket y desglose por método de pago.
+
+    El rango lo usa el tab Historial para que sus KPIs cubran TODO el período consultado y no la
+    página de movimientos que quepa en pantalla.
+    """
+    return await ReportesService(repo).resumen_dia(filtro, desde=desde, hasta=hasta)
 
 
 @router.get("/reportes/serie-ventas", response_model=list[PuntoSerie])

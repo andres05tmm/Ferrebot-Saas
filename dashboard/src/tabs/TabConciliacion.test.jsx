@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 
 vi.mock('@/components/RealtimeProvider.jsx', () => ({
@@ -182,29 +182,101 @@ describe('TabConciliacion — match de mixtas y fiados', () => {
     expect(screen.getByText(/abono al fiado #3.*ANA LOPEZ/)).toBeInTheDocument()
   })
 
-  it('muestra cuánto entró, cuánto es del negocio y el desglose por cuenta', async () => {
+  const TOTALES = {
+    desde: '2026-07-01', hasta: '2026-07-27',
+    total: '430000.00', total_negocio: '350000.00', total_personal: '80000.00',
+    sin_clasificar: 2,
+    por_cuenta: [
+      { cuenta: '*3891', alias: 'Andrés', movimientos: 2, total: '180000.00',
+        total_negocio: '100000.00', sin_clasificar: 1 },
+      { cuenta: null, alias: null, movimientos: 1, total: '250000.00',
+        total_negocio: '250000.00', sin_clasificar: 1 },
+    ],
+  }
+
+  const fetchConTotales = (extra = () => null) => vi.fn((url) => {
+    const u = String(url)
+    const propio = extra(u)
+    if (propio) return propio
+    if (u.includes('/bancos/totales')) return Promise.resolve(jsonResp(TOTALES))
+    if (u.includes('/bancos/movimientos')) return Promise.resolve(jsonResp(GMAIL))
+    return Promise.resolve(jsonResp({ sugeridos: 0 }))
+  })
+
+  it('muestra una sola cifra —lo cobrado del negocio— y no lo personal', async () => {
     comoAdmin()
-    vi.stubGlobal('fetch', vi.fn((url) => {
-      const u = String(url)
-      if (u.includes('/bancos/totales')) return Promise.resolve(jsonResp({
-        desde: '2026-07-01', hasta: '2026-07-27',
-        total: '430000.00', total_negocio: '350000.00', total_personal: '80000.00',
-        sin_clasificar: 2,
-        por_cuenta: [
-          { cuenta: '*3891', alias: 'Andrés', movimientos: 2, total: '180000.00', total_negocio: '100000.00' },
-          { cuenta: null, alias: null, movimientos: 1, total: '250000.00', total_negocio: '250000.00' },
-        ],
-      }))
-      if (u.includes('/bancos/movimientos')) return Promise.resolve(jsonResp(GMAIL))
-      return Promise.resolve(jsonResp({ sugeridos: 0 }))
-    }))
+    vi.stubGlobal('fetch', fetchConTotales())
     render(conQuery(<MemoryRouter><TabConciliacion /></MemoryRouter>))
 
-    expect(await screen.findByText('Andrés')).toBeInTheDocument()
-    expect(screen.getByText('Del negocio')).toBeInTheDocument()
-    // La cuenta que el parser no pudo leer se muestra, no se esconde.
-    expect(screen.getByText(/Cuenta sin identificar/)).toBeInTheDocument()
-    expect(screen.getByText(/2 movimiento\(s\) sin resolver/)).toBeInTheDocument()
+    expect(await screen.findByText('Cobrado por transferencia')).toBeInTheDocument()
+    expect(screen.getByText('$350.000')).toBeInTheDocument()
+    // Lo que entró en bruto y lo personal salieron: no son asunto del negocio.
+    expect(screen.queryByText('Entró')).not.toBeInTheDocument()
+    expect(screen.queryByText('Personal')).not.toBeInTheDocument()
+    // El bruto ($430.000) no aparece en ningún lado: era el KPI "Entró".
+    expect(screen.queryByText('$430.000')).not.toBeInTheDocument()
+    // Lo sin resolver se queda: sin eso la cifra se lee más firme de lo que es.
+    expect(screen.getByText(/2 sin resolver/)).toBeInTheDocument()
+  })
+
+  it('elegir una cuenta acota la cifra y vuelve a pedir la lista filtrada', async () => {
+    comoAdmin()
+    const fetchMock = fetchConTotales()
+    vi.stubGlobal('fetch', fetchMock)
+    render(conQuery(<MemoryRouter><TabConciliacion /></MemoryRouter>))
+    await screen.findByText('$350.000')
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Andrés' }))
+
+    // La cifra pasa a ser la de esa cuenta, con su propio pendiente.
+    expect(await screen.findByText('$100.000')).toBeInTheDocument()
+    expect(screen.getByText('Cobrado por transferencia · Andrés')).toBeInTheDocument()
+    expect(screen.getByText(/1 sin resolver/)).toBeInTheDocument()
+    // Y la bandeja se vuelve a pedir acotada: la lente es del panel entero, no solo del número.
+    await waitFor(() => expect(fetchMock.mock.calls.some(
+      // `URLSearchParams` no escapa el asterisco: viaja tal cual en `cuenta=*3891`.
+      c => String(c[0]).includes('/bancos/movimientos') && String(c[0]).includes('cuenta=*3891')
+    )).toBe(true))
+  })
+
+  it('la cuenta que el parser no pudo leer es una lente más, no un agujero', async () => {
+    comoAdmin()
+    const fetchMock = fetchConTotales()
+    vi.stubGlobal('fetch', fetchMock)
+    render(conQuery(<MemoryRouter><TabConciliacion /></MemoryRouter>))
+    await screen.findByText('$350.000')
+
+    fireEvent.click(await screen.findByRole('tab', { name: 'Sin identificar' }))
+
+    await waitFor(() => expect(fetchMock.mock.calls.some(
+      c => String(c[0]).includes('/bancos/movimientos') && String(c[0]).includes('cuenta=sin_cuenta')
+    )).toBe(true))
+  })
+
+  it('con una sola cuenta no aparece el selector: elegir entre una no es elegir', async () => {
+    comoAdmin()
+    vi.stubGlobal('fetch', fetchConTotales(u => (u.includes('/bancos/totales')
+      ? Promise.resolve(jsonResp({ ...TOTALES, por_cuenta: [TOTALES.por_cuenta[0]] }))
+      : null)))
+    render(conQuery(<MemoryRouter><TabConciliacion /></MemoryRouter>))
+    await screen.findByText('Cobrado por transferencia')
+
+    expect(screen.queryByRole('tablist', { name: /cuenta bancaria/ })).not.toBeInTheDocument()
+  })
+
+  it('sin el filtro "No son ventas", los descartados siguen alcanzables en "Todos"', async () => {
+    comoAdmin()
+    const fetchMock = fetchConTotales()
+    vi.stubGlobal('fetch', fetchMock)
+    render(conQuery(<MemoryRouter><TabConciliacion /></MemoryRouter>))
+    await screen.findByText('Cobrado por transferencia')
+
+    // El filtro se fue de la barra de estados…
+    expect(screen.queryByRole('button', { name: 'No son ventas' })).not.toBeInTheDocument()
+    // …pero "Todos" los pide igual, que es donde vive el botón de deshacer.
+    await waitFor(() => expect(fetchMock.mock.calls.some(
+      c => String(c[0]).includes('/bancos/movimientos') && String(c[0]).includes('incluir_descartados=true')
+    )).toBe(true))
   })
 
   it('"Quién repite" está colapsado y no se pide hasta abrirlo', async () => {

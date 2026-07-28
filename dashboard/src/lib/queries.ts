@@ -263,13 +263,15 @@ export function useGuardarRetencion() {
 }
 
 // ── Conciliación bancaria (ADR 0028) — solo admin ───────────────────────────────────────────────
-export function useMovimientosBancarios(estado: string, incluirDescartados = false) {
+export function useMovimientosBancarios(estado: string, incluirDescartados = false, cuenta = '') {
   return useQuery({
-    queryKey: queryKeys.bancosMovimientos(`${estado}|${incluirDescartados ? 'd' : ''}`),
+    queryKey: queryKeys.bancosMovimientos(`${estado}|${incluirDescartados ? 'd' : ''}|${cuenta}`),
     queryFn: () => {
       const q = new URLSearchParams()
       if (estado) q.set('estado', estado)
       if (incluirDescartados) q.set('incluir_descartados', 'true')
+      // Vacío = todas las cuentas. Solo se manda cuando el dueño eligió una lente concreta.
+      if (cuenta) q.set('cuenta', cuenta)
       const qs = q.toString()
       return apiJson<Fila[]>(`/bancos/movimientos${qs ? `?${qs}` : ''}`)
     },
@@ -287,10 +289,14 @@ export function useTotalesBancarios(desde: string, hasta: string) {
 
 // Quién repite (GET /bancos/remitentes). `enabled` corta la llamada mientras la tabla está
 // colapsada: es un reporte secundario, no tiene por qué pagarse al abrir el tab.
-export function useRemitentesRecurrentes(desde: string, hasta: string, activo: boolean) {
+export function useRemitentesRecurrentes(desde: string, hasta: string, activo: boolean, cuenta = '') {
   return useQuery({
-    queryKey: queryKeys.bancosRemitentes(`${desde}|${hasta}`),
-    queryFn: () => apiJson<Fila[]>(`/bancos/remitentes?desde=${desde}&hasta=${hasta}`),
+    queryKey: queryKeys.bancosRemitentes(`${desde}|${hasta}|${cuenta}`),
+    queryFn: () => {
+      const q = new URLSearchParams({ desde, hasta })
+      if (cuenta) q.set('cuenta', cuenta)
+      return apiJson<Fila[]>(`/bancos/remitentes?${q}`)
+    },
     enabled: activo,
   })
 }

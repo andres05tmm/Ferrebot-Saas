@@ -30,13 +30,18 @@ import { Badge } from '@/components/ui/badge.jsx'
 
 const arr = (d) => (Array.isArray(d) ? d : [])
 
+/* Estados del cruce, y nada más. "No son ventas" salió de acá porque no es un estado de la
+ * conciliación sino una salida del flujo, y competía con los tres que sí lo son. Los descartados
+ * siguen alcanzables: aparecen atenuados dentro de "Todos", que es donde se puede deshacerlos. */
 const FILTROS = [
   { id: '', label: 'Todos' },
   { id: 'no_conciliado', label: 'Sin conciliar' },
   { id: 'sugerido', label: 'Sugeridos' },
   { id: 'conciliado', label: 'Conciliados' },
-  { id: 'descartado', label: 'No son ventas' },
 ]
+
+// Espeja `CUENTA_SIN_IDENTIFICAR` del backend (modules/bancos/schemas.py).
+const SIN_CUENTA = 'sin_cuenta'
 
 const ESTADO_BADGE = {
   no_conciliado: 'bg-muted text-muted-foreground border-border',
@@ -138,58 +143,88 @@ function Movimiento({ item, onConciliar, onDescartar }) {
   )
 }
 
-/* Cuánta plata entró en el período. Tres cifras y no una: `total` es lo que llegó a las cuentas,
- * `total_negocio` descuenta lo que el dueño marcó como plata de la casa, y la diferencia es
- * justamente lo personal — mostrar solo una escondería que a esas cuentas entra de todo. Los
- * egresos no van: se mezclan con gastos personales (decisión del dueño). */
-function Totales({ datos, cargando }) {
+// Etiqueta de una cuenta: el alias que puso la empresa, si no el número, si no que el parser no la leyó.
+const nombreCuenta = (c) => c.alias || c.cuenta || 'Sin identificar'
+const idCuenta = (c) => c.cuenta || SIN_CUENTA
+
+/* Una sola cifra: lo que entró y ES del negocio, en la lente elegida.
+ *
+ * Antes eran tres tarjetas ("Entró", "Del negocio", "Personal"). Las otras dos se fueron porque
+ * cuánta plata personal pasó por la cuenta no es asunto del negocio, y ponerla al lado del número
+ * que sí importa le disputaba la atención al único dato accionable. Lo personal no se pierde: sale
+ * del total al marcar "no es venta", que sigue siendo la salida de cada movimiento.
+ *
+ * Sin tarjeta a propósito: una tarjeta sola alrededor de un número grande es decoración, no
+ * jerarquía. El número ya es lo más pesado de la pantalla.
+ *
+ * `sin_clasificar` se queda: sin él la cifra se lee más firme de lo que es. */
+function Cifra({ datos, cargando, cuenta }) {
   if (cargando || !datos) {
-    return (
-      <div className="grid grid-cols-3 gap-2">
-        {Array.from({ length: 3 }, (_, i) => <Card key={i} className="p-3 h-[74px] animate-pulse" />)}
-      </div>
-    )
+    return <div className="h-[68px] w-56 rounded-md bg-surface-2 animate-pulse" />
   }
   const cuentas = arr(datos.por_cuenta)
-  const cifras = [
-    ['Entró', datos.total, 'text-foreground'],
-    ['Del negocio', datos.total_negocio, 'text-success'],
-    ['Personal', datos.total_personal, 'text-muted-foreground'],
-  ]
+  // Si a la cuenta elegida no le entró nada en el período, `por_cuenta` ni la trae. Sin este cero
+  // explícito, `find` devuelve undefined y la cifra caía al total de TODAS bajo la etiqueta de esa
+  // cuenta: el número más equivocado posible, porque se lee como cierto.
+  const elegida = cuenta
+    ? (cuentas.find(c => idCuenta(c) === cuenta)
+       ?? { cuenta: cuenta === SIN_CUENTA ? null : cuenta, movimientos: 0, total_negocio: 0, sin_clasificar: 0 })
+    : null
+  const monto = elegida ? elegida.total_negocio : datos.total_negocio
+  const movimientos = elegida ? elegida.movimientos : cuentas.reduce((s, c) => s + c.movimientos, 0)
+  const pendientes = elegida ? elegida.sin_clasificar : datos.sin_clasificar
+
   return (
-    <div className="space-y-2">
-      <div className="grid grid-cols-3 gap-2">
-        {cifras.map(([titulo, valor, tono]) => (
-          <Card key={titulo} className="p-3">
-            <div className="text-caption text-muted-foreground">{titulo}</div>
-            <div className={`text-lg font-semibold tabular-nums truncate ${tono}`}>{cop(valor)}</div>
-          </Card>
-        ))}
-      </div>
-      {cuentas.length > 0 && (
-        <Card className="p-0 overflow-hidden">
-          <ul className="divide-y divide-border-subtle">
-            {cuentas.map(c => (
-              <li key={c.cuenta || 'sin-cuenta'} className="px-3.5 py-2 flex items-center gap-3 text-body-sm">
-                <div className="min-w-0 flex-1">
-                  {/* Sin alias configurado se muestra el número; sin cuenta, que el parser no la leyó. */}
-                  <div className="font-medium truncate">{c.alias || c.cuenta || 'Cuenta sin identificar'}</div>
-                  <div className="text-caption text-muted-foreground">
-                    {c.alias && c.cuenta ? `${c.cuenta} · ` : ''}{c.movimientos} movimiento(s)
-                  </div>
-                </div>
-                <span className="tabular-nums font-semibold shrink-0">{cop(c.total)}</span>
-              </li>
-            ))}
-          </ul>
-        </Card>
-      )}
-      {datos.sin_clasificar > 0 && (
-        <p className="text-caption text-muted-foreground px-1">
-          {datos.sin_clasificar} movimiento(s) sin resolver: hasta que digas cuáles no son ventas,
-          cuentan como plata del negocio.
-        </p>
-      )}
+    <div>
+      <p className="text-caption text-muted-foreground">
+        Cobrado por transferencia{elegida ? ` · ${nombreCuenta(elegida)}` : ''}
+      </p>
+      <p className="text-3xl font-semibold tabular-nums text-success leading-tight">{cop(monto)}</p>
+      <p className="text-caption text-muted-foreground">
+        {movimientos} movimiento{movimientos === 1 ? '' : 's'}
+        {pendientes > 0 && (
+          <>
+            {' · '}
+            <span className="text-warning">
+              {pendientes} sin resolver, {pendientes === 1 ? 'cuenta' : 'cuentan'} como del negocio
+            </span>
+          </>
+        )}
+      </p>
+    </div>
+  )
+}
+
+/* La lente por cuenta. Reemplaza al desglose que antes era una lista de solo lectura: ver cuánto
+ * entró a cada cuenta y poder trabajar una sola cuenta son la misma intención, así que es un
+ * control y no un informe. Acota TODO el panel: la cifra, la bandeja y quién repite.
+ *
+ * Control segmentado y no otra fila de píldoras: el período y el estado ya usan píldoras, y tres
+ * filas iguales se leen como una sola cosa. Con una sola cuenta no se muestra: elegir entre una
+ * opción no es elegir. */
+function LenteCuenta({ cuentas, valor, onCambiar }) {
+  if (cuentas.length < 2) return null
+  const opciones = [{ id: '', label: 'Todas' }, ...cuentas.map(c => ({ id: idCuenta(c), label: nombreCuenta(c) }))]
+  // Cambiar de período puede dejar sin movimientos a la cuenta elegida. Se conserva como opción en
+  // vez de dejar el control sin ninguna pestaña activa mientras la lista sigue filtrada por ella.
+  if (valor && !opciones.some(o => o.id === valor)) {
+    opciones.push({ id: valor, label: valor === SIN_CUENTA ? 'Sin identificar' : valor })
+  }
+  return (
+    <div role="tablist" aria-label="Filtrar por cuenta bancaria"
+      className="inline-flex flex-wrap gap-0.5 rounded-lg border border-border bg-surface p-0.5">
+      {opciones.map(o => {
+        const activa = valor === o.id
+        return (
+          <button key={o.id || 'todas'} type="button" role="tab" aria-selected={activa}
+            onClick={() => onCambiar(o.id)}
+            className={`text-meta h-8 px-3 rounded-md transition-colors ${
+              activa ? 'bg-primary/10 text-primary font-medium' : 'text-muted-foreground hover:bg-surface-2'
+            }`}>
+            {o.label}
+          </button>
+        )
+      })}
     </div>
   )
 }
@@ -197,38 +232,45 @@ function Totales({ datos, cargando }) {
 /* Quién repite. Colapsado por defecto: es el objetivo terciario, no lo que el dueño viene a hacer.
  * Agrupa por el nombre que trae el correo del banco y NO escribe en `clientes`: ese nombre es texto
  * sin documento ni teléfono, y volcarlo llenaría la tabla de duplicados que después se limpian a mano. */
-function Recurrentes({ rango }) {
+function Recurrentes({ rango, cuenta }) {
   const [abierto, setAbierto] = useState(false)
-  const q = useRemitentesRecurrentes(rango.desde, rango.hasta, abierto)
+  const q = useRemitentesRecurrentes(rango.desde, rango.hasta, abierto, cuenta)
   const filas = arr(q.data)
 
   return (
     <Card className="p-0 overflow-hidden">
       <button type="button" onClick={() => setAbierto(a => !a)} aria-expanded={abierto}
-        className="w-full px-3.5 py-2.5 flex items-center gap-2 text-body-sm hover:bg-surface-2 transition-colors">
+        className="w-full px-4 py-3 flex items-center gap-2 text-body-sm hover:bg-surface-2 transition-colors">
         <Users className="size-4 text-primary shrink-0" />
         <span className="font-medium flex-1 text-left">Quién repite</span>
         <span className="text-caption text-muted-foreground">{abierto ? 'ocultar' : 'ver'}</span>
       </button>
       {abierto && (
         q.isLoading ? (
-          <p className="py-6 text-center text-sm text-muted-foreground">Cargando…</p>
+          <p className="py-8 text-center text-sm text-muted-foreground">Cargando…</p>
         ) : filas.length === 0 ? (
-          <p className="py-6 text-center text-sm text-muted-foreground">
+          <p className="py-8 px-4 text-center text-sm text-muted-foreground">
             Nadie ha mandado plata más de una vez en este período.
           </p>
         ) : (
+          /* Cada persona es un bloque vertical, no una fila con el nombre a la izquierda y la plata
+           * pegada al borde derecho: con nombres largos esa fila se comprimía y el ojo tenía que
+           * cruzar toda la pantalla para juntar quién con cuánto. Ahora se leen de arriba abajo,
+           * en el orden en que importan: quién, cuánto, con qué frecuencia. */
           <ul className="divide-y divide-border-subtle border-t border-border-subtle">
             {filas.map(r => (
-              <li key={r.nombre} className="px-3.5 py-2 flex items-center gap-3 text-body-sm">
-                <div className="min-w-0 flex-1">
-                  <div className="font-medium truncate">{r.nombre}</div>
-                  <div className="text-caption text-muted-foreground">
-                    {`${r.veces} transferencias · última ${fechaCorta(r.ultima)}`
-                      + (r.conciliados > 0 ? ` · ${r.conciliados} ya enlazadas a una venta` : '')}
-                  </div>
+              <li key={r.nombre} className="px-4 py-3.5 space-y-0.5">
+                <div className="font-medium truncate">{r.nombre}</div>
+                <div className="text-xl font-semibold tabular-nums leading-tight">{cop(r.total)}</div>
+                <div className="text-caption text-muted-foreground">
+                  {r.veces} transferencias · última {fechaCorta(r.ultima)}
                 </div>
-                <span className="tabular-nums font-semibold shrink-0">{cop(r.total)}</span>
+                {r.conciliados > 0 && (
+                  <div className="text-caption text-success inline-flex items-center gap-1">
+                    <CheckCircle2 className="size-3.5" />
+                    {r.conciliados} ya {r.conciliados === 1 ? 'enlazada' : 'enlazadas'} a una venta
+                  </div>
+                )}
               </li>
             ))}
           </ul>
@@ -253,12 +295,15 @@ export default function TabConciliacion() {
 function ConciliacionContenido() {
   const [filtro, setFiltro] = useState('')
   const [periodoId, setPeriodoId] = useState('mes')
+  const [cuenta, setCuenta] = useState('')      // '' = todas las cuentas
   const [sugiriendo, setSugiriendo] = useState(false)
   const qc = useQueryClient()
   const hoy = useMemo(hoyCO, [])
   const rango = useMemo(() => periodo(periodoId, hoy), [periodoId, hoy])
-  const verDescartados = filtro === 'descartado'
-  const movsQ = useMovimientosBancarios(verDescartados ? '' : filtro, verDescartados)
+  // "Todos" trae también los marcados "no es venta", atenuados. Cuando vivían detrás de su propio
+  // filtro, quitarlo habría dejado el botón de deshacer sin ninguna puerta: marcar algo por error
+  // era irreversible desde la interfaz.
+  const movsQ = useMovimientosBancarios(filtro, filtro === '', cuenta)
   // El período acota los totales, no la lista: la lista es la bandeja de trabajo (lo que falta
   // resolver) y el total es el reporte del mes. Mezclarlos escondería pendientes viejos.
   const totalesQ = useTotalesBancarios(rango.desde, rango.hasta)
@@ -278,10 +323,7 @@ function ConciliacionContenido() {
   useEffect(() => { sugerirM.mutate() }, [])   // eslint-disable-line react-hooks/exhaustive-deps
   useRealtimeEvent(['venta_registrada'], () => sugerirM.mutate())
 
-  const todos = arr(movsQ.data)
-  const movimientos = verDescartados
-    ? todos.filter(i => i.movimiento.descartado_en != null)
-    : todos
+  const movimientos = arr(movsQ.data)
 
   async function correrSugerencias() {
     setSugiriendo(true)
@@ -326,20 +368,23 @@ function ConciliacionContenido() {
         </Button>
       </div>
 
-      <div className="flex flex-wrap gap-1.5">
-        {PERIODOS.map(([id, label]) => (
-          <button key={id} type="button" onClick={() => setPeriodoId(id)} aria-pressed={periodoId === id}
-            className={`text-meta px-2.5 h-8 rounded-md border transition-colors ${
-              periodoId === id ? 'border-primary bg-primary/10 text-primary' : 'bg-surface border-border hover:bg-surface-2'
-            }`}>
-            {label}
-          </button>
-        ))}
+      {/* La cifra y el período van juntos: el número no significa nada sin el rango que lo produce,
+          y separarlos en dos bloques obligaba a mirar arriba para saber de cuándo hablaba. */}
+      <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3 pt-1">
+        <Cifra datos={totalesQ.data} cargando={totalesQ.isLoading} cuenta={cuenta} />
+        <div className="flex flex-wrap gap-1.5">
+          {PERIODOS.map(([id, label]) => (
+            <button key={id} type="button" onClick={() => setPeriodoId(id)} aria-pressed={periodoId === id}
+              className={`text-meta px-2.5 h-8 rounded-md border transition-colors ${
+                periodoId === id ? 'border-primary bg-primary/10 text-primary' : 'bg-surface border-border hover:bg-surface-2'
+              }`}>
+              {label}
+            </button>
+          ))}
+        </div>
       </div>
 
-      <Totales datos={totalesQ.data} cargando={totalesQ.isLoading} />
-
-      <Recurrentes rango={rango} />
+      <LenteCuenta cuentas={arr(totalesQ.data?.por_cuenta)} valor={cuenta} onCambiar={setCuenta} />
 
       <div className="flex flex-wrap gap-1.5">
         {FILTROS.map(f => (
@@ -358,8 +403,10 @@ function ConciliacionContenido() {
         ) : movsQ.isError ? (
           <p className="py-10 text-center text-sm text-destructive">No se pudieron cargar los movimientos.</p>
         ) : movimientos.length === 0 ? (
-          <p className="py-10 text-center text-sm text-muted-foreground">
-            {filtro ? 'Sin movimientos en ese estado.' : 'Todavía no ha entrado ninguna transferencia.'}
+          <p className="py-10 px-4 text-center text-sm text-muted-foreground">
+            {filtro ? 'Sin movimientos en ese estado.'
+              : cuenta ? 'A esa cuenta no ha entrado ninguna transferencia.'
+              : 'Todavía no ha entrado ninguna transferencia.'}
           </p>
         ) : (
           <ul className="divide-y divide-border-subtle">
@@ -369,6 +416,10 @@ function ConciliacionContenido() {
           </ul>
         )}
       </Card>
+
+      {/* Debajo de la bandeja, no encima: el tab existe para resolver movimientos, y este reporte
+          se consulta de vez en cuando. Estaba partiendo en dos el camino entre la cifra y el trabajo. */}
+      <Recurrentes rango={rango} cuenta={cuenta} />
 
       <p className="text-caption text-muted-foreground px-1">
         El cruce automático solo sugiere los movimientos con un único candidato. Los ambiguos requieren

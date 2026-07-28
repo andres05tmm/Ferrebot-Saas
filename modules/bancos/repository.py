@@ -135,9 +135,16 @@ _REMITENTES = (
     "AND fecha BETWEEN :desde AND :hasta "
     # La lente por cuenta del tab. `:cuenta IS NULL` (el PARÁMETRO, no la columna) deja pasar todo
     # cuando no se filtra, así que sigue siendo una sola consulta y nada se arma concatenando.
-    "AND (:cuenta IS NULL "
-    "     OR (:cuenta = :centinela AND cuenta_destino IS NULL) "
-    "     OR cuenta_destino = :cuenta) "
+    #
+    # El CAST NO es decorativo: sin filtrar, el parámetro viaja como NULL y solo aparece en
+    # `IS NULL` y en comparaciones, así que Postgres no puede inferir su tipo y aborta la consulta
+    # entera con AmbiguousParameterError — rompiendo el reporte también para quien no usa la lente.
+    #
+    # Y va como `CAST(... AS text)`, no como `:cuenta::text`: en un `text()` de SQLAlchemy esa
+    # sintaxis se parsea mal (inventa un bind param `cuent` y deja el original sin sustituir).
+    "AND (CAST(:cuenta AS text) IS NULL "
+    "     OR (CAST(:cuenta AS text) = :centinela AND cuenta_destino IS NULL) "
+    "     OR cuenta_destino = CAST(:cuenta AS text)) "
     "GROUP BY upper(trim(remitente)) "
     "HAVING count(*) >= :min_veces "
     "ORDER BY veces DESC, total DESC "

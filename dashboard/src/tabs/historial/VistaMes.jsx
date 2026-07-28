@@ -39,9 +39,21 @@ function nivel(total, max) {
   if (r > 0.25) return 2
   return 1
 }
+// Escala NEUTRA de tinta sobre la superficie, no el color de marca. Dos razones:
+//
+// 1. La cifra manda. Con el rojo de marca al 55% detrás, el número de la celda quedaba ilegible —
+//    y el número es justamente lo que se vino a recuperar del dashboard viejo. El tope es 20% de
+//    tinta: suficiente para leer la intensidad de un vistazo, nunca para tapar lo que dice.
+// 2. `foreground` se invierte solo con el tema: tinta oscura sobre claro, clara sobre oscuro. Una
+//    escala fija en gris se rompería en modo oscuro.
+//
+// El único acento de marca que queda en la grilla es el anillo del día de hoy, y por eso resalta.
 const NIVEL_CLS = [
-  'bg-surface border border-border-subtle text-muted-foreground',
-  'bg-primary/10', 'bg-primary/20', 'bg-primary/35', 'bg-primary/55',
+  'bg-surface border border-border-subtle',
+  'bg-foreground/[0.05] border border-transparent',
+  'bg-foreground/[0.09] border border-transparent',
+  'bg-foreground/[0.14] border border-transparent',
+  'bg-foreground/[0.20] border border-transparent',
 ]
 // Los días anotados a mano: contorno punteado, sin relleno. No compiten con la escala del heatmap
 // porque no son la misma clase de dato.
@@ -68,7 +80,10 @@ export default function VistaMes() {
 
   const dias = Array.isArray(q.data) ? q.data : []
   const porFecha = useMemo(() => Object.fromEntries(dias.map(d => [d.fecha, d])), [dias])
-  const max = useMemo(() => Math.max(0, ...dias.map(d => montoDia(d))), [dias])
+  // El máximo de la escala sale SOLO de las ventas del sistema. Los días anotados a mano no se
+  // pintan con intensidad (van con contorno punteado), así que meterlos acá solo lograba que un día
+  // viejo grande aplastara el contraste entre los días reales.
+  const max = useMemo(() => Math.max(0, ...dias.map(d => Number(d.total || 0))), [dias])
   const total = useMemo(() => dias.reduce((a, d) => a + Number(d.total), 0), [dias])
   const totalHistorico = useMemo(
     () => dias.reduce((a, d) => a + Number(d.historico || 0), 0), [dias])
@@ -204,9 +219,14 @@ export default function VistaMes() {
                 } ${hoy ? 'ring-2 ring-primary' : ''} ${
                   editable ? 'hover:border-primary hover:bg-primary/5 cursor-pointer' : ''
                 } ${editando === c.fecha ? 'ring-2 ring-primary' : ''}`}>
-                <div className="text-caption tabular text-muted-foreground">{c.dia}</div>
+                {/* Sobre el relleno el texto va en `foreground`, no en `muted`: con tinta detrás,
+                    el gris medio es el primero en desaparecer. El día sin ventas sí va atenuado —
+                    ahí no hay nada que leer. */}
+                <div className={`text-caption tabular ${monto ? 'text-foreground/70' : 'text-muted-foreground'}`}>
+                  {c.dia}
+                </div>
                 <div className={`text-body-sm tabular font-semibold ${
-                  historico ? 'text-muted-foreground' : monto ? 'text-success' : 'text-muted-foreground/50'}`}>
+                  monto ? 'text-foreground' : 'text-muted-foreground/50'}`}>
                   {montoCorto(monto)}
                 </div>
               </Celda>

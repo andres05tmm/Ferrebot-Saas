@@ -78,13 +78,13 @@ class BancosService:
 
     async def listar(
         self, *, estado: str | None, desde: date | None = None, hasta: date | None = None,
-        incluir_descartados: bool = False, limite: int = 200,
+        incluir_descartados: bool = False, cuenta: str | None = None, limite: int = 200,
     ) -> list[MovimientoConCandidatos]:
-        """Movimientos bancarios (opcionalmente por estado/período) con sus candidatos vigentes."""
+        """Movimientos bancarios (opcionalmente por estado/período/cuenta) con sus candidatos vigentes."""
         salida: list[MovimientoConCandidatos] = []
         for mov in await self._repo.listar(
             estado=estado, desde=desde, hasta=hasta,
-            incluir_descartados=incluir_descartados, limite=limite,
+            incluir_descartados=incluir_descartados, cuenta=cuenta, limite=limite,
         ):
             candidatos = await self._repo.candidatos(
                 monto=mov.monto, fecha=mov.fecha, naturaleza=mov.naturaleza, excluir_mov_id=mov.id
@@ -120,19 +120,21 @@ class BancosService:
                 TotalPorCuenta(
                     cuenta=c.cuenta, alias=alias.get(c.cuenta or ""), movimientos=c.movimientos,
                     total=c.total, total_negocio=c.total_negocio,
+                    sin_clasificar=c.sin_clasificar,
                 )
                 for c in cuentas
             ],
         )
 
     async def remitentes(
-        self, *, desde: date | None, hasta: date | None, min_veces: int = 2, limite: int = 20
+        self, *, desde: date | None, hasta: date | None, min_veces: int = 2, limite: int = 20,
+        cuenta: str | None = None,
     ) -> list[RemitenteRecurrenteLeer]:
         """Quién repite en el período. SOLO lee: no crea ni modifica clientes."""
         hoy = today_co()
         filas = await self._repo.remitentes_recurrentes(
             desde=desde or hoy.replace(day=1), hasta=hasta or hoy,
-            min_veces=min_veces, limite=limite,
+            min_veces=min_veces, limite=limite, cuenta=cuenta,
         )
         return [RemitenteRecurrenteLeer.model_validate(f, from_attributes=True) for f in filas]
 

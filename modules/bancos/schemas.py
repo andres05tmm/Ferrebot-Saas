@@ -75,6 +75,12 @@ class MovimientoConCandidatos(BaseModel):
     candidatos: list[CandidatoInterno]
 
 
+# Valor de `?cuenta=` que pide EXPLÍCITAMENTE los movimientos cuya cuenta el parser no pudo leer
+# (`cuenta_destino IS NULL`). Hace falta un centinela porque ausente ya significa "todas", y usar la
+# cadena vacía haría que un `?cuenta=` armado por error filtrara en silencio.
+CUENTA_SIN_IDENTIFICAR = "sin_cuenta"
+
+
 class TotalPorCuenta(BaseModel):
     """Cuánto entró a UNA cuenta en el período."""
 
@@ -83,6 +89,9 @@ class TotalPorCuenta(BaseModel):
     movimientos: int
     total: Decimal
     total_negocio: Decimal
+    # Se expone por cuenta y no solo en el agregado porque el tab deja elegir una sola cuenta como
+    # lente: el aviso de "esto todavía no está resuelto" tiene que hablar de lo que hay en pantalla.
+    sin_clasificar: int = 0
 
 
 class TotalesBancarios(BaseModel):

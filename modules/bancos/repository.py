@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.config.timezone import rango_dia_co
 from modules.bancos.models import BancolombiaTransferencia
+from modules.bancos.schemas import CUENTA_SIN_IDENTIFICAR
 
 # Movimientos internos candidatos por naturaleza del movimiento bancario. Cada consulta devuelve
 # (tipo, id, monto, fecha, cliente, descripcion) y EXCLUYE los ya enlazados (sugerido/conciliado) por
@@ -132,6 +133,11 @@ _REMITENTES = (
     "WHERE naturaleza = 'credito' AND descartado_en IS NULL "
     "AND remitente IS NOT NULL AND trim(remitente) <> '' "
     "AND fecha BETWEEN :desde AND :hasta "
+    # La lente por cuenta del tab. `:cuenta IS NULL` (el PARÁMETRO, no la columna) deja pasar todo
+    # cuando no se filtra, así que sigue siendo una sola consulta y nada se arma concatenando.
+    "AND (:cuenta IS NULL "
+    "     OR (:cuenta = :centinela AND cuenta_destino IS NULL) "
+    "     OR cuenta_destino = :cuenta) "
     "GROUP BY upper(trim(remitente)) "
     "HAVING count(*) >= :min_veces "
     "ORDER BY veces DESC, total DESC "
@@ -238,7 +244,7 @@ class SqlBancosRepository:
 
     async def listar(
         self, *, estado: str | None = None, desde: date | None = None, hasta: date | None = None,
-        incluir_descartados: bool = False, limite: int = 200,
+        incluir_descartados: bool = False, cuenta: str | None = None, limite: int = 200,
     ) -> list[BancolombiaTransferencia]:
         """Movimientos bancarios, los del extracto Y los que llegaron por el correo del banco.
 
@@ -258,6 +264,12 @@ class SqlBancosRepository:
             stmt = stmt.where(BancolombiaTransferencia.fecha >= desde)
         if hasta is not None:
             stmt = stmt.where(BancolombiaTransferencia.fecha <= hasta)
+        # La cuenta destino es la lente del tab: `None` = todas, el centinela = las que el parser no
+        # pudo leer. `== None` en SQL nunca calza, por eso el IS NULL explícito.
+        if cuenta == CUENTA_SIN_IDENTIFICAR:
+            stmt = stmt.where(BancolombiaTransferencia.cuenta_destino.is_(None))
+        elif cuenta is not None:
+            stmt = stmt.where(BancolombiaTransferencia.cuenta_destino == cuenta)
         # El tope no es cosmético: el servicio corre una consulta de candidatos POR movimiento, así
         # que una lista sin cota es un N+1 que crece con el histórico.
         stmt = stmt.order_by(
@@ -279,13 +291,16 @@ class SqlBancosRepository:
         ]
 
     async def remitentes_recurrentes(
-        self, *, desde: date, hasta: date, min_veces: int, limite: int
+        self, *, desde: date, hasta: date, min_veces: int, limite: int, cuenta: str | None = None
     ) -> list[RemitenteRecurrente]:
         """Quién mandó plata más de una vez en el período, de mayor a menor frecuencia."""
         filas = (
             await self._s.execute(
                 text(_REMITENTES),
-                {"desde": desde, "hasta": hasta, "min_veces": min_veces, "limite": limite},
+                {
+                    "desde": desde, "hasta": hasta, "min_veces": min_veces, "limite": limite,
+                    "cuenta": cuenta, "centinela": CUENTA_SIN_IDENTIFICAR,
+                },
             )
         ).all()
         return [

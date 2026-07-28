@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.config.timezone import now_co
 from modules.bancos.repository import SqlBancosRepository
-from modules.bancos.schemas import MovimientoBancarioIngesta
+from modules.bancos.schemas import CUENTA_SIN_IDENTIFICAR, MovimientoBancarioIngesta
 from modules.bancos.service import BancosService
 
 _DIA = date(2026, 6, 15)
@@ -538,11 +538,12 @@ async def test_totales_aislados_entre_empresas(tenant_factory):
 # --- fase 4: quién repite ----------------------------------------------------
 
 async def _credito_de(
-    s: AsyncSession, *, mid: str, remitente: str | None, monto: str, fecha: date = _DIA
+    s: AsyncSession, *, mid: str, remitente: str | None, monto: str, fecha: date = _DIA,
+    cuenta: str | None = "*3891",
 ) -> int:
     mov = await SqlBancosRepository(s).ingestar_gmail(
         gmail_message_id=mid, fecha=fecha, monto=Decimal(monto), remitente=remitente,
-        descripcion=None, tipo_transaccion=None, hora=None, cuenta_destino="*3891", referencia=None,
+        descripcion=None, tipo_transaccion=None, hora=None, cuenta_destino=cuenta, referencia=None,
     )
     return mov.id
 
@@ -639,3 +640,66 @@ async def test_no_se_puede_descartar_uno_ya_conciliado(tenant):
 
         with pytest.raises(ConciliacionInvalida):
             await svc.descartar(mov_id, descartar=True, ahora=now_co())
+
+
+# --- la lente por cuenta: acota TODO el panel, no solo la cifra ----------------
+
+async def test_la_lente_por_cuenta_acota_la_bandeja(tenant):
+    """Elegir una cuenta filtra los movimientos; sin elegir, salen todos."""
+    async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
+        await _credito(s, mid="c-andres", monto="10000", cuenta="*3891")
+        await _credito(s, mid="c-farid", monto="20000", cuenta="*6485")
+        await _credito(s, mid="c-nadie", monto="30000", cuenta=None)
+        await s.commit()
+        svc = _svc(s)
+
+        todos = await svc.listar(estado=None)
+        solo_farid = await svc.listar(estado=None, cuenta="*6485")
+        sin_leer = await svc.listar(estado=None, cuenta=CUENTA_SIN_IDENTIFICAR)
+
+    assert len(todos) == 3
+    assert [m.movimiento.cuenta_destino for m in solo_farid] == ["*6485"]
+    # El centinela es lo único que trae las que el parser no pudo leer: `cuenta_destino = NULL`
+    # nunca calzaría con una igualdad, así que sin él estas filas no serían alcanzables.
+    assert [m.movimiento.cuenta_destino for m in sin_leer] == [None]
+
+
+async def test_la_lente_por_cuenta_acota_quien_repite(tenant):
+    """El panel de recurrentes vive dentro de la lente: no puede contar plata de otra cuenta."""
+    async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
+        await _credito_de(s, mid="q1", remitente="MARIA GOMEZ", monto="30000", cuenta="*3891")
+        await _credito_de(s, mid="q2", remitente="MARIA GOMEZ", monto="20000", cuenta="*3891",
+                          fecha=date(2026, 6, 17))
+        await _credito_de(s, mid="q3", remitente="MARIA GOMEZ", monto="90000", cuenta="*6485")
+        await _credito_de(s, mid="q4", remitente="MARIA GOMEZ", monto="70000", cuenta="*6485",
+                          fecha=date(2026, 6, 17))
+        await s.commit()
+        svc = _svc(s)
+
+        todas = await svc.remitentes(desde=_DIA, hasta=date(2026, 6, 30))
+        andres = await svc.remitentes(desde=_DIA, hasta=date(2026, 6, 30), cuenta="*3891")
+
+    assert (todas[0].veces, todas[0].total) == (4, Decimal("210000"))
+    assert (andres[0].veces, andres[0].total) == (2, Decimal("50000"))
+
+
+async def test_el_total_por_cuenta_trae_su_propio_sin_clasificar(tenant):
+    """La cifra del tab se acota a una cuenta, así que el aviso de pendientes también.
+
+    Con el `sin_clasificar` solo agregado, elegir la cuenta de Andrés mostraba el pendiente de
+    TODAS las cuentas debajo de un número que ya no las incluía.
+    """
+    async with AsyncSession(tenant.engine, expire_on_commit=False) as s:
+        await _credito(s, mid="s1", monto="10000", cuenta="*3891")
+        await _credito(s, mid="s2", monto="20000", cuenta="*6485")
+        await _credito(s, mid="s3", monto="30000", cuenta="*6485")
+        await s.commit()
+
+        tot = await _svc(s).totales(desde=_DIA, hasta=_DIA, alias={})
+
+    por_cuenta = {c.cuenta: c for c in tot.por_cuenta}
+    assert tot.sin_clasificar == 3
+    assert por_cuenta["*3891"].sin_clasificar == 1
+    assert por_cuenta["*6485"].sin_clasificar == 2
+    # El agregado sigue siendo la suma de las cuentas, como los montos.
+    assert tot.sin_clasificar == sum(c.sin_clasificar for c in tot.por_cuenta)

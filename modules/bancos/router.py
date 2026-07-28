@@ -76,11 +76,14 @@ async def remitentes(
     hasta: date | None = Query(default=None),
     min_veces: int = Query(default=2, ge=1, le=100),
     limite: int = Query(default=20, ge=1, le=100),
+    cuenta: str | None = Query(default=None, max_length=20),
     service: BancosService = Depends(get_bancos_service),
     _user: Principal = Depends(require_role("admin")),
 ) -> list[RemitenteRecurrente]:
     """Quién mandó plata más de una vez en el período. Reporte de lectura: no toca `clientes`."""
-    return await service.remitentes(desde=desde, hasta=hasta, min_veces=min_veces, limite=limite)
+    return await service.remitentes(
+        desde=desde, hasta=hasta, min_veces=min_veces, limite=limite, cuenta=cuenta
+    )
 
 
 @router.get("/movimientos", response_model=list[MovimientoConCandidatos])
@@ -89,14 +92,19 @@ async def listar_movimientos(
     desde: date | None = Query(default=None),
     hasta: date | None = Query(default=None),
     incluir_descartados: bool = Query(default=False),
+    cuenta: str | None = Query(default=None, max_length=20),
     limite: int = Query(default=200, ge=1, le=500),
     service: BancosService = Depends(get_bancos_service),
     _user: Principal = Depends(require_role("admin")),
 ) -> list[MovimientoConCandidatos]:
-    """Movimientos bancarios (filtrables por estado/período) con sus candidatos internos vigentes."""
+    """Movimientos bancarios (filtrables por estado/período/cuenta) con sus candidatos vigentes.
+
+    `cuenta` es la lente del tab: sin ella, todas; con el centinela `sin_cuenta`, las que el parser
+    no pudo leer; con un número, esa cuenta.
+    """
     return await service.listar(
         estado=estado, desde=desde, hasta=hasta,
-        incluir_descartados=incluir_descartados, limite=limite,
+        incluir_descartados=incluir_descartados, cuenta=cuenta, limite=limite,
     )
 
 

@@ -68,8 +68,10 @@ function Movimiento({ item, onConciliar, onDescartar }) {
   const ambiguo = candidatos.length > 1
   const descartado = m.descartado_en != null
   const conciliado = m.estado_conciliacion === 'conciliado'
-  const detalle = [fechaCorta(m.fecha), m.hora, m.cuenta_destino, m.tipo_transaccion]
-    .filter(Boolean).join(' · ')
+  // Sin `cuenta_destino`: a qué cuenta cayó la plata lo dice la lente de arriba, y repetirlo en cada
+  // fila gastaba la línea que necesita la hora y el canal. El nombre grande NO es el dueño de la
+  // cuenta: es el remitente, o sea quién mandó la plata — el dato más útil de todos.
+  const detalle = [fechaCorta(m.fecha), m.hora, m.tipo_transaccion].filter(Boolean).join(' · ')
 
   return (
     <li className={`px-3.5 py-2.5 space-y-2 text-body-sm ${descartado ? 'opacity-60' : ''}`}>
@@ -114,14 +116,21 @@ function Movimiento({ item, onConciliar, onDescartar }) {
               Todavía no hay una venta que calce. Anótala y vuelve a correr el cruce.
             </div>
           )}
+          {/* Qué se vendió primero, y el consecutivo degradado a rastro. El dueño nunca vio el
+              número de la venta: para decidir si ESA es la que le pagaron necesita los productos y
+              el cliente. "venta #22 · $10.000" era el mismo dato que ya tenía (el monto) más uno
+              que no le dice nada. */}
           {candidatos.map(cand => (
-            <div key={`${cand.tipo}-${cand.id}`} className="flex items-center gap-2">
-              <span className="text-meta text-muted-foreground flex-1 truncate">
-                {/* La descripción ya dice qué es ("venta #77", "abono al fiado #3"); el tipo crudo
-                    solo aparece si el backend no mandó ninguna. */}
-                {cand.descripcion || cand.tipo} · {fechaCorta(cand.fecha)} · {cop(cand.monto)}
-                {cand.cliente ? ` · ${cand.cliente}` : ''}
-              </span>
+            <div key={`${cand.tipo}-${cand.id}`} className="flex items-start gap-2">
+              <div className="min-w-0 flex-1">
+                <div className="text-body-sm truncate">
+                  {cand.detalle || cand.descripcion || cand.tipo}
+                </div>
+                <div className="text-caption text-muted-foreground truncate">
+                  {[cand.cliente, cand.detalle ? cand.descripcion : null, fechaCorta(cand.fecha), cop(cand.monto)]
+                    .filter(Boolean).join(' · ')}
+                </div>
+              </div>
               <Button size="sm" variant="ghost" className="h-7 px-2 text-primary shrink-0"
                 aria-label={`Conciliar ${m.id} con ${cand.tipo} ${cand.id}`}
                 onClick={() => onConciliar(m.id, cand)}>

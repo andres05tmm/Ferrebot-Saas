@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router-dom'
 
 vi.mock('@/components/RealtimeProvider.jsx', () => ({
@@ -114,13 +115,13 @@ function fetchGmail() {
 }
 
 describe('TabConciliacion — transferencias del correo del banco', () => {
-  it('muestra quién mandó la plata, a qué cuenta y a qué hora', async () => {
+  it('muestra quién mandó la plata y a qué hora', async () => {
     comoAdmin()
     fetchGmail()
     render(conQuery(<MemoryRouter><TabConciliacion /></MemoryRouter>))
 
+    // La cuenta destino salió de la fila (la dice la lente); el remitente y la hora se quedan.
     expect(await screen.findByText('JHON JAIRO GARCIA MORALES')).toBeInTheDocument()
-    expect(screen.getByText(/\*3891/)).toBeInTheDocument()
     expect(screen.getByText(/08:31/)).toBeInTheDocument()
   })
 
@@ -162,15 +163,16 @@ const CON_CLIENTE = [
       descartado_en: null, origen: 'gmail' },
     candidatos: [
       { tipo: 'venta', id: 60, monto: '120000', fecha: '2026-07-27',
-        descripcion: 'parte por transferencia de la venta #60', cliente: 'PEDRO RAMIREZ' },
+        descripcion: 'parte por transferencia de la venta #60', cliente: 'PEDRO RAMIREZ',
+        detalle: '2 Cemento gris 50kg, 1.5 Varilla 1/2' },
       { tipo: 'abono_fiado', id: 9, monto: '120000', fecha: '2026-07-27',
-        descripcion: 'abono al fiado #3', cliente: 'ANA LOPEZ' },
+        descripcion: 'abono al fiado #3', cliente: 'ANA LOPEZ', detalle: null },
     ],
   },
 ]
 
 describe('TabConciliacion — match de mixtas y fiados', () => {
-  it('el candidato dice de quién es el pago y qué es', async () => {
+  it('el candidato lidera con los productos y el consecutivo baja a rastro', async () => {
     comoAdmin()
     vi.stubGlobal('fetch', vi.fn((url) => Promise.resolve(
       String(url).includes('/bancos/movimientos') ? jsonResp(CON_CLIENTE) : jsonResp({ sugeridos: 0 })
@@ -178,8 +180,26 @@ describe('TabConciliacion — match de mixtas y fiados', () => {
     render(conQuery(<MemoryRouter><TabConciliacion /></MemoryRouter>))
     await screen.findByText('PEDRO RAMIREZ')
 
-    expect(screen.getByText(/parte por transferencia de la venta #60.*PEDRO RAMIREZ/)).toBeInTheDocument()
-    expect(screen.getByText(/abono al fiado #3.*ANA LOPEZ/)).toBeInTheDocument()
+    // Lo que el dueño reconoce va adelante y solo: qué se vendió.
+    expect(screen.getByText('2 Cemento gris 50kg, 1.5 Varilla 1/2')).toBeInTheDocument()
+    // El consecutivo sigue estando, pero acompañando al cliente, no como única señal.
+    expect(screen.getByText(/PEDRO RAMIREZ.*parte por transferencia de la venta #60/)).toBeInTheDocument()
+    // Sin productos (un abono de fiado) la descripción vuelve a ser el título de la línea.
+    expect(screen.getByText('abono al fiado #3')).toBeInTheDocument()
+    expect(screen.getByText(/ANA LOPEZ/)).toBeInTheDocument()
+  })
+
+  it('la cuenta destino ya no se repite en cada movimiento: la dice la lente', async () => {
+    comoAdmin()
+    vi.stubGlobal('fetch', vi.fn((url) => Promise.resolve(
+      String(url).includes('/bancos/movimientos') ? jsonResp(CON_CLIENTE) : jsonResp({ sugeridos: 0 })
+    )))
+    render(conQuery(<MemoryRouter><TabConciliacion /></MemoryRouter>))
+    await screen.findByText('PEDRO RAMIREZ')
+
+    // El remitente SÍ se queda: es quién mandó la plata, el dato más útil de la fila.
+    expect(screen.getByText(/10:15.*Transferencia/)).toBeInTheDocument()
+    expect(screen.queryByText(/\*3891/)).not.toBeInTheDocument()
   })
 
   const TOTALES = {
@@ -312,5 +332,37 @@ describe('TabConciliacion — match de mixtas y fiados', () => {
     expect(fetchMock.mock.calls.some(
       c => String(c[0]).includes('/bancos/sugerir') && c[1]?.method === 'POST',
     )).toBe(true)
+  })
+})
+
+describe('TabConciliacion — el tab se pone al día al volver a la ventana', () => {
+  it('vuelve a pedir los movimientos cuando la ventana recupera el foco', async () => {
+    comoAdmin()
+    const fetchMock = vi.fn((url) => Promise.resolve(
+      String(url).includes('/bancos/movimientos') ? jsonResp(GMAIL) : jsonResp({ sugeridos: 0 })
+    ))
+    vi.stubGlobal('fetch', fetchMock)
+    // `staleTime: 0` reproduce el caso real que importa: estuviste fuera un rato, los datos ya
+    // envejecieron. Con datos frescos React Query no refetchea, y eso también es lo correcto.
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: 0 } } })
+    render(
+      <QueryClientProvider client={qc}>
+        <MemoryRouter><TabConciliacion /></MemoryRouter>
+      </QueryClientProvider>
+    )
+    await screen.findByText('JHON JAIRO GARCIA MORALES')
+
+    const antes = fetchMock.mock.calls.filter(c => String(c[0]).includes('/bancos/movimientos')).length
+
+    // Lo que hace el navegador al volver a la pestaña. Es la red de seguridad del `pg_notify`:
+    // si la transferencia entró con la ventana en segundo plano, el evento se perdió y sin esto
+    // la fila solo aparecía al recargar a mano.
+    // Va en `window`, no en `document`: ahí es donde React Query engancha el listener (v5,
+    // query-core/focusManager). En `document` el evento no llega y el test pasa a verde en falso.
+    act(() => { window.dispatchEvent(new Event('visibilitychange')) })
+
+    await waitFor(() => expect(
+      fetchMock.mock.calls.filter(c => String(c[0]).includes('/bancos/movimientos')).length
+    ).toBeGreaterThan(antes))
   })
 })

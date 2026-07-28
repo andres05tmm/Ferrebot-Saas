@@ -49,10 +49,26 @@ _DIA_CO = "AT TIME ZONE 'America/Bogota'"
 # Un crédito puede ser el cobro de una venta entera, la PARTE por transferencia de una venta mixta,
 # o el abono de un cliente a su fiado. Las tres se ofrecen juntas y la regla dura del ADR 0028 sigue
 # igual: si el monto calza con más de una, decide una persona.
+
+
+# Qué se vendió, no solo cuánto. El consecutivo ("venta #22") no le dice NADA al dueño sobre si esa
+# es la venta que le pagaron: el número no lo vio nunca. Los productos sí los reconoce.
+# Acotado a 3 renglones dentro del subselect (no truncando el string armado): así no viaja una venta
+# de 30 ítems por cada candidato, y ningún nombre queda cortado a la mitad.
+_PRODUCTOS_DE_LA_VENTA = (
+    "(SELECT string_agg(t.txt, ', ') FROM ("
+    # `FM` quita los ceros de relleno del NUMERIC(12,3) pero DEJA el punto: 2.000 → "2.". El rtrim
+    # es lo que hace que se lea "2 Cemento" y no "2. Cemento"; 1.5 no se toca.
+    "   SELECT rtrim(to_char(d.cantidad, 'FM999999990.999'), '.') || ' '"
+    "          || COALESCE(d.descripcion, 'ítem') AS txt"
+    "   FROM ventas_detalle d WHERE d.venta_id = {venta} ORDER BY d.id LIMIT 3) t)"
+)
+
 _CANDIDATOS_CREDITO = (
     "SELECT 'venta' AS tipo, x.id, x.total AS monto, "
     f"       (x.fecha {_DIA_CO})::date AS fecha, c.nombre AS cliente, "
-    "       'venta #' || x.consecutivo AS descripcion "
+    "       'venta #' || x.consecutivo AS descripcion, "
+    f"       {_PRODUCTOS_DE_LA_VENTA.format(venta='x.id')} AS detalle "
     "FROM ventas x LEFT JOIN clientes c ON c.id = x.cliente_id "
     "WHERE x.metodo_pago = 'transferencia' AND x.estado = 'completada' "
     "AND x.total = :monto AND x.fecha BETWEEN :inicio AND :fin "
@@ -62,7 +78,8 @@ _CANDIDATOS_CREDITO = (
     + "UNION ALL "
     "SELECT 'venta' AS tipo, v.id, p.monto, "
     f"       (v.fecha {_DIA_CO})::date AS fecha, c.nombre AS cliente, "
-    "       'parte por transferencia de la venta #' || v.consecutivo AS descripcion "
+    "       'parte por transferencia de la venta #' || v.consecutivo AS descripcion, "
+    f"       {_PRODUCTOS_DE_LA_VENTA.format(venta='v.id')} AS detalle "
     "FROM ventas_pagos p JOIN ventas v ON v.id = p.venta_id "
     "LEFT JOIN clientes c ON c.id = v.cliente_id "
     # `v.metodo_pago = 'mixto'` deja las dos primeras ramas disjuntas por construcción: sin eso, una
@@ -76,7 +93,7 @@ _CANDIDATOS_CREDITO = (
     + "UNION ALL "
     "SELECT 'abono_fiado' AS tipo, m.id, m.monto, "
     f"       (m.creado_en {_DIA_CO})::date AS fecha, c.nombre AS cliente, "
-    "       'abono al fiado #' || f.id AS descripcion "
+    "       'abono al fiado #' || f.id AS descripcion, NULL::text AS detalle "
     "FROM fiados_movimientos m JOIN fiados f ON f.id = m.fiado_id "
     "LEFT JOIN clientes c ON c.id = f.cliente_id "
     "WHERE m.tipo = 'abono' AND m.monto = :monto AND m.creado_en BETWEEN :inicio AND :fin "
@@ -86,14 +103,14 @@ _CANDIDATOS_CREDITO = (
 _CANDIDATOS_DEBITO = (
     "SELECT 'gasto' AS tipo, x.id, x.monto AS monto, "
     f"       (x.creado_en {_DIA_CO})::date AS fecha, NULL::text AS cliente, "
-    "       x.concepto AS descripcion "
+    "       x.concepto AS descripcion, NULL::text AS detalle "
     "FROM gastos x "
     "WHERE x.monto = :monto AND x.creado_en BETWEEN :inicio AND :fin AND x.anulado_en IS NULL "
     + _no_enlazado("gasto", "x.id")
     # `facturas_abonos.fecha` es DATE (el día que el dueño registró el pago): sin instantes que acotar.
     + "UNION ALL "
     "SELECT 'abono' AS tipo, x.id, x.monto AS monto, x.fecha AS fecha, NULL::text AS cliente, "
-    "       'abono factura ' || x.factura_id AS descripcion "
+    "       'abono factura ' || x.factura_id AS descripcion, NULL::text AS detalle "
     "FROM facturas_abonos x "
     "WHERE x.monto = :monto AND x.fecha = :fecha "
     + _no_enlazado("abono", "x.id")
@@ -180,6 +197,8 @@ class Candidato:
     descripcion: str | None
     # Quién es, para que la decisión humana sobre un ambiguo sea informada. None = venta sin cliente.
     cliente: str | None = None
+    # Qué se vendió (hasta 3 renglones). None cuando el tipo no tiene productos: un gasto, un abono.
+    detalle: str | None = None
 
 
 class SqlBancosRepository:
@@ -336,7 +355,7 @@ class SqlBancosRepository:
         filas = (await self._s.execute(text(sql), params)).all()
         return [
             Candidato(tipo=f.tipo, id=f.id, monto=Decimal(f.monto), fecha=f.fecha,
-                      descripcion=f.descripcion, cliente=f.cliente)
+                      descripcion=f.descripcion, cliente=f.cliente, detalle=f.detalle)
             for f in filas
         ]
 

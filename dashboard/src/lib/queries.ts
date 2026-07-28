@@ -263,6 +263,14 @@ export function useGuardarRetencion() {
 }
 
 // ── Conciliación bancaria (ADR 0028) — solo admin ───────────────────────────────────────────────
+//
+// Estas tres queries se salen del `refetchOnWindowFocus: false` global, y por una razón concreta:
+// los eventos del dashboard viajan por `pg_notify`, que es fuego y olvido — no se reencolan. Si la
+// transferencia entra mientras la ventana está en segundo plano o con el SSE caído, el aviso se
+// pierde y la fila solo aparece al recargar. El resto del dashboard tolera eso; acá no, porque el
+// dueño compara contra el mensaje que SÍ le llegó al Telegram y concluye que el tab va atrasado.
+// Con el `staleTime` de 30s, volver a la ventana enseguida no dispara nada.
+const AL_VOLVER_A_LA_VENTANA = { refetchOnWindowFocus: true } as const
 export function useMovimientosBancarios(estado: string, incluirDescartados = false, cuenta = '') {
   return useQuery({
     queryKey: queryKeys.bancosMovimientos(`${estado}|${incluirDescartados ? 'd' : ''}|${cuenta}`),
@@ -275,6 +283,7 @@ export function useMovimientosBancarios(estado: string, incluirDescartados = fal
       const qs = q.toString()
       return apiJson<Fila[]>(`/bancos/movimientos${qs ? `?${qs}` : ''}`)
     },
+    ...AL_VOLVER_A_LA_VENTANA,
   })
 }
 
@@ -284,6 +293,7 @@ export function useTotalesBancarios(desde: string, hasta: string) {
   return useQuery({
     queryKey: queryKeys.bancosTotales(`${desde}|${hasta}`),
     queryFn: () => apiJson<Fila>(`/bancos/totales?desde=${desde}&hasta=${hasta}`),
+    ...AL_VOLVER_A_LA_VENTANA,
   })
 }
 
@@ -298,6 +308,7 @@ export function useRemitentesRecurrentes(desde: string, hasta: string, activo: b
       return apiJson<Fila[]>(`/bancos/remitentes?${q}`)
     },
     enabled: activo,
+    ...AL_VOLVER_A_LA_VENTANA,
   })
 }
 

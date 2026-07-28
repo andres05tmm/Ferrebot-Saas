@@ -349,7 +349,13 @@ El tab **Estados Financieros** aparece solo con el flag `contabilidad_ledger` en
 
 1. **Env vars de plataforma** (un solo proyecto GCP, todos los tenants): `GMAIL_CLIENT_ID`,
    `GMAIL_CLIENT_SECRET`.
-2. Registrar el buzón del tenant (cifra el refresh_token + da de alta `gmail_cuentas`):
+2. Emitir el `refresh_token` del buzón (necesita navegador; el cliente OAuth es *Desktop app*):
+   ```bash
+   python -m tools.gmail_oauth --client-id <ID> --client-secret <SECRET> --usuario <buzon>@gmail.com
+   ```
+   ⚠️ Si la app OAuth sigue en **Testing** en la consola de GCP, Google **vence el refresh_token a los
+   7 días** y la ingesta muere con `invalid_grant`. Publicarla en *Production* es lo que lo evita.
+3. Registrar el buzón del tenant (cifra el refresh_token + da de alta `gmail_cuentas`):
    ```bash
    python -m tools.set_gmail_token puntorojo --refresh-token <REFRESH> \
        --email ferreteria.bancolombia@gmail.com \
@@ -357,9 +363,12 @@ El tab **Estados Financieros** aparece solo con el flag `contabilidad_ledger` en
    # imprime el webhook_token → configura la subscription de Pub/Sub con push endpoint:
    #   https://<host-api>/webhooks/bancolombia/<webhook_token>
    ```
-3. El cron `renovar_watch_gmail` (worker, 08:30 UTC) activa/renueva el watch de Gmail; para arrancar ya,
-   dispara una renovación manual encolando el job o esperando la primera corrida.
-4. Gate por feature: `python -m tools.set_feature puntorojo conciliacion_bancaria on`.
+   Omitir `--pubsub-topic` deja la cuenta en **polling** (cron `poll_gmail_bancolombia`, por minuto):
+   nunca llama `watch`, así que no desplaza el push de otro sistema que use el mismo buzón.
+4. El cron `renovar_watch_gmail` (worker, 08:30 UTC) activa/renueva el watch de Gmail; para arrancar ya,
+   dispara una renovación manual encolando el job o esperando la primera corrida. Solo aplica a las
+   cuentas **con** `pubsub_topic`.
+5. Gate por feature: `python -m tools.set_feature puntorojo conciliacion_bancaria on`.
 
 ### 10.6 Corte (lo ejecuta el OWNER; ventana de bajo tráfico)
 

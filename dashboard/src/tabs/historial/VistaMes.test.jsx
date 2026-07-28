@@ -78,6 +78,18 @@ describe('VistaMes — calendario', () => {
     expect(screen.getByText(/4 ventas/)).toBeInTheDocument()
   })
 
+  it('un día con ventas Y anotación muestra las dos cifras, no esconde una', async () => {
+    // El hueco que se vio en la captura: el encabezado contaba plata anotada que ninguna fila
+    // mostraba, así que no había dónde ir a buscarla.
+    sesion()
+    instalarFetch([{ fecha: dia(3), total: '500000.00', num_ventas: 4, gastos: '0',
+                     historico: '1030500.00' }])
+    render(<VistaMes />)
+    await screen.findByText(/\$500\.000 vendidos/)
+
+    expect(screen.getByText(/4 ventas.*\$1\.030\.500 anotados a mano aparte/)).toBeInTheDocument()
+  })
+
   it('sin días anotados, la leyenda no aparece', async () => {
     sesion()
     instalarFetch([DIAS[0]])

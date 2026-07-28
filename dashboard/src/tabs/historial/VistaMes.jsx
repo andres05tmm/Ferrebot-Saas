@@ -160,6 +160,10 @@ export default function VistaMes() {
                   {esHistorico(d) ? 'anotado a mano' : (
                     `${num(d.num_ventas)} ${d.num_ventas === 1 ? 'venta' : 'ventas'}`
                     + (Number(d.gastos) > 0 ? ` · gastos ${cop(Number(d.gastos))}` : '')
+                    // Un día con ventas Y anotación: se dice, no se esconde. Si no, el total de
+                    // arriba cuenta una plata que no aparece en ninguna fila y no hay dónde buscarla.
+                    + (Number(d.historico || 0) > 0
+                      ? ` · ${cop(Number(d.historico))} anotados a mano aparte` : '')
                   )}
                 </span>
                 <span className={`tabular font-semibold shrink-0 ${esHistorico(d) ? 'text-muted-foreground' : ''}`}>

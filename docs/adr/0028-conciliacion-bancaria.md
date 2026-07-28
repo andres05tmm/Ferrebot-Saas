@@ -111,3 +111,63 @@ sensible del negocio (mismo criterio que `pack_pagar`).
 - **Desviaciones vs. spec:** (a) el match usa monto+fecha (no la referencia bancaria, ausente en los
   internos — D3); (b) no se creó tabla nueva de conciliación: el enlace vive en la fila bancaria
   (`conciliado_con_*`), manteniendo la paridad de esquema sin tablas nuevas. Sin otras diferencias.
+
+## Enmienda (2026-07-27) — de dónde salen los candidatos de crédito
+
+D3 acotaba los candidatos de un crédito a las ventas con `metodo_pago='transferencia'`. En Punto Rojo
+eso dejaba fuera dos formas normales de que entre plata al banco, así que el match se ampliaba o no
+servía. **La regla dura no se toca:** 1 candidato → `sugerido`; 0 o ≥2 → lo decide una persona.
+
+- **La parte transferencia de una venta MIXTA** (`ventas_pagos`, 0053): calza contra el monto de esa
+  parte, no contra el total de la venta. El enlace sigue siendo `tipo='venta'` — no se inventa un
+  tipo para media venta, y el filtro anti-doble-uso sigue protegiendo la venta entera.
+- **El abono de un cliente a su fiado** (`fiados_movimientos` con `tipo='abono'`): tipo de enlace
+  nuevo **`abono_fiado`**. No reusa `'abono'`, que es el pago a un PROVEEDOR (`facturas_abonos`):
+  compartir el nombre cruzaría los ids de dos tablas distintas en el filtro anti-doble-uso.
+  `conciliado_con_tipo` es TEXT sin CHECK, así que el valor nuevo no necesita migración.
+
+Además, el día del match pasa de `columna::date = :fecha` a una ventana de instantes
+(`rango_dia_co`): el cast dependía del `TimeZone` de la sesión de Postgres, así que una venta de las
+7 p. m. caía en el día siguiente y dejaba de calzar con la transferencia que la pagó (regla no
+negociable #4). Los candidatos también traen el `cliente`, para que resolver un ambiguo sea una
+decisión informada.
+
+## Enmienda (2026-07-27) — cuánta plata entró (`GET /bancos/totales`)
+
+Objetivo secundario del dueño: saber cuánto entró por cuenta y por período. Una sola consulta
+agregada con `FILTER` sobre `bancolombia_transferencias`, agrupada por `cuenta_destino`; los totales
+de arriba son la SUMA de las cuentas y no una segunda consulta, así no pueden contradecirse y
+`total == total_negocio + total_personal` se cumple por construcción.
+
+- **Solo créditos.** Los egresos de esas cuentas se mezclan con gastos personales y de la casa: el
+  dueño decidió no llevarlos, y un total de egresos "del negocio" sería un número falso.
+- **Lo descartado no desaparece del total**: entró a la cuenta. Sale de `total_negocio` y aparece
+  como `total_personal`. `sin_clasificar` cuenta los que nadie resolvió (ni descartados ni
+  conciliados): sin ese número, `total_negocio` se lee como más firme de lo que es.
+- **`cuenta_destino` NULL se muestra como "sin identificar"**, no se esconde: es el aviso de que el
+  parser no pudo leer la cuenta de ese correo.
+- **Alias de las cuentas en `config_empresa.bancos_cuentas_alias`** (JSON `{"*3891": "Andrés"}`),
+  leído por `modules/bancos/config.py` con default seguro `{}` — un alias mal escrito muestra el
+  número de cuenta, nunca tumba el reporte. Son dos strings que cambian una vez en la vida: mismo
+  criterio que `pago_transferencia_titular`, no una tabla con CRUD.
+
+En el tab, el período acota los TOTALES pero no la lista: la lista es la bandeja de trabajo (lo que
+falta resolver) y el total es el reporte del mes. Mezclarlos escondería pendientes viejos.
+
+## Enmienda (2026-07-27) — quién repite (`GET /bancos/remitentes`)
+
+Objetivo terciario del dueño: ver qué clientes vuelven. Agrupa por `upper(trim(remitente))` sobre
+los créditos del período y devuelve `veces`, `total`, `primera`, `ultima` y `conciliados`.
+
+- **CERO escrituras en `clientes`.** Es un reporte de lectura, y así se queda: el nombre que trae el
+  correo del banco es texto sin documento ni teléfono, y volcarlo a `clientes` llenaría la tabla de
+  duplicados que después hay que limpiar a mano. Cubierto por `test_remitentes_no_escriben_en_clientes`
+  (snapshot de `count(*)` antes/después).
+- **Los descartados no cuentan:** la plata de la casa no es un cliente fiel.
+- **Sin remitente no hay grupo:** las filas del extracto no traen nombre; agruparlas juntas
+  inventaría un cliente que no existe.
+- **Agrupación exacta, sin `unaccent` ni `pg_trgm`:** "JUAN PÉREZ" y "JUAN PEREZ" cuentan aparte. Si
+  el dueño ve duplicados por tildes, ahí se agrega; antes es complejidad sin evidencia.
+
+En el tab va colapsado y la consulta no se dispara hasta abrirlo: es el objetivo terciario, no lo
+que el dueño viene a hacer.

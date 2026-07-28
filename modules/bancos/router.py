@@ -15,6 +15,7 @@ from core.auth import Principal, require_role
 from core.auth.features import require_feature
 from core.config.timezone import now_co
 from core.db.session import get_tenant_db
+from modules.bancos.config import get_alias_cuentas
 from modules.bancos.errors import ConciliacionInvalida, MovimientoBancarioInexistente
 from modules.bancos.repository import SqlBancosRepository
 from modules.bancos.schemas import (
@@ -23,6 +24,8 @@ from modules.bancos.schemas import (
     MovimientoBancarioIngesta,
     MovimientoBancarioLeer,
     MovimientoConCandidatos,
+    RemitenteRecurrente,
+    TotalesBancarios,
 )
 from modules.bancos.service import BancosService
 
@@ -53,6 +56,31 @@ async def sugerir(
 ) -> dict[str, int]:
     """Corre el match semi-automático: marca `sugerido` los de candidato único (ambiguos jamás)."""
     return {"sugeridos": await service.sugerir_pendientes()}
+
+
+@router.get("/totales", response_model=TotalesBancarios)
+async def totales(
+    desde: date | None = Query(default=None),
+    hasta: date | None = Query(default=None),
+    service: BancosService = Depends(get_bancos_service),
+    alias: dict[str, str] = Depends(get_alias_cuentas),
+    _user: Principal = Depends(require_role("admin")),
+) -> TotalesBancarios:
+    """Cuánta plata entró (solo créditos) en el período, en total y por cuenta. Default: mes en curso."""
+    return await service.totales(desde=desde, hasta=hasta, alias=alias)
+
+
+@router.get("/remitentes", response_model=list[RemitenteRecurrente])
+async def remitentes(
+    desde: date | None = Query(default=None),
+    hasta: date | None = Query(default=None),
+    min_veces: int = Query(default=2, ge=1, le=100),
+    limite: int = Query(default=20, ge=1, le=100),
+    service: BancosService = Depends(get_bancos_service),
+    _user: Principal = Depends(require_role("admin")),
+) -> list[RemitenteRecurrente]:
+    """Quién mandó plata más de una vez en el período. Reporte de lectura: no toca `clientes`."""
+    return await service.remitentes(desde=desde, hasta=hasta, min_veces=min_veces, limite=limite)
 
 
 @router.get("/movimientos", response_model=list[MovimientoConCandidatos])

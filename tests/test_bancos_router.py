@@ -73,6 +73,8 @@ async def test_sin_flag_da_404(tenant):
         # El gate vive en el APIRouter; se verifica que las rutas nuevas no quedaron fuera de él.
         assert (await c.post("/api/v1/bancos/movimientos/1/descarte")).status_code == 404
         assert (await c.delete("/api/v1/bancos/movimientos/1/descarte")).status_code == 404
+        assert (await c.get("/api/v1/bancos/totales")).status_code == 404
+        assert (await c.get("/api/v1/bancos/remitentes")).status_code == 404
 
 
 async def test_rbac_vendedor_no_entra(tenant):
@@ -81,6 +83,9 @@ async def test_rbac_vendedor_no_entra(tenant):
         assert (await c.post("/api/v1/bancos/ingesta", json=[])).status_code == 403
         assert (await c.post("/api/v1/bancos/movimientos/1/descarte")).status_code == 403
         assert (await c.delete("/api/v1/bancos/movimientos/1/descarte")).status_code == 403
+        # Cuánta plata entró al negocio es justo lo que un vendedor no tiene por qué ver.
+        assert (await c.get("/api/v1/bancos/totales")).status_code == 403
+        assert (await c.get("/api/v1/bancos/remitentes")).status_code == 403
 
 
 async def test_ingesta_idempotente_por_http(tenant):
@@ -109,6 +114,22 @@ async def test_ciclo_sugerir_y_conciliar(tenant):
         )
         assert conf.status_code == 200
         assert conf.json()["estado_conciliacion"] == "conciliado"
+
+
+async def test_totales_por_http_respetan_el_periodo(tenant):
+    """Sin período explícito responde el mes en curso, así que el reporte pide fechas."""
+    async with _cliente(_app(tenant)) as c:
+        await c.post("/api/v1/bancos/ingesta", json=[_linea("T1", "100000"), _linea("T2", "40000")])
+        r = await c.get("/api/v1/bancos/totales", params={"desde": _DIA, "hasta": _DIA})
+
+        assert r.status_code == 200
+        datos = r.json()
+        assert datos["total"] == "140000.00"
+        assert datos["total_personal"] == "0.00"
+        assert datos["sin_clasificar"] == 2
+
+        vacio = (await c.get("/api/v1/bancos/totales", params={"desde": "2026-01-01", "hasta": "2026-01-31"})).json()
+        assert vacio["total"] == "0" and vacio["por_cuenta"] == []
 
 
 async def test_conciliar_enlace_invalido_422(tenant):

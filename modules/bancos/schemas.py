@@ -11,7 +11,9 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 Naturaleza = Literal["credito", "debito"]
-TipoInterno = Literal["venta", "gasto", "abono"]
+# 'abono' es el pago a un PROVEEDOR (`facturas_abonos`); 'abono_fiado', el pago de un CLIENTE a su
+# fiado (`fiados_movimientos`). Tablas distintas: compartir el nombre cruzaría sus ids en el enlace.
+TipoInterno = Literal["venta", "gasto", "abono", "abono_fiado"]
 EstadoConciliacion = Literal["no_conciliado", "sugerido", "conciliado"]
 
 
@@ -41,6 +43,7 @@ class CandidatoInterno(BaseModel):
     monto: Decimal
     fecha: date
     descripcion: str | None = None
+    cliente: str | None = None      # para reconocer de quién es el pago al resolver un ambiguo
 
 
 class MovimientoBancarioLeer(BaseModel):
@@ -70,6 +73,48 @@ class MovimientoConCandidatos(BaseModel):
 
     movimiento: MovimientoBancarioLeer
     candidatos: list[CandidatoInterno]
+
+
+class TotalPorCuenta(BaseModel):
+    """Cuánto entró a UNA cuenta en el período."""
+
+    cuenta: str | None            # None = el parser no la pudo leer ("sin identificar")
+    alias: str | None = None      # nombre del titular, si la empresa lo configuró
+    movimientos: int
+    total: Decimal
+    total_negocio: Decimal
+
+
+class TotalesBancarios(BaseModel):
+    """Cuánta plata entró a las cuentas del negocio en un período (solo créditos).
+
+    `total` = todo lo que entró. `total_negocio` descuenta lo marcado "no es venta" y
+    `total_personal` es justo esa diferencia, así que `total == total_negocio + total_personal`
+    siempre. `sin_clasificar` cuenta los movimientos que nadie resolvió todavía.
+    """
+
+    desde: date
+    hasta: date
+    total: Decimal
+    total_negocio: Decimal
+    total_personal: Decimal
+    sin_clasificar: int
+    por_cuenta: list[TotalPorCuenta]
+
+
+class RemitenteRecurrente(BaseModel):
+    """Alguien que mandó plata más de una vez en el período (por el nombre del correo del banco).
+
+    Es un reporte de LECTURA: no crea ni toca la tabla `clientes`. El nombre viene normalizado
+    (mayúsculas, sin espacios sobrantes) y la agrupación es exacta — sin fuzzy matching.
+    """
+
+    nombre: str
+    veces: int
+    total: Decimal
+    primera: date
+    ultima: date
+    conciliados: int      # cuántas de esas veces ya quedaron enlazadas a una venta
 
 
 class ConciliarConfirmar(BaseModel):

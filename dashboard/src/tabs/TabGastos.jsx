@@ -35,11 +35,10 @@ import ModalGastoRapido from '@/components/ModalGastoRapido.jsx'
 import BandejaRevision from './construccion/BandejaRevision.jsx'
 import PanelRecurrentes from './gastos/PanelRecurrentes.jsx'
 import {
-  CATEGORIAS_GASTO, CATEGORIA_LABEL, PERIODOS, TIPO_LABEL, periodo, rangoISO,
+  CATEGORIAS_GASTO, CATEGORIA_LABEL, PERIODOS, TIPO_LABEL, hoyCO, periodo, rangoISO,
 } from '@/lib/gastos.js'
 
 const SELECT = 'h-9 rounded-md border border-input bg-surface px-2 text-body-sm text-foreground'
-const hoyCO = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
 
 export default function TabGastos() {
   const { refreshKey } = useOutletContext() ?? {}

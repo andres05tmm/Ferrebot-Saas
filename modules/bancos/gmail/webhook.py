@@ -7,8 +7,14 @@ fija la subscription. Responde <1s: decodifica el `historyId` y encola el trabaj
 (`procesar_gmail_push`); el fetch/parse/persist/notify NO ocurre en el request.
 
 La ruta va FUERA de `/api/` (el TenantMiddleware la deja pasar sin JWT).
+
+**Sin `from __future__ import annotations` a propósito.** `Request` se importa DENTRO de
+`crear_router_bancolombia` (para no cargar FastAPI en el worker), así que es un local de esa función:
+con anotaciones diferidas quedan como texto y FastAPI no puede resolver `Request` al construir la
+ruta — la degrada a **query param obligatorio** y todo push contesta 422. Sin el import diferido la
+anotación se evalúa en el `def`, donde el local sí existe. `modules/facturacion/webhook.py` sí puede
+tenerlo porque allá el import de `Request` es de módulo.
 """
-from __future__ import annotations
 
 import base64
 import json

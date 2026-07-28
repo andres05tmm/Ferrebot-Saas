@@ -196,7 +196,7 @@ describe('VistaDia — el libro de ventas', () => {
     pintar()
     await screen.findByText('Cemento gris 50kg')
 
-    fireEvent.click(screen.getByRole('button', { name: /Exportar Excel/ }))
+    fireEvent.click(screen.getByRole('button', { name: /^Excel$/ }))
     await waitFor(() => expect(
       fetchMock.mock.calls.some(c => String(c[0]).includes('/ventas/historial/exportar?desde='))
     ).toBe(true))
@@ -207,7 +207,7 @@ describe('VistaDia — el libro de ventas', () => {
     pintar()
     await screen.findByText('Cemento gris 50kg')
 
-    fireEvent.click(screen.getByRole('button', { name: /Exportar Excel/ }))
+    fireEvent.click(screen.getByRole('button', { name: /^Excel$/ }))
     // Un "error al exportar" genérico no dice qué hacer; el 422 explica que parta por meses.
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith(expect.stringMatching(/por meses/)))
   })
@@ -231,5 +231,27 @@ describe('VistaDia — el libro de ventas', () => {
 
     rtHandler?.()
     await waitFor(() => expect(fetchMock.mock.calls.length).toBeGreaterThan(antes))
+  })
+})
+
+describe('VistaDia — el PDF', () => {
+  it('un rango que no cupo en el feed NO produce un PDF a medias', async () => {
+    sesion(); instalarFetch({ ...FEED, hay_mas: true })
+    pintar()
+    await screen.findByText('Cemento gris 50kg')
+
+    fireEvent.click(screen.getByRole('button', { name: /PDF/ }))
+    // El PDF se arma con lo cargado: si el feed quedó corto, el archivo saldría incompleto sin que
+    // nadie lo note. Misma regla que el 422 del Excel en el backend.
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith(expect.stringMatching(/no cabe/)))
+  })
+
+  it('sin ventas en el rango no genera un PDF vacío', async () => {
+    sesion(); instalarFetch({ ...FEED, filas: [] })
+    pintar()
+    await screen.findByText(/Sin ventas en el rango/)
+
+    fireEvent.click(screen.getByRole('button', { name: /PDF/ }))
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith(expect.stringMatching(/No hay ventas/)))
   })
 })

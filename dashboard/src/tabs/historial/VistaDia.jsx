@@ -138,6 +138,23 @@ export default function VistaDia() {
     } catch { toast.error('Error de conexión') } finally { setDescargando(false) }
   }
 
+  async function descargarPdf() {
+    // El PDF se arma con las filas YA cargadas (jspdf, en el navegador). Si el rango no cupo en el
+    // feed, el archivo saldría incompleto sin que se note — la misma trampa que el backend evita
+    // devolviendo 422 en el Excel. Acá se corta igual, en vez de entregar medio informe.
+    if (feedQ.data?.hay_mas) {
+      toast.error('El rango no cabe en un PDF; acota las fechas o usa el Excel')
+      return
+    }
+    if (!filas.length) { toast.error('No hay ventas en el rango'); return }
+    const { descargarHistorialPdf } = await import('./pdf.js')   // perezoso: jspdf pesa
+    descargarHistorialPdf({
+      filas, desde, hasta,
+      totalPeriodo: resumen.total_vendido ?? 0,
+      numVentas: resumen.num_ventas ?? 0,
+    })
+  }
+
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
@@ -151,10 +168,16 @@ export default function VistaDia() {
             {Object.entries(porMetodo).map(([m, v]) => ` · ${m} ${cop(Number(v))}`).join('')}
           </p>
         </div>
-        <button type="button" onClick={descargarExcel} disabled={descargando}
-          className="inline-flex items-center gap-1.5 text-meta h-9 px-3 rounded-md border border-border bg-surface hover:bg-surface-2 disabled:opacity-60">
-          <Download className="size-4" /> {descargando ? 'Generando…' : 'Exportar Excel'}
-        </button>
+        <div className="flex items-center gap-1.5">
+          <button type="button" onClick={descargarExcel} disabled={descargando}
+            className="inline-flex items-center gap-1.5 text-meta h-9 px-3 rounded-md border border-border bg-surface hover:bg-surface-2 disabled:opacity-60">
+            <Download className="size-4" /> {descargando ? 'Generando…' : 'Excel'}
+          </button>
+          <button type="button" onClick={descargarPdf}
+            className="inline-flex items-center gap-1.5 text-meta h-9 px-3 rounded-md border border-border bg-surface hover:bg-surface-2">
+            <Download className="size-4" /> PDF
+          </button>
+        </div>
       </div>
 
       <Card className="p-3 flex flex-wrap items-end gap-3">

@@ -2,7 +2,7 @@
 from datetime import date
 from decimal import Decimal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class ResumenDia(BaseModel):
@@ -211,12 +211,17 @@ class ProyeccionCaja(BaseModel):
 
 
 class DiaCalendarioLeer(BaseModel):
-    """Un día del calendario mensual (heatmap): ventas, transacciones y gastos."""
+    """Un día del calendario mensual (heatmap): ventas, transacciones y gastos.
+
+    `historico` es el total anotado a MANO para un día anterior al sistema (`historico_ventas`,
+    `incluir_en_balances=False`). Viaja aparte de `total` para que el front pueda pintarlo distinto y
+    para que ningún consumidor lo sume por descuido a la plata que el sistema sí registró."""
 
     fecha: date
     total: Decimal
     num_ventas: int
     gastos: Decimal
+    historico: Decimal = Decimal("0")
 
 
 class HoyDashboard(BaseModel):
@@ -240,3 +245,27 @@ class HoyDashboard(BaseModel):
     productos_activos: int
     productos_cuadrados: int
     stock_bajo_confiables: int
+
+
+class DiaHistoricoCargar(BaseModel):
+    """El total de UN día anterior al sistema, anotado a mano."""
+
+    fecha: date
+    total: Decimal = Field(ge=0)
+
+
+class HistoricoCargar(BaseModel):
+    """Carga masiva de los días viejos: el dueño pega la lista de su cuaderno de una sola vez.
+
+    Va por lista y no de a uno porque el caso real son meses acumulados; hacerlo día por día en el
+    calendario sería tedioso hasta el punto de no hacerlo nunca. El UPSERT por fecha vuelve la
+    operación repetible: pegar dos veces corrige, no duplica.
+    """
+
+    dias: list[DiaHistoricoCargar] = Field(min_length=1, max_length=1000)
+
+
+class HistoricoCargado(BaseModel):
+    """Cuántos días quedaron guardados."""
+
+    guardados: int

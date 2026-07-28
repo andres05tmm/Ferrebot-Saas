@@ -6,11 +6,13 @@ calcula derivados (ticket promedio) y arma el contrato de salida.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 
-from sqlalchemy import Text, case as sa_case, cast, func, select, text
+from sqlalchemy import Text, case as sa_case, cast, column as sa_column, func, select
+from sqlalchemy import table as sa_table, text
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules.caja.models import CajaMovimiento, Gasto
@@ -124,12 +126,16 @@ class GastoAgrupado:
 
 @dataclass(frozen=True, slots=True)
 class DiaCalendario:
-    """Agregado de UN día para el calendario mensual (heatmap): ventas, transacciones y gastos."""
+    """Agregado de UN día para el calendario mensual (heatmap): ventas, transacciones y gastos.
+
+    `historico` va SEPARADO de `total` a propósito: es el total que el dueño anotó a mano para un día
+    anterior al sistema. Sumarlos daría un mes que ningún reporte financiero puede respaldar."""
 
     fecha: date
     total: Decimal
     num_ventas: int
     gastos: Decimal
+    historico: Decimal = Decimal("0")
 
 
 @dataclass(frozen=True, slots=True)
@@ -159,6 +165,23 @@ class InventarioConfiable:
     productos_cuadrados: int
     stock_bajo_confiables: int
 
+
+
+# `historico_ventas` existe desde la migración 0001 (rollup diario por fecha) y hasta ahora ningún
+# servicio la leía: la llenaba solo el ETL del sistema viejo. El tab Historial la estrena para
+# guardar los totales de los días ANTERIORES al sistema, que el dueño tenía en un cuaderno.
+#
+# `incluir_en_balances=False` es la frontera, y no es decorativa: de esos días no se anotaron gastos
+# ni movimientos de caja, así que sumarlos a un reporte financiero daría una utilidad inventada. Es
+# un dato de consulta, no contabilidad. Sin modelo ORM a propósito — una tabla literal alcanza y no
+# mete `historico_ventas` en el grafo de mappers de todos los módulos.
+_historico = sa_table(
+    "historico_ventas",
+    sa_column("fecha"), sa_column("ventas"), sa_column("origen"),
+    sa_column("incluir_en_balances"), sa_column("notas"), sa_column("actualizado_en"),
+)
+
+ORIGEN_MANUAL = "manual"
 
 class SqlReportesRepository:
     def __init__(self, session: AsyncSession) -> None:
@@ -693,7 +716,57 @@ class SqlReportesRepository:
         for d, g in gastos.items():
             if d not in por_dia:
                 por_dia[d] = DiaCalendario(fecha=d, total=Decimal("0"), num_ventas=0, gastos=g)
+        # Los días anotados a mano van en SU PROPIO campo, no sumados a `total`. Si se mezclaran, el
+        # calendario mostraría un mes que ningún reporte financiero puede respaldar, y nadie sabría
+        # cuál de los dos número está mal.
+        for d, monto in (await self.historico_por_dia(desde=inicio.date(), hasta=fin.date())).items():
+            actual = por_dia.get(d)
+            if actual is None:
+                por_dia[d] = DiaCalendario(
+                    fecha=d, total=Decimal("0"), num_ventas=0, gastos=Decimal("0"), historico=monto
+                )
+            else:
+                por_dia[d] = replace(actual, historico=monto)
         return sorted(por_dia.values(), key=lambda x: x.fecha)
+
+    async def historico_por_dia(self, *, desde: date, hasta: date) -> dict[date, Decimal]:
+        """Totales de los días ANTERIORES al sistema, anotados a mano. Nunca se mezclan con las ventas."""
+        filas = (
+            await self._s.execute(
+                select(_historico.c.fecha, _historico.c.ventas)
+                .where(_historico.c.fecha >= desde, _historico.c.fecha <= hasta)
+            )
+        ).all()
+        return {f.fecha: Decimal(f.ventas) for f in filas}
+
+    async def cargar_historico(self, dias: list[tuple[date, Decimal]]) -> int:
+        """UPSERT por fecha de los totales viejos. Devuelve cuántos días quedaron guardados.
+
+        Idempotente por construcción: `fecha` es la PK, así que volver a pegar la misma lista
+        corrige en vez de duplicar. Es justo lo que hace falta cuando alguien pega dos veces o
+        arregla un número mal tecleado.
+
+        Se graban con `incluir_en_balances=False`: son plata que entró en días de los que NO se
+        anotaron gastos ni caja. Contarlos en un balance daría una utilidad inventada.
+        """
+        if not dias:
+            return 0
+        stmt = pg_insert(_historico).values([
+            {"fecha": f, "ventas": total, "origen": ORIGEN_MANUAL, "incluir_en_balances": False}
+            for f, total in dias
+        ])
+        await self._s.execute(
+            stmt.on_conflict_do_update(
+                index_elements=[_historico.c.fecha],
+                set_={
+                    "ventas": stmt.excluded.ventas,
+                    "origen": ORIGEN_MANUAL,
+                    "incluir_en_balances": False,
+                    "actualizado_en": func.now(),
+                },
+            )
+        )
+        return len(dias)
 
     async def estado_pedidos_proveedor(
         self, *, hoy: date, ahora: datetime

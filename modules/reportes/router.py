@@ -27,6 +27,8 @@ from modules.reportes.schemas import (
     CuentaMayor,
     DiaCalendarioLeer,
     EstadoResultados,
+    HistoricoCargado,
+    HistoricoCargar,
     FlujoDinero,
     HoyDashboard,
     LibroIVA,
@@ -296,6 +298,33 @@ async def proyeccion_caja(
     """Proyección del cierre del mes con el promedio de los últimos 14 días con movimiento (fórmula
     del dashboard viejo). Núcleo (degrada a ceros sin datos); admin-only."""
     return await ReportesService(repo).proyeccion_caja()
+
+
+@router.post(
+    "/historico-ventas/cargar",
+    response_model=HistoricoCargado,
+    dependencies=[Depends(require_feature("ventas"))],
+)
+async def cargar_historico_ventas(
+    payload: HistoricoCargar,
+    repo: SqlReportesRepository = Depends(get_reportes_repo),
+    _user: Principal = Depends(require_role("admin")),
+) -> HistoricoCargado:
+    """Guarda los totales de días ANTERIORES al sistema (el cuaderno del dueño).
+
+    Solo admin: es un dato que el negocio declara, no algo que el sistema registró.
+
+    **Esto NO entra a ningún reporte financiero.** Se graba con `incluir_en_balances=False` porque de
+    esos días no hay gastos, ni caja, ni movimientos de inventario que los acompañen: sumarlos a un
+    estado de resultados daría una utilidad inventada. Sirven para que el calendario muestre el año
+    completo y para tener en un solo lugar lo vendido día a día.
+
+    Idempotente por fecha: pegar la lista dos veces corrige, no duplica.
+    """
+    guardados = await ReportesService(repo).cargar_historico(
+        [(d.fecha, d.total) for d in payload.dias]
+    )
+    return HistoricoCargado(guardados=guardados)
 
 
 @router.get(

@@ -102,7 +102,11 @@ def extraer_body(payload: dict) -> str:
 
 
 def _limpiar_html(texto: str) -> str:
-    return _html_module.unescape(re.sub(r"<[^>]+>", " ", texto))
+    # `<style>`/`<script>` primero: quitar solo las etiquetas dejaría el CSS como texto, y los correos
+    # de Bancolombia traen ~5 KB de hoja de estilo delante del mensaje. Patrones genéricos como
+    # `\$\s*([\d][0-9.,]+)` o `(\d{1,2}:\d{2})` encuentran basura ahí antes de llegar al importe real.
+    sin_bloques = re.sub(r"<(style|script)\b[^>]*>.*?</\1>", " ", texto, flags=re.IGNORECASE | re.DOTALL)
+    return _html_module.unescape(re.sub(r"<[^>]+>", " ", sin_bloques))
 
 
 def _extraer_valor(texto: str, patrones: list[str]) -> str:
@@ -139,7 +143,9 @@ def parsear_email_bancolombia(body_raw: str) -> dict:
     remitente = _extraer_valor(texto, [
         r"recibiste un pago de\s+([A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑA-Za-záéíóúñ\s]{2,80}?)\s+por\s+\$",
         r"pago de\s+([A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑA-Za-záéíóúñ\s]{2,80}?)\s+por\s+\$",
-        r"de[:\s]+([A-ZÁÉÍÓÚÑ][A-Za-záéíóúñ\s]{2,60}?)(?:\s+por\s+\$|\s{2,}|\||\n|cuenta|ref)",
+        # `\s+en\s+tu\b` corta el formato "…por $10,000 de ANDRES MALO en tu cuenta **6485": sin él
+        # la captura se comía el "en tu" (frena recién en "cuenta") y el nombre quedaba sucio.
+        r"de[:\s]+([A-ZÁÉÍÓÚÑ][A-Za-záéíóúñ\s]{2,60}?)(?:\s+por\s+\$|\s+en\s+tu\b|\s{2,}|\||\n|cuenta|ref)",
         r"remitente[:\s]+([A-ZÁÉÍÓÚÑ][A-Za-záéíóúñ\s]{2,60}?)(?:\s{2,}|\||$)",
         r"transferido por[:\s]+([A-ZÁÉÍÓÚÑ][A-Za-záéíóúñ\s]{2,60}?)(?:\s{2,}|\||$)",
     ])
@@ -147,8 +153,11 @@ def parsear_email_bancolombia(body_raw: str) -> dict:
         r"por\s+\$\s*([\d][0-9.,]+)", r"\$\s*([\d][0-9.,]+)", r"por valor de\s+\$?\s*([\d][0-9.,]+)",
         r"valor[:\s]+\$?\s*([\d][0-9.,]+)", r"monto[:\s]+\$?\s*([\d][0-9.,]+)",
     ]))
+    # `\**` (no `\*?`): Bancolombia enmascara con DOS asteriscos en el formato nuevo ("cuenta **6485")
+    # y con uno en el viejo ("cuenta *3891"). Con `\*?` el segundo asterisco rompía el match y la
+    # cuenta quedaba vacía → todo el desglose por cuenta caía en "sin identificar".
     cuenta = _extraer_valor(texto, [
-        r"en tu cuenta\s+\*?(\d{3,6})", r"cuenta\s+\*(\d{3,6})", r"cuenta destino[:\s]+\*?(\d{3,6})",
+        r"en tu cuenta\s+\**(\d{3,6})", r"cuenta\s+\*+(\d{3,6})", r"cuenta destino[:\s]+\**(\d{3,6})",
     ])
     if cuenta:
         cuenta = f"*{cuenta}"

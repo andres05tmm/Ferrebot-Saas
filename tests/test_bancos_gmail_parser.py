@@ -92,3 +92,32 @@ def test_construir_mensaje_incluye_monto_y_remitente():
 def test_construir_mensaje_nequi_encabezado():
     datos = parser.parsear_email_bancolombia("recibiste un pago de X por $1.000 vía Nequi")
     assert parser.construir_mensaje(datos, "s", "10:00").startswith("🟣")
+
+
+def test_parseo_formato_nuevo_dos_asteriscos_y_nombre_antes_de_la_cuenta():
+    """Correo real de producción (2026-07-27). Bancolombia cambió la plantilla.
+
+    Dos diferencias con el formato viejo que rompían el parseo, con la ingesta funcionando:
+    la cuenta va enmascarada con DOS asteriscos, y el nombre viene ANTES de la cuenta
+    ("de X en tu cuenta") en vez de antes del monto.
+    """
+    body = ("¡Listo! Todo salió bien con tus movimientos Bancolombia: Recibiste una transferencia "
+            "por $10,000 de ANDRES MALO en tu cuenta **6485, el 27/07/2026 a las 22:46. "
+            "Si tienes dudas, hablemos: 018000931987.")
+    d = parser.parsear_email_bancolombia(body)
+    assert d["monto"] == 10000 and d["monto_str"] == "$10.000"
+    assert d["remitente"] == "ANDRES MALO"        # sin el "en tu" pegado atrás
+    assert d["cuenta"] == "*6485"                 # el segundo asterisco ya no lo rompe
+    assert d["fecha_str"] == "27/07/2026" and d["hora"] == "22:46"
+
+
+def test_el_css_del_correo_no_contamina_el_parseo():
+    """Los correos reales traen ~5 KB de <style> delante. Sin quitar el bloque, los patrones
+    genéricos de monto y hora encuentran basura del CSS antes que el dato real."""
+    body = ("<style>@media only screen and (max-width: 480px) { td { width: 100%; padding: 0 0.00; } }"
+            " .x { content: '$99,999'; line-height: 12:00; }</style>"
+            "<p>Recibiste una transferencia por $10,000 de ANDRES MALO en tu cuenta **6485, "
+            "el 27/07/2026 a las 22:46.</p>")
+    d = parser.parsear_email_bancolombia(parser.extraer_body(_payload_html(body)))
+    assert d["monto"] == 10000
+    assert d["remitente"] == "ANDRES MALO" and d["cuenta"] == "*6485" and d["hora"] == "22:46"

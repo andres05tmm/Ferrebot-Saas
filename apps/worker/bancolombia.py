@@ -29,6 +29,39 @@ log = get_logger("worker.bancolombia")
 _MARGEN_RENOVAR = timedelta(hours=48)   # renueva el watch si expira dentro de esta ventana
 
 
+def _a_utc(momento: datetime | None) -> datetime | None:
+    """Un `watch_expira` sin zona se lee como UTC. Comparar naive contra aware lanza TypeError, y acá
+    ese error se lo tragaría el `except` del barrido: la cuenta quedaría sin push Y sin poll."""
+    if momento is None or momento.tzinfo is not None:
+        return momento
+    return momento.replace(tzinfo=timezone.utc)
+
+
+def push_vigente(cuenta, ahora: datetime) -> bool:
+    """¿El push de Gmail está realmente vivo para esta cuenta?
+
+    Vivo = tiene topic Y un watch que todavía no venció. Si el watch se venció (o nunca se activó),
+    Gmail dejó de publicar y NO avisa: la ingesta simplemente enmudece. Por eso esto no es un detalle
+    del cron de renovación sino la condición que decide si el poll tiene que entrar a cubrir.
+    """
+    if not cuenta.pubsub_topic:
+        return False
+    expira = _a_utc(cuenta.watch_expira)
+    return expira is not None and expira > ahora
+
+
+def debe_renovar(cuenta, ahora: datetime) -> bool:
+    """¿Toca (re)activar el watch? Solo cuentas con topic, y solo si les queda menos que el margen.
+
+    Sin `watch_expira` es una cuenta recién dada de alta: hay que activarlo por primera vez. Antes
+    eso había que dispararlo a mano después de provisionar.
+    """
+    if not cuenta.pubsub_topic:
+        return False
+    expira = _a_utc(cuenta.watch_expira)
+    return expira is None or expira <= ahora + _MARGEN_RENOVAR
+
+
 async def _config_valor(cs, empresa_id: int, clave: str) -> str | None:
     row = (await cs.execute(
         text("SELECT valor FROM config_empresa WHERE empresa_id=:e AND clave=:c"),
@@ -140,22 +173,32 @@ async def procesar_gmail_push(ctx: dict, empresa_id: int, history_id: str | None
 
 
 async def poll_gmail_bancolombia(ctx: dict) -> str:
-    """Cron por MINUTO: ingesta por POLLING para cuentas Gmail SIN Pub/Sub (demo Siriuss).
+    """Cron por MINUTO: ingesta por POLLING, y RED DE SEGURIDAD del push.
 
-    El buzón puede tener su watch Pub/Sub apuntando a OTRO sistema (el legado de Punto Rojo, en
-    producción): este poll solo LEE el historial con su propio refresh token — jamás llama
-    `watch`, así que no desplaza el push del otro sistema. Reusa `procesar_gmail_push` completo
-    (parser, idempotencia por gmail_message_id, conciliador de pedidos, SSE, notificaciones).
+    Cubre dos casos. El original: cuentas sin Pub/Sub, cuyo watch puede pertenecer a OTRO sistema
+    sobre el mismo buzón — por eso este poll solo LEE el historial y jamás llama `watch`, así no le
+    desplaza el push a nadie. Y el que importa para no vivir pendiente: **cuentas CON topic cuyo
+    watch se venció**. El watch dura 7 días y cuando expira Gmail deja de publicar sin avisar a
+    nadie; hasta ahora eso dejaba la ingesta muda hasta que una persona lo notara. Ahora el poll
+    entra solo y lo peor que pasa es que los pagos lleguen con hasta un minuto de retraso.
+
+    Reusa `procesar_gmail_push` completo (parser, idempotencia por gmail_message_id, conciliador de
+    pedidos, SSE, notificaciones), así que cubrir por poll no cambia nada de lo que ve el dueño.
     Primera corrida de una cuenta (sin `last_history_id`): siembra la línea base con el
     historyId del perfil y sale — desde ahí solo se procesan correos NUEVOS.
     """
+    ahora = datetime.now(timezone.utc)
     async with control_session() as cs:
         cuentas = await RegistroGmail(cs).cuentas_activas()
 
     polleadas = 0
     for cuenta in cuentas:
+        if push_vigente(cuenta, ahora):
+            continue    # el push está vivo: su ingesta llega por webhook, no por poll
         if cuenta.pubsub_topic:
-            continue    # tiene push: su ingesta llega por webhook, no por poll
+            # Tiene push configurado pero el watch no está vigente: esto es la red actuando.
+            log.warning("gmail_push_caido_cubre_poll", empresa_id=cuenta.empresa_id,
+                        watch_expira=str(cuenta.watch_expira))
         try:
             if not cuenta.last_history_id:
                 async with control_session() as cs:
@@ -187,9 +230,7 @@ async def renovar_watch_gmail(ctx: dict) -> str:
 
     renovadas = 0
     for cuenta in cuentas:
-        if cuenta.watch_expira and cuenta.watch_expira > ahora + _MARGEN_RENOVAR:
-            continue    # aún vigente con margen holgado
-        if not cuenta.pubsub_topic:
+        if not debe_renovar(cuenta, ahora):
             continue
         try:
             async with control_session() as cs:
@@ -215,4 +256,14 @@ async def renovar_watch_gmail(ctx: dict) -> str:
                     "⚠️ No pude renovar el acceso al correo de Bancolombia (autorización expirada).")
         except Exception:  # noqa: BLE001 — un tenant no debe tumbar el barrido
             log.exception("gmail_watch_error", empresa_id=cuenta.empresa_id)
+            # Un fallo aislado no es noticia: quedan días de margen y el próximo intento lo arregla.
+            # Que el watch YA esté vencido sí lo es, porque significa que la renovación viene
+            # fallando y el push está muerto. Sin este aviso el único síntoma era el silencio.
+            if not push_vigente(cuenta, ahora):
+                async with control_session() as cs:
+                    await _alertar_telegram(
+                        cs, cuenta.empresa_id,
+                        "⚠️ No pude reactivar el aviso instantáneo del correo del banco. "
+                        "Los pagos SIGUEN entrando, con hasta un minuto de retraso, así que no "
+                        "hay nada urgente que hacer. Si el mensaje se repite mañana, avisa.")
     return f"renovadas={renovadas}"

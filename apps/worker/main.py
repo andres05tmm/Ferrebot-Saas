@@ -769,7 +769,10 @@ class WorkerSettings:
         cron(resembrar_demos, hour={9}, minute={10}, run_at_startup=False),
         # Watch de Gmail (ingesta Bancolombia): el watch caduca a los 7 días. Renovación diaria
         # anticipada (renueva si expira dentro de 48h) — auto-repara fallos aislados. 08:30 UTC.
-        cron(renovar_watch_gmail, hour={8}, minute={30}, run_at_startup=False),
+        # `run_at_startup=True`: cada deploy es un intento más, y sobre todo activa el watch de una
+        # cuenta recién dada de alta sin que nadie lo dispare a mano. Las cuentas vigentes se
+        # saltean con una sola consulta al control DB, así que arrancar no cuesta nada.
+        cron(renovar_watch_gmail, hour={8}, minute={30}, run_at_startup=True),
         # Poll Gmail (cuentas SIN Pub/Sub, demo Siriuss): cada minuto lee el delta del buzón sin
         # tocar el watch (que puede pertenecer al sistema legado de Punto Rojo).
         cron(poll_gmail_bancolombia, minute=set(range(60)), run_at_startup=True),

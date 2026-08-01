@@ -55,6 +55,14 @@ export function periodo(id, hoyYMD) {
   if (id === 'hoy') return { desde: hoyYMD, hasta: hoyYMD }
   if (id === 'semana') return { desde: ymd(menos(6)), hasta: hoyYMD }
   if (id === 'mes') return { desde: `${hoyYMD.slice(0, 8)}01`, hasta: hoyYMD }
+  // Trimestre y año CORRIDOS (hasta hoy), no calendario cerrado: el dueño pregunta "cómo voy",
+  // no "cómo cerró el trimestre pasado".
+  if (id === 'trimestre') {
+    const mes = Number(hoyYMD.slice(5, 7))
+    const primerMes = String(mes - ((mes - 1) % 3)).padStart(2, '0')
+    return { desde: `${hoyYMD.slice(0, 4)}-${primerMes}-01`, hasta: hoyYMD }
+  }
+  if (id === 'anio') return { desde: `${hoyYMD.slice(0, 4)}-01-01`, hasta: hoyYMD }
   // Mes pasado completo: del 1 al último día del mes anterior.
   const primeroEste = new Date(`${hoyYMD.slice(0, 8)}01T12:00:00-05:00`)
   const ultimoPasado = new Date(primeroEste); ultimoPasado.setDate(0)
@@ -63,4 +71,10 @@ export function periodo(id, hoyYMD) {
 
 export const PERIODOS = [
   ['hoy', 'Hoy'], ['semana', 'Últimos 7 días'], ['mes', 'Este mes'], ['pasado', 'Mes pasado'],
+]
+
+// Los de arriba más las ventanas largas, para Resultados financieros (una utilidad se lee por
+// trimestre o por año; un gasto, no). `PERIODOS` se deja intacto para no mover los chips de Gastos.
+export const PERIODOS_RESULTADOS = [
+  ...PERIODOS, ['trimestre', 'Trimestre'], ['anio', 'Año corrido'],
 ]

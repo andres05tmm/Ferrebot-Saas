@@ -19,15 +19,35 @@ from modules.reportes.repository import AgregadoResultados, TopProductoFila
 from modules.reportes.router import get_reportes_repo, router
 
 
+def _agg(
+    *,
+    ventas_brutas="0", devoluciones="0", costo_ventas="0", gastos="0",
+    unidades_vendidas="0", unidades_sin_costo="0",
+) -> AgregadoResultados:
+    """Agregado crudo del repo, con todo en cero salvo lo que el test declara."""
+    return AgregadoResultados(
+        ventas_brutas=Decimal(ventas_brutas), devoluciones=Decimal(devoluciones),
+        costo_ventas=Decimal(costo_ventas), gastos=Decimal(gastos),
+        unidades_vendidas=Decimal(unidades_vendidas),
+        unidades_sin_costo=Decimal(unidades_sin_costo),
+    )
+
+
 class _FakeReportesRepo:
-    def __init__(self, *, resultados: AgregadoResultados | None = None, top=None) -> None:
+    def __init__(
+        self, *, resultados: AgregadoResultados | None = None, anterior=None, top=None
+    ) -> None:
         self._resultados = resultados
+        # El servicio pide el rango y LUEGO la ventana anterior: se sirven en ese orden.
+        self._anterior = anterior if anterior is not None else _agg()
         self._top = top or []
+        self.ventanas: list[tuple] = []
         self.vendedor_id: object = "UNSET"
         self.limite: object = "UNSET"
 
     async def estado_resultados(self, *, inicio, fin) -> AgregadoResultados:
-        return self._resultados
+        self.ventanas.append((inicio, fin))
+        return self._resultados if len(self.ventanas) == 1 else self._anterior
 
     async def top_productos(self, *, inicio, fin, vendedor_id, limite):
         self.vendedor_id = vendedor_id
@@ -52,9 +72,7 @@ def _cliente(app: FastAPI) -> httpx.AsyncClient:
 
 # ---- Resultados ------------------------------------------------------------
 async def test_resultados_calcula_utilidad_bruta_y_neta():
-    agg = AgregadoResultados(
-        ingresos=Decimal("100000.00"), costo_ventas=Decimal("60000.00"), gastos=Decimal("15000.00")
-    )
+    agg = _agg(ventas_brutas="100000.00", costo_ventas="60000.00", gastos="15000.00")
     app = _app(_FakeReportesRepo(resultados=agg), rol="admin")
     async with _cliente(app) as c:
         r = await c.get("/api/v1/reportes/resultados")
@@ -68,9 +86,78 @@ async def test_resultados_calcula_utilidad_bruta_y_neta():
     assert body["desde"] and body["hasta"]          # rango por defecto (mes en curso) presente
 
 
+async def test_resultados_devolucion_total_deja_utilidad_en_cero():
+    """El bug que esto cierra: la devolución revertía el COSTO pero no el INGRESO, así que devolver
+    mercancía SUBÍA el margen. Venta de 100k devuelta entera ⇒ no vendiste nada."""
+    agg = _agg(ventas_brutas="100000.00", devoluciones="100000.00", costo_ventas="0.00")
+    app = _app(_FakeReportesRepo(resultados=agg), rol="admin")
+    async with _cliente(app) as c:
+        r = await c.get("/api/v1/reportes/resultados")
+    body = r.json()
+    assert body["ventas_brutas"] == "100000.00"
+    assert body["devoluciones"] == "100000.00"
+    assert body["ingresos"] == "0.00"
+    assert body["utilidad_bruta"] == "0.00"
+
+
+async def test_resultados_devolucion_parcial_no_mueve_el_margen_pct():
+    """Devolver la mitad baja ingreso y costo en la misma proporción: el margen % no se mueve."""
+    agg = _agg(ventas_brutas="100000.00", devoluciones="50000.00", costo_ventas="30000.00")
+    app = _app(_FakeReportesRepo(resultados=agg), rol="admin")
+    async with _cliente(app) as c:
+        body = (await c.get("/api/v1/reportes/resultados")).json()
+    ingresos, bruta = Decimal(body["ingresos"]), Decimal(body["utilidad_bruta"])
+    assert ingresos == Decimal("50000.00")          # 100k − 50k
+    assert bruta == Decimal("20000.00")             # 50k − 30k
+    assert bruta / ingresos == Decimal("0.4")       # 40%, igual que 60k/(100k−40k) sin devolución
+
+
+async def test_resultados_comparativo_es_la_ventana_anterior_del_mismo_largo():
+    repo = _FakeReportesRepo(
+        resultados=_agg(ventas_brutas="120000.00", gastos="20000.00"),
+        anterior=_agg(ventas_brutas="100000.00", costo_ventas="60000.00", gastos="15000.00"),
+    )
+    app = _app(repo, rol="admin")
+    async with _cliente(app) as c:
+        body = (await c.get(
+            "/api/v1/reportes/resultados", params={"desde": "2026-07-11", "hasta": "2026-07-20"}
+        )).json()
+
+    ant = body["anterior"]
+    assert ant["desde"] == "2026-07-01" and ant["hasta"] == "2026-07-10"   # 10 días, sin solape
+    assert ant["utilidad_neta"] == "25000.00"                              # 100k − 60k − 15k
+    (_, fin_prev) = repo.ventanas[1]
+    (ini_actual, _) = repo.ventanas[0]
+    assert fin_prev < ini_actual                                           # pegado, sin traslape
+
+
+async def test_resultados_comparativo_none_si_el_periodo_anterior_esta_vacio():
+    """Sin movimiento previo no hay 'caída del 100%': hay ausencia de dato."""
+    repo = _FakeReportesRepo(resultados=_agg(ventas_brutas="50000.00"), anterior=_agg())
+    app = _app(repo, rol="admin")
+    async with _cliente(app) as c:
+        body = (await c.get("/api/v1/reportes/resultados")).json()
+    assert body["anterior"] is None
+
+
+async def test_resultados_cobertura_baja_con_unidades_sin_costo():
+    agg = _agg(ventas_brutas="100000.00", unidades_vendidas="10", unidades_sin_costo="2")
+    app = _app(_FakeReportesRepo(resultados=agg), rol="admin")
+    async with _cliente(app) as c:
+        body = (await c.get("/api/v1/reportes/resultados")).json()
+    assert Decimal(body["cobertura_pct"]) == Decimal("80")     # 8 de 10 con costo snapshot
+
+
+async def test_resultados_cobertura_100_sin_ventas():
+    """Sin unidades vendidas no hay margen que dudar: 100 y no una división por cero."""
+    app = _app(_FakeReportesRepo(resultados=_agg()), rol="admin")
+    async with _cliente(app) as c:
+        body = (await c.get("/api/v1/reportes/resultados")).json()
+    assert Decimal(body["cobertura_pct"]) == Decimal("100")
+
+
 async def test_resultados_es_admin_only_vendedor_403():
-    agg = AgregadoResultados(ingresos=Decimal("0"), costo_ventas=Decimal("0"), gastos=Decimal("0"))
-    app = _app(_FakeReportesRepo(resultados=agg), rol="vendedor", user_id=5)
+    app = _app(_FakeReportesRepo(resultados=_agg()), rol="vendedor", user_id=5)
     async with _cliente(app) as c:
         r = await c.get("/api/v1/reportes/resultados")
     assert r.status_code == 403, r.text

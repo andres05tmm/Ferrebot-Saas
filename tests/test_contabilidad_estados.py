@@ -118,9 +118,16 @@ async def test_e2e_balance_cuadra_y_cruza_con_pl(tenant):
         # 4) Cruce con el P&L simple.
         pl = await SqlReportesRepository(s).estado_resultados(inicio=inicio, fin=fin)
 
-    # Ingreso del ledger (413505) == ingresos del P&L (Σ subtotal de ventas completadas).
+    # Ingreso BRUTO del ledger (413505) == Σ subtotal de las ventas completadas.
     ingreso_413505 = next(f.valor for f in er.ingresos if f.codigo == "413505")
-    assert ingreso_413505 == pl.ingresos
+    assert ingreso_413505 == pl.ventas_brutas
+    # Y el ingreso NETO cuadra al centavo con el del P&L: el ledger baja la devolución por el
+    # contra-ingreso 417505 (clase 4, así que `total_ingresos` ya viene neto) y el P&L la resta de
+    # `ingresos`. Antes esto se comparaba contra el bruto y pasaba de casualidad: el P&L no restaba
+    # la devolución, con lo cual devolver mercancía le subía el margen al dueño.
+    devolucion_417505 = next(f.valor for f in er.ingresos if f.codigo == "417505")
+    assert devolucion_417505 == -pl.devoluciones          # contra-ingreso: débito, valor negativo
+    assert er.total_ingresos == pl.ingresos
     # Costo de ventas del ledger (613505) == COGS del P&L (SALIDA − DEVOLUCION).
     costo_613505 = next(f.valor for f in er.costos if f.codigo == "613505")
     assert costo_613505 == pl.costo_ventas

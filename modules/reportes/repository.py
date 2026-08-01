@@ -368,19 +368,24 @@ class SqlReportesRepository:
         ).scalar_one()
         # Base sin IVA de lo devuelto. `devoluciones.total` viene con IVA incluido (los precios de
         # mostrador lo son) y `devoluciones_detalle` no guarda la tarifa, así que se prorratea con la
-        # razón base/total de la venta origen. Techo conocido: exacto con tarifa única (el caso normal);
+        # razón IVA/total de la venta origen. Techo conocido: exacto con tarifa única (el caso normal);
         # en una venta de tarifas mezcladas reparte ponderado y puede diferir centavos.
         # Se filtra por `creado_en` de la devolución, la misma fecha con la que su movimiento
         # DEVOLUCION ancla la reversa del COGS: ingreso y costo caen en el mismo periodo.
+        #
+        # El redondeo copia al pie de la letra `Proyector._iva_proporcional`: se redondea el IVA de
+        # CADA devolución y recién ahí se resta, no se suman bases crudas. Es lo que hace que este
+        # ingreso neto cuadre al centavo con el ledger de doble partida (413505 − 417505); sumar
+        # primero y redondear después difiere y, sin `round`, el numerario de Postgres se serializa
+        # con la basura de la división (…4499999999999998) en un campo de plata.
+        iva_devuelto = func.round(
+            Devolucion.total * Venta.impuestos / func.nullif(Venta.total, 0), 2
+        )
         devoluciones = (
             await self._s.execute(
                 select(
                     func.coalesce(
-                        func.sum(
-                            Devolucion.total
-                            * func.coalesce(Venta.subtotal / func.nullif(Venta.total, 0), 1)
-                        ),
-                        0,
+                        func.sum(Devolucion.total - func.coalesce(iva_devuelto, 0)), 0
                     )
                 )
                 .join(Venta, Venta.id == Devolucion.venta_id)

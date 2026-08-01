@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules.caja.models import CajaMovimiento, Gasto
 from modules.compras_fiscal.models import CompraFiscal
+from modules.devoluciones.models import Devolucion
 from modules.fiados.models import FiadoMovimiento
 from modules.inventario.models import MovimientoInventario, Producto
 from modules.proveedores.models import AbonoProveedor, FacturaProveedor
@@ -36,9 +37,18 @@ class AgregadoDia:
 class AgregadoResultados:
     """Insumos crudos del estado de resultados de un rango (el servicio deriva utilidades)."""
 
-    ingresos: Decimal       # suma de subtotal (sin IVA) de ventas NO anuladas
+    ventas_brutas: Decimal  # suma de subtotal (sin IVA) de ventas NO anuladas
+    devoluciones: Decimal   # base sin IVA devuelta en el rango (revierte ingreso, como el COGS)
     costo_ventas: Decimal   # Σ SALIDA(costo×cant) − Σ DEVOLUCION(costo×cant), costo NULL = 0
     gastos: Decimal         # suma de gastos del rango
+    unidades_vendidas: Decimal      # unidades con movimiento SALIDA en el rango
+    unidades_sin_costo: Decimal     # de esas, las que no tienen costo snapshot (cobertura)
+
+    @property
+    def ingresos(self) -> Decimal:
+        """Ingreso NETO: lo devuelto no es venta. Simétrico con `costo_ventas`, que ya resta la
+        reversa de la devolución — sin este neteo el margen se infla."""
+        return self.ventas_brutas - self.devoluciones
 
 
 @dataclass(frozen=True, slots=True)
@@ -284,15 +294,20 @@ class SqlReportesRepository:
     async def estado_resultados(
         self, *, inicio: datetime, fin: datetime
     ) -> AgregadoResultados:
-        """Insumos del P&L del rango: ingresos (sin IVA), costo de ventas exacto y gastos.
+        """Insumos del P&L del rango: ventas brutas y devoluciones (sin IVA), costo de ventas
+        exacto, gastos y la cobertura de costo.
 
-        Ingresos = Σ subtotal de ventas completadas (el IVA es traslado, no ingreso). Costo de ventas =
-        Σ(costo_unitario × cantidad) de movimientos SALIDA MENOS los DEVOLUCION (ADR 0026: una devolución
-        re-ingresa mercancía al costo del snapshot original → revierte su COGS, sin distorsión por el
-        promedio del día); un costo NULL (ventas previas al threading) cuenta como 0. Gastos = Σ monto de
-        gastos del rango. Es del negocio completo (sin scoping).
+        Ventas brutas = Σ subtotal de ventas completadas (el IVA es traslado, no ingreso). Costo de
+        ventas = Σ(costo_unitario × cantidad) de movimientos SALIDA MENOS los DEVOLUCION (ADR 0026: una
+        devolución re-ingresa mercancía al costo del snapshot original → revierte su COGS, sin distorsión
+        por el promedio del día); un costo NULL (ventas previas al threading) cuenta como 0. Gastos =
+        Σ monto de gastos del rango. Es del negocio completo (sin scoping).
+
+        Las DEVOLUCIONES se restan también del ingreso (`AgregadoResultados.ingresos`): antes solo
+        revertían el COGS, así que devolver mercancía subía el margen — se iba el costo y el ingreso
+        se quedaba (una devolución no anula la venta ni baja su `subtotal`).
         """
-        ingresos = (
+        ventas_brutas = (
             await self._s.execute(
                 select(func.coalesce(func.sum(Venta.subtotal), 0)).where(
                     Venta.estado == "completada", Venta.fecha >= inicio, Venta.fecha <= fin,
@@ -309,7 +324,11 @@ class SqlReportesRepository:
             (MovimientoInventario.tipo == "DEVOLUCION", -1),
             else_=1,
         )
-        costo_ventas = (
+        # Mismo barrido da el COGS y la COBERTURA (qué parte de lo vendido tiene costo registrado):
+        # un `costo_unitario` NULL suma 0 y eso infla el margen en silencio, así que se cuenta aparte.
+        # El denominador son SALIDAs: las unidades de una devolución no son unidades vendidas.
+        es_salida = MovimientoInventario.tipo == "SALIDA"
+        agg_cogs = (
             await self._s.execute(
                 select(
                     func.coalesce(
@@ -319,14 +338,23 @@ class SqlReportesRepository:
                             * func.coalesce(MovimientoInventario.costo_unitario, 0)
                         ),
                         0,
-                    )
+                    ).label("costo_ventas"),
+                    func.coalesce(
+                        func.sum(MovimientoInventario.cantidad).filter(es_salida), 0
+                    ).label("unidades"),
+                    func.coalesce(
+                        func.sum(MovimientoInventario.cantidad).filter(
+                            es_salida, MovimientoInventario.costo_unitario.is_(None)
+                        ),
+                        0,
+                    ).label("sin_costo"),
                 ).where(
                     MovimientoInventario.tipo.in_(("SALIDA", "DEVOLUCION")),
                     fecha_cogs >= inicio,
                     fecha_cogs <= fin,
                 )
             )
-        ).scalar_one()
+        ).one()
         gastos = (
             await self._s.execute(
                 select(func.coalesce(func.sum(Gasto.monto), 0)).where(
@@ -338,8 +366,39 @@ class SqlReportesRepository:
                 )
             )
         ).scalar_one()
+        # Base sin IVA de lo devuelto. `devoluciones.total` viene con IVA incluido (los precios de
+        # mostrador lo son) y `devoluciones_detalle` no guarda la tarifa, así que se prorratea con la
+        # razón IVA/total de la venta origen. Techo conocido: exacto con tarifa única (el caso normal);
+        # en una venta de tarifas mezcladas reparte ponderado y puede diferir centavos.
+        # Se filtra por `creado_en` de la devolución, la misma fecha con la que su movimiento
+        # DEVOLUCION ancla la reversa del COGS: ingreso y costo caen en el mismo periodo.
+        #
+        # El redondeo copia al pie de la letra `Proyector._iva_proporcional`: se redondea el IVA de
+        # CADA devolución y recién ahí se resta, no se suman bases crudas. Es lo que hace que este
+        # ingreso neto cuadre al centavo con el ledger de doble partida (413505 − 417505); sumar
+        # primero y redondear después difiere y, sin `round`, el numerario de Postgres se serializa
+        # con la basura de la división (…4499999999999998) en un campo de plata.
+        iva_devuelto = func.round(
+            Devolucion.total * Venta.impuestos / func.nullif(Venta.total, 0), 2
+        )
+        devoluciones = (
+            await self._s.execute(
+                select(
+                    func.coalesce(
+                        func.sum(Devolucion.total - func.coalesce(iva_devuelto, 0)), 0
+                    )
+                )
+                .join(Venta, Venta.id == Devolucion.venta_id)
+                .where(Devolucion.creado_en >= inicio, Devolucion.creado_en <= fin)
+            )
+        ).scalar_one()
         return AgregadoResultados(
-            ingresos=Decimal(ingresos), costo_ventas=Decimal(costo_ventas), gastos=Decimal(gastos)
+            ventas_brutas=Decimal(ventas_brutas),
+            devoluciones=Decimal(devoluciones),
+            costo_ventas=Decimal(agg_cogs.costo_ventas),
+            gastos=Decimal(gastos),
+            unidades_vendidas=Decimal(agg_cogs.unidades),
+            unidades_sin_costo=Decimal(agg_cogs.sin_costo),
         )
 
     async def libro_iva(self, *, inicio: datetime, fin: datetime) -> AgregadoLibroIVA:

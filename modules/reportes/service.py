@@ -26,6 +26,7 @@ from modules.reportes.repository import (
 )
 from modules.reportes.schemas import (
     AgingProveedor,
+    ComparativoResultados,
     DiaCalendarioLeer,
     EstadoResultados,
     FlujoDinero,
@@ -76,6 +77,24 @@ def _rango_o_mes(desde: date | None, hasta: date | None) -> tuple[date, date]:
     """Resuelve el rango: ausente → mes en curso (día 1 → hoy Colombia). Nunca date.today() crudo."""
     hoy = today_co()
     return (desde or hoy.replace(day=1)), (hasta or hoy)
+
+
+def _comparativo(
+    agg: AgregadoResultados, *, desde: date, hasta: date
+) -> ComparativoResultados | None:
+    """El P&L del periodo anterior, o None si no hubo NADA (ni ventas ni gastos) en esa ventana.
+
+    Un periodo vacío no es "cayó 100%": es que el negocio no existía o estaba cerrado. Devolver
+    ceros haría que el front pintara deltas inventados."""
+    if agg.ventas_brutas == 0 and agg.gastos == 0 and agg.costo_ventas == 0:
+        return None
+    utilidad_bruta = agg.ingresos - agg.costo_ventas
+    return ComparativoResultados(
+        desde=desde, hasta=hasta,
+        ingresos=agg.ingresos, costo_ventas=agg.costo_ventas,
+        utilidad_bruta=utilidad_bruta, gastos=agg.gastos,
+        utilidad_neta=utilidad_bruta - agg.gastos,
+    )
 
 
 def _promedio_dias_con_movimiento(serie: list[tuple[date, Decimal]]) -> Decimal:
@@ -137,16 +156,37 @@ class ReportesService:
     async def estado_resultados(
         self, *, desde: date | None, hasta: date | None
     ) -> EstadoResultados:
-        """Estado de resultados del rango (default mes en curso): utilidad bruta y neta del negocio."""
+        """Estado de resultados del rango (default mes en curso) con el periodo comparado.
+
+        El comparado es la ventana del MISMO largo pegada al inicio del rango (mismo criterio que
+        `resumen_gastos`): mes contra mes, semana contra semana. Va en `None` si esa ventana no tuvo
+        movimiento — un Δ% contra ceros es ruido, no información.
+        """
         d, h = _rango_o_mes(desde, hasta)
         inicio, fin = rango_dia_co(d, h)
         agg = await self._repo.estado_resultados(inicio=inicio, fin=fin)
+
+        largo = (h - d).days + 1
+        prev_d, prev_h = d - timedelta(days=largo), d - timedelta(days=1)
+        prev_inicio, prev_fin = rango_dia_co(prev_d, prev_h)
+        prev = await self._repo.estado_resultados(inicio=prev_inicio, fin=prev_fin)
+
+        cobertura = (
+            cuantizar(
+                (agg.unidades_vendidas - agg.unidades_sin_costo) * 100 / agg.unidades_vendidas
+            )
+            if agg.unidades_vendidas > 0
+            else Decimal("100")
+        )
         utilidad_bruta = agg.ingresos - agg.costo_ventas
-        utilidad_neta = utilidad_bruta - agg.gastos
         return EstadoResultados(
             desde=d, hasta=h,
+            ventas_brutas=agg.ventas_brutas, devoluciones=agg.devoluciones,
             ingresos=agg.ingresos, costo_ventas=agg.costo_ventas,
-            utilidad_bruta=utilidad_bruta, gastos=agg.gastos, utilidad_neta=utilidad_neta,
+            utilidad_bruta=utilidad_bruta, gastos=agg.gastos,
+            utilidad_neta=utilidad_bruta - agg.gastos,
+            cobertura_pct=cobertura,
+            anterior=_comparativo(prev, desde=prev_d, hasta=prev_h),
         )
 
     async def resumen_gastos(

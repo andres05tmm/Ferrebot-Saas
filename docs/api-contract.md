@@ -128,7 +128,7 @@ expone ambos y el `unidades_por_paquete` derivado.
 | Método | Ruta | Rol | Notas |
 |---|---|---|---|
 | GET | `/reportes/ventas` | vendedor | `?periodo=diario\|semanal\|mensual\|anual` |
-| GET | `/reportes/resultados` | admin | estado de resultados |
+| GET | `/reportes/resultados` | admin | estado de resultados del rango (default mes). `ingresos` es NETO de devoluciones (`ventas_brutas − devoluciones`); trae además `cobertura_pct` (% de lo vendido con costo registrado) y `anterior` = el mismo P&L de la ventana anterior del mismo largo, o `null` si esa ventana no tuvo movimiento |
 | GET | `/reportes/top-productos` | vendedor | ranking |
 | GET | `/reportes/libro-iva` | admin | soporte tributario |
 | POST | `/reportes/excel` | admin | genera Excel por IA |

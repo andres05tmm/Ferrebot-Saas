@@ -15,16 +15,37 @@ class ResumenDia(BaseModel):
     por_metodo_pago: dict[str, Decimal]
 
 
+class ComparativoResultados(BaseModel):
+    """El mismo P&L de la ventana inmediatamente anterior, del mismo largo.
+
+    Sin esto ninguna cifra del tab tiene contexto: "utilidad $14.500.000" no dice si el mes va bien
+    o mal. El front deriva los Δ% contra estos valores y nombra el periodo comparado."""
+
+    desde: date
+    hasta: date
+    ingresos: Decimal
+    costo_ventas: Decimal
+    utilidad_bruta: Decimal
+    gastos: Decimal
+    utilidad_neta: Decimal
+
+
 class EstadoResultados(BaseModel):
     """Estado de resultados (P&L) de un rango para la pestaña Resultados (Fase 12, Slice 2)."""
 
     desde: date
     hasta: date
-    ingresos: Decimal           # ventas sin IVA (el IVA es traslado)
+    ventas_brutas: Decimal      # Σ subtotal sin IVA de las ventas completadas (el IVA es traslado)
+    devoluciones: Decimal       # base sin IVA devuelta en el rango
+    ingresos: Decimal           # ventas_brutas − devoluciones (lo devuelto no es venta)
     costo_ventas: Decimal       # costo de la mercancía vendida (exacto desde el threading por venta)
     utilidad_bruta: Decimal     # ingresos − costo_ventas
     gastos: Decimal
     utilidad_neta: Decimal      # utilidad_bruta − gastos
+    # Qué parte de lo vendido tiene costo registrado: un margen sobre el 60% de cobertura es una
+    # estimación, no un dato. 100 = margen confiable.
+    cobertura_pct: Decimal
+    anterior: ComparativoResultados | None = None
 
 
 class LibroIVA(BaseModel):

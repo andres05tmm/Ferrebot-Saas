@@ -8,6 +8,10 @@
  *   sub         — texto secundario debajo del valor
  *   icon        — componente de @/lib/icons.jsx (Phosphor)
  *   deltaPct    — número opcional para mostrar tendencia ↑/↓ vs anterior
+ *   direccion   — qué significa que `deltaPct` suba: 'mas_es_mejor' (default) | 'menos_es_mejor'.
+ *                 En costo de mercancía, devoluciones o gastos, subir es MALO: pintarlo de verde
+ *                 porque el número creció es mentirle al dueño. La flecha siempre sigue al signo
+ *                 del dato; lo que cambia es el color.
  *   spark       — array de puntos [{ total }, …] para sparkline (>=3)
  *   onClick     — vuelve la card clickeable + focusable + aria-button
  *   actionLabel — chip discreto en hover/focus indicando la acción
@@ -43,6 +47,7 @@ export default function KpiCard({
   sub,
   icon: Icon,
   deltaPct,
+  direccion = 'mas_es_mejor',
   spark,
   onClick,
   actionLabel,
@@ -214,7 +219,9 @@ export default function KpiCard({
             {deltaPct !== null && deltaPct !== undefined && Math.abs(deltaPct) > 0.5 && (
               <span className={cn(
                 'inline-flex items-center gap-0.5 mr-1 font-semibold tabular',
-                deltaPct >= 0 ? 'text-success' : 'text-danger',
+                // El color lo decide si el movimiento es BUENO, no si el número subió.
+                (deltaPct >= 0) === (direccion !== 'menos_es_mejor')
+                  ? 'text-success' : 'text-danger',
               )}>
                 {deltaPct >= 0
                   ? <TrendingUp className="size-2.5" aria-hidden="true" />

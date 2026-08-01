@@ -57,7 +57,9 @@ async def test_hoy_dashboard_vendedor_sin_utilidad_admin_con_ella():
     class _FakeHoyRepo:
         async def estado_resultados(self, *, inicio, fin):
             return AgregadoResultados(
-                ingresos=Decimal("30000"), costo_ventas=Decimal("12000"), gastos=Decimal("3000"),
+                ventas_brutas=Decimal("30000"), devoluciones=Decimal("0"),
+                costo_ventas=Decimal("12000"), gastos=Decimal("3000"),
+                unidades_vendidas=Decimal("0"), unidades_sin_costo=Decimal("0"),
             )
 
         async def estado_pedidos_proveedor(self, *, hoy, ahora):

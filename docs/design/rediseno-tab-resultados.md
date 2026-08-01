@@ -74,7 +74,7 @@ Vocabulario exacto: *Estado de Resultados* (no "P&L"), *Costo de ventas*, *Utili
 **Loggro — drill-down contable**
 https://loggro.com/software-contable/software-para-reportes-contables-y-financieros/
 
-Filosofía "de lo general a lo particular": **máximo 3 saltos hasta el documento origen**, sin callejones sin salida. Y cartera por edades como ciudadano de primera clase.
+Filosofía "de lo general a lo particular": **máximo 3 saltos hasta el documento origen**, sin callejones sin salida.
 
 **Bsale — KPIs LatAm**
 https://ayuda.bsale.io/support/solutions/articles/151000213248-reportes-de-ventas
@@ -84,7 +84,7 @@ Sus 5 KPIs de vista rápida (venta total, margen, n° de ventas, unidades, ticke
 **Xero — Business Snapshot**
 https://www.xero.com/us/accounting-software/analytics/snapshot/
 
-La lección de arquitectura: Xero separa deliberadamente **Dashboard** (operación diaria) de **Business Snapshot** (tendencia, rentabilidad, estrategia). En tu producto: `/hoy` es el dashboard, `/resultados` es el snapshot. Si mezclas, el dueño no encuentra ninguno. Xero además pone **DSO y DPO** como KPIs de primer nivel — correcto para un negocio con crédito.
+La lección de arquitectura: Xero separa deliberadamente **Dashboard** (operación diaria) de **Business Snapshot** (tendencia, rentabilidad, estrategia). En tu producto: `/hoy` es el dashboard, `/resultados` es el snapshot. Si mezclas, el dueño no encuentra ninguno. Xero además pone **DSO y DPO** como KPIs de primer nivel — correcto para un negocio con crédito, que **no** es el caso de Punto Rojo (ver el recuadro de Tier 1).
 
 ### Tier 3 — principios de diseño
 
@@ -115,11 +115,22 @@ Prioridad por *valor para el dueño de ferretería ÷ esfuerzo*, cruzada con lo 
 | 3 | **Margen bruto % + COP** | `(ventas netas − COGS) / ventas netas` | ✅ derivable; ⚠️ falta exponerlo como % |
 | 4 | **Δ vs. periodo anterior** en toda métrica | — | ❌ **gap**: solo existe en `ResumenGastos.gasto_periodo_anterior` |
 | 5 | **Margen por categoría + mix** | margen % por categoría + `ventas_cat / ventas_total` | ✅ `/reportes/margen-productos?por=categoria` (falta la columna de mix) |
-| 6 | **Cartera por edades + DSO** | buckets 1–30 / 31–60 / 61–90 / 91–180 / +180 | ❌ **gap grande**: `/cobranza/deudores` da saldo pero **sin fechas ni buckets** |
 | 7 | **Punto de equilibrio del mes** | `gastos fijos mes / margen bruto %` | ✅ ya calculado en `/reportes/gastos` — hay que traerlo aquí |
 | 8 | **Flujo de caja del periodo** | entradas − salidas | ✅ `/reportes/flujo-dinero` (muy completo) |
 
-> **Sobre el fiado (#6):** es el dolor #1 del ferretero colombiano y hoy el tab no lo toca. Ya tienes el patrón implementado para el otro lado (`/reportes/aging-cxp` → `AgingProveedor` con buckets 0-30/31-60/61-90/90+ y semáforo). **Replicar ese mismo schema para clientes es el cambio de mayor impacto de todo este rediseño.** Buckets y provisión sugerida según [Alegra](https://blog.alegra.com/colombia/cartera-por-edades/): 1–30 → 0%, 31–60 → 5%, 61–90 → 5%, 91–180 → 10%, +180 → 15%.
+> **Descartado — cartera por edades y DSO (era el #6).** El borrador lo ponía como el cambio de mayor
+> impacto, por ser el dolor #1 del ferretero colombiano en general. **No aplica a Punto Rojo:** el dueño
+> confirmó (2026-07-31) que casi no fía — del orden de un fiado por semana. No amerita endpoint de
+> aging, buckets, provisión ni widget propio; un dato así se lee en un renglón. Si algún día hace falta,
+> el lugar es un apartado chico en Historial o en Hoy, **no** una sección de Resultados. Lo que ya está
+> resuelto y basta: el fiado no cuenta como entrada de caja y se muestra aparte en el flujo de dinero.
+>
+> Esto arrastra: se caen también **DSO** (#6), **CCC** (#13, que lo necesita) y la regla de narrativa de
+> cartera vencida (§4). Si el negocio cambia y el fiado crece, el patrón a copiar está a la mano:
+> `/reportes/aging-cxp` → `AgingProveedor` (buckets, `mas_vieja_dias`, semáforo), `fiados.creado_en` y
+> `fiados.saldo` ya existen —no haría falta migración—, y las provisiones de referencia son las de
+> [Alegra](https://blog.alegra.com/colombia/cartera-por-edades/): 1–30 → 0%, 31–60 → 5%, 61–90 → 5%,
+> 91–180 → 10%, +180 → 15%.
 
 ### Tier 2 — segunda iteración
 
@@ -129,7 +140,7 @@ Prioridad por *valor para el dueño de ferretería ÷ esfuerzo*, cruzada con lo 
 | 10 | **Rotación de inventario + DIO** | `COGS / inventario promedio al costo`; `DIO = 360 / rotación` | ⚠️ hay `productos.costo_promedio` y el balance del ledger; **falta snapshot mensual de inventario valorizado** |
 | 11 | **GMROI** | `margen bruto $ / inventario promedio al costo` = `rotación × margen %` | ❌ depende de #10 |
 | 12 | **DPO** | `CxP promedio / compras del periodo × 360` | ⚠️ `/reportes/aging-cxp` da el saldo; falta el flujo de compras |
-| 13 | **CCC** | `DIO + DSO − DPO` | ❌ depende de #6, #10, #12 |
+| 13 | ~~**CCC**~~ | `DIO + DSO − DPO` | ❌ descartado: sin DSO no hay CCC (ver el recuadro de Tier 1) |
 | 14 | **Descuentos otorgados** (COP y % de ventas) | — | ❌ **gap**: es donde se fuga el margen en mostrador |
 | 15 | **Inventario muerto valorizado** | Σ(unidades × costo) de SKUs sin venta en 180d | ❌ gap (datos existen en kardex) |
 | 16 | **Puente utilidad → caja** | utilidad − Δcartera − Δinventario + ΔCxP − retiros | ⚠️ `/contabilidad/flujo-efectivo` puede darlo si el ledger está sembrado |
@@ -190,10 +201,8 @@ Serie de utilidad/margen en el tiempo (hoy solo hay serie de ventas), merma/falt
 ║ − Gastos           ▉▉                  │ [ver desglose →]            ║
 ║ = UTILIDAD     ▉▉                      │                             ║
 ╠═══════════════════════════════════════════════════════════════════════╣
-║ CARTERA POR EDADES         DSO: 34d    │ MARGEN POR CATEGORÍA        ║
-║ ▉▉▉▉▉▉▉▉▉▉▉▉▉▉│▉▉▉▉▉│▉▉▉│▉            │ Pintura     ▉▉▉▉▉▉ 31,2%    ║
-║  1-30  31-60 61-90 +90                 │ Tornillería ▉▉▉▉▉  24,8%    ║
-║ $8,3M vencido >90d · 3 clientes = 71%  │ Cemento     ▉▉     11,4%    ║
+║ MARGEN POR CATEGORÍA                                                  ║
+║ Pintura     ▉▉▉▉▉▉ 31,2%   Tornillería ▉▉▉▉▉ 24,8%   Cemento ▉▉ 11,4% ║
 ╠═══════════════════════════════════════════════════════════════════════╣
 ║ ESTADO DE RESULTADOS          [Expandir todo] [Excel ⭳] [Contador ⭳] ║
 ║ Concepto        │ Julio     │ % vtas │ Junio    │  Δ$    │  Δ%       ║
@@ -228,7 +237,7 @@ Serie de utilidad/margen en el tiempo (hoy solo hay serie de ventas), merma/falt
 
 La tarjeta de resumen es lo que convierte el tab de "tabla de números" a "me dice qué hacer". Tableau lo hace con NLG basada en plantillas, no con modelo generativo, y su justificación aplica exacto a tu usuario: reducir la barrera para quien no interpreta gráficos con soltura.
 
-Cinco reglas cubren casi todo:
+Cuatro reglas cubren casi todo:
 
 ```js
 // Δ margen > 2pp
@@ -237,8 +246,6 @@ Cinco reglas cubren casi todo:
 "Los descuentos fueron el {X}% de las ventas, arriba del {Y}% habitual."
 // Gasto con Δ% > 20% y monto material
 "{Gasto} creció {X}% este mes ({COP})."
-// Cartera >90d creciendo
-"Tienes {COP} en cartera vencida a más de 90 días, {X}% más que el mes pasado. {N} clientes concentran el {Y}%."
 // Progreso a punto de equilibrio
 "Día {D} de {T}. Llevas {COP} de los {COP} que necesitas para no perder. Al ritmo actual cierras en {COP}."
 ```
@@ -286,13 +293,12 @@ Ese párrafo es, probablemente, lo más valioso que le puedes mostrar a un ferre
 Ordenado por impacto:
 
 1. **`EstadoResultados` con periodo comparado.** Agregar campos `*_anterior` (o un objeto `comparado`) al schema, igual que ya hace `ResumenGastos.gasto_periodo_anterior`. Sin esto no hay ni un solo Δ% en la pantalla. — *bajo esfuerzo, desbloquea todo*
-2. **`GET /reportes/aging-cartera`** espejo de `/reportes/aging-cxp`, con buckets 1-30/31-60/61-90/91-180/+180, `dias_mas_vieja`, semáforo y provisión sugerida. Requiere que los fiados tengan fecha de origen consultable. Añadir **DSO** al mismo endpoint. — *alto impacto*
-3. **Descuentos y devoluciones como líneas del `EstadoResultados`.** Hoy `ingresos` ya viene neto; hay que exponer las líneas para que el waterfall pueda dibujarlas.
-4. **Traer punto de equilibrio y `margen_bruto_pct` a `/reportes/resultados`** (o consumir `/reportes/gastos` desde este tab). Ya están calculados.
-5. **Ticket promedio y n° de transacciones por rango** (hoy `/reportes/resumen` es solo del día).
-6. **Snapshot mensual de inventario valorizado al costo.** Es el prerrequisito de rotación, DIO y GMROI — las tres métricas que más diferencian el producto en retail. Job mensual que guarde `Σ(stock × costo_promedio)` por corte.
-7. **Serie de utilidad/margen en el tiempo** (hoy solo hay `/reportes/serie-ventas`), para los sparklines de las KPI cards.
-8. **Motor de insights por reglas**, en backend, devolviendo `[{tipo, severidad, texto, link, valor_impacto}]` ordenado por impacto en COP.
+2. **Descuentos y devoluciones como líneas del `EstadoResultados`.** Hoy `ingresos` ya viene neto; hay que exponer las líneas para que el waterfall pueda dibujarlas.
+3. **Traer punto de equilibrio y `margen_bruto_pct` a `/reportes/resultados`** (o consumir `/reportes/gastos` desde este tab). Ya están calculados.
+4. **Ticket promedio y n° de transacciones por rango** (hoy `/reportes/resumen` es solo del día).
+5. **Snapshot mensual de inventario valorizado al costo.** Es el prerrequisito de rotación, DIO y GMROI — las tres métricas que más diferencian el producto en retail. Job mensual que guarde `Σ(stock × costo_promedio)` por corte.
+6. **Serie de utilidad/margen en el tiempo** (hoy solo hay `/reportes/serie-ventas`), para los sparklines de las KPI cards.
+7. **Motor de insights por reglas**, en backend, devolviendo `[{tipo, severidad, texto, link, valor_impacto}]` ordenado por impacto en COP.
 
 ---
 
@@ -328,18 +334,17 @@ Las que aplican directo a tu código:
 5. Fusionar los 3 sub-tabs en una página
 
 **Fase 2 — el diferencial colombiano**
-6. `GET /reportes/aging-cartera` + widget de cartera por edades + DSO
-7. Punto de equilibrio traído al tab (barra de progreso)
-8. Tabla de estado de resultados jerárquica con columnas `% ventas`, `Δ$`, `Δ%`
-9. Narrativa automática por reglas (empezar con 3 reglas)
+6. Punto de equilibrio traído al tab (barra de progreso)
+7. Tabla de estado de resultados jerárquica con columnas `% ventas`, `Δ$`, `Δ%`
+8. Narrativa automática por reglas (empezar con 3 reglas)
 
 **Fase 3 — retail avanzado**
-10. Snapshot de inventario valorizado → rotación, DIO, GMROI por categoría
-11. Inventario muerto valorizado con costo de oportunidad
-12. Puente utilidad → caja
-13. CCC + descomposición precio-volumen-mix
+9. Snapshot de inventario valorizado → rotación, DIO, GMROI por categoría
+10. Inventario muerto valorizado con costo de oportunidad
+11. Puente utilidad → caja
+12. Descomposición precio-volumen-mix
 
-Si hay que recortar, **Fase 1 + puntos 6 y 7 ya dejan el tab mejor que el de cualquier POS colombiano del mercado.**
+Si hay que recortar, **Fase 1 + el punto de equilibrio ya dejan el tab mejor que el de cualquier POS colombiano del mercado.**
 
 ---
 
@@ -381,11 +386,9 @@ Si hay que recortar, **Fase 1 + puntos 6 y 7 ya dejan el tab mejor que el de cua
 - Treinta — rentabilidad ferretería Colombia — https://www.treinta.co/blog/vale-la-pena-abrir-una-ferreteria-en-colombia-en-2025-rentabilidad-consejos-y-herramientas-clave
 - Márgenes por categoría — https://modelosdeplandenegocios.com/blogs/news/rentabilidad-ferreteria
 - GMROI = rotación × margen — https://beancount.io/es/blog/2026/07/13/gmroi-gross-margin-return-on-inventory-investment-guide
-- CCC por industria (Damodaran ene-2026) — https://www.calcmastery.com/benchmarks/cash-conversion-cycle-by-industry/
-- Cartera por edades y provisiones (CO) — https://blog.alegra.com/colombia/cartera-por-edades/
+- Cartera por edades y provisiones (CO) — https://blog.alegra.com/colombia/cartera-por-edades/ *(descartado para Punto Rojo; queda por si el fiado crece)*
 - Punto de equilibrio (CO) — https://blog.alegra.com/colombia/punto-de-equilibrio-paso-a-paso-para-su-calculo/
 - Indicadores de actividad (fórmulas CO, 360 días) — https://actualicese.com/indicadores-de-actividad-conoce-como-se-utilizan-mediante-un-caso-practico/
-- Rotación de cartera (CO) — https://www.gerencie.com/rotacion-de-cartera.html
 - Inventario muerto / SLOB — https://www.incorta.com/blog/what-is-slob-inventory
 - Análisis precio-volumen-mix — https://www.fticonsulting.com/insights/white-papers/quantifiable-approach-price-volume-mix-analysis
 - Estados financieros microempresas Grupo 3 (CO) — https://siemprealdia.co/colombia/contabilidad/estados-financieros-para-microempresas/

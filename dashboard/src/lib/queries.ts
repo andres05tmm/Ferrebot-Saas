@@ -145,10 +145,15 @@ export function useAccionCobro() {
 
 // ── Kárdex (movimientos de inventario por producto) ─────────────────────────────────────────────
 // La búsqueda de producto reutiliza `useProductos` (mismo GET /productos?q&limite=20).
+// Se exporta para que la vista pueda AVISAR cuando la lista viene cortada: un kárdex truncado en
+// silencio se lee como "estos son todos los movimientos", que es justo lo contrario de para qué
+// sirve un kárdex.
+export const LIMITE_KARDEX = 200
+
 export function useKardex(productoId: number | null) {
   return useQuery({
     queryKey: queryKeys.kardex(productoId),
-    queryFn: () => apiJson<Fila[]>(`/inventario/kardex/${productoId}?limite=200`),
+    queryFn: () => apiJson<Fila[]>(`/inventario/kardex/${productoId}?limite=${LIMITE_KARDEX}`),
     enabled: productoId != null,
   })
 }

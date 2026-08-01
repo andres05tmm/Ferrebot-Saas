@@ -8,15 +8,19 @@ import { useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { BookOpen, Search, PackageSearch } from '@/lib/icons.jsx'
 import { cop } from '@/components/shared.jsx'
-import { useProductos, useKardex, keyPrefix } from '@/lib/queries'
+import { useProductos, useKardex, keyPrefix, LIMITE_KARDEX } from '@/lib/queries'
 import { useRealtimeEvent } from '@/components/RealtimeProvider.jsx'
 import { Card } from '@/components/ui/card.jsx'
 import { Input } from '@/components/ui/input.jsx'
 import { Badge } from '@/components/ui/badge.jsx'
 
 const arr = (d) => (Array.isArray(d) ? d : [])
-// Tipos que RESTAN stock (salidas): el resto suma. Solo para el signo visual; el dato es la magnitud.
-const SALIDAS = new Set(['VENTA', 'venta', 'MERMA', 'SALIDA', 'salida'])
+// Los CUATRO tipos que existen (enum `mov_inventario_tipo`: ENTRADA, SALIDA, AJUSTE, DEVOLUCION).
+// Esto estuvo escrito contra VENTA/COMPRA/MERMA/CONTEO, que la base rechaza: una venta llega como
+// SALIDA y una compra como ENTRADA, así que los dos movimientos más frecuentes se pintaban en el
+// gris del fallback. El AJUSTE guarda el delta CON signo (−3 por merma, +5 por sobrante), por eso
+// el signo se decide por tipo O por cantidad negativa.
+const SALIDAS = new Set(['SALIDA'])
 
 function fecha(iso) {
   if (!iso) return '—'
@@ -26,8 +30,8 @@ function fecha(iso) {
 }
 
 const TIPO_TONO = {
-  VENTA: 'text-destructive', DEVOLUCION: 'text-success', COMPRA: 'text-info',
-  AJUSTE: 'text-warning', CONTEO: 'text-warning',
+  SALIDA: 'text-destructive', ENTRADA: 'text-info',
+  DEVOLUCION: 'text-success', AJUSTE: 'text-warning',
 }
 
 function Movimiento({ m }) {
@@ -63,7 +67,10 @@ export default function TabKardex() {
   // Con un producto elegido se corta la búsqueda (q vacío → useProductos deshabilitada).
   const productosQ = useProductos(sel ? '' : busca)
   const kardexQ = useKardex(sel?.id ?? null)
-  useRealtimeEvent(['venta_registrada', 'compra_registrada', 'stock_ajustado'],
+  // `devolucion_registrada` va acá porque una devolución SÍ mueve stock (movimiento DEVOLUCION):
+  // sin ella, el renglón no aparecía hasta recargar la página.
+  useRealtimeEvent(
+    ['venta_registrada', 'compra_registrada', 'stock_ajustado', 'devolucion_registrada'],
     () => qc.invalidateQueries({ queryKey: keyPrefix.kardex }))
 
   const productos = arr(productosQ.data)
@@ -126,9 +133,17 @@ export default function TabKardex() {
               Este producto aún no tiene movimientos de inventario.
             </p>
           ) : (
-            <ul className="divide-y divide-border-subtle">
-              {movimientos.map(m => <Movimiento key={m.id} m={m} />)}
-            </ul>
+            <>
+              <ul className="divide-y divide-border-subtle">
+                {movimientos.map(m => <Movimiento key={m.id} m={m} />)}
+              </ul>
+              {movimientos.length >= LIMITE_KARDEX && (
+                <p className="px-3.5 py-2.5 border-t border-border-subtle text-caption text-muted-foreground">
+                  Mostrando los {LIMITE_KARDEX} movimientos más recientes; este producto puede tener
+                  más atrás.
+                </p>
+              )}
+            </>
           )}
         </Card>
       )}

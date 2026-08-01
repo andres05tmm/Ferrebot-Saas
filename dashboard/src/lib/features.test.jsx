@@ -10,7 +10,7 @@ import { ROUTES, routesByGroup, GROUPS } from '../routes.jsx'
 
 // `/historial` NO va aquí: es transversal a las dos familias (ADR 0018) — tiene su propio bloque.
 const RUTAS_POS = ['/ventas', '/caja', '/inventario', '/compras', '/proveedores', '/gastos',
-  '/top-productos', '/kardex']
+  '/kardex']
 // Tras Fase 1 la portada `/hoy` también se gatea por `pos`; el núcleo transversal queda en estas dos.
 const RUTAS_NUCLEO = ['/clientes', '/resultados']
 
@@ -22,7 +22,6 @@ const POS = ['pos', 'facturacion_electronica']
 describe('gating del pack pos', () => {
   it('cada ruta retail está gateada por su feature FINA (ADR 0021)', () => {
     expect(RUTA_FEATURE['/ventas']).toBe('ventas')
-    expect(RUTA_FEATURE['/top-productos']).toBe('ventas')
     expect(RUTA_FEATURE['/caja']).toBe('caja')
     expect(RUTA_FEATURE['/gastos']).toBe('caja')
     expect(RUTA_FEATURE['/inventario']).toBe('inventario')
@@ -113,7 +112,7 @@ describe('resolución de la home por features (Fase 1)', () => {
 describe('dos familias de dashboard (ADR 0018)', () => {
   // Rutas retail/contables que SOLO debe ver la familia ferretería (`/historial` es transversal, aparte).
   const RETAIL = ['/hoy', '/ventas', '/caja', '/inventario', '/compras', '/proveedores', '/gastos',
-    '/top-productos', '/kardex']
+    '/kardex']
   const NUCLEO = ['/clientes', '/resultados']
 
   const FERRETERIA = ['pos']
@@ -201,7 +200,7 @@ describe('familia construcción (vertical PIM)', () => {
     'cartera_alquiler', 'resbalos', 'pos', 'ventas', 'caja', 'inventario', 'fiados', 'pack_cobranza',
     'facturacion_electronica']
   // Retail PURO que una constructora NO debe ver.
-  const RETAIL_PURO = ['/hoy', '/ventas', '/devoluciones', '/top-productos', '/kardex']
+  const RETAIL_PURO = ['/hoy', '/ventas', '/devoluciones', '/kardex']
 
   it('la portada es /obras (NO el cockpit /hoy de ferretería)', () => {
     expect(resolveHomePath(PIM)).toBe('/obras')
@@ -307,8 +306,6 @@ describe('features finas: contable de servicios (ADR 0021)', () => {
     expect(isRouteEnabled('/ventas', PELUQUERIA)).toBe(true)
     expect(isRouteEnabled('/historial', PELUQUERIA)).toBe(true)
     expect(isRouteEnabled('/agenda', PELUQUERIA)).toBe(true)
-    // Top-productos viene con `ventas`: sus servicios/productos más vendidos.
-    expect(isRouteEnabled('/top-productos', PELUQUERIA)).toBe(true)
   })
 
   it('peluquería: NO ve inventario/compras/kárdex ni el cockpit /hoy', () => {

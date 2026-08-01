@@ -53,7 +53,7 @@ const FEATURES_CONSTRUCCION = ['construccion', 'obras']
 // Rutas de RETAIL PURO (venta de mostrador): no tienen sentido para una constructora ni para servicios.
 // Se suprimen para la familia construcción (ver isRouteEnabled). NO incluye caja/inventario/compras/
 // gastos: esos son operación compartida (una obra maneja caja, materiales, compras y gastos).
-const RUTAS_RETAIL_PURO = new Set(['/hoy', '/ventas', '/devoluciones', '/top-productos', '/kardex'])
+const RUTAS_RETAIL_PURO = new Set(['/hoy', '/ventas', '/devoluciones', '/kardex'])
 
 // Vertical RESTAURANTE (atención a cliente con `pack_pedidos`): el dashboard se centra en la comandera.
 // El restaurante demo opera con Pedidos, Conversaciones, Conocimiento e Historial; cobros/clientes/P&L
@@ -67,7 +67,7 @@ const RUTAS_OCULTAS_RESTAURANTE = new Set(['/resultados', '/clientes', '/cobros'
 // (ventas en POS, pedidos/citas/reservas en servicios) y lleva su propia condición en isRouteEnabled.
 const RUTAS_RETAIL = new Set([
   '/hoy', '/ventas', '/caja', '/inventario', '/compras', '/proveedores', '/gastos',
-  '/top-productos', '/kardex', '/devoluciones',
+  '/kardex', '/devoluciones',
 ])
 
 // Ruta → capacidad requerida (catalogo.py). Las rutas NO listadas son núcleo → visibles por defecto
@@ -86,7 +86,6 @@ export const RUTA_FEATURE = {
   '/proveedores': 'inventario',
   '/kardex': 'inventario',
   '/devoluciones': 'ventas',
-  '/top-productos': 'ventas',
   // Vertical construcción (Fase 1 PIM + Ola A): cada tab por su feature fina. NO son RUTAS_RETAIL (no
   // llevan la supresión de familia): gate simple `feats.includes(requerida)`.
   // `/panel` (cockpit del dueño, F3): portada de la familia construcción. Cuelga de `obras` como el

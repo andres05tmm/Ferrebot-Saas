@@ -11,7 +11,7 @@
 import {
   LayoutDashboard, Home, ShoppingCart, Wallet, Package,
   Users, Truck, Building2, Receipt,
-  History, TrendingUp, Trophy, BookOpen,
+  History, TrendingUp, BookOpen,
   FileText, FileCheck, Calculator, FileCog,
   CalendarDays, Headset, BookText, HandCoins, ChefHat, Banknote,
   CreditCard, Star, BedDouble, Undo2, Percent, Library, Landmark, Scale,
@@ -75,7 +75,6 @@ export const ROUTES = [
   // Reportes
   { path: '/historial',           label: 'Historial',           icon: History,         group: 'reportes' },
   { path: '/resultados',          label: 'Resultados financieros', icon: TrendingUp,   group: 'reportes' },
-  { path: '/top-productos',       label: 'Top productos',       icon: Trophy,          group: 'reportes' },
   { path: '/kardex',              label: 'Kárdex',              icon: BookOpen,        group: 'reportes' },
 
   // Fiscal — las devoluciones viven aquí: son nota crédito / reversa fiscal de una venta, no

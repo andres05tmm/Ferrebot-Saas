@@ -187,7 +187,7 @@ export default function TabHoy() {
       {/* OPERATIVA — Métodos / Top productos / Actividad en vivo del agente */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
         <MetodosPago items={metodosPago} total={totalMetodos} />
-        <TopProductos items={topProductos} onMore={() => navigate('/top-productos')} />
+        <TopProductos items={topProductos} />
         <FeedActividad />
       </div>
 
@@ -507,14 +507,14 @@ function MetodosPago({ items, total }) {
 }
 
 // ── TOP PRODUCTOS / STOCK BAJO / QUICK ACTIONS ────────────────────────────────
-function TopProductos({ items, onMore }) {
+// Sin "ver todos": el tab /top-productos se borró (el ranking del rango lo da Resultados, por
+// categoría y con margen, que es la pregunta que el dueño realmente hace). Acá queda el top del DÍA,
+// que es lo propio del cockpit.
+function TopProductos({ items }) {
   return (
     <Card className="p-3.5">
       <div className="flex items-center justify-between mb-2.5">
         <h2 className="text-caption font-semibold uppercase tracking-wider text-muted-foreground">Top productos hoy</h2>
-        <button onClick={onMore} className="text-caption text-muted-foreground hover:text-foreground inline-flex items-center gap-1">
-          ver todos <ArrowRight className="size-3" />
-        </button>
       </div>
       {items.length === 0 ? (
         <p className="py-6 text-center text-sm text-muted-foreground">Sin ventas hoy.</p>
